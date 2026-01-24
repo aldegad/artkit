@@ -1,0 +1,159 @@
+// ============================================
+// Core Types
+// ============================================
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Size {
+  width: number;
+  height: number;
+}
+
+export interface SpriteFrame {
+  id: number;
+  points: Point[];
+  name: string;
+  imageData?: string;
+  offset: Point;
+}
+
+export interface ViewState {
+  zoom: number;
+  pan: Point;
+  scale: number;
+  canvasHeight: number;
+  isCanvasCollapsed: boolean;
+  isPreviewWindowOpen: boolean;
+  currentFrameIndex: number;
+  timelineMode: TimelineMode;
+}
+
+export interface SavedProject {
+  id: string;
+  name: string;
+  imageSrc: string;
+  imageSize: Size;
+  frames: SpriteFrame[];
+  nextFrameId: number;
+  fps: number;
+  savedAt: number;
+  viewState?: ViewState;
+}
+
+// ============================================
+// Image Editor Types
+// ============================================
+
+export interface ImageLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  opacity: number; // 0-100
+  data: string; // base64 encoded canvas data
+}
+
+export interface SavedImageProject {
+  id: string;
+  name: string;
+  imageSrc: string;
+  editLayerData: string; // base64 encoded edit canvas data (legacy, for backward compat)
+  layers?: ImageLayer[]; // new layer system
+  activeLayerId?: string;
+  imageSize: Size;
+  rotation: number;
+  savedAt: number;
+}
+
+// ============================================
+// Tool Types
+// ============================================
+
+export type ToolMode = "pen" | "select" | "hand" | "brush" | "eyedropper";
+
+export type TimelineMode = "reorder" | "offset";
+
+// ============================================
+// Docking Types
+// ============================================
+
+export type DockPosition = "left" | "right" | "top" | "bottom";
+
+export interface DockedPanel {
+  id: string;
+  title: string;
+  size: number; // pixels
+}
+
+export interface FloatingWindow {
+  id: string;
+  title: string;
+  position: Point;
+  size: Size;
+  isMinimized: boolean;
+}
+
+export interface DockingState {
+  dockedPanels: Partial<Record<DockPosition, DockedPanel[]>>;
+  floatingWindows: FloatingWindow[];
+  activeDragWindow: string | null;
+  activeDropZone: DockPosition | null;
+}
+
+// ============================================
+// Context Types
+// ============================================
+
+export interface EditorState {
+  // Image
+  imageSrc: string | null;
+  imageSize: Size;
+
+  // Frames
+  frames: SpriteFrame[];
+  nextFrameId: number;
+  currentFrameIndex: number;
+  selectedFrameId: number | null;
+  selectedPointIndex: number | null;
+
+  // Tools
+  toolMode: ToolMode;
+  currentPoints: Point[]; // Pen tool points
+
+  // View
+  zoom: number;
+  pan: Point;
+  scale: number;
+  canvasHeight: number;
+  isCanvasCollapsed: boolean;
+
+  // Animation
+  isPlaying: boolean;
+  fps: number;
+
+  // Timeline
+  timelineMode: TimelineMode;
+
+  // Background Removal
+  isBackgroundRemovalMode: boolean;
+  eraserTolerance: number;
+
+  // Project
+  projectName: string;
+  currentProjectId: string | null; // 현재 편집 중인 프로젝트 ID (저장된 경우)
+}
+
+// ============================================
+// Bounding Box
+// ============================================
+
+export interface BoundingBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+}

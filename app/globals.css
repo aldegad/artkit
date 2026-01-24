@@ -1,0 +1,483 @@
+@import "tailwindcss";
+
+/* =============================================
+   Light Theme (기본)
+   ============================================= */
+:root {
+  /* Base */
+  --background: #f8fafc;
+  --foreground: #1a1a1a;
+
+  /* Surface (패널, 카드) */
+  --surface-primary: #ffffff;
+  --surface-secondary: #f1f5f9;
+  --surface-tertiary: #e2e8f0;
+  --surface-elevated: #ffffff;
+
+  /* Border */
+  --border-default: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --border-strong: #cbd5e1;
+
+  /* Text */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  --text-muted: #cbd5e1;
+
+  /* Interactive */
+  --interactive-default: #f1f5f9;
+  --interactive-hover: #e2e8f0;
+  --interactive-active: #cbd5e1;
+
+  /* Accent (Primary Orange) */
+  --accent-primary: #f97316;
+  --accent-primary-hover: #ea580c;
+  --accent-primary-active: #c2410c;
+  --accent-primary-surface: #fff7ed;
+
+  /* Success (Green) */
+  --accent-success: #10b981;
+  --accent-success-hover: #059669;
+  --accent-success-surface: #ecfdf5;
+
+  /* Danger (Red) */
+  --accent-danger: #ef4444;
+  --accent-danger-hover: #dc2626;
+  --accent-danger-surface: #fef2f2;
+
+  /* Warning (Yellow/Orange) */
+  --accent-warning: #f59e0b;
+  --accent-warning-hover: #d97706;
+  --accent-warning-surface: #fffbeb;
+
+  /* Special UI */
+  --toolbar-bg: #ffffff;
+  --toolbar-border: #e2e8f0;
+  --panel-header-bg: #f8fafc;
+  --divider: #e2e8f0;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Checkerboard (투명 배경 표시용) */
+  --checkerboard-light: #ffffff;
+  --checkerboard-dark: #e5e7eb;
+}
+
+/* =============================================
+   Dark Theme (Warm tone with orange accent)
+   ============================================= */
+.dark {
+  /* Base - Warm dark grays */
+  --background: #1c1a18;
+  --foreground: #f5f5f4;
+
+  /* Surface - Warm grays */
+  --surface-primary: #242220;
+  --surface-secondary: #2c2a28;
+  --surface-tertiary: #363432;
+  --surface-elevated: #3a3836;
+
+  /* Border - Warm tones */
+  --border-default: #3d3b39;
+  --border-subtle: #332f2d;
+  --border-strong: #4a4744;
+
+  /* Text */
+  --text-primary: #f5f5f4;
+  --text-secondary: #a8a29e;
+  --text-tertiary: #78716c;
+  --text-muted: #57534e;
+
+  /* Interactive */
+  --interactive-default: #363432;
+  --interactive-hover: #44403c;
+  --interactive-active: #57534e;
+
+  /* Accent Colors - Orange Primary */
+  --accent-primary: #fb923c;
+  --accent-primary-hover: #fdba74;
+  --accent-primary-active: #f97316;
+  --accent-primary-surface: #431407;
+
+  /* Success - Keep green but warmer */
+  --accent-success: #84cc16;
+  --accent-success-hover: #a3e635;
+  --accent-success-surface: #1a2e0a;
+
+  /* Danger - Warm red */
+  --accent-danger: #f87171;
+  --accent-danger-hover: #fca5a5;
+  --accent-danger-surface: #3d1515;
+
+  /* Warning - Warm orange */
+  --accent-warning: #fb923c;
+  --accent-warning-hover: #fdba74;
+  --accent-warning-surface: #3d2010;
+
+  /* Special UI */
+  --toolbar-bg: #242220;
+  --toolbar-border: #3d3b39;
+  --panel-header-bg: #2c2a28;
+  --divider: #3d3b39;
+
+  /* Shadows (다크 모드에서는 더 강하게) */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.6);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.6);
+
+  /* Checkerboard - Warm tones */
+  --checkerboard-light: #2c2a28;
+  --checkerboard-dark: #242220;
+}
+
+/* =============================================
+   Tailwind Theme 매핑
+   ============================================= */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-surface-primary: var(--surface-primary);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-surface-tertiary: var(--surface-tertiary);
+  --color-surface-elevated: var(--surface-elevated);
+
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-muted: var(--text-muted);
+
+  --color-interactive-default: var(--interactive-default);
+  --color-interactive-hover: var(--interactive-hover);
+  --color-interactive-active: var(--interactive-active);
+
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-primary-hover: var(--accent-primary-hover);
+  --color-accent-success: var(--accent-success);
+  --color-accent-success-hover: var(--accent-success-hover);
+  --color-accent-danger: var(--accent-danger);
+  --color-accent-danger-hover: var(--accent-danger-hover);
+  --color-accent-warning: var(--accent-warning);
+  --color-accent-warning-hover: var(--accent-warning-hover);
+}
+
+/* =============================================
+   체크보드 패턴 (투명 배경 표시용)
+   ============================================= */
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, var(--checkerboard-dark) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checkerboard-dark) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checkerboard-dark) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checkerboard-dark) 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0px;
+  background-color: var(--checkerboard-light);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+/* =============================================
+   Component Styles
+   ============================================= */
+
+/* Panel Card Style */
+.panel-card {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.panel-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Panel Header */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--panel-header-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+/* Button Base */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Button Variants */
+.btn-primary {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-tertiary);
+  border-color: var(--border-strong);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+}
+
+.btn-success {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-danger {
+  background: var(--accent-danger);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--accent-danger-hover);
+  transform: translateY(-1px);
+}
+
+/* Tool Button */
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+}
+
+.tool-btn:hover {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+}
+
+.tool-btn.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Input Styles */
+.input {
+  padding: 8px 12px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Range Slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--surface-tertiary);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+/* Divider */
+.divider {
+  width: 1px;
+  height: 24px;
+  background: var(--divider);
+  margin: 0 8px;
+}
+
+/* Toolbar Style */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--toolbar-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Tool Group */
+.tool-group {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface-secondary);
+  border-radius: 8px;
+}
+
+/* Frame Thumbnail */
+.frame-thumb {
+  position: relative;
+  border-radius: 10px;
+  border: 2px solid var(--border-default);
+  background: var(--surface-primary);
+  /* overflow: visible to show icons positioned outside (-top-2, -left-2) */
+  overflow: visible;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.frame-thumb:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.frame-thumb.selected {
+  border-color: var(--accent-primary);
+  box-shadow:
+    0 0 0 3px rgba(249, 115, 22, 0.2),
+    var(--shadow-md);
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: var(--accent-danger);
+  color: white;
+}
+
+/* Floating Action Button */
+.fab {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface-primary);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.fab:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Timeline Bar */
+.timeline-bar {
+  background: var(--surface-primary);
+  border-top: 1px solid var(--border-default);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.dark .timeline-bar {
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+}
