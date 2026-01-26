@@ -1,0 +1,358 @@
+"use client";
+
+import { useState, useCallback, useRef, MutableRefObject } from "react";
+import { UnifiedLayer, createImageLayer, createPaintLayer } from "../types";
+
+// ============================================
+// Types
+// ============================================
+
+interface UseLayerManagementOptions {
+  getDisplayDimensions: () => { width: number; height: number };
+  saveToHistory: () => void;
+  translations: {
+    layer: string;
+    minOneLayerRequired: string;
+  };
+}
+
+interface UseLayerManagementReturn {
+  // State
+  layers: UnifiedLayer[];
+  setLayers: React.Dispatch<React.SetStateAction<UnifiedLayer[]>>;
+  activeLayerId: string | null;
+  setActiveLayerId: React.Dispatch<React.SetStateAction<string | null>>;
+  layerImages: Map<string, HTMLImageElement>;
+  setLayerImages: React.Dispatch<React.SetStateAction<Map<string, HTMLImageElement>>>;
+
+  // Refs
+  layerCanvasesRef: MutableRefObject<Map<string, HTMLCanvasElement>>;
+  editCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
+
+  // Actions
+  addPaintLayer: () => void;
+  addImageLayer: (imageSrc: string, name?: string) => void;
+  deleteLayer: (layerId: string) => void;
+  selectLayer: (layerId: string) => void;
+  toggleLayerVisibility: (layerId: string) => void;
+  updateLayer: (layerId: string, updates: Partial<UnifiedLayer>) => void;
+  updateLayerOpacity: (layerId: string, opacity: number) => void;
+  renameLayer: (layerId: string, name: string) => void;
+  toggleLayerLock: (layerId: string) => void;
+  moveLayer: (layerId: string, direction: "up" | "down") => void;
+  mergeLayerDown: (layerId: string) => void;
+  duplicateLayer: (layerId: string) => void;
+
+  // Initialization
+  initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => void;
+
+  // Legacy alias
+  addLayer: () => void;
+}
+
+// ============================================
+// Hook Implementation
+// ============================================
+
+export function useLayerManagement(
+  options: UseLayerManagementOptions
+): UseLayerManagementReturn {
+  const { getDisplayDimensions, saveToHistory, translations: t } = options;
+
+  // State
+  const [layers, setLayers] = useState<UnifiedLayer[]>([]);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
+
+  // Refs
+  const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const editCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Initialize layers
+  const initLayers = useCallback(
+    (width: number, height: number, existingLayers?: UnifiedLayer[]) => {
+      layerCanvasesRef.current.clear();
+
+      if (existingLayers && existingLayers.length > 0) {
+        setLayers(existingLayers);
+        const firstPaintLayer = existingLayers.find(l => l.type === "paint");
+        setActiveLayerId(firstPaintLayer?.id || existingLayers[0].id);
+
+        existingLayers.forEach((layer) => {
+          if (layer.type === "paint") {
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            layerCanvasesRef.current.set(layer.id, canvas);
+
+            if (layer.paintData) {
+              const img = new Image();
+              img.onload = () => {
+                const ctx = canvas.getContext("2d");
+                if (ctx) ctx.drawImage(img, 0, 0);
+              };
+              img.src = layer.paintData;
+            }
+          } else if (layer.type === "image" && layer.imageSrc) {
+            const img = new Image();
+            img.onload = () => {
+              setLayerImages(prev => {
+                const newMap = new Map(prev);
+                newMap.set(layer.id, img);
+                return newMap;
+              });
+            };
+            img.src = layer.imageSrc;
+          }
+        });
+
+        if (firstPaintLayer) {
+          editCanvasRef.current = layerCanvasesRef.current.get(firstPaintLayer.id) || null;
+        }
+      } else {
+        const defaultLayer = createPaintLayer(`${t.layer} 1`, 0);
+        setLayers([defaultLayer]);
+        setActiveLayerId(defaultLayer.id);
+
+        const editCanvas = document.createElement("canvas");
+        editCanvas.width = width;
+        editCanvas.height = height;
+        layerCanvasesRef.current.set(defaultLayer.id, editCanvas);
+        editCanvasRef.current = editCanvas;
+      }
+    },
+    [t.layer]
+  );
+
+  // Add new paint layer
+  const addPaintLayer = useCallback(() => {
+    const { width, height } = getDisplayDimensions();
+    if (width === 0 || height === 0) return;
+
+    const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
+    const newLayer = createPaintLayer(`${t.layer} ${layers.length + 1}`, maxZIndex);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    layerCanvasesRef.current.set(newLayer.id, canvas);
+
+    setLayers((prev) => [newLayer, ...prev]);
+    setActiveLayerId(newLayer.id);
+    editCanvasRef.current = canvas;
+  }, [layers, getDisplayDimensions, t.layer]);
+
+  // Add new image layer
+  const addImageLayer = useCallback((imageSrc: string, name?: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
+      const newLayer = createImageLayer(
+        imageSrc,
+        name || `Image ${layers.filter(l => l.type === "image").length + 1}`,
+        { width: img.width, height: img.height },
+        maxZIndex
+      );
+
+      setLayers((prev) => [newLayer, ...prev]);
+      setActiveLayerId(newLayer.id);
+      setLayerImages((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(newLayer.id, img);
+        return newMap;
+      });
+    };
+    img.src = imageSrc;
+  }, [layers]);
+
+  // Delete layer
+  const deleteLayer = useCallback(
+    (layerId: string) => {
+      if (layers.length <= 1) {
+        alert(t.minOneLayerRequired);
+        return;
+      }
+
+      const layer = layers.find(l => l.id === layerId);
+
+      setLayers((prev) => {
+        const newLayers = prev.filter((l) => l.id !== layerId);
+        if (activeLayerId === layerId && newLayers.length > 0) {
+          const nextLayer = newLayers[0];
+          setActiveLayerId(nextLayer.id);
+          if (nextLayer.type === "paint") {
+            editCanvasRef.current = layerCanvasesRef.current.get(nextLayer.id) || null;
+          }
+        }
+        return newLayers;
+      });
+
+      if (layer?.type === "paint") {
+        layerCanvasesRef.current.delete(layerId);
+      } else {
+        setLayerImages(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(layerId);
+          return newMap;
+        });
+      }
+    },
+    [layers, activeLayerId, t.minOneLayerRequired]
+  );
+
+  // Select layer
+  const selectLayer = useCallback((layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    setActiveLayerId(layerId);
+    if (layer?.type === "paint") {
+      editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
+    }
+  }, [layers]);
+
+  // Toggle layer visibility
+  const toggleLayerVisibility = useCallback((layerId: string) => {
+    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
+  }, []);
+
+  // Update layer
+  const updateLayer = useCallback((layerId: string, updates: Partial<UnifiedLayer>) => {
+    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, ...updates } : l)));
+  }, []);
+
+  // Update layer opacity
+  const updateLayerOpacity = useCallback((layerId: string, opacity: number) => {
+    updateLayer(layerId, { opacity });
+  }, [updateLayer]);
+
+  // Rename layer
+  const renameLayer = useCallback((layerId: string, name: string) => {
+    updateLayer(layerId, { name });
+  }, [updateLayer]);
+
+  // Toggle layer lock
+  const toggleLayerLock = useCallback((layerId: string) => {
+    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, locked: !l.locked } : l)));
+  }, []);
+
+  // Move layer up/down
+  const moveLayer = useCallback((layerId: string, direction: "up" | "down") => {
+    setLayers((prev) => {
+      const idx = prev.findIndex((l) => l.id === layerId);
+      if (idx === -1) return prev;
+      if (direction === "up" && idx === 0) return prev;
+      if (direction === "down" && idx === prev.length - 1) return prev;
+
+      const newLayers = [...prev];
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      [newLayers[idx], newLayers[targetIdx]] = [newLayers[targetIdx], newLayers[idx]];
+      return newLayers.map((l, i) => ({ ...l, zIndex: newLayers.length - 1 - i }));
+    });
+  }, []);
+
+  // Merge paint layer down
+  const mergeLayerDown = useCallback(
+    (layerId: string) => {
+      const idx = layers.findIndex((l) => l.id === layerId);
+      if (idx === -1 || idx === layers.length - 1) return;
+
+      const upperLayer = layers[idx];
+      const lowerLayer = layers[idx + 1];
+
+      if (upperLayer.type !== "paint" || lowerLayer.type !== "paint") return;
+
+      const upperCanvas = layerCanvasesRef.current.get(layerId);
+      const lowerCanvas = layerCanvasesRef.current.get(lowerLayer.id);
+
+      if (!upperCanvas || !lowerCanvas) return;
+
+      saveToHistory();
+
+      const ctx = lowerCanvas.getContext("2d");
+      if (ctx) {
+        ctx.globalAlpha = upperLayer.opacity / 100;
+        ctx.drawImage(upperCanvas, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+
+      deleteLayer(layerId);
+    },
+    [layers, saveToHistory, deleteLayer]
+  );
+
+  // Duplicate layer
+  const duplicateLayer = useCallback((layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    const maxZIndex = Math.max(...layers.map(l => l.zIndex)) + 1;
+    const newLayer: UnifiedLayer = {
+      ...layer,
+      id: crypto.randomUUID(),
+      name: `${layer.name} (copy)`,
+      zIndex: maxZIndex,
+    };
+
+    if (layer.type === "image") {
+      newLayer.position = {
+        x: (layer.position?.x || 0) + 20,
+        y: (layer.position?.y || 0) + 20,
+      };
+      const existingImg = layerImages.get(layerId);
+      if (existingImg) {
+        setLayerImages(prev => {
+          const newMap = new Map(prev);
+          newMap.set(newLayer.id, existingImg);
+          return newMap;
+        });
+      }
+    } else if (layer.type === "paint") {
+      const { width, height } = getDisplayDimensions();
+      const newCanvas = document.createElement("canvas");
+      newCanvas.width = width;
+      newCanvas.height = height;
+      const srcCanvas = layerCanvasesRef.current.get(layerId);
+      if (srcCanvas) {
+        const ctx = newCanvas.getContext("2d");
+        if (ctx) ctx.drawImage(srcCanvas, 0, 0);
+      }
+      layerCanvasesRef.current.set(newLayer.id, newCanvas);
+    }
+
+    setLayers(prev => [newLayer, ...prev]);
+    setActiveLayerId(newLayer.id);
+  }, [layers, layerImages, getDisplayDimensions]);
+
+  return {
+    // State
+    layers,
+    setLayers,
+    activeLayerId,
+    setActiveLayerId,
+    layerImages,
+    setLayerImages,
+
+    // Refs
+    layerCanvasesRef,
+    editCanvasRef,
+
+    // Actions
+    addPaintLayer,
+    addImageLayer,
+    deleteLayer,
+    selectLayer,
+    toggleLayerVisibility,
+    updateLayer,
+    updateLayerOpacity,
+    renameLayer,
+    toggleLayerLock,
+    moveLayer,
+    mergeLayerDown,
+    duplicateLayer,
+
+    // Initialization
+    initLayers,
+
+    // Legacy alias
+    addLayer: addPaintLayer,
+  };
+}

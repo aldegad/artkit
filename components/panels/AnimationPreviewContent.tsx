@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useEditor } from "../../contexts/EditorContext";
-import { useLanguage } from "../../contexts/LanguageContext";
+import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
+import { useLanguage } from "../../shared/contexts";
 
 // ============================================
 // Component

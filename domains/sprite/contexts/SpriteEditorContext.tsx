@@ -9,28 +9,26 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { Point, Size, SpriteFrame, ToolMode, TimelineMode, SavedProject } from "../types";
+import {
+  Point,
+  Size,
+  SpriteFrame,
+  SpriteToolMode,
+  TimelineMode,
+  SavedSpriteProject,
+  CompositionLayer,
+} from "../types";
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  loadAutosaveData,
+  saveAutosaveData,
+  clearAutosaveData,
+} from "../utils/autosave";
+import { deepCopyFrames, deepCopyFrame, generateLayerId } from "../utils/frameUtils";
 
-// ============================================
-// Autosave Constants
-// ============================================
-
-const AUTOSAVE_KEY = "sprite-editor-autosave";
-const AUTOSAVE_DEBOUNCE_MS = 1000;
-
-interface AutosaveData {
-  imageSrc: string | null;
-  imageSize: Size;
-  frames: SpriteFrame[];
-  nextFrameId: number;
-  fps: number;
-  currentFrameIndex: number;
-  zoom: number;
-  pan: Point;
-  scale: number;
-  projectName: string;
-  savedAt: number;
-}
+// Type alias for backward compatibility during migration
+type ToolMode = SpriteToolMode;
+type SavedProject = SavedSpriteProject;
 
 // ============================================
 // Context Interface
@@ -150,6 +148,17 @@ interface EditorContextValue {
   pasteFrame: () => void;
   clipboardFrame: SpriteFrame | null;
 
+  // Composition Layers
+  compositionLayers: CompositionLayer[];
+  setCompositionLayers: React.Dispatch<React.SetStateAction<CompositionLayer[]>>;
+  activeLayerId: string | null;
+  setActiveLayerId: (id: string | null) => void;
+  addCompositionLayer: (imageSrc: string, name?: string) => void;
+  removeCompositionLayer: (id: string) => void;
+  updateCompositionLayer: (id: string, updates: Partial<CompositionLayer>) => void;
+  reorderCompositionLayers: (fromIndex: number, toIndex: number) => void;
+  duplicateCompositionLayer: (id: string) => void;
+
   // Refs
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   canvasContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -247,6 +256,10 @@ export function EditorProvider({ children }: EditorProviderProps) {
   // Clipboard State
   const [clipboardFrame, setClipboardFrame] = useState<SpriteFrame | null>(null);
 
+  // Composition Layers State
+  const [compositionLayers, setCompositionLayers] = useState<CompositionLayer[]>([]);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+
   // Refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -260,31 +273,23 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // Autosave: Load saved data on mount
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const saved = localStorage.getItem(AUTOSAVE_KEY);
-      if (saved) {
-        const data: AutosaveData = JSON.parse(saved);
-
-        // Restore state
-        if (data.imageSrc) setImageSrc(data.imageSrc);
-        if (data.imageSize) setImageSize(data.imageSize);
-        if (data.frames && data.frames.length > 0) setFrames(data.frames);
-        if (data.nextFrameId) setNextFrameId(data.nextFrameId);
-        if (data.fps) setFps(data.fps);
-        if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
-        if (data.zoom) setZoom(data.zoom);
-        if (data.pan) setPan(data.pan);
-        if (data.scale) setScale(data.scale);
-        if (data.projectName) setProjectName(data.projectName);
-
-        console.log("[Autosave] Loaded saved data from", new Date(data.savedAt).toLocaleString());
-      }
-    } catch (error) {
-      console.error("[Autosave] Failed to load saved data:", error);
+    const data = loadAutosaveData();
+    if (data) {
+      // Restore state
+      if (data.imageSrc) setImageSrc(data.imageSrc);
+      if (data.imageSize) setImageSize(data.imageSize);
+      if (data.frames && data.frames.length > 0) setFrames(data.frames);
+      if (data.nextFrameId) setNextFrameId(data.nextFrameId);
+      if (data.fps) setFps(data.fps);
+      if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
+      if (data.zoom) setZoom(data.zoom);
+      if (data.pan) setPan(data.pan);
+      if (data.scale) setScale(data.scale);
+      if (data.projectName) setProjectName(data.projectName);
+      // Restore composition layers
+      if (data.compositionLayers) setCompositionLayers(data.compositionLayers);
+      if (data.activeLayerId !== undefined) setActiveLayerId(data.activeLayerId);
     }
-
     isInitializedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -301,26 +306,20 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
     // Debounce the save
     autosaveTimeoutRef.current = setTimeout(() => {
-      try {
-        const data: AutosaveData = {
-          imageSrc,
-          imageSize,
-          frames,
-          nextFrameId,
-          fps,
-          currentFrameIndex,
-          zoom,
-          pan,
-          scale,
-          projectName,
-          savedAt: Date.now(),
-        };
-
-        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data));
-        console.log("[Autosave] Saved at", new Date().toLocaleTimeString());
-      } catch (error) {
-        console.error("[Autosave] Failed to save:", error);
-      }
+      saveAutosaveData({
+        imageSrc,
+        imageSize,
+        frames,
+        nextFrameId,
+        fps,
+        currentFrameIndex,
+        zoom,
+        pan,
+        scale,
+        projectName,
+        compositionLayers,
+        activeLayerId,
+      });
     }, AUTOSAVE_DEBOUNCE_MS);
 
     return () => {
@@ -339,6 +338,8 @@ export function EditorProvider({ children }: EditorProviderProps) {
     pan,
     scale,
     projectName,
+    compositionLayers,
+    activeLayerId,
   ]);
 
   // Computed
@@ -367,12 +368,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
       historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
     }
     // Deep copy frames and add to history (this saves the state BEFORE the change)
-    const framesCopy = frames.map((f) => ({
-      ...f,
-      points: [...f.points],
-      offset: { ...f.offset },
-    }));
-    historyRef.current.push(framesCopy);
+    historyRef.current.push(deepCopyFrames(frames));
     historyIndexRef.current = historyRef.current.length - 1;
     // Mark that a change is about to happen
     hasUnsavedChangesRef.current = true;
@@ -391,19 +387,14 @@ export function EditorProvider({ children }: EditorProviderProps) {
         hasUnsavedChangesRef.current &&
         historyIndexRef.current === historyRef.current.length - 1
       ) {
-        const currentFramesCopy = frames.map((f) => ({
-          ...f,
-          points: [...f.points],
-          offset: { ...f.offset },
-        }));
-        historyRef.current.push(currentFramesCopy);
+        historyRef.current.push(deepCopyFrames(frames));
         hasUnsavedChangesRef.current = false;
       }
 
       // Restore previous state
       const prevFrames = historyRef.current[historyIndexRef.current];
       historyIndexRef.current--;
-      setFrames(prevFrames.map((f) => ({ ...f, points: [...f.points], offset: { ...f.offset } })));
+      setFrames(deepCopyFrames(prevFrames));
       setHistoryVersion((v) => v + 1);
     }
   }, [frames, setFrames]);
@@ -412,7 +403,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current++;
       const nextFrames = historyRef.current[historyIndexRef.current];
-      setFrames(nextFrames.map((f) => ({ ...f, points: [...f.points], offset: { ...f.offset } })));
+      setFrames(deepCopyFrames(nextFrames));
       setHistoryVersion((v) => v + 1);
     }
   }, [setFrames]);
@@ -448,16 +439,17 @@ export function EditorProvider({ children }: EditorProviderProps) {
     setProjectName("");
     setCurrentProjectId(null);
 
+    // Reset composition layers
+    setCompositionLayers([]);
+    setActiveLayerId(null);
+
     // Clear history
     historyRef.current = [];
     historyIndexRef.current = -1;
     setHistoryVersion((v) => v + 1);
 
     // Clear autosave
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(AUTOSAVE_KEY);
-      console.log("[NewProject] Cleared autosave and reset state");
-    }
+    clearAutosaveData();
   }, []);
 
   // Copy current frame to clipboard
@@ -469,12 +461,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     if (!frameToCopy) return;
 
     // Deep copy the frame
-    const copiedFrame: SpriteFrame = {
-      ...frameToCopy,
-      points: frameToCopy.points.map((p) => ({ ...p })),
-      offset: { ...frameToCopy.offset },
-    };
-
+    const copiedFrame = deepCopyFrame(frameToCopy);
     setClipboardFrame(copiedFrame);
     console.log("[Clipboard] Frame copied:", copiedFrame.id);
   }, [frames, currentFrameIndex]);
@@ -485,10 +472,8 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
     // Create a new frame with a new ID
     const newFrame: SpriteFrame = {
-      ...clipboardFrame,
+      ...deepCopyFrame(clipboardFrame),
       id: nextFrameId,
-      points: clipboardFrame.points.map((p) => ({ ...p })),
-      offset: { ...clipboardFrame.offset },
     };
 
     // Push history before making changes
@@ -516,6 +501,75 @@ export function EditorProvider({ children }: EditorProviderProps) {
     setNextFrameId,
     setCurrentFrameIndex,
   ]);
+
+  // Composition Layer Functions
+  const addCompositionLayer = useCallback((imageSrc: string, name?: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const newLayerId = generateLayerId();
+      setCompositionLayers((prev) => {
+        const newLayer: CompositionLayer = {
+          id: newLayerId,
+          name: name || `Layer ${prev.length + 1}`,
+          imageSrc,
+          visible: true,
+          locked: false,
+          opacity: 100,
+          position: { x: 0, y: 0 },
+          scale: 1,
+          rotation: 0,
+          zIndex: prev.length,
+          originalSize: { width: img.width, height: img.height },
+        };
+        return [...prev, newLayer];
+      });
+      setActiveLayerId(newLayerId);
+    };
+    img.src = imageSrc;
+  }, []);
+
+  const removeCompositionLayer = useCallback((id: string) => {
+    setCompositionLayers((prev) => {
+      const newLayers = prev.filter((layer) => layer.id !== id);
+      // Update zIndex for remaining layers
+      return newLayers.map((layer, index) => ({ ...layer, zIndex: index }));
+    });
+    // If the removed layer was active, select another one
+    if (activeLayerId === id) {
+      setActiveLayerId(compositionLayers.length > 1 ? compositionLayers[0]?.id || null : null);
+    }
+  }, [activeLayerId, compositionLayers]);
+
+  const updateCompositionLayer = useCallback((id: string, updates: Partial<CompositionLayer>) => {
+    setCompositionLayers((prev) =>
+      prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
+    );
+  }, []);
+
+  const reorderCompositionLayers = useCallback((fromIndex: number, toIndex: number) => {
+    setCompositionLayers((prev) => {
+      const newLayers = [...prev];
+      const [removed] = newLayers.splice(fromIndex, 1);
+      newLayers.splice(toIndex, 0, removed);
+      // Update zIndex for all layers
+      return newLayers.map((layer, index) => ({ ...layer, zIndex: index }));
+    });
+  }, []);
+
+  const duplicateCompositionLayer = useCallback((id: string) => {
+    const layer = compositionLayers.find((l) => l.id === id);
+    if (!layer) return;
+
+    const newLayer: CompositionLayer = {
+      ...layer,
+      id: generateLayerId(),
+      name: `${layer.name} (copy)`,
+      position: { x: layer.position.x + 20, y: layer.position.y + 20 },
+      zIndex: compositionLayers.length,
+    };
+    setCompositionLayers((prev) => [...prev, newLayer]);
+    setActiveLayerId(newLayer.id);
+  }, [compositionLayers]);
 
   const value: EditorContextValue = {
     // Image
@@ -630,6 +684,17 @@ export function EditorProvider({ children }: EditorProviderProps) {
     copyFrame,
     pasteFrame,
     clipboardFrame,
+
+    // Composition Layers
+    compositionLayers,
+    setCompositionLayers,
+    activeLayerId,
+    setActiveLayerId,
+    addCompositionLayer,
+    removeCompositionLayer,
+    updateCompositionLayer,
+    reorderCompositionLayers,
+    duplicateCompositionLayer,
 
     // Refs
     canvasRef,
@@ -874,4 +939,29 @@ export function useEditorClipboard() {
 export function useEditorRefs() {
   const { canvasRef, canvasContainerRef, previewCanvasRef, imageRef } = useEditor();
   return { canvasRef, canvasContainerRef, previewCanvasRef, imageRef };
+}
+
+export function useEditorCompositionLayers() {
+  const {
+    compositionLayers,
+    setCompositionLayers,
+    activeLayerId,
+    setActiveLayerId,
+    addCompositionLayer,
+    removeCompositionLayer,
+    updateCompositionLayer,
+    reorderCompositionLayers,
+    duplicateCompositionLayer,
+  } = useEditor();
+  return {
+    compositionLayers,
+    setCompositionLayers,
+    activeLayerId,
+    setActiveLayerId,
+    addCompositionLayer,
+    removeCompositionLayer,
+    updateCompositionLayer,
+    reorderCompositionLayers,
+    duplicateCompositionLayer,
+  };
 }

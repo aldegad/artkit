@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
-import { EditorProvider, useEditor } from "../../contexts/EditorContext";
-import { LayoutProvider } from "../../contexts/LayoutContext";
-import { useLanguage } from "../../contexts/LanguageContext";
-import { SplitView } from "../../components/layout";
-import SettingsMenu from "../../components/SettingsMenu";
-import Tooltip from "../../components/Tooltip";
+import {
+  EditorProvider,
+  useEditor,
+  LayoutProvider,
+  SplitView,
+  CompositionLayerPanel,
+  SpriteSheetImportModal,
+  SpriteFrame,
+} from "../../domains/sprite";
+import { useLanguage } from "../../shared/contexts";
+import { SettingsMenu, Tooltip } from "../../shared/components";
 import {
   saveProject as saveProjectToDB,
   getAllProjects,
@@ -17,8 +22,6 @@ import {
   exportAllProjectsToJSON,
   importProjectsFromJSON,
 } from "../../utils/storage";
-import SpriteSheetImportModal from "../../components/SpriteSheetImportModal";
-import { SpriteFrame } from "../../types";
 
 // ============================================
 // Main Editor Component
@@ -63,7 +66,12 @@ function SpriteEditorMain() {
     newProject,
     copyFrame,
     pasteFrame,
+    compositionLayers,
+    addCompositionLayer,
   } = useEditor();
+
+  // Layers panel open state
+  const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
 
   const { t } = useLanguage();
   const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
@@ -90,7 +98,7 @@ function SpriteEditorMain() {
     loadProjects();
   }, [setSavedProjects]);
 
-  // Image upload handler
+  // Image upload handler - adds image as a composition layer
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -99,27 +107,40 @@ function SpriteEditorMain() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
-        setImageSrc(src);
-        setCurrentPoints([]); // 새 이미지 로드 시 그리던 영역 초기화
-        // 프레임 데이터는 유지하고 폴리곤(points)만 초기화 (캔버스에 안 그려짐)
-        setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        const img = new Image();
-        img.onload = () => {
-          setImageSize({ width: img.width, height: img.height });
-          imageRef.current = img;
+        // Add as composition layer
+        addCompositionLayer(src, fileName);
 
-          const maxWidth = 900;
-          const newScale = Math.min(maxWidth / img.width, 1);
-          setScale(newScale);
-          setZoom(1);
-          setPan({ x: 0, y: 0 });
-        };
-        img.src = src;
+        // Also set as main image if no main image exists (for sprite extraction)
+        if (!imageSrc) {
+          setImageSrc(src);
+          setCurrentPoints([]);
+          setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+
+          const img = new Image();
+          img.onload = () => {
+            setImageSize({ width: img.width, height: img.height });
+            imageRef.current = img;
+
+            const maxWidth = 900;
+            const newScale = Math.min(maxWidth / img.width, 1);
+            setScale(newScale);
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          };
+          img.src = src;
+        }
+
+        // Open layers panel to show the new layer
+        setIsLayersPanelOpen(true);
       };
       reader.readAsDataURL(file);
+
+      // Reset input so same file can be selected again
+      e.target.value = "";
     },
-    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
+    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames, addCompositionLayer, imageSrc],
   );
 
   // Extract frame image helper
@@ -713,6 +734,35 @@ function SpriteEditorMain() {
 
         <div className="h-6 w-px bg-border-default" />
 
+        {/* Layers Panel Button */}
+        <Tooltip content={t.layers}>
+          <button
+            onClick={() => setIsLayersPanelOpen(!isLayersPanelOpen)}
+            className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors ${
+              isLayersPanelOpen
+                ? "bg-accent-primary text-white"
+                : "bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              />
+            </svg>
+            {t.layers}
+            {compositionLayers.length > 0 && (
+              <span className="bg-accent-success text-white text-[10px] px-1.5 rounded-full">
+                {compositionLayers.length}
+              </span>
+            )}
+          </button>
+        </Tooltip>
+
+        <div className="h-6 w-px bg-border-default" />
+
         <span className="text-text-tertiary text-xs">
           {toolMode === "pen"
             ? `${t.clickToAddPoint} | ${t.firstPointToComplete}`
@@ -870,6 +920,26 @@ function SpriteEditorMain() {
         onImport={handleSpriteSheetImport}
         startFrameId={nextFrameId}
       />
+
+      {/* Layers Panel (Floating) */}
+      {isLayersPanelOpen && (
+        <div className="fixed right-4 top-20 w-72 h-[500px] bg-surface-primary border border-border-default rounded-xl shadow-xl z-40 flex flex-col overflow-hidden">
+          {/* Panel Header */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border-default bg-surface-secondary">
+            <h3 className="text-sm font-medium text-text-primary">{t.layers}</h3>
+            <button
+              onClick={() => setIsLayersPanelOpen(false)}
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+            >
+              ×
+            </button>
+          </div>
+          {/* Panel Content */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CompositionLayerPanel />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

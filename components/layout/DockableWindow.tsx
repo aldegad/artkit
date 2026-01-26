@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, ReactNode } from "react";
 import { useDocking } from "../../contexts/DockingContext";
-import { useLanguage } from "../../contexts/LanguageContext";
+import { useLanguage } from "../../shared/contexts";
 import { Point, Size } from "../../types";
 
 // ============================================

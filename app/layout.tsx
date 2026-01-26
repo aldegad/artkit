@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { ThemeProvider } from "../contexts/ThemeContext";
-import { LanguageProvider } from "../contexts/LanguageContext";
+import { ThemeProvider, LanguageProvider } from "../shared/contexts";
 import Sidebar from "../components/layout/Sidebar";
 import Footer from "../components/layout/Footer";
 import "./globals.css";

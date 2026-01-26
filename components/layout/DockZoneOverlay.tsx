@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayout } from "../../contexts/LayoutContext";
-import { useLanguage } from "../../contexts/LanguageContext";
+import { useLanguage } from "../../shared/contexts";
 
 // ============================================
 // Types

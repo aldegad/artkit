@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useCallback, useState, DragEvent } from "react";
-import { useEditor } from "../../contexts/EditorContext";
-import { useTheme } from "../../contexts/ThemeContext";
-import { Point, SpriteFrame } from "../../types";
+import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
+import { useTheme } from "../../shared/contexts";
+import { Point, SpriteFrame, CompositionLayer } from "../../types";
 import ImageDropZone from "../ImageDropZone";
 
 // ============================================
@@ -76,6 +76,10 @@ export default function CanvasContent() {
     canvasRef,
     canvasContainerRef,
     didPanOrDragRef,
+    compositionLayers,
+    activeLayerId,
+    updateCompositionLayer,
+    addCompositionLayer,
   } = useEditor();
 
   // Get current theme for canvas redraw
@@ -87,7 +91,14 @@ export default function CanvasContent() {
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Handle file drop for image upload
+  // Composition layer images cache
+  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
+
+  // Layer dragging state
+  const [isDraggingLayer, setIsDraggingLayer] = useState(false);
+  const [layerDragStart, setLayerDragStart] = useState<Point>({ x: 0, y: 0 });
+
+  // Handle file drop for image upload - adds as composition layer
   const handleFileDrop = useCallback(
     (file: File) => {
       if (!file.type.startsWith("image/")) return;
@@ -95,27 +106,34 @@ export default function CanvasContent() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
-        setImageSrc(src);
-        setCurrentPoints([]); // 새 이미지 로드 시 그리던 영역 초기화
-        // 프레임 데이터는 유지하고 폴리곤(points)만 초기화 (캔버스에 안 그려짐)
-        setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        const img = new Image();
-        img.onload = () => {
-          setImageSize({ width: img.width, height: img.height });
-          imageRef.current = img;
+        // Add as composition layer
+        addCompositionLayer(src, fileName);
 
-          const maxWidth = 900;
-          const newScale = Math.min(maxWidth / img.width, 1);
-          setScale(newScale);
-          setZoom(1);
-          setPan({ x: 0, y: 0 });
-        };
-        img.src = src;
+        // Also set as main image if no main image exists (for sprite extraction)
+        if (!imageSrc) {
+          setImageSrc(src);
+          setCurrentPoints([]);
+          setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+
+          const img = new Image();
+          img.onload = () => {
+            setImageSize({ width: img.width, height: img.height });
+            imageRef.current = img;
+
+            const maxWidth = 900;
+            const newScale = Math.min(maxWidth / img.width, 1);
+            setScale(newScale);
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          };
+          img.src = src;
+        }
       };
       reader.readAsDataURL(file);
     },
-    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
+    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames, addCompositionLayer, imageSrc],
   );
 
   // Drag event handlers
@@ -182,6 +200,47 @@ export default function CanvasContent() {
     img.src = imageSrc;
   }, [imageSrc, imageRef]);
 
+  // Load composition layer images
+  useEffect(() => {
+    const newLayerImages = new Map<string, HTMLImageElement>();
+    let loadedCount = 0;
+    const totalLayers = compositionLayers.length;
+
+    if (totalLayers === 0) {
+      setLayerImages(new Map());
+      return;
+    }
+
+    compositionLayers.forEach((layer) => {
+      // Check if we already have this image cached
+      const existingImg = layerImages.get(layer.id);
+      if (existingImg && existingImg.src === layer.imageSrc) {
+        newLayerImages.set(layer.id, existingImg);
+        loadedCount++;
+        if (loadedCount === totalLayers) {
+          setLayerImages(newLayerImages);
+        }
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        newLayerImages.set(layer.id, img);
+        loadedCount++;
+        if (loadedCount === totalLayers) {
+          setLayerImages(newLayerImages);
+        }
+      };
+      img.onerror = () => {
+        loadedCount++;
+        if (loadedCount === totalLayers) {
+          setLayerImages(newLayerImages);
+        }
+      };
+      img.src = layer.imageSrc;
+    });
+  }, [compositionLayers]);
+
   // Coordinate transforms
   const screenToImage = useCallback(
     (screenX: number, screenY: number): Point => {
@@ -215,6 +274,40 @@ export default function CanvasContent() {
       return Math.hypot(screen1.x - screen2.x, screen1.y - screen2.y) < threshold;
     },
     [imageToScreen],
+  );
+
+  // Check if point is inside a composition layer (for layer selection/dragging)
+  const getLayerAtPoint = useCallback(
+    (screenX: number, screenY: number): CompositionLayer | null => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+
+      const rect = canvas.getBoundingClientRect();
+      const canvasX = screenX - rect.left;
+      const canvasY = screenY - rect.top;
+
+      // Check layers in reverse order (top to bottom visually)
+      const sortedLayers = [...compositionLayers].sort((a, b) => b.zIndex - a.zIndex);
+      for (const layer of sortedLayers) {
+        if (!layer.visible) continue;
+
+        const layerWidth = layer.originalSize.width * layer.scale * scale * zoom;
+        const layerHeight = layer.originalSize.height * layer.scale * scale * zoom;
+        const layerX = pan.x + layer.position.x * scale * zoom;
+        const layerY = pan.y + layer.position.y * scale * zoom;
+
+        if (
+          canvasX >= layerX &&
+          canvasX <= layerX + layerWidth &&
+          canvasY >= layerY &&
+          canvasY <= layerY + layerHeight
+        ) {
+          return layer;
+        }
+      }
+      return null;
+    },
+    [canvasRef, compositionLayers, scale, zoom, pan],
   );
 
   // Extract frame image
@@ -299,7 +392,45 @@ export default function CanvasContent() {
       }
     }
 
-    // Draw image
+    // Draw composition layers (sorted by zIndex, lower first)
+    const sortedLayers = [...compositionLayers].sort((a, b) => a.zIndex - b.zIndex);
+    sortedLayers.forEach((layer) => {
+      if (!layer.visible) return;
+      const layerImg = layerImages.get(layer.id);
+      if (!layerImg) return;
+
+      const layerWidth = layer.originalSize.width * layer.scale * scale * zoom;
+      const layerHeight = layer.originalSize.height * layer.scale * scale * zoom;
+      const layerX = pan.x + layer.position.x * scale * zoom;
+      const layerY = pan.y + layer.position.y * scale * zoom;
+
+      ctx.save();
+      ctx.globalAlpha = layer.opacity / 100;
+
+      // Apply rotation if needed
+      if (layer.rotation !== 0) {
+        const centerX = layerX + layerWidth / 2;
+        const centerY = layerY + layerHeight / 2;
+        ctx.translate(centerX, centerY);
+        ctx.rotate((layer.rotation * Math.PI) / 180);
+        ctx.translate(-centerX, -centerY);
+      }
+
+      ctx.drawImage(layerImg, layerX, layerY, layerWidth, layerHeight);
+
+      // Draw selection border for active layer
+      if (layer.id === activeLayerId) {
+        ctx.strokeStyle = "#00aaff";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(layerX, layerY, layerWidth, layerHeight);
+        ctx.setLineDash([]);
+      }
+
+      ctx.restore();
+    });
+
+    // Draw main sprite image
     ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
 
     // Draw saved frame polygons
@@ -399,6 +530,9 @@ export default function CanvasContent() {
     imageToScreen,
     resizeCounter, // Trigger redraw on container resize
     resolvedTheme, // Trigger redraw on theme change
+    compositionLayers,
+    layerImages,
+    activeLayerId,
   ]);
 
   // Canvas click handler
@@ -491,6 +625,17 @@ export default function CanvasContent() {
         return;
       }
 
+      // Check for layer dragging (when clicking on active layer)
+      if (toolMode === "select" && e.button === 0 && activeLayerId) {
+        const clickedLayer = getLayerAtPoint(e.clientX, e.clientY);
+        if (clickedLayer && clickedLayer.id === activeLayerId && !clickedLayer.locked) {
+          setIsDraggingLayer(true);
+          setLayerDragStart({ x: e.clientX, y: e.clientY });
+          e.preventDefault();
+          return;
+        }
+      }
+
       if (toolMode === "select" && e.button === 0) {
         const point = screenToImage(e.clientX, e.clientY);
 
@@ -526,6 +671,8 @@ export default function CanvasContent() {
       setIsDragging,
       setDragStart,
       didPanOrDragRef,
+      activeLayerId,
+      getLayerAtPoint,
     ],
   );
 
@@ -540,6 +687,22 @@ export default function CanvasContent() {
         }
         setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
         setLastPanPoint({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      // Handle layer dragging
+      if (isDraggingLayer && activeLayerId) {
+        didPanOrDragRef.current = true;
+        const dx = (e.clientX - layerDragStart.x) / (scale * zoom);
+        const dy = (e.clientY - layerDragStart.y) / (scale * zoom);
+
+        updateCompositionLayer(activeLayerId, {
+          position: {
+            x: compositionLayers.find((l) => l.id === activeLayerId)!.position.x + dx,
+            y: compositionLayers.find((l) => l.id === activeLayerId)!.position.y + dy,
+          },
+        });
+        setLayerDragStart({ x: e.clientX, y: e.clientY });
         return;
       }
 
@@ -585,6 +748,13 @@ export default function CanvasContent() {
       selectedPointIndex,
       setDragStart,
       didPanOrDragRef,
+      isDraggingLayer,
+      activeLayerId,
+      layerDragStart,
+      scale,
+      zoom,
+      updateCompositionLayer,
+      compositionLayers,
     ],
   );
 
@@ -601,6 +771,7 @@ export default function CanvasContent() {
     }
     setIsPanning(false);
     setIsDragging(false);
+    setIsDraggingLayer(false);
   }, [isDragging, selectedFrameId, setFrames, extractFrameImage, setIsPanning, setIsDragging]);
 
   // Wheel zoom
@@ -665,7 +836,7 @@ export default function CanvasContent() {
                   : "cursor-grab"
                 : toolMode === "pen"
                   ? "cursor-crosshair"
-                  : isDragging
+                  : isDragging || isDraggingLayer
                     ? "cursor-grabbing"
                     : "cursor-default"
             }`}

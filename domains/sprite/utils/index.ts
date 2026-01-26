@@ -1,0 +1,6 @@
+// ============================================
+// Sprite Domain Utilities - Public API
+// ============================================
+
+export * from "./autosave";
+export * from "./frameUtils";

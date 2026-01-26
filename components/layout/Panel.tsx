@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useLayout } from "../../contexts/LayoutContext";
-import { useLanguage } from "../../contexts/LanguageContext";
+import { useLanguage } from "../../shared/contexts";
 import { PanelNode } from "../../types/layout";
 import { getPanelContent, getPanelTitle, isPanelHeaderVisible } from "./PanelRegistry";
 

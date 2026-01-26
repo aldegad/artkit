@@ -1,0 +1,38 @@
+// ============================================
+// Editor Domain - Public API
+// ============================================
+
+// Hooks
+export { useLayerManagement } from "./hooks";
+export { useHistory } from "./hooks";
+
+// Components
+export { ProjectListModal } from "./components";
+
+// Types
+export type {
+  EditorToolMode,
+  AspectRatio,
+  OutputFormat,
+  DragType,
+  CropArea,
+  SavedImageProject,
+  AspectRatioOption,
+  Point,
+  Size,
+  UnifiedLayer,
+  // Legacy types (deprecated)
+  CompositionLayer,
+  ImageLayer,
+  BoundingBox,
+} from "./types";
+
+export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "./types";
+
+// Layer helper functions
+export {
+  createImageLayer,
+  createPaintLayer,
+  compositionLayerToUnified,
+  imageLayerToUnified,
+} from "./types";

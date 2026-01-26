@@ -1,23 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { useLanguage } from "../../contexts/LanguageContext";
-import SettingsMenu from "../../components/SettingsMenu";
-import ImageDropZone from "../../components/ImageDropZone";
-
-interface ImageFile {
-  id: string;
-  file: File;
-  originalUrl: string;
-  originalSize: number;
-  width: number;
-  height: number;
-  convertedUrl?: string;
-  convertedSize?: number;
-  convertedBlob?: Blob;
-}
-
-type OutputFormat = "webp" | "jpeg" | "png";
+import { useLanguage } from "../../shared/contexts";
+import { SettingsMenu, ImageDropZone } from "../../shared/components";
+import { OutputFormat, ImageFile, formatBytes } from "../../domains/converter";
 
 export default function ImageConverter() {
   const { t } = useLanguage();
@@ -152,13 +138,7 @@ export default function ImageConverter() {
     setImages([]);
   }, [images]);
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  };
+  // formatBytes is imported from domain
 
   const totalOriginalSize = images.reduce((acc, img) => acc + img.originalSize, 0);
   const totalConvertedSize = images.reduce((acc, img) => acc + (img.convertedSize || 0), 0);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLanguage } from "../../contexts/LanguageContext";
+import { useLanguage } from "../../shared/contexts";
 
 interface Tool {
   id: string;

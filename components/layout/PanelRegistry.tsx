@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { CanvasContent, TimelineContent } from "../panels";
 import AnimationPreviewContent from "../panels/AnimationPreviewContent";
 import FramePreviewContent from "../panels/FramePreviewContent";
+import LayersPanelContent from "../panels/LayersPanelContent";
 
 // ============================================
 // Panel Metadata
@@ -41,6 +42,12 @@ const PANEL_META: Record<string, PanelMeta> = {
     defaultSize: { width: 450, height: 480 },
     minSize: 200,
   },
+  layers: {
+    title: "Layers",
+    showHeader: true,
+    defaultSize: { width: 280, height: 400 },
+    minSize: 200,
+  },
 };
 
 // ============================================
@@ -53,6 +60,7 @@ let panelComponents: Record<string, () => ReactNode> = {
   timeline: () => <TimelineContent />,
   preview: () => <AnimationPreviewContent />,
   "frame-edit": () => <FramePreviewContent />,
+  layers: () => <LayersPanelContent />,
 };
 
 // Register a panel component

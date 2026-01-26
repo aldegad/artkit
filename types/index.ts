@@ -44,27 +44,77 @@ export interface SavedProject {
 }
 
 // ============================================
-// Image Editor Types
+// Unified Layer System
 // ============================================
 
+/**
+ * UnifiedLayer: Single layer type that can hold both image and paint data
+ */
+export interface UnifiedLayer {
+  id: string;
+  name: string;
+  type: "image" | "paint";
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  zIndex: number;
+  // For image layers
+  imageSrc?: string;
+  position?: Point;
+  scale?: number;
+  rotation?: number;
+  originalSize?: Size;
+  // For paint layers
+  paintData?: string;
+}
+
+// ============================================
+// Image Editor Types (Legacy - kept for backward compatibility)
+// ============================================
+
+/** @deprecated Use UnifiedLayer instead */
 export interface ImageLayer {
   id: string;
   name: string;
   visible: boolean;
-  opacity: number; // 0-100
-  data: string; // base64 encoded canvas data
+  opacity: number;
+  data: string;
 }
+
+/** @deprecated Use UnifiedLayer instead */
+export interface CompositionLayer {
+  id: string;
+  name: string;
+  imageSrc: string;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  position: Point;
+  scale: number;
+  rotation: number;
+  zIndex: number;
+  originalSize: Size;
+}
+
+// ============================================
+// Saved Image Project
+// ============================================
 
 export interface SavedImageProject {
   id: string;
   name: string;
   imageSrc: string;
-  editLayerData: string; // base64 encoded edit canvas data (legacy, for backward compat)
-  layers?: ImageLayer[]; // new layer system
+  // New unified layer system
+  unifiedLayers?: UnifiedLayer[];
   activeLayerId?: string;
+  canvasSize?: Size;
   imageSize: Size;
   rotation: number;
   savedAt: number;
+  // Legacy fields (for backward compatibility)
+  editLayerData?: string;
+  layers?: ImageLayer[];
+  compositionLayers?: CompositionLayer[];
 }
 
 // ============================================
@@ -84,7 +134,7 @@ export type DockPosition = "left" | "right" | "top" | "bottom";
 export interface DockedPanel {
   id: string;
   title: string;
-  size: number; // pixels
+  size: number;
 }
 
 export interface FloatingWindow {
@@ -107,42 +157,27 @@ export interface DockingState {
 // ============================================
 
 export interface EditorState {
-  // Image
   imageSrc: string | null;
   imageSize: Size;
-
-  // Frames
   frames: SpriteFrame[];
   nextFrameId: number;
   currentFrameIndex: number;
   selectedFrameId: number | null;
   selectedPointIndex: number | null;
-
-  // Tools
   toolMode: ToolMode;
-  currentPoints: Point[]; // Pen tool points
-
-  // View
+  currentPoints: Point[];
   zoom: number;
   pan: Point;
   scale: number;
   canvasHeight: number;
   isCanvasCollapsed: boolean;
-
-  // Animation
   isPlaying: boolean;
   fps: number;
-
-  // Timeline
   timelineMode: TimelineMode;
-
-  // Background Removal
   isBackgroundRemovalMode: boolean;
   eraserTolerance: number;
-
-  // Project
   projectName: string;
-  currentProjectId: string | null; // 현재 편집 중인 프로젝트 ID (저장된 경우)
+  currentProjectId: string | null;
 }
 
 // ============================================

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "../shared/contexts";
 
 type DropZoneVariant = "sprite" | "editor" | "converter";
 

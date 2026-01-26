@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useTheme } from "../contexts/ThemeContext";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useTheme, useLanguage } from "../shared/contexts";
 
 export default function SettingsMenu() {
   const [isOpen, setIsOpen] = useState(false);

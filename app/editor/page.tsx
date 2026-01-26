@@ -1,43 +1,48 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useLanguage } from "../../contexts/LanguageContext";
-import SettingsMenu from "../../components/SettingsMenu";
-import Tooltip from "../../components/Tooltip";
-import ImageDropZone from "../../components/ImageDropZone";
-import { SavedImageProject, ImageLayer } from "../../types";
+import { useLanguage } from "../../shared/contexts";
+import { SettingsMenu, Tooltip, ImageDropZone } from "../../shared/components";
+import {
+  EditorToolMode,
+  AspectRatio,
+  OutputFormat,
+  CropArea,
+  SavedImageProject,
+  UnifiedLayer,
+  Point,
+  ASPECT_RATIOS,
+  ASPECT_RATIO_VALUES,
+  createImageLayer,
+  createPaintLayer,
+  ProjectListModal,
+} from "../../domains/editor";
 import {
   saveImageProject,
   getAllImageProjects,
   deleteImageProject,
   getStorageInfo,
-  formatBytes,
 } from "../../utils/storage";
+import { EditorLayoutProvider, useEditorLayout } from "../../domains/editor/contexts/EditorLayoutContext";
+import {
+  EditorSplitContainer,
+  EditorFloatingWindows,
+  registerEditorPanelComponent,
+  clearEditorPanelComponents,
+} from "../../domains/editor/components/layout";
 
-type ToolMode =
-  | "crop"
-  | "hand"
-  | "zoom"
-  | "brush"
-  | "eraser"
-  | "eyedropper"
-  | "stamp"
-  | "marquee"
-  | "fill";
-type AspectRatio = "free" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
-type OutputFormat = "webp" | "jpeg" | "png";
-
-interface CropArea {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+// Inner component that accesses the layout context
+function EditorDockableArea() {
+  const { layoutState } = useEditorLayout();
+  return (
+    <>
+      <EditorSplitContainer node={layoutState.root} />
+      <EditorFloatingWindows />
+    </>
+  );
 }
 
-interface Point {
-  x: number;
-  y: number;
-}
+type ToolMode = EditorToolMode;
 
 export default function ImageEditor() {
   const { t } = useLanguage();
@@ -98,11 +103,16 @@ export default function ImageEditor() {
   } | null>(null);
   const dragStartOriginRef = useRef<Point | null>(null); // 드래그 시작 시 원본 위치 (Shift 제한용)
 
-  // Layer system state
-  const [layers, setLayers] = useState<ImageLayer[]>([]);
+  // Unified Layer system (combines image and paint layers)
+  const [layers, setLayers] = useState<UnifiedLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
-  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(true);
+  // Canvas storage for paint layers
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  // Image storage for image layers
+  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
+  // Drag state for image layers
+  const [isDraggingLayer, setIsDraggingLayer] = useState(false);
+  const [layerDragStart, setLayerDragStart] = useState<Point>({ x: 0, y: 0 });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -118,25 +128,9 @@ export default function ImageEditor() {
   const historyIndexRef = useRef<number>(-1);
   const MAX_HISTORY = 50;
 
-  const aspectRatios: { value: AspectRatio; label: string }[] = [
-    { value: "free", label: "Free" },
-    { value: "1:1", label: "1:1" },
-    { value: "16:9", label: "16:9" },
-    { value: "9:16", label: "9:16" },
-    { value: "4:3", label: "4:3" },
-    { value: "3:4", label: "3:4" },
-  ];
-
+  // Use imported ASPECT_RATIOS and ASPECT_RATIO_VALUES from domain
   const getAspectRatioValue = (ratio: AspectRatio): number | null => {
-    const ratios: Record<AspectRatio, number | null> = {
-      free: null,
-      "1:1": 1,
-      "16:9": 16 / 9,
-      "9:16": 9 / 16,
-      "4:3": 4 / 3,
-      "3:4": 3 / 4,
-    };
-    return ratios[ratio];
+    return ASPECT_RATIO_VALUES[ratio];
   };
 
   // Get display dimensions (considering rotation)
@@ -148,47 +142,57 @@ export default function ImageEditor() {
 
   // Initialize edit canvas and layers when image loads
   const initEditCanvas = useCallback(
-    (width: number, height: number, existingLayers?: ImageLayer[]) => {
+    (width: number, height: number, existingLayers?: UnifiedLayer[]) => {
       // Clear layer canvases
       layerCanvasesRef.current.clear();
 
       if (existingLayers && existingLayers.length > 0) {
         // Load existing layers
         setLayers(existingLayers);
-        setActiveLayerId(existingLayers[0].id);
+        // Find first paint layer to set as active, or first layer
+        const firstPaintLayer = existingLayers.find(l => l.type === "paint");
+        setActiveLayerId(firstPaintLayer?.id || existingLayers[0].id);
 
-        // Create canvases for each layer
+        // Create canvases/load images for each layer
         existingLayers.forEach((layer) => {
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          layerCanvasesRef.current.set(layer.id, canvas);
+          if (layer.type === "paint") {
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            layerCanvasesRef.current.set(layer.id, canvas);
 
-          // Load layer data if exists
-          if (layer.data) {
+            // Load paint data if exists
+            if (layer.paintData) {
+              const img = new Image();
+              img.onload = () => {
+                const ctx = canvas.getContext("2d");
+                if (ctx) ctx.drawImage(img, 0, 0);
+              };
+              img.src = layer.paintData;
+            }
+          } else if (layer.type === "image" && layer.imageSrc) {
+            // Load image layer
             const img = new Image();
             img.onload = () => {
-              const ctx = canvas.getContext("2d");
-              if (ctx) ctx.drawImage(img, 0, 0);
+              setLayerImages(prev => {
+                const newMap = new Map(prev);
+                newMap.set(layer.id, img);
+                return newMap;
+              });
             };
-            img.src = layer.data;
+            img.src = layer.imageSrc;
           }
         });
 
-        // Set first layer as edit canvas for backward compatibility
-        editCanvasRef.current = layerCanvasesRef.current.get(existingLayers[0].id) || null;
+        // Set first paint layer as edit canvas for backward compatibility
+        if (firstPaintLayer) {
+          editCanvasRef.current = layerCanvasesRef.current.get(firstPaintLayer.id) || null;
+        }
       } else {
-        // Create default layer
-        const defaultLayerId = crypto.randomUUID();
-        const defaultLayer: ImageLayer = {
-          id: defaultLayerId,
-          name: `${t.layer} 1`,
-          visible: true,
-          opacity: 100,
-          data: "",
-        };
+        // Create default paint layer
+        const defaultLayer = createPaintLayer(`${t.layer} 1`, 0);
         setLayers([defaultLayer]);
-        setActiveLayerId(defaultLayerId);
+        setActiveLayerId(defaultLayer.id);
 
         const editCanvas = document.createElement("canvas");
         editCanvas.width = width;
@@ -198,14 +202,14 @@ export default function ImageEditor() {
           ctx.clearRect(0, 0, width, height);
         }
         editCanvasRef.current = editCanvas;
-        layerCanvasesRef.current.set(defaultLayerId, editCanvas);
+        layerCanvasesRef.current.set(defaultLayer.id, editCanvas);
       }
 
       // Reset history
       historyRef.current = [];
       historyIndexRef.current = -1;
     },
-    [],
+    [t.layer],
   );
 
   // Save current edit canvas state to history
@@ -262,32 +266,49 @@ export default function ImageEditor() {
   }, []);
 
   // ============================================
-  // Layer Management Functions
+  // Unified Layer Management Functions
   // ============================================
 
-  // Add new layer
-  const addLayer = useCallback(() => {
+  // Add new paint layer
+  const addPaintLayer = useCallback(() => {
     const { width, height } = getDisplayDimensions();
     if (width === 0 || height === 0) return;
 
-    const newId = crypto.randomUUID();
-    const newLayer: ImageLayer = {
-      id: newId,
-      name: `${t.layer} ${layers.length + 1}`,
-      visible: true,
-      opacity: 100,
-      data: "",
-    };
+    const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
+    const newLayer = createPaintLayer(`${t.layer} ${layers.length + 1}`, maxZIndex);
 
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
-    layerCanvasesRef.current.set(newId, canvas);
+    layerCanvasesRef.current.set(newLayer.id, canvas);
 
-    setLayers((prev) => [newLayer, ...prev]); // Add on top
-    setActiveLayerId(newId);
+    setLayers((prev) => [newLayer, ...prev]); // Add on top (visually)
+    setActiveLayerId(newLayer.id);
     editCanvasRef.current = canvas;
-  }, [layers.length, getDisplayDimensions]);
+  }, [layers, getDisplayDimensions, t.layer]);
+
+  // Add new image layer
+  const addImageLayer = useCallback((imageSrc: string, name?: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
+      const newLayer = createImageLayer(
+        imageSrc,
+        name || `Image ${layers.filter(l => l.type === "image").length + 1}`,
+        { width: img.width, height: img.height },
+        maxZIndex
+      );
+
+      setLayers((prev) => [newLayer, ...prev]);
+      setActiveLayerId(newLayer.id);
+      setLayerImages((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(newLayer.id, img);
+        return newMap;
+      });
+    };
+    img.src = imageSrc;
+  }, [layers]);
 
   // Delete layer
   const deleteLayer = useCallback(
@@ -297,39 +318,67 @@ export default function ImageEditor() {
         return;
       }
 
+      const layer = layers.find(l => l.id === layerId);
+
       setLayers((prev) => {
         const newLayers = prev.filter((l) => l.id !== layerId);
         // If deleted active layer, switch to first available
         if (activeLayerId === layerId && newLayers.length > 0) {
-          setActiveLayerId(newLayers[0].id);
-          editCanvasRef.current = layerCanvasesRef.current.get(newLayers[0].id) || null;
+          const nextLayer = newLayers[0];
+          setActiveLayerId(nextLayer.id);
+          if (nextLayer.type === "paint") {
+            editCanvasRef.current = layerCanvasesRef.current.get(nextLayer.id) || null;
+          }
         }
         return newLayers;
       });
-      layerCanvasesRef.current.delete(layerId);
+
+      // Clean up resources
+      if (layer?.type === "paint") {
+        layerCanvasesRef.current.delete(layerId);
+      } else {
+        setLayerImages(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(layerId);
+          return newMap;
+        });
+      }
     },
-    [layers.length, activeLayerId],
+    [layers, activeLayerId, t.minOneLayerRequired],
   );
 
   // Select layer
   const selectLayer = useCallback((layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
     setActiveLayerId(layerId);
-    editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
-  }, []);
+    if (layer?.type === "paint") {
+      editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
+    }
+  }, [layers]);
 
   // Toggle layer visibility
   const toggleLayerVisibility = useCallback((layerId: string) => {
     setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
   }, []);
 
+  // Update layer
+  const updateLayer = useCallback((layerId: string, updates: Partial<UnifiedLayer>) => {
+    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, ...updates } : l)));
+  }, []);
+
   // Update layer opacity
   const updateLayerOpacity = useCallback((layerId: string, opacity: number) => {
-    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, opacity } : l)));
-  }, []);
+    updateLayer(layerId, { opacity });
+  }, [updateLayer]);
 
   // Rename layer
   const renameLayer = useCallback((layerId: string, name: string) => {
-    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, name } : l)));
+    updateLayer(layerId, { name });
+  }, [updateLayer]);
+
+  // Toggle layer lock
+  const toggleLayerLock = useCallback((layerId: string) => {
+    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, locked: !l.locked } : l)));
   }, []);
 
   // Move layer up/down
@@ -343,19 +392,25 @@ export default function ImageEditor() {
       const newLayers = [...prev];
       const targetIdx = direction === "up" ? idx - 1 : idx + 1;
       [newLayers[idx], newLayers[targetIdx]] = [newLayers[targetIdx], newLayers[idx]];
-      return newLayers;
+      // Update zIndex to match position
+      return newLayers.map((l, i) => ({ ...l, zIndex: newLayers.length - 1 - i }));
     });
   }, []);
 
-  // Merge layer down
+  // Merge paint layer down (only for paint layers)
   const mergeLayerDown = useCallback(
     (layerId: string) => {
       const idx = layers.findIndex((l) => l.id === layerId);
       if (idx === -1 || idx === layers.length - 1) return;
 
+      const upperLayer = layers[idx];
+      const lowerLayer = layers[idx + 1];
+
+      // Can only merge paint layers
+      if (upperLayer.type !== "paint" || lowerLayer.type !== "paint") return;
+
       const upperCanvas = layerCanvasesRef.current.get(layerId);
-      const lowerLayerId = layers[idx + 1].id;
-      const lowerCanvas = layerCanvasesRef.current.get(lowerLayerId);
+      const lowerCanvas = layerCanvasesRef.current.get(lowerLayer.id);
 
       if (!upperCanvas || !lowerCanvas) return;
 
@@ -364,12 +419,9 @@ export default function ImageEditor() {
       // Merge upper into lower
       const ctx = lowerCanvas.getContext("2d");
       if (ctx) {
-        const upperLayer = layers.find((l) => l.id === layerId);
-        if (upperLayer) {
-          ctx.globalAlpha = upperLayer.opacity / 100;
-          ctx.drawImage(upperCanvas, 0, 0);
-          ctx.globalAlpha = 1;
-        }
+        ctx.globalAlpha = upperLayer.opacity / 100;
+        ctx.drawImage(upperCanvas, 0, 0);
+        ctx.globalAlpha = 1;
       }
 
       // Remove upper layer
@@ -377,6 +429,55 @@ export default function ImageEditor() {
     },
     [layers, saveToHistory, deleteLayer],
   );
+
+  // Duplicate layer
+  const duplicateLayer = useCallback((layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    const maxZIndex = Math.max(...layers.map(l => l.zIndex)) + 1;
+    const newLayer: UnifiedLayer = {
+      ...layer,
+      id: crypto.randomUUID(),
+      name: `${layer.name} (copy)`,
+      zIndex: maxZIndex,
+    };
+
+    if (layer.type === "image") {
+      // Offset the copy slightly
+      newLayer.position = {
+        x: (layer.position?.x || 0) + 20,
+        y: (layer.position?.y || 0) + 20,
+      };
+      // Copy image reference
+      const existingImg = layerImages.get(layerId);
+      if (existingImg) {
+        setLayerImages(prev => {
+          const newMap = new Map(prev);
+          newMap.set(newLayer.id, existingImg);
+          return newMap;
+        });
+      }
+    } else if (layer.type === "paint") {
+      // Copy canvas data
+      const { width, height } = getDisplayDimensions();
+      const newCanvas = document.createElement("canvas");
+      newCanvas.width = width;
+      newCanvas.height = height;
+      const srcCanvas = layerCanvasesRef.current.get(layerId);
+      if (srcCanvas) {
+        const ctx = newCanvas.getContext("2d");
+        if (ctx) ctx.drawImage(srcCanvas, 0, 0);
+      }
+      layerCanvasesRef.current.set(newLayer.id, newCanvas);
+    }
+
+    setLayers(prev => [newLayer, ...prev]);
+    setActiveLayerId(newLayer.id);
+  }, [layers, layerImages, getDisplayDimensions]);
+
+  // Legacy alias for backward compatibility
+  const addLayer = addPaintLayer;
 
   // ============================================
   // Fill Function
@@ -414,24 +515,32 @@ export default function ImageEditor() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
-        setImageSrc(src);
-        setRotation(0);
-        setCropArea(null);
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
-        setStampSource(null);
+        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        const img = new Image();
-        img.onload = () => {
-          imageRef.current = img;
-          setImageSize({ width: img.width, height: img.height });
-          initEditCanvas(img.width, img.height);
-        };
-        img.src = src;
+        // Always add as image layer
+        addImageLayer(src, fileName);
+
+        // Also set as main image if no main image exists
+        if (!imageSrc) {
+          setImageSrc(src);
+          setRotation(0);
+          setCropArea(null);
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+          setStampSource(null);
+
+          const img = new Image();
+          img.onload = () => {
+            imageRef.current = img;
+            setImageSize({ width: img.width, height: img.height });
+            initEditCanvas(img.width, img.height);
+          };
+          img.src = src;
+        }
       };
       reader.readAsDataURL(file);
     },
-    [initEditCanvas],
+    [initEditCanvas, addImageLayer, imageSrc],
   );
 
   // Handle file input
@@ -640,6 +749,216 @@ export default function ImageEditor() {
     [zoom, pan, getDisplayDimensions],
   );
 
+  // Register panel components for the docking system
+  useEffect(() => {
+    // Register canvas panel
+    registerEditorPanelComponent("canvas", () => (
+      <div
+        ref={containerRef}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        className="w-full h-full overflow-hidden bg-surface-secondary relative"
+      >
+        {!imageSrc ? (
+          <ImageDropZone
+            variant="editor"
+            onFileSelect={(files) => files[0] && loadImageFile(files[0])}
+          />
+        ) : (
+          <canvas
+            ref={canvasRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+            onWheel={handleWheel}
+            className="w-full h-full"
+            style={{ cursor: getCursor(), imageRendering: "pixelated" }}
+          />
+        )}
+      </div>
+    ));
+
+    // Register layers panel
+    registerEditorPanelComponent("layers", () => (
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* Panel Header */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border-default bg-surface-secondary shrink-0">
+          <div className="flex items-center gap-1">
+            {/* Add Paint Layer */}
+            <button
+              onClick={addPaintLayer}
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+              title={t.addLayer}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            {/* Add Image Layer */}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) loadImageFile(file);
+                e.target.value = "";
+              }}
+              className="hidden"
+              id="dock-layer-file-input"
+            />
+            <button
+              onClick={() => document.getElementById("dock-layer-file-input")?.click()}
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+              title="Add Image Layer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        {/* Panel Content */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {layers.length === 0 ? (
+            <div className="text-center py-8 text-text-tertiary text-sm">
+              <p>{t.noLayersYet}</p>
+              <p className="text-xs mt-1">{t.clickAddLayerToStart}</p>
+            </div>
+          ) : (
+            [...layers]
+              .sort((a, b) => b.zIndex - a.zIndex)
+              .map((layer) => (
+                <div
+                  key={layer.id}
+                  onClick={() => selectLayer(layer.id)}
+                  className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                    activeLayerId === layer.id
+                      ? "bg-accent-primary/20 border border-accent-primary/50"
+                      : "hover:bg-interactive-hover border border-transparent"
+                  }`}
+                >
+                  {/* Visibility toggle */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleLayerVisibility(layer.id);
+                    }}
+                    className={`p-1 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
+                    title={layer.visible ? t.hideLayer : t.showLayer}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {layer.visible ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      )}
+                    </svg>
+                  </button>
+
+                  {/* Layer thumbnail/type indicator */}
+                  <div className="w-10 h-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0 flex items-center justify-center">
+                    {layer.type === "image" && layer.imageSrc ? (
+                      <img
+                        src={layer.imageSrc}
+                        alt={layer.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <svg className="w-5 h-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Layer name and type */}
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={layer.name}
+                      onChange={(e) => renameLayer(layer.id, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full text-xs bg-transparent border-none focus:outline-none focus:bg-surface-secondary px-1 rounded truncate"
+                    />
+                    <span className="text-[10px] text-text-quaternary px-1">
+                      {layer.type === "image" ? "Image" : "Paint"}
+                    </span>
+                  </div>
+
+                  {/* Layer actions */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLayerLock(layer.id);
+                      }}
+                      className={`p-1 rounded ${layer.locked ? "text-accent-warning" : "text-text-quaternary hover:text-text-primary"}`}
+                      title={layer.locked ? t.unlockLayer : t.lockLayer}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {layer.locked ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        ) : (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        )}
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        duplicateLayer(layer.id);
+                      }}
+                      className="p-1 rounded text-text-quaternary hover:text-text-primary"
+                      title={t.duplicateLayer}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteLayer(layer.id);
+                      }}
+                      className="p-1 rounded text-text-quaternary hover:text-accent-danger"
+                      title={t.deleteLayer}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+        {/* Panel Footer - Opacity control */}
+        {activeLayerId && layers.find(l => l.id === activeLayerId) && (
+          <div className="px-3 py-2 border-t border-border-default bg-surface-secondary shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-text-secondary">{t.opacity}:</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={layers.find(l => l.id === activeLayerId)?.opacity || 100}
+                onChange={(e) => updateLayerOpacity(activeLayerId, Number(e.target.value))}
+                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs text-text-secondary w-8 text-right">
+                {layers.find(l => l.id === activeLayerId)?.opacity || 100}%
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    ));
+
+    return () => {
+      clearEditorPanelComponents();
+    };
+  });
+
   // Draw canvas
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -695,28 +1014,62 @@ export default function ImageEditor() {
     }
     ctx.restore();
 
-    // Draw image with rotation
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.translate(offsetX + scaledWidth / 2, offsetY + scaledHeight / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-    ctx.scale(zoom, zoom);
-    ctx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
-    ctx.restore();
+    // Draw all layers sorted by zIndex (lower first = background)
+    // Unified layer system renders both image and paint layers in correct order
+    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
 
-    // Draw all visible layers (bottom to top, so reverse order)
-    const visibleLayers = [...layers].reverse().filter((l) => l.visible);
-    for (const layer of visibleLayers) {
-      const layerCanvas = layerCanvasesRef.current.get(layer.id);
-      if (layerCanvas) {
-        ctx.save();
-        ctx.imageSmoothingEnabled = false;
-        ctx.globalAlpha = layer.opacity / 100;
-        ctx.translate(offsetX, offsetY);
-        ctx.scale(zoom, zoom);
-        ctx.drawImage(layerCanvas, 0, 0);
-        ctx.restore();
+    for (const layer of sortedLayers) {
+      if (!layer.visible) continue;
+
+      ctx.save();
+      ctx.globalAlpha = layer.opacity / 100;
+
+      if (layer.type === "image") {
+        // Render image layer
+        const layerImg = layerImages.get(layer.id);
+        if (!layerImg || !layer.originalSize) {
+          ctx.restore();
+          continue;
+        }
+
+        const layerScale = layer.scale || 1;
+        const layerRotation = layer.rotation || 0;
+        const layerWidth = layer.originalSize.width * layerScale * zoom;
+        const layerHeight = layer.originalSize.height * layerScale * zoom;
+        const layerX = offsetX + (layer.position?.x || 0) * zoom;
+        const layerY = offsetY + (layer.position?.y || 0) * zoom;
+
+        // Apply per-layer rotation if needed
+        if (layerRotation !== 0) {
+          const centerX = layerX + layerWidth / 2;
+          const centerY = layerY + layerHeight / 2;
+          ctx.translate(centerX, centerY);
+          ctx.rotate((layerRotation * Math.PI) / 180);
+          ctx.translate(-centerX, -centerY);
+        }
+
+        ctx.drawImage(layerImg, layerX, layerY, layerWidth, layerHeight);
+
+        // Draw selection border for active layer
+        if (layer.id === activeLayerId) {
+          ctx.strokeStyle = "#00aaff";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.strokeRect(layerX, layerY, layerWidth, layerHeight);
+          ctx.setLineDash([]);
+        }
+      } else if (layer.type === "paint") {
+        // Render paint layer
+        const layerCanvas = layerCanvasesRef.current.get(layer.id);
+        if (layerCanvas) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.translate(offsetX, offsetY);
+          ctx.scale(zoom, zoom);
+          ctx.drawImage(layerCanvas, 0, 0);
+        }
       }
+
+      ctx.restore();
     }
 
     // Fallback: Draw legacy edit canvas if no layers but edit canvas exists
@@ -932,6 +1285,8 @@ export default function ImageEditor() {
     isDuplicating,
     isMovingSelection,
     layers,
+    layerImages,
+    activeLayerId,
   ]);
 
   // Convert screen coords to image coords
@@ -1000,6 +1355,38 @@ export default function ImageEditor() {
       setDragStart(screenPos);
       setIsDragging(true);
       return;
+    }
+
+    // Check for image layer dragging
+    if (activeLayerId) {
+      const activeLayer = layers.find(l => l.id === activeLayerId);
+      if (activeLayer && activeLayer.type === "image" && activeLayer.visible && !activeLayer.locked && activeLayer.originalSize) {
+        // Calculate layer bounds in screen space
+        const layerScale = activeLayer.scale || 1;
+        const layerWidth = activeLayer.originalSize.width * layerScale * zoom;
+        const layerHeight = activeLayer.originalSize.height * layerScale * zoom;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const scaledWidth = displayWidth * zoom;
+          const scaledHeight = displayHeight * zoom;
+          const offsetX = (canvas.width - scaledWidth) / 2 + pan.x;
+          const offsetY = (canvas.height - scaledHeight) / 2 + pan.y;
+          const layerX = offsetX + (activeLayer.position?.x || 0) * zoom;
+          const layerY = offsetY + (activeLayer.position?.y || 0) * zoom;
+
+          // Check if click is within active image layer
+          if (
+            screenPos.x >= layerX &&
+            screenPos.x <= layerX + layerWidth &&
+            screenPos.y >= layerY &&
+            screenPos.y <= layerY + layerHeight
+          ) {
+            setIsDraggingLayer(true);
+            setLayerDragStart({ x: screenPos.x, y: screenPos.y });
+            return;
+          }
+        }
+      }
     }
 
     if (activeMode === "zoom") {
@@ -1206,6 +1593,24 @@ export default function ImageEditor() {
       setMousePos(null);
     }
 
+    // Handle image layer dragging
+    if (isDraggingLayer && activeLayerId) {
+      const dx = (screenPos.x - layerDragStart.x) / zoom;
+      const dy = (screenPos.y - layerDragStart.y) / zoom;
+
+      const activeLayer = layers.find(l => l.id === activeLayerId);
+      if (activeLayer && activeLayer.type === "image") {
+        updateLayer(activeLayerId, {
+          position: {
+            x: (activeLayer.position?.x || 0) + dx,
+            y: (activeLayer.position?.y || 0) + dy,
+          },
+        });
+      }
+      setLayerDragStart({ x: screenPos.x, y: screenPos.y });
+      return;
+    }
+
     if (!isDragging) return;
 
     const ratioValue = getAspectRatioValue(aspectRatio);
@@ -1385,6 +1790,7 @@ export default function ImageEditor() {
     setResizeHandle(null);
     setIsMovingSelection(false);
     setIsDuplicating(false);
+    setIsDraggingLayer(false);
     lastDrawPoint.current = null;
     dragStartOriginRef.current = null;
 
@@ -1822,16 +2228,20 @@ export default function ImageEditor() {
   const handleSaveProject = useCallback(async () => {
     if (!imageSrc || !imageRef.current) return;
 
-    // Save all layer data
-    const savedLayers: ImageLayer[] = layers.map((layer) => {
-      const canvas = layerCanvasesRef.current.get(layer.id);
-      return {
-        ...layer,
-        data: canvas ? canvas.toDataURL("image/png") : "",
-      };
+    // Save all unified layer data
+    const savedLayers: UnifiedLayer[] = layers.map((layer) => {
+      if (layer.type === "paint") {
+        const canvas = layerCanvasesRef.current.get(layer.id);
+        return {
+          ...layer,
+          paintData: canvas ? canvas.toDataURL("image/png") : layer.paintData || "",
+        };
+      }
+      // Image layers don't need canvas data saved - they have imageSrc
+      return { ...layer };
     });
 
-    // Legacy editLayerData for backward compatibility (first layer)
+    // Legacy editLayerData for backward compatibility (first paint layer)
     const editCanvas = editCanvasRef.current;
     const editLayerData = editCanvas ? editCanvas.toDataURL("image/png") : "";
 
@@ -1840,7 +2250,7 @@ export default function ImageEditor() {
       name: projectName,
       imageSrc,
       editLayerData,
-      layers: savedLayers,
+      unifiedLayers: savedLayers,
       activeLayerId: activeLayerId || undefined,
       imageSize,
       rotation,
@@ -1904,9 +2314,26 @@ export default function ImageEditor() {
             ? project.imageSize
             : { width: project.imageSize.height, height: project.imageSize.width };
 
-        // Check if project has new layer system
-        if (project.layers && project.layers.length > 0) {
-          initEditCanvas(width, height, project.layers);
+        // Check if project has new unified layer system
+        if (project.unifiedLayers && project.unifiedLayers.length > 0) {
+          initEditCanvas(width, height, project.unifiedLayers);
+          if (project.activeLayerId) {
+            setActiveLayerId(project.activeLayerId);
+            const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
+            if (activeLayer?.type === "paint") {
+              editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
+            }
+          }
+        } else if (project.layers && project.layers.length > 0) {
+          // Legacy project with old ImageLayer format - convert to UnifiedLayer
+          const convertedLayers: UnifiedLayer[] = project.layers.map((layer, index) => ({
+            ...layer,
+            type: "paint" as const,
+            locked: false,
+            zIndex: project.layers!.length - 1 - index,
+            paintData: layer.data,
+          }));
+          initEditCanvas(width, height, convertedLayers);
           if (project.activeLayerId) {
             setActiveLayerId(project.activeLayerId);
             editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
@@ -2358,7 +2785,7 @@ export default function ImageEditor() {
                     onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
                     className="px-1 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
                   >
-                    {aspectRatios.map((r) => (
+                    {ASPECT_RATIOS.map((r) => (
                       <option key={r.value} value={r.value}>
                         {r.label}
                       </option>
@@ -2448,254 +2875,12 @@ export default function ImageEditor() {
         <SettingsMenu />
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Canvas Area */}
-        <div
-          ref={containerRef}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          className="flex-1 h-full overflow-hidden bg-surface-secondary relative"
-        >
-          {!imageSrc ? (
-            <ImageDropZone
-              variant="editor"
-              onFileSelect={(files) => files[0] && loadImageFile(files[0])}
-            />
-          ) : (
-            <canvas
-              ref={canvasRef}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseLeave}
-              onWheel={handleWheel}
-              className="w-full h-full"
-              style={{ cursor: getCursor(), imageRendering: "pixelated" }}
-            />
-          )}
+      {/* Main Content Area with Docking System */}
+      <EditorLayoutProvider>
+        <div className="h-full w-full flex overflow-hidden relative">
+          <EditorDockableArea />
         </div>
-
-        {/* Layer Panel - Right Sidebar */}
-        {imageSrc && isLayerPanelOpen && (
-          <div className="w-56 bg-surface-primary border-l border-border-default flex flex-col shrink-0">
-            {/* Layer Panel Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-              <span className="text-xs font-semibold">{t.layers}</span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={addLayer}
-                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                  title={t.addLayer}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setIsLayerPanelOpen(false)}
-                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                  title={t.closePanel}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Layer List */}
-            <div className="flex-1 overflow-y-auto">
-              {layers.map((layer, idx) => (
-                <div
-                  key={layer.id}
-                  onClick={() => selectLayer(layer.id)}
-                  className={`flex items-center gap-2 px-2 py-1.5 border-b border-border-default cursor-pointer transition-colors ${
-                    activeLayerId === layer.id
-                      ? "bg-accent-primary/10"
-                      : "hover:bg-interactive-hover"
-                  }`}
-                >
-                  {/* Visibility toggle */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLayerVisibility(layer.id);
-                    }}
-                    className={`p-0.5 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
-                    title={layer.visible ? t.hideLayer : t.showLayer}
-                  >
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      {layer.visible ? (
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                      ) : (
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                        />
-                      )}
-                    </svg>
-                  </button>
-
-                  {/* Layer thumbnail - small preview */}
-                  <div className="w-8 h-8 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0">
-                    {/* Canvas thumbnail would go here */}
-                  </div>
-
-                  {/* Layer name */}
-                  <input
-                    type="text"
-                    value={layer.name}
-                    onChange={(e) => renameLayer(layer.id, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex-1 text-xs bg-transparent border-none focus:outline-none focus:bg-surface-secondary px-1 rounded min-w-0"
-                  />
-
-                  {/* Layer actions */}
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        moveLayer(layer.id, "up");
-                      }}
-                      disabled={idx === 0}
-                      className="p-0.5 hover:bg-interactive-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={t.moveUp}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 15l7-7 7 7"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        moveLayer(layer.id, "down");
-                      }}
-                      disabled={idx === layers.length - 1}
-                      className="p-0.5 hover:bg-interactive-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={t.moveDown}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteLayer(layer.id);
-                      }}
-                      className="p-0.5 hover:bg-accent-danger/20 hover:text-accent-danger rounded"
-                      title={t.deleteLayer}
-                    >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Layer opacity control */}
-            {activeLayerId && (
-              <div className="px-3 py-2 border-t border-border-default">
-                <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
-                  <span>{t.opacity}</span>
-                  <span>{layers.find((l) => l.id === activeLayerId)?.opacity || 100}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={layers.find((l) => l.id === activeLayerId)?.opacity || 100}
-                  onChange={(e) => updateLayerOpacity(activeLayerId, parseInt(e.target.value))}
-                  className="w-full h-1.5 accent-accent-primary"
-                />
-                <div className="flex items-center gap-1 mt-2">
-                  <button
-                    onClick={() => mergeLayerDown(activeLayerId)}
-                    disabled={layers.findIndex((l) => l.id === activeLayerId) === layers.length - 1}
-                    className="flex-1 px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed border border-border-default rounded text-xs transition-colors"
-                    title={t.mergeDown}
-                  >
-                    {t.mergeDown}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Layer panel toggle when closed */}
-        {imageSrc && !isLayerPanelOpen && (
-          <button
-            onClick={() => setIsLayerPanelOpen(true)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-surface-primary border border-border-default rounded-l-lg hover:bg-interactive-hover transition-colors z-10"
-            title={t.openLayerPanel}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
+      </EditorLayoutProvider>
 
       {/* Bottom status bar */}
       {imageSrc && (
@@ -2734,106 +2919,22 @@ export default function ImageEditor() {
         className="hidden"
       />
 
+
       {/* Project List Modal */}
-      {isProjectListOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface-primary border border-border-default rounded-lg shadow-xl w-[480px] max-h-[80vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-              <div className="flex items-center gap-3">
-                <h2 className="font-semibold">저장된 프로젝트</h2>
-                {storageInfo.quota > 0 && (
-                  <div className="flex items-center gap-2 text-xs text-text-tertiary">
-                    <span>
-                      {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
-                    </span>
-                    <div className="w-16 h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${storageInfo.percentage > 80 ? "bg-accent-danger" : "bg-accent-primary"}`}
-                        style={{ width: `${Math.min(storageInfo.percentage, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setIsProjectListOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Project list */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {savedProjects.length === 0 ? (
-                <div className="text-center text-text-tertiary py-8">
-                  저장된 프로젝트가 없습니다
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {savedProjects.map((project) => (
-                    <div
-                      key={project.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
-                        currentProjectId === project.id
-                          ? "border-accent-primary bg-accent-primary/10"
-                          : "border-border-default hover:bg-surface-secondary"
-                      }`}
-                      onClick={() => handleLoadProject(project)}
-                    >
-                      {/* Thumbnail */}
-                      <div className="w-12 h-12 bg-surface-tertiary rounded overflow-hidden shrink-0">
-                        <img
-                          src={project.imageSrc}
-                          alt={project.name}
-                          className="w-full h-full object-contain"
-                        />
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{project.name}</div>
-                        <div className="text-xs text-text-tertiary">
-                          {project.imageSize.width} × {project.imageSize.height}
-                          {project.rotation !== 0 && ` • ${project.rotation}°`}
-                        </div>
-                        <div className="text-xs text-text-quaternary">
-                          {new Date(project.savedAt).toLocaleString()}
-                        </div>
-                      </div>
-
-                      {/* Delete button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteProject(project.id);
-                        }}
-                        className="p-2 hover:bg-accent-danger/20 rounded transition-colors text-text-tertiary hover:text-accent-danger"
-                        title={t.delete}
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ProjectListModal
+        isOpen={isProjectListOpen}
+        onClose={() => setIsProjectListOpen(false)}
+        projects={savedProjects}
+        currentProjectId={currentProjectId}
+        onLoadProject={handleLoadProject}
+        onDeleteProject={handleDeleteProject}
+        storageInfo={storageInfo}
+        translations={{
+          savedProjects: t.savedProjects || "저장된 프로젝트",
+          noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
+          delete: t.delete,
+        }}
+      />
     </div>
   );
 }
