@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState, DragEvent } from "react";
 import { useEditor } from "../../contexts/EditorContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { Point, SpriteFrame } from "../../types";
+import ImageDropZone from "../ImageDropZone";
 
 // ============================================
 // Helper Functions
@@ -643,7 +644,7 @@ export default function CanvasContent() {
   return (
     <div
       ref={canvasContainerRef}
-      className="w-full h-full overflow-hidden bg-background relative"
+      className="w-full h-full overflow-hidden bg-surface-secondary relative"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -692,31 +693,10 @@ export default function CanvasContent() {
           )}
         </>
       ) : (
-        <div
-          className={`w-full h-full flex flex-col items-center justify-center transition-colors ${
-            isDragOver
-              ? "bg-accent-primary/30 border-2 border-dashed border-accent-primary"
-              : "text-text-tertiary"
-          }`}
-        >
-          <svg
-            className={`w-16 h-16 mb-4 ${isDragOver ? "text-accent-primary" : "text-text-tertiary"}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-          <p className={`text-lg ${isDragOver ? "text-accent-primary" : "text-text-tertiary"}`}>
-            {isDragOver ? "이미지를 놓으세요" : "이미지를 드래그하여 업로드"}
-          </p>
-          <p className="text-sm text-text-tertiary mt-2">또는 상단 툴바에서 파일을 선택하세요</p>
-        </div>
+        <ImageDropZone
+          variant="sprite"
+          onFileSelect={(files) => files[0] && handleFileDrop(files[0])}
+        />
       )}
     </div>
   );

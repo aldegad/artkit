@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import ThemeToggle from "../../components/ThemeToggle";
+import ImageDropZone from "../../components/ImageDropZone";
 
 interface ImageFile {
   id: string;
@@ -23,12 +24,6 @@ export default function ImageConverter() {
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("webp");
   const [isConverting, setIsConverting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
-    addFiles(files);
-  }, []);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -270,33 +265,9 @@ export default function ImageConverter() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className={`flex-1 overflow-auto bg-surface-secondary relative ${images.length > 0 ? "p-4" : ""}`}>
         {images.length === 0 ? (
-          /* Drop zone */
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleFileDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className="h-full border-2 border-dashed border-border-default rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-accent-primary hover:bg-surface-secondary/50 transition-colors"
-          >
-            <svg
-              className="w-16 h-16 text-text-tertiary"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-            <div className="text-center">
-              <p className="text-lg text-text-primary">Drop images here or click to select</p>
-              <p className="text-sm text-text-tertiary mt-1">PNG, JPG, GIF, WebP supported</p>
-            </div>
-          </div>
+          <ImageDropZone variant="converter" onFileSelect={addFiles} />
         ) : (
           /* Image grid */
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

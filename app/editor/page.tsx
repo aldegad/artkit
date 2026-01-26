@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import ThemeToggle from "../../components/ThemeToggle";
 import Tooltip from "../../components/Tooltip";
+import ImageDropZone from "../../components/ImageDropZone";
 import { SavedImageProject, ImageLayer } from "../../types";
 import {
   saveImageProject,
@@ -2456,33 +2457,13 @@ export default function ImageEditor() {
           ref={containerRef}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
-          className="flex-1 overflow-hidden bg-surface-secondary"
+          className="flex-1 h-full overflow-hidden bg-surface-secondary relative"
         >
           {!imageSrc ? (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              className="w-full h-full flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-surface-tertiary/50 transition-colors"
-            >
-              <svg
-                className="w-16 h-16 text-text-tertiary"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-              <div className="text-center">
-                <p className="text-lg text-text-primary">Drop image here or click to open</p>
-                <p className="text-sm text-text-tertiary mt-1">PNG, JPG, GIF, WebP supported</p>
-              </div>
-            </div>
+            <ImageDropZone
+              variant="editor"
+              onFileSelect={(files) => files[0] && loadImageFile(files[0])}
+            />
           ) : (
             <canvas
               ref={canvasRef}

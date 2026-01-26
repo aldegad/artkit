@@ -183,7 +183,7 @@ export default function Panel({ node }: PanelProps) {
           </div>
         </div>
       )}
-      <div className="flex-1 overflow-hidden bg-surface-primary">{content}</div>
+      <div className="flex-1 min-h-0 overflow-hidden bg-surface-primary">{content}</div>
 
       {/* Dock zone indicators - only show when dragging */}
       {layoutState.isDragging && (
