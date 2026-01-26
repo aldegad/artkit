@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "../contexts/ThemeContext";
+import { LanguageProvider } from "../contexts/LanguageContext";
 import Sidebar from "../components/layout/Sidebar";
+import Footer from "../components/layout/Footer";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Dev Tools",
-  description: "개발 도구 모음 - 스프라이트 에디터, 이미지 변환기",
+  title: "Artkit",
+  description: "Web-based graphics editor - Sprite Editor, Image Editor, Image Converter",
 };
 
 export default function RootLayout({
@@ -31,10 +33,15 @@ export default function RootLayout({
       </head>
       <body className="antialiased min-h-screen bg-background text-foreground">
         <ThemeProvider>
-          <div className="flex h-screen">
-            <Sidebar />
-            <main className="flex-1 min-w-0 overflow-hidden">{children}</main>
-          </div>
+          <LanguageProvider>
+            <div className="flex h-screen">
+              <Sidebar />
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+                <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+                <Footer />
+              </div>
+            </div>
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

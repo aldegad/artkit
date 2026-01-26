@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayout } from "../../contexts/LayoutContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 // ============================================
 // Types
@@ -14,6 +15,7 @@ type DockPosition = "left" | "right" | "top" | "bottom";
 
 export default function DockZoneOverlay() {
   const { layoutState } = useLayout();
+  const { t } = useLanguage();
 
   // Only show when dragging a floating window
   if (!layoutState.isDragging || !layoutState.draggedWindowId) return null;
@@ -24,22 +26,22 @@ export default function DockZoneOverlay() {
     {
       position: "left",
       className: "left-0 top-0 w-16 h-full",
-      label: "◀ 왼쪽",
+      label: t.dockLeft,
     },
     {
       position: "right",
       className: "right-0 top-0 w-16 h-full",
-      label: "오른쪽 ▶",
+      label: t.dockRight,
     },
     {
       position: "top",
       className: "left-0 top-0 w-full h-16",
-      label: "▲ 위",
+      label: t.dockTop,
     },
     {
       position: "bottom",
       className: "left-0 bottom-0 w-full h-16",
-      label: "▼ 아래",
+      label: t.dockBottom,
     },
   ];
 

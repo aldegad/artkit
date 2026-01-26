@@ -1,6 +1,7 @@
 "use client";
 
 import { SpriteFrame, TimelineMode } from "../../types";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 // ============================================
 // Icon Components
@@ -107,11 +108,13 @@ export default function TimelineControls({
   onOpenFramePreview,
   onExportSpriteSheet,
 }: TimelineControlsProps) {
+  const { t } = useLanguage();
+
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle shrink-0 bg-surface-secondary/50">
-      {/* 재생/정지 */}
+      {/* Play/Pause */}
       <button onClick={onTogglePlay} disabled={frames.length === 0} className="btn btn-primary">
-        {isPlaying ? "▶ 재생" : "▶ 재생"}
+        {isPlaying ? `▶ ${t.play}` : `▶ ${t.play}`}
       </button>
 
       {/* FPS */}
@@ -145,23 +148,23 @@ export default function TimelineControls({
 
       <div className="divider" />
 
-      {/* 타임라인 모드 */}
+      {/* Timeline mode */}
       <div className="tool-group">
         <button
           onClick={() => onTimelineModeChange("reorder")}
           className={`tool-btn ${timelineMode === "reorder" ? "active" : ""}`}
-          title="순서 변경 모드"
+          title={t.reorderMode}
         >
           <ReorderIcon />
-          순서
+          {t.reorder}
         </button>
         <button
           onClick={() => onTimelineModeChange("offset")}
           className={`tool-btn ${timelineMode === "offset" ? "active" : ""}`}
-          title="위치 조정 모드"
+          title={t.offsetMode}
         >
           <OffsetIcon />
-          위치
+          {t.offset}
         </button>
       </div>
 
@@ -199,14 +202,14 @@ export default function TimelineControls({
 
       <div className="divider" />
 
-      {/* 프리뷰 윈도우 버튼들 */}
+      {/* Preview window buttons */}
       <button
         onClick={onOpenAnimationPreview}
         disabled={frames.length === 0}
         className="btn btn-primary"
       >
         <VideoIcon />
-        애니메이션
+        {t.animation}
       </button>
       <button
         onClick={onOpenFramePreview}
@@ -214,13 +217,13 @@ export default function TimelineControls({
         className="btn btn-secondary"
       >
         <MagnifyIcon />
-        프레임
+        {t.frameWindow}
       </button>
 
       {frames.length > 0 && (
         <div className="relative group">
           <button onClick={onExportSpriteSheet} className="btn btn-primary">
-            ↗ 내보내기
+            ↗ {t.export}
           </button>
         </div>
       )}

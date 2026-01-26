@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, ReactNode, useCallback } from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 
 // ============================================
 // Docking Detection
@@ -74,6 +75,7 @@ export default function Window({
   const [activeDropZone, setActiveDropZone] = useState<DockZone>(null);
 
   const windowRef = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
 
   // 드래그 시작
   const handleDragStart = useCallback(
@@ -224,11 +226,11 @@ export default function Window({
         >
           <span className="text-sm font-medium text-text-primary">{title}</span>
           <div className="flex items-center gap-1">
-            {/* 플로팅 전환 버튼 */}
+            {/* Float button */}
             <button
               onClick={onUndock}
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-              title="플로팅으로 전환"
+              title={t.floatingMode}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -278,10 +280,10 @@ export default function Window({
               bottom: "left-0 bottom-0 w-full h-16",
             };
             const labels = {
-              left: "◀ 왼쪽",
-              right: "오른쪽 ▶",
-              top: "▲ 위",
-              bottom: "▼ 아래",
+              left: t.dockLeft,
+              right: t.dockRight,
+              top: t.dockTop,
+              bottom: t.dockBottom,
             };
             return (
               <div

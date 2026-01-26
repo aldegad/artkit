@@ -1,6 +1,7 @@
 "use client";
 
 import { Point, ToolMode, SpriteFrame, SavedProject } from "../../types";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 // ============================================
 // Icon Components
@@ -109,16 +110,17 @@ export default function CanvasToolbar({
   onToggleCanvasCollapse,
   zoom,
 }: CanvasToolbarProps) {
+  const { t } = useLanguage();
   const canSave = imageSrc !== null && frames.length > 0;
   const selectedFrameIndex = frames.findIndex((f) => f.id === selectedFrameId);
 
   const getHintText = () => {
     if (toolMode === "pen") {
-      return "클릭: 점 추가 | 첫점: 완성";
+      return `${t.clickToAddPoint} | ${t.firstPointToComplete}`;
     } else if (toolMode === "select") {
-      return "클릭: 선택 | 드래그: 이동";
+      return `${t.clickToSelect} | ${t.dragToMove}`;
     } else {
-      return "드래그: 화면 이동";
+      return t.dragToPan;
     }
   };
 
@@ -147,24 +149,24 @@ export default function CanvasToolbar({
         <button
           onClick={() => onToolModeChange("pen")}
           className={`tool-btn ${toolMode === "pen" ? "active" : ""}`}
-          title="펜 툴 (폴리곤 그리기)"
+          title={t.penToolTip}
         >
-          <PenIcon />펜
+          <PenIcon />{t.pen}
         </button>
         <button
           onClick={() => onToolModeChange("select")}
           className={`tool-btn ${toolMode === "select" ? "active" : ""}`}
-          title="선택 툴 (이동/편집)"
+          title={t.selectToolTip}
         >
           <SelectIcon />
-          선택
+          {t.select}
         </button>
         <button
           onClick={() => onToolModeChange("hand")}
           className={`tool-btn ${toolMode === "hand" ? "active" : ""}`}
-          title="손 툴 (화면 이동)"
+          title={t.handToolTip}
         >
-          <HandIcon />손
+          <HandIcon />{t.hand}
         </button>
       </div>
 
@@ -176,7 +178,7 @@ export default function CanvasToolbar({
           <button
             onClick={onUndoLastPoint}
             className="btn btn-ghost text-sm"
-            title="마지막 점 취소"
+            title={t.undo}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -188,15 +190,15 @@ export default function CanvasToolbar({
             </svg>
           </button>
           <button onClick={onCancelPolygon} className="btn btn-danger text-sm">
-            취소
+            {t.cancel}
           </button>
           {currentPoints.length >= 3 && (
             <button onClick={onCompleteFrame} className="btn btn-primary text-sm">
-              완성
+              {t.complete}
             </button>
           )}
           <span className="text-text-secondary text-sm font-medium">
-            점: {currentPoints.length}
+            {t.point}: {currentPoints.length}
           </span>
         </div>
       )}
@@ -204,8 +206,8 @@ export default function CanvasToolbar({
       {/* 선택 상태 표시 */}
       {toolMode === "select" && selectedFrameId !== null && (
         <span className="text-accent-primary text-sm font-medium">
-          프레임 {selectedFrameIndex + 1} 선택됨
-          {selectedPointIndex !== null && ` (점 ${selectedPointIndex + 1})`}
+          {t.frame} {selectedFrameIndex + 1} {t.selected}
+          {selectedPointIndex !== null && ` (${t.point} ${selectedPointIndex + 1})`}
         </span>
       )}
 
@@ -216,7 +218,7 @@ export default function CanvasToolbar({
         <button
           onClick={() => {
             if (frames.length > 0 || imageSrc) {
-              if (window.confirm("현재 작업이 삭제됩니다. 새 프로젝트를 시작하시겠습니까?")) {
+              if (window.confirm(t.newProjectConfirm)) {
                 onNewProject();
               }
             } else {
@@ -224,14 +226,14 @@ export default function CanvasToolbar({
             }
           }}
           className="btn btn-ghost text-sm"
-          title="새 프로젝트 시작"
+          title={t.newProject}
         >
-          새로만들기
+          {t.new}
         </button>
 
         <input
           type="text"
-          placeholder="프로젝트명"
+          placeholder={t.projectName}
           value={projectName}
           onChange={(e) => onProjectNameChange(e.target.value)}
           className="input text-sm w-32"
@@ -241,26 +243,26 @@ export default function CanvasToolbar({
           onClick={onSaveProject}
           disabled={!canSave}
           className="btn btn-primary text-sm"
-          title={isExistingProject ? "현재 프로젝트에 덮어쓰기" : "새 프로젝트로 저장"}
+          title={t.save}
         >
-          저장
+          {t.save}
         </button>
 
         <button
           onClick={onSaveProjectAs}
           disabled={!canSave}
           className="btn btn-secondary text-sm"
-          title="새 이름으로 저장"
+          title={t.saveAs}
         >
-          다른이름
+          {t.saveAs}
         </button>
 
         <button
           onClick={onOpenProjectList}
           className="btn btn-secondary text-sm relative"
-          title="저장된 프로젝트 목록"
+          title={t.savedProjects}
         >
-          불러오기
+          {t.load}
           {savedProjects.length > 0 && (
             <span className="badge absolute -top-2 -right-2">{savedProjects.length}</span>
           )}
@@ -275,7 +277,7 @@ export default function CanvasToolbar({
 
       {/* 힌트 텍스트 */}
       <span className="text-text-tertiary text-xs hidden lg:inline">
-        {getHintText()} | Space: 이동 | 휠: 줌 ({Math.round(zoom * 100)}%)
+        {getHintText()} | {t.spaceAltToPan} | {t.wheelToZoom} ({Math.round(zoom * 100)}%)
       </span>
     </div>
   );

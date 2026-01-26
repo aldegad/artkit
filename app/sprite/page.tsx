@@ -3,8 +3,9 @@
 import { useEffect, useCallback, useState } from "react";
 import { EditorProvider, useEditor } from "../../contexts/EditorContext";
 import { LayoutProvider } from "../../contexts/LayoutContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 import { SplitView } from "../../components/layout";
-import ThemeToggle from "../../components/ThemeToggle";
+import SettingsMenu from "../../components/SettingsMenu";
 import Tooltip from "../../components/Tooltip";
 import {
   saveProject as saveProjectToDB,
@@ -64,6 +65,7 @@ function SpriteEditorMain() {
     pasteFrame,
   } = useEditor();
 
+  const { t } = useLanguage();
   const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
 
   // Load saved projects from IndexedDB
@@ -220,18 +222,15 @@ function SpriteEditorMain() {
 
   // Save project to IndexedDB (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
-    // 프레임이 있으면 저장 가능 (imageSrc가 없어도 개별 프레임 imageData로 저장)
     const hasValidFrames = frames.length > 0 && frames.some((f) => f.imageData);
     if (!hasValidFrames) {
-      alert("저장할 프레임이 없습니다.");
+      alert(t.noFramesToSave);
       return;
     }
 
     const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
-    // imageSrc가 없으면 첫 프레임의 imageData 사용
     const saveImageSrc = imageSrc || frames.find((f) => f.imageData)?.imageData || "";
 
-    // 기존 프로젝트가 있으면 덮어쓰기
     if (currentProjectId) {
       const updatedProject = {
         id: currentProjectId,
@@ -253,13 +252,12 @@ function SpriteEditorMain() {
         const info = await getStorageInfo();
         setStorageInfo(info);
 
-        alert(`"${name}" 저장됨`);
+        alert(`"${name}" ${t.saved}`);
       } catch (error) {
         console.error("Save failed:", error);
-        alert("저장 실패: " + (error as Error).message);
+        alert(`${t.saveFailed}: ${(error as Error).message}`);
       }
     } else {
-      // 새 프로젝트로 저장
       const newId = Date.now().toString();
       const newProject = {
         id: newId,
@@ -280,13 +278,14 @@ function SpriteEditorMain() {
         const info = await getStorageInfo();
         setStorageInfo(info);
 
-        alert(`"${name}" 저장됨 (${formatBytes(JSON.stringify(newProject).length)})`);
+        alert(`"${name}" ${t.saved}`);
       } catch (error) {
         console.error("Save failed:", error);
-        alert("저장 실패: " + (error as Error).message);
+        alert(`${t.saveFailed}: ${(error as Error).message}`);
       }
     }
   }, [
+    t,
     imageSrc,
     frames,
     projectName,
@@ -302,11 +301,11 @@ function SpriteEditorMain() {
     // 프레임이 있으면 저장 가능 (imageSrc가 없어도 개별 프레임 imageData로 저장)
     const hasValidFrames = frames.length > 0 && frames.some((f) => f.imageData);
     if (!hasValidFrames) {
-      alert("저장할 프레임이 없습니다.");
+      alert(t.noFramesToSave);
       return;
     }
 
-    const inputName = prompt("프로젝트 이름을 입력하세요:", projectName || "");
+    const inputName = prompt(t.enterProjectName, projectName || "");
     if (inputName === null) return; // 취소됨
 
     const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
@@ -334,10 +333,10 @@ function SpriteEditorMain() {
       const info = await getStorageInfo();
       setStorageInfo(info);
 
-      alert(`"${name}" 저장됨 (${formatBytes(JSON.stringify(newProject).length)})`);
+      alert(`"${name}" ${t.saved} (${formatBytes(JSON.stringify(newProject).length)})`);
     } catch (error) {
       console.error("Save failed:", error);
-      alert("저장 실패: " + (error as Error).message);
+      alert(`${t.saveFailed}: ${(error as Error).message}`);
     }
   }, [
     imageSrc,
@@ -348,6 +347,7 @@ function SpriteEditorMain() {
     setCurrentProjectId,
     setProjectName,
     imageRef,
+    t,
   ]);
 
   // Load project
@@ -389,7 +389,7 @@ function SpriteEditorMain() {
   // Delete project from IndexedDB
   const deleteProject = useCallback(
     async (projectId: string) => {
-      if (!confirm("정말 삭제하시겠습니까?")) return;
+      if (!confirm(t.deleteConfirm)) return;
 
       try {
         await deleteProjectFromDB(projectId);
@@ -400,10 +400,10 @@ function SpriteEditorMain() {
         setStorageInfo(info);
       } catch (error) {
         console.error("Delete failed:", error);
-        alert("삭제 실패: " + (error as Error).message);
+        alert(`${t.deleteFailed}: ${(error as Error).message}`);
       }
     },
-    [setSavedProjects],
+    [setSavedProjects, t],
   );
 
   // Export all projects to JSON file
@@ -421,9 +421,7 @@ function SpriteEditorMain() {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      const overwrite = window.confirm(
-        "기존 프로젝트를 모두 삭제하고 가져오시겠습니까?\n\n[확인] 기존 삭제 후 가져오기\n[취소] 기존 유지하며 추가 (중복 ID는 건너뜀)",
-      );
+      const overwrite = window.confirm(t.importOverwriteConfirm);
 
       try {
         const result = await importProjectsFromJSON(file, overwrite);
@@ -436,16 +434,16 @@ function SpriteEditorMain() {
         const info = await getStorageInfo();
         setStorageInfo(info);
 
-        alert(`가져오기 완료!\n- 추가됨: ${result.imported}개\n- 건너뜀: ${result.skipped}개`);
+        alert(`${t.importComplete}\n- ${t.added}: ${result.imported}\n- ${t.skipped}: ${result.skipped}`);
       } catch (error) {
         console.error("Import failed:", error);
-        alert("가져오기 실패: " + (error as Error).message);
+        alert(`${t.importFailed}: ${(error as Error).message}`);
       }
 
       // Reset input
       e.target.value = "";
     },
-    [setSavedProjects],
+    [setSavedProjects, t],
   );
 
   // Spacebar handler for temporary hand mode + Undo/Redo
@@ -530,7 +528,7 @@ function SpriteEditorMain() {
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default flex-shrink-0 shadow-sm">
+      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
         <input
           type="file"
           accept="image/*"
@@ -538,16 +536,7 @@ function SpriteEditorMain() {
           className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-accent-primary file:text-white hover:file:bg-accent-primary-hover file:cursor-pointer file:transition-colors cursor-pointer"
         />
 
-        <Tooltip
-          content={
-            <div className="flex flex-col gap-0.5">
-              <span className="font-medium">시트 가져오기</span>
-              <span className="text-text-tertiary text-[10px]">
-                스프라이트 시트에서 프레임 자동 추출
-              </span>
-            </div>
-          }
-        >
+        <Tooltip content={t.importSheet}>
           <button
             onClick={() => setIsSpriteSheetImportOpen(true)}
             className="px-3 py-1.5 bg-accent-success hover:bg-accent-success/80 text-white rounded-lg text-sm flex items-center gap-1.5 transition-colors"
@@ -560,7 +549,7 @@ function SpriteEditorMain() {
                 d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
               />
             </svg>
-            시트 가져오기
+            {t.importSheet}
           </button>
         </Tooltip>
 
@@ -568,17 +557,7 @@ function SpriteEditorMain() {
 
         {/* Tool mode buttons */}
         <div className="flex gap-1 bg-surface-secondary rounded-lg p-1">
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">펜</span>
-                <span className="text-text-tertiary text-[10px]">
-                  클릭으로 폴리곤 점 추가 | 3점 이상 완성 가능
-                </span>
-              </div>
-            }
-            shortcut="P"
-          >
+          <Tooltip content={t.pen} shortcut="P">
             <button
               onClick={() => setToolMode("pen")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
@@ -595,20 +574,10 @@ function SpriteEditorMain() {
                   d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                 />
               </svg>
-              펜
+              {t.pen}
             </button>
           </Tooltip>
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">선택</span>
-                <span className="text-text-tertiary text-[10px]">
-                  프레임/점 선택 및 이동 | Delete로 삭제
-                </span>
-              </div>
-            }
-            shortcut="V"
-          >
+          <Tooltip content={t.select} shortcut="V">
             <button
               onClick={() => setToolMode("select")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
@@ -625,20 +594,10 @@ function SpriteEditorMain() {
                   d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"
                 />
               </svg>
-              선택
+              {t.select}
             </button>
           </Tooltip>
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">손</span>
-                <span className="text-text-tertiary text-[10px]">
-                  드래그로 캔버스 이동 | Space 임시 전환
-                </span>
-              </div>
-            }
-            shortcut="H"
-          >
+          <Tooltip content={t.hand} shortcut="H">
             <button
               onClick={() => setToolMode("hand")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
@@ -655,7 +614,7 @@ function SpriteEditorMain() {
                   d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11"
                 />
               </svg>
-              손
+              {t.hand}
             </button>
           </Tooltip>
         </div>
@@ -668,30 +627,32 @@ function SpriteEditorMain() {
               onClick={undoLastPoint}
               className="px-3 py-1.5 bg-accent-warning hover:bg-accent-warning-hover text-white rounded-lg text-sm transition-colors"
             >
-              Undo
+              {t.undo}
             </button>
             <button
               onClick={cancelCurrentPolygon}
               className="px-3 py-1.5 bg-accent-danger hover:bg-accent-danger-hover text-white rounded-lg text-sm transition-colors"
             >
-              취소
+              {t.cancel}
             </button>
             {currentPoints.length >= 3 && (
               <button
                 onClick={completeFrame}
                 className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-sm transition-colors"
               >
-                완성
+                {t.complete}
               </button>
             )}
-            <span className="text-text-secondary text-sm">점: {currentPoints.length}개</span>
+            <span className="text-text-secondary text-sm">
+              {t.points}: {currentPoints.length}
+            </span>
           </>
         )}
 
         {toolMode === "select" && selectedFrameId !== null && (
           <span className="text-accent-primary text-sm">
-            프레임 {frames.findIndex((f) => f.id === selectedFrameId) + 1} 선택됨
-            {selectedPointIndex !== null && ` (점 ${selectedPointIndex + 1})`}
+            {t.frame} {frames.findIndex((f) => f.id === selectedFrameId) + 1} {t.selected}
+            {selectedPointIndex !== null && ` (${t.point} ${selectedPointIndex + 1})`}
           </span>
         )}
 
@@ -702,7 +663,7 @@ function SpriteEditorMain() {
           <button
             onClick={() => {
               if (frames.length > 0 || imageSrc) {
-                if (window.confirm("현재 작업이 삭제됩니다. 새 프로젝트를 시작하시겠습니까?")) {
+                if (window.confirm(t.newProjectConfirm)) {
                   newProject();
                 }
               } else {
@@ -710,14 +671,14 @@ function SpriteEditorMain() {
               }
             }}
             className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-xs transition-colors"
-            title="새 프로젝트 시작"
+            title={t.newProject}
           >
-            새로만들기
+            {t.new}
           </button>
           <div className="h-4 w-px bg-border-default" />
           <input
             type="text"
-            placeholder="프로젝트명"
+            placeholder={t.projectName}
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
             className="w-28 px-2 py-1.5 bg-surface-secondary border border-border-default rounded-lg text-xs focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary/20 transition-colors"
@@ -726,24 +687,22 @@ function SpriteEditorMain() {
             onClick={saveProject}
             disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
             className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-xs transition-colors"
-            title={currentProjectId ? "현재 프로젝트에 덮어쓰기" : "새 프로젝트로 저장"}
           >
-            저장
+            {t.save}
           </button>
           <button
             onClick={saveProjectAs}
             disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
             className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-text-primary border border-border-default rounded-lg text-xs transition-colors"
-            title="새 이름으로 저장"
           >
-            다른이름
+            {t.saveAs}
           </button>
           <button
             onClick={() => setIsProjectListOpen(true)}
             className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default rounded-lg text-xs relative transition-colors"
-            title="저장된 프로젝트 목록"
+            title={t.savedProjects}
           >
-            불러오기
+            {t.load}
             {savedProjects.length > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-accent-danger rounded-full text-[10px] flex items-center justify-center text-white">
                 {savedProjects.length}
@@ -756,16 +715,16 @@ function SpriteEditorMain() {
 
         <span className="text-text-tertiary text-xs">
           {toolMode === "pen"
-            ? "클릭: 점 추가 | 첫점: 완성"
+            ? `${t.clickToAddPoint} | ${t.firstPointToComplete}`
             : toolMode === "select"
-              ? "클릭: 선택 | 드래그: 이동"
-              : "드래그: 화면 이동"}{" "}
-          | Space/Alt: 화면이동 | 휠: 줌 ({Math.round(zoom * 100)}%)
+              ? `${t.clickToSelect} | ${t.dragToMove}`
+              : t.dragToPan}{" "}
+          | {t.spaceAltToPan} | {t.wheelToZoom} ({Math.round(zoom * 100)}%)
         </span>
 
         <div className="h-6 w-px bg-border-default" />
 
-        <ThemeToggle />
+        <SettingsMenu />
       </div>
 
       {/* Main Content - Split View */}
@@ -780,11 +739,11 @@ function SpriteEditorMain() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
               <div>
-                <h2 className="text-lg font-semibold text-text-primary">저장된 프로젝트</h2>
+                <h2 className="text-lg font-semibold text-text-primary">{t.savedProjects}</h2>
                 {storageInfo.quota > 0 && (
                   <div className="text-xs text-text-tertiary flex items-center gap-2 mt-1">
                     <span>
-                      저장소: {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
+                      {t.storage}: {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
                     </span>
                     <div className="w-20 h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
                       <div
@@ -801,7 +760,7 @@ function SpriteEditorMain() {
                   onClick={handleExportDB}
                   disabled={savedProjects.length === 0}
                   className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed text-text-secondary border border-border-default rounded text-xs transition-colors flex items-center gap-1"
-                  title="모든 프로젝트를 JSON 파일로 내보내기"
+                  title={t.export}
                 >
                   <svg
                     className="w-3.5 h-3.5"
@@ -816,7 +775,7 @@ function SpriteEditorMain() {
                       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
                     />
                   </svg>
-                  내보내기
+                  {t.export}
                 </button>
                 <label className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary text-text-secondary border border-border-default rounded text-xs transition-colors flex items-center gap-1 cursor-pointer">
                   <svg
@@ -832,7 +791,7 @@ function SpriteEditorMain() {
                       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                     />
                   </svg>
-                  가져오기
+                  {t.import}
                   <input type="file" accept=".json" onChange={handleImportDB} className="hidden" />
                 </label>
                 <div className="h-4 w-px bg-border-default" />
@@ -849,7 +808,7 @@ function SpriteEditorMain() {
             <div className="flex-1 overflow-y-auto p-4">
               {savedProjects.length === 0 ? (
                 <div className="text-center text-text-tertiary py-8">
-                  저장된 프로젝트가 없습니다
+                  {t.noSavedProjects}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -859,7 +818,7 @@ function SpriteEditorMain() {
                       className="flex items-center gap-3 p-3 bg-surface-secondary rounded-lg hover:bg-interactive-hover group transition-colors"
                     >
                       {/* Thumbnail */}
-                      <div className="w-16 h-16 bg-surface-tertiary rounded-lg flex-shrink-0 overflow-hidden">
+                      <div className="w-16 h-16 bg-surface-tertiary rounded-lg shrink-0 overflow-hidden">
                         {project.frames[0]?.imageData && (
                           <img
                             src={project.frames[0].imageData}
@@ -873,7 +832,7 @@ function SpriteEditorMain() {
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate text-text-primary">{project.name}</div>
                         <div className="text-xs text-text-secondary">
-                          {project.frames.length}프레임 · {project.fps}fps
+                          {project.frames.length} {t.frames} · {project.fps}fps
                         </div>
                         <div className="text-xs text-text-tertiary">
                           {new Date(project.savedAt).toLocaleString()}
@@ -886,13 +845,13 @@ function SpriteEditorMain() {
                           onClick={() => loadProject(project)}
                           className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-sm transition-colors"
                         >
-                          로드
+                          {t.load}
                         </button>
                         <button
                           onClick={() => deleteProject(project.id)}
                           className="px-2 py-1.5 bg-accent-danger hover:bg-accent-danger-hover text-white rounded-lg text-sm transition-colors"
                         >
-                          삭제
+                          {t.delete}
                         </button>
                       </div>
                     </div>

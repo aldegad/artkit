@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import ThemeToggle from "../../components/ThemeToggle";
+import { useLanguage } from "../../contexts/LanguageContext";
+import SettingsMenu from "../../components/SettingsMenu";
 import Tooltip from "../../components/Tooltip";
 import ImageDropZone from "../../components/ImageDropZone";
 import { SavedImageProject, ImageLayer } from "../../types";
@@ -39,6 +40,7 @@ interface Point {
 }
 
 export default function ImageEditor() {
+  const { t } = useLanguage();
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [rotation, setRotation] = useState(0);
@@ -180,7 +182,7 @@ export default function ImageEditor() {
         const defaultLayerId = crypto.randomUUID();
         const defaultLayer: ImageLayer = {
           id: defaultLayerId,
-          name: "레이어 1",
+          name: `${t.layer} 1`,
           visible: true,
           opacity: 100,
           data: "",
@@ -271,7 +273,7 @@ export default function ImageEditor() {
     const newId = crypto.randomUUID();
     const newLayer: ImageLayer = {
       id: newId,
-      name: `레이어 ${layers.length + 1}`,
+      name: `${t.layer} ${layers.length + 1}`,
       visible: true,
       opacity: 100,
       data: "",
@@ -291,7 +293,7 @@ export default function ImageEditor() {
   const deleteLayer = useCallback(
     (layerId: string) => {
       if (layers.length <= 1) {
-        alert("최소 1개의 레이어가 필요합니다.");
+        alert(t.minOneLayerRequired);
         return;
       }
 
@@ -1685,7 +1687,7 @@ export default function ImageEditor() {
   };
 
   const clearEdits = () => {
-    if (confirm("모든 편집 내용을 지우시겠습니까?")) {
+    if (confirm(t.clearEditConfirm)) {
       const { width, height } = getDisplayDimensions();
       initEditCanvas(width, height);
     }
@@ -1855,10 +1857,10 @@ export default function ImageEditor() {
       const info = await getStorageInfo();
       setStorageInfo(info);
 
-      alert("저장되었습니다!");
+      alert(`${t.saved}!`);
     } catch (error) {
       console.error("Failed to save project:", error);
-      alert("저장 실패: " + (error as Error).message);
+      alert(`${t.saveFailed}: ${(error as Error).message}`);
     }
   }, [imageSrc, projectName, imageSize, rotation, currentProjectId, layers, activeLayerId]);
 
@@ -1936,7 +1938,7 @@ export default function ImageEditor() {
   // Delete a project
   const handleDeleteProject = useCallback(
     async (id: string) => {
-      if (!confirm("이 프로젝트를 삭제하시겠습니까?")) return;
+      if (!confirm(t.deleteConfirm)) return;
 
       try {
         await deleteImageProject(id);
@@ -1950,15 +1952,15 @@ export default function ImageEditor() {
         }
       } catch (error) {
         console.error("Failed to delete project:", error);
-        alert("삭제 실패: " + (error as Error).message);
+        alert(`${t.deleteFailed}: ${(error as Error).message}`);
       }
     },
-    [currentProjectId],
+    [currentProjectId, t],
   );
 
   // New canvas
   const handleNewCanvas = useCallback(() => {
-    if (imageSrc && !confirm("현재 작업을 저장하지 않고 새 캔버스를 만드시겠습니까?")) return;
+    if (imageSrc && !confirm(t.unsavedChangesConfirm)) return;
 
     setImageSrc(null);
     setProjectName("Untitled");
@@ -1973,7 +1975,7 @@ export default function ImageEditor() {
     editCanvasRef.current = null;
     historyRef.current = [];
     historyIndexRef.current = -1;
-  }, [imageSrc]);
+  }, [imageSrc, t]);
 
   const toolButtons: {
     mode: ToolMode;
@@ -1984,8 +1986,8 @@ export default function ImageEditor() {
   }[] = [
     {
       mode: "marquee",
-      name: "선택",
-      description: "⌥+드래그: 복제 | ⇧: 축 고정",
+      name: t.marquee,
+      description: "⌥+drag: clone | ⇧: axis lock",
       shortcut: "M",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1995,8 +1997,8 @@ export default function ImageEditor() {
     },
     {
       mode: "brush",
-      name: "브러시",
-      description: "그리기 도구 | [ ] 크기 조절",
+      name: t.brush,
+      description: t.brushToolTip,
       shortcut: "B",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2011,8 +2013,8 @@ export default function ImageEditor() {
     },
     {
       mode: "eraser",
-      name: "지우개",
-      description: "편집 레이어 지우기 | [ ] 크기 조절",
+      name: t.eraser,
+      description: t.eraserToolTip,
       shortcut: "E",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2027,8 +2029,8 @@ export default function ImageEditor() {
     },
     {
       mode: "fill",
-      name: "채우기",
-      description: "선택 영역 또는 전체를 색으로 채움",
+      name: t.fill,
+      description: t.fillToolTip,
       shortcut: "G",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2043,8 +2045,8 @@ export default function ImageEditor() {
     },
     {
       mode: "eyedropper",
-      name: "스포이드",
-      description: "클릭한 위치의 색상 추출",
+      name: t.eyedropper,
+      description: t.eyedropperToolTip,
       shortcut: "I",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2059,8 +2061,8 @@ export default function ImageEditor() {
     },
     {
       mode: "stamp",
-      name: "복제 도장",
-      description: "⌥+클릭: 소스 지정 → 드래그: 복제",
+      name: t.cloneStamp,
+      description: t.cloneStampToolTip,
       shortcut: "S",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2075,8 +2077,8 @@ export default function ImageEditor() {
     },
     {
       mode: "crop",
-      name: "자르기",
-      description: "영역 지정 후 Export로 잘라내기",
+      name: t.crop,
+      description: t.cropToolTip,
       shortcut: "C",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2091,8 +2093,8 @@ export default function ImageEditor() {
     },
     {
       mode: "hand",
-      name: "손",
-      description: "캔버스 이동 | Space 임시 전환",
+      name: t.hand,
+      description: t.handToolTip,
       shortcut: "H",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2107,8 +2109,8 @@ export default function ImageEditor() {
     },
     {
       mode: "zoom",
-      name: "확대/축소",
-      description: "클릭: 확대 | ⌥+클릭: 축소 | 휠: 줌",
+      name: t.zoomInOut,
+      description: t.zoomToolTip,
       shortcut: "Z",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2126,8 +2128,8 @@ export default function ImageEditor() {
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-surface-primary border-b border-border-default shrink-0">
-        <h1 className="text-sm font-semibold">Image Editor</h1>
+      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
+        <h1 className="text-sm font-semibold">{t.imageEditor}</h1>
 
         <div className="h-5 w-px bg-border-default" />
 
@@ -2135,30 +2137,30 @@ export default function ImageEditor() {
         <button
           onClick={handleNewCanvas}
           className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary border border-border-default rounded text-xs transition-colors"
-          title="새 캔버스"
+          title={t.newCanvas}
         >
-          New
+          {t.new}
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
           className="px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-xs transition-colors"
         >
-          Open
+          {t.open}
         </button>
         <button
           onClick={() => setIsProjectListOpen(true)}
           className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary border border-border-default rounded text-xs transition-colors"
-          title="저장된 프로젝트 목록"
+          title={t.savedProjects}
         >
-          Load
+          {t.load}
         </button>
         {imageSrc && (
           <button
             onClick={handleSaveProject}
             className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors"
-            title="프로젝트 저장 (⌘S)"
+            title={`${t.save} (⌘S)`}
           >
-            Save
+            {t.save}
           </button>
         )}
 
@@ -2172,7 +2174,7 @@ export default function ImageEditor() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-24 focus:outline-none focus:border-accent-primary"
-              placeholder="프로젝트명"
+              placeholder={t.projectName}
             />
 
             <div className="h-5 w-px bg-border-default" />
@@ -2210,11 +2212,10 @@ export default function ImageEditor() {
             {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp") && (
               <>
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-text-secondary">Size:</span>
+                  <span className="text-xs text-text-secondary">{t.size}:</span>
                   <button
                     onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
                     className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-                    title="브러시 크기 감소 ([ 또는 -)"
                   >
                     -
                   </button>
@@ -2231,7 +2232,6 @@ export default function ImageEditor() {
                   <button
                     onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
                     className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-                    title="브러시 크기 증가 (] 또는 =)"
                   >
                     +
                   </button>
@@ -2239,7 +2239,7 @@ export default function ImageEditor() {
 
                 {(toolMode === "brush" || toolMode === "eraser") && (
                   <div className="flex items-center gap-1">
-                    <span className="text-xs text-text-secondary">경도:</span>
+                    <span className="text-xs text-text-secondary">{t.hardness}:</span>
                     <input
                       type="range"
                       min="0"
@@ -2247,7 +2247,6 @@ export default function ImageEditor() {
                       value={brushHardness}
                       onChange={(e) => setBrushHardness(parseInt(e.target.value))}
                       className="w-14 accent-accent-primary"
-                      title="브러시 경도 (0=부드러움, 100=딱딱함)"
                     />
                     <span className="text-xs text-text-tertiary w-6">{brushHardness}%</span>
                   </div>
@@ -2255,13 +2254,12 @@ export default function ImageEditor() {
 
                 {toolMode === "brush" && (
                   <div className="flex items-center gap-1">
-                    <span className="text-xs text-text-secondary">Color:</span>
+                    <span className="text-xs text-text-secondary">{t.color}:</span>
                     <input
                       type="color"
                       value={brushColor}
                       onChange={(e) => setBrushColor(e.target.value)}
                       className="w-6 h-6 rounded cursor-pointer border border-border-default"
-                      title="브러시 색상"
                     />
                     <span className="text-xs text-text-tertiary">{brushColor}</span>
                   </div>
@@ -2270,8 +2268,8 @@ export default function ImageEditor() {
                 {toolMode === "stamp" && (
                   <span className="text-xs text-text-secondary">
                     {stampSource
-                      ? `소스: (${Math.round(stampSource.x)}, ${Math.round(stampSource.y)})`
-                      : "Alt+클릭으로 소스 지정"}
+                      ? `${t.source}: (${Math.round(stampSource.x)}, ${Math.round(stampSource.y)})`
+                      : t.altClickToSetSource}
                   </span>
                 )}
 
@@ -2284,7 +2282,7 @@ export default function ImageEditor() {
               <button
                 onClick={() => rotate(-90)}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title="왼쪽 회전"
+                title={t.rotateLeft}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2298,7 +2296,7 @@ export default function ImageEditor() {
               <button
                 onClick={() => rotate(90)}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title="오른쪽 회전"
+                title={t.rotateRight}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2318,7 +2316,7 @@ export default function ImageEditor() {
               <button
                 onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title="축소"
+                title={t.zoomOut}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -2328,7 +2326,7 @@ export default function ImageEditor() {
               <button
                 onClick={() => setZoom((z) => Math.min(10, z * 1.25))}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title="확대"
+                title={t.zoomIn}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -2342,7 +2340,7 @@ export default function ImageEditor() {
               <button
                 onClick={fitToScreen}
                 className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                title="화면에 맞추기"
+                title={t.fitToScreen}
               >
                 Fit
               </button>
@@ -2415,9 +2413,9 @@ export default function ImageEditor() {
             <button
               onClick={clearEdits}
               className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors"
-              title="편집 초기화"
+              title={t.resetEdit}
             >
-              Clear
+              {t.reset}
             </button>
 
             <button
@@ -2447,7 +2445,7 @@ export default function ImageEditor() {
 
         <div className="h-5 w-px bg-border-default" />
 
-        <ThemeToggle />
+        <SettingsMenu />
       </div>
 
       {/* Main Content Area */}
@@ -2483,12 +2481,12 @@ export default function ImageEditor() {
           <div className="w-56 bg-surface-primary border-l border-border-default flex flex-col shrink-0">
             {/* Layer Panel Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-              <span className="text-xs font-semibold">레이어</span>
+              <span className="text-xs font-semibold">{t.layers}</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={addLayer}
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                  title="새 레이어 추가"
+                  title={t.addLayer}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
@@ -2502,7 +2500,7 @@ export default function ImageEditor() {
                 <button
                   onClick={() => setIsLayerPanelOpen(false)}
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                  title="패널 닫기"
+                  title={t.closePanel}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
@@ -2535,7 +2533,7 @@ export default function ImageEditor() {
                       toggleLayerVisibility(layer.id);
                     }}
                     className={`p-0.5 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
-                    title={layer.visible ? "레이어 숨기기" : "레이어 보이기"}
+                    title={layer.visible ? t.hideLayer : t.showLayer}
                   >
                     <svg
                       className="w-3.5 h-3.5"
@@ -2584,7 +2582,7 @@ export default function ImageEditor() {
                       }}
                       disabled={idx === 0}
                       className="p-0.5 hover:bg-interactive-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                      title="위로 이동"
+                      title={t.moveUp}
                     >
                       <svg
                         className="w-3 h-3"
@@ -2607,7 +2605,7 @@ export default function ImageEditor() {
                       }}
                       disabled={idx === layers.length - 1}
                       className="p-0.5 hover:bg-interactive-hover rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                      title="아래로 이동"
+                      title={t.moveDown}
                     >
                       <svg
                         className="w-3 h-3"
@@ -2629,7 +2627,7 @@ export default function ImageEditor() {
                         deleteLayer(layer.id);
                       }}
                       className="p-0.5 hover:bg-accent-danger/20 hover:text-accent-danger rounded"
-                      title="레이어 삭제"
+                      title={t.deleteLayer}
                     >
                       <svg
                         className="w-3 h-3"
@@ -2654,7 +2652,7 @@ export default function ImageEditor() {
             {activeLayerId && (
               <div className="px-3 py-2 border-t border-border-default">
                 <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
-                  <span>불투명도</span>
+                  <span>{t.opacity}</span>
                   <span>{layers.find((l) => l.id === activeLayerId)?.opacity || 100}%</span>
                 </div>
                 <input
@@ -2670,9 +2668,9 @@ export default function ImageEditor() {
                     onClick={() => mergeLayerDown(activeLayerId)}
                     disabled={layers.findIndex((l) => l.id === activeLayerId) === layers.length - 1}
                     className="flex-1 px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed border border-border-default rounded text-xs transition-colors"
-                    title="아래 레이어와 병합"
+                    title={t.mergeDown}
                   >
-                    아래와 병합
+                    {t.mergeDown}
                   </button>
                 </div>
               </div>
@@ -2685,7 +2683,7 @@ export default function ImageEditor() {
           <button
             onClick={() => setIsLayerPanelOpen(true)}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-surface-primary border border-border-default rounded-l-lg hover:bg-interactive-hover transition-colors z-10"
-            title="레이어 패널 열기"
+            title={t.openLayerPanel}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -2812,7 +2810,7 @@ export default function ImageEditor() {
                           handleDeleteProject(project.id);
                         }}
                         className="p-2 hover:bg-accent-danger/20 rounded transition-colors text-text-tertiary hover:text-accent-danger"
-                        title="삭제"
+                        title={t.delete}
                       >
                         <svg
                           className="w-4 h-4"

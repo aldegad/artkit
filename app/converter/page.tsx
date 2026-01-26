@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import ThemeToggle from "../../components/ThemeToggle";
+import { useLanguage } from "../../contexts/LanguageContext";
+import SettingsMenu from "../../components/SettingsMenu";
 import ImageDropZone from "../../components/ImageDropZone";
 
 interface ImageFile {
@@ -19,6 +20,7 @@ interface ImageFile {
 type OutputFormat = "webp" | "jpeg" | "png";
 
 export default function ImageConverter() {
+  const { t } = useLanguage();
   const [images, setImages] = useState<ImageFile[]>([]);
   const [quality, setQuality] = useState(0.8);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("webp");
@@ -165,14 +167,14 @@ export default function ImageConverter() {
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Top Toolbar */}
-      <div className="flex items-center gap-4 px-4 py-3 bg-surface-primary border-b border-border-default flex-shrink-0">
-        <h1 className="text-lg font-semibold">Image Converter</h1>
+      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
+        <h1 className="text-sm font-semibold">{t.imageConverter}</h1>
 
         <div className="h-6 w-px bg-border-default" />
 
         {/* Format selector */}
         <div className="flex items-center gap-2">
-          <span className="text-sm text-text-secondary">Format:</span>
+          <span className="text-sm text-text-secondary">{t.format}:</span>
           <select
             value={outputFormat}
             onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
@@ -187,7 +189,7 @@ export default function ImageConverter() {
         {/* Quality slider */}
         {outputFormat !== "png" && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-text-secondary">Quality:</span>
+            <span className="text-sm text-text-secondary">{t.quality}:</span>
             <input
               type="range"
               min="0.1"
@@ -208,7 +210,7 @@ export default function ImageConverter() {
           disabled={images.length === 0 || isConverting}
           className="px-4 py-1.5 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
         >
-          {isConverting ? "Converting..." : "Convert All"}
+          {isConverting ? t.converting : t.convertAll}
         </button>
 
         {hasConverted && (
@@ -216,7 +218,7 @@ export default function ImageConverter() {
             onClick={downloadAll}
             className="px-4 py-1.5 bg-accent-success hover:bg-accent-success/80 text-white rounded-lg text-sm transition-colors"
           >
-            Download All
+            {t.downloadAll}
           </button>
         )}
 
@@ -225,7 +227,7 @@ export default function ImageConverter() {
             onClick={clearAll}
             className="px-4 py-1.5 bg-accent-danger hover:bg-accent-danger-hover text-white rounded-lg text-sm transition-colors"
           >
-            Clear
+            {t.clear}
           </button>
         )}
 
@@ -234,7 +236,7 @@ export default function ImageConverter() {
         {/* Stats */}
         {images.length > 0 && (
           <div className="text-sm text-text-secondary">
-            {images.length} files
+            {images.length} {t.files}
             {hasConverted && (
               <>
                 {" · "}
@@ -259,9 +261,9 @@ export default function ImageConverter() {
           </div>
         )}
 
-        <div className="h-6 w-px bg-border-default" />
+        <div className="h-5 w-px bg-border-default" />
 
-        <ThemeToggle />
+        <SettingsMenu />
       </div>
 
       {/* Main Content */}
@@ -328,7 +330,7 @@ export default function ImageConverter() {
                       onClick={() => downloadImage(image)}
                       className="w-full mt-3 px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-xs transition-colors"
                     >
-                      Download
+                      {t.download}
                     </button>
                   )}
                 </div>
@@ -353,7 +355,7 @@ export default function ImageConverter() {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              <span className="text-sm text-text-tertiary">Add more</span>
+              <span className="text-sm text-text-tertiary">{t.addMore}</span>
             </div>
           </div>
         )}

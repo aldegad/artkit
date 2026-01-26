@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useLayout } from "../../contexts/LayoutContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 import { PanelNode } from "../../types/layout";
 import { getPanelContent, getPanelTitle, isPanelHeaderVisible } from "./PanelRegistry";
 
@@ -21,6 +22,7 @@ type DockPosition = "left" | "right" | "top" | "bottom" | null;
 
 export default function Panel({ node }: PanelProps) {
   const { undockPanel, layoutState, updateDropTarget } = useLayout();
+  const { t } = useLanguage();
   const panelRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<DockPosition>(null);
 
@@ -169,7 +171,7 @@ export default function Panel({ node }: PanelProps) {
             <button
               onClick={() => undockPanel(node.id)}
               className="p-1.5 hover:bg-interactive-hover rounded-lg text-text-tertiary hover:text-text-primary transition-all"
-              title="플로팅으로 전환"
+              title={t.floatingMode}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path

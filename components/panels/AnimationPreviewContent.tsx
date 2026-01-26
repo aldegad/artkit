@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../../contexts/EditorContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 // ============================================
 // Component
@@ -9,6 +10,7 @@ import { useEditor } from "../../contexts/EditorContext";
 
 export default function AnimationPreviewContent() {
   const { frames, fps, setFps, toolMode } = useEditor();
+  const { t } = useLanguage();
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
@@ -26,12 +28,12 @@ export default function AnimationPreviewContent() {
 
   // Preset colors for quick selection
   const presetColors = [
-    { color: "#000000", label: "검정" },
-    { color: "#FFFFFF", label: "흰색" },
-    { color: "#808080", label: "회색" },
-    { color: "#87CEEB", label: "하늘" },
-    { color: "#90EE90", label: "초록" },
-    { color: "#FFB6C1", label: "분홍" },
+    { color: "#000000", label: t.colorBlack },
+    { color: "#FFFFFF", label: t.colorWhite },
+    { color: "#808080", label: t.colorGray },
+    { color: "#87CEEB", label: t.colorSky },
+    { color: "#90EE90", label: t.colorGreen },
+    { color: "#FFB6C1", label: t.colorPink },
   ];
 
   // Handle background image upload
@@ -265,7 +267,7 @@ export default function AnimationPreviewContent() {
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm">
-            프레임이 없습니다
+            {t.noFramesAvailable}
           </div>
         )}
       </div>
@@ -290,7 +292,7 @@ export default function AnimationPreviewContent() {
             }`}
             disabled={validFrames.length === 0}
           >
-            {isPlaying ? "⏸ 정지" : "▶ 재생"}
+            {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
           </button>
           <button
             onClick={handleNext}
@@ -317,7 +319,7 @@ export default function AnimationPreviewContent() {
           </div>
 
           <div className="flex items-center gap-2 flex-1">
-            <span className="text-text-secondary whitespace-nowrap">확대:</span>
+            <span className="text-text-secondary whitespace-nowrap">{t.scale}:</span>
             <input
               type="range"
               min="1"
@@ -333,13 +335,13 @@ export default function AnimationPreviewContent() {
 
         {/* Background selector */}
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-text-secondary whitespace-nowrap">배경:</span>
+          <span className="text-text-secondary whitespace-nowrap">{t.background}:</span>
           <button
             onClick={() => setBgType("checkerboard")}
             className={`w-6 h-6 rounded-lg border-2 checkerboard transition-colors ${
               bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
             }`}
-            title="투명 (체커보드)"
+            title={t.transparent}
           />
           {presetColors.map(({ color, label }) => (
             <button
@@ -365,7 +367,7 @@ export default function AnimationPreviewContent() {
               setBgColor(e.target.value);
             }}
             className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
-            title="커스텀 색상"
+            title={t.customColor}
           />
           <div className="border-l border-border-default h-4 mx-1" />
           <input
@@ -382,9 +384,9 @@ export default function AnimationPreviewContent() {
                 ? "border-accent-primary bg-accent-primary/20"
                 : "border-border-default hover:bg-interactive-hover"
             }`}
-            title="배경 이미지 업로드"
+            title={t.uploadBgImage}
           >
-            이미지
+            {t.image}
           </button>
           {bgType === "image" && bgImage && (
             <button
@@ -393,7 +395,7 @@ export default function AnimationPreviewContent() {
                 setBgType("checkerboard");
               }}
               className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-xs text-text-secondary transition-colors"
-              title="배경 이미지 제거"
+              title={t.removeBgImage}
             >
               ✕
             </button>
@@ -403,8 +405,8 @@ export default function AnimationPreviewContent() {
         {/* Frame info */}
         <div className="text-center text-xs text-text-tertiary">
           {validFrames.length > 0
-            ? `프레임 ${currentFrameIndex + 1} / ${validFrames.length}`
-            : "프레임 없음"}
+            ? `${t.frame} ${currentFrameIndex + 1} / ${validFrames.length}`
+            : t.noFrames}
         </div>
       </div>
     </div>

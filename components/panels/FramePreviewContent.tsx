@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../../contexts/EditorContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 // ============================================
 // Icon Components
@@ -74,6 +75,7 @@ export default function FramePreviewContent() {
     brushSize,
     setBrushSize,
   } = useEditor();
+  const { t } = useLanguage();
 
   const [previewScale, setPreviewScale] = useState(3);
   const [isPanning, setIsPanning] = useState(false);
@@ -577,7 +579,7 @@ export default function FramePreviewContent() {
                 ? "bg-accent-primary text-white"
                 : "hover:bg-interactive-hover"
             }`}
-            title="브러시 (그리기)"
+            title={t.brushDraw}
           >
             <BrushIcon />
           </button>
@@ -591,7 +593,7 @@ export default function FramePreviewContent() {
                 ? "bg-accent-primary text-white"
                 : "hover:bg-interactive-hover"
             }`}
-            title="지우개"
+            title={t.eraser}
           >
             <EraserIcon />
           </button>
@@ -605,7 +607,7 @@ export default function FramePreviewContent() {
                 ? "bg-accent-primary text-white"
                 : "hover:bg-interactive-hover"
             }`}
-            title="스포이드 (색상 추출)"
+            title={t.colorPickerTip}
           >
             <EyedropperIcon />
           </button>
@@ -614,7 +616,7 @@ export default function FramePreviewContent() {
             className={`p-1.5 rounded ${
               isBackgroundRemovalMode ? "bg-pink-500 text-white" : "hover:bg-interactive-hover"
             }`}
-            title="배경 삭제 (클릭으로 배경 제거)"
+            title={t.removeBackgroundTip}
           >
             <MagicWandIcon />
           </button>
@@ -626,7 +628,7 @@ export default function FramePreviewContent() {
         {!isBackgroundRemovalMode && (
           <>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-text-secondary">색상:</label>
+              <label className="text-xs text-text-secondary">{t.color}:</label>
               <input
                 type="color"
                 value={brushColor}
@@ -641,7 +643,7 @@ export default function FramePreviewContent() {
 
             {/* Brush size */}
             <div className="flex items-center gap-2">
-              <label className="text-xs text-text-secondary">크기:</label>
+              <label className="text-xs text-text-secondary">{t.size}:</label>
               <input
                 type="range"
                 min="1"
@@ -658,7 +660,7 @@ export default function FramePreviewContent() {
         {/* Tolerance slider - only when in background removal mode */}
         {isBackgroundRemovalMode && (
           <div className="flex items-center gap-2">
-            <label className="text-xs text-pink-400">허용치:</label>
+            <label className="text-xs text-pink-400">{t.tolerance}:</label>
             <input
               type="range"
               min="0"
@@ -755,7 +757,7 @@ export default function FramePreviewContent() {
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm">
-            프레임을 선택하세요
+            {t.selectFrame}
           </div>
         )}
       </div>
@@ -769,7 +771,7 @@ export default function FramePreviewContent() {
             className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
             disabled={validFrames.length === 0}
           >
-            ◀ 이전
+            ◀ {t.previous}
           </button>
           <span className="px-4 text-sm text-text-primary">
             {validFrames.length > 0 ? `${currentFrameIndex + 1} / ${validFrames.length}` : "-"}
@@ -779,14 +781,14 @@ export default function FramePreviewContent() {
             className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
             disabled={validFrames.length === 0}
           >
-            다음 ▶
+            {t.next} ▶
           </button>
         </div>
 
         {/* Scale & Tolerance controls */}
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2 flex-1">
-            <span className="text-text-secondary">확대:</span>
+            <span className="text-text-secondary">{t.scale}:</span>
             <input
               type="range"
               min="1"
@@ -801,7 +803,7 @@ export default function FramePreviewContent() {
 
           {isBackgroundRemovalMode && (
             <div className="flex items-center gap-2 flex-1">
-              <span className="text-text-secondary">허용치:</span>
+              <span className="text-text-secondary">{t.tolerance}:</span>
               <input
                 type="range"
                 min="0"

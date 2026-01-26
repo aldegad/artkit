@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, ReactNode } from "react";
 import { useDocking } from "../../contexts/DockingContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 import { DockPosition } from "../../types";
 
 // ============================================
@@ -20,6 +21,7 @@ interface SplitPaneProps {
 
 export default function SplitPane({ position, children, onClose }: SplitPaneProps) {
   const { getDockedPanels, resizeDockedPanel, undockWindow } = useDocking();
+  const { t } = useLanguage();
   const panels = getDockedPanels(position);
 
   const [isResizing, setIsResizing] = useState(false);
@@ -104,7 +106,7 @@ export default function SplitPane({ position, children, onClose }: SplitPaneProp
           <button
             onClick={() => undockWindow(panel.id)}
             className="p-1 hover:bg-interactive-hover rounded text-text-secondary hover:text-text-primary"
-            title="플로팅으로 전환"
+            title={t.floatingMode}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

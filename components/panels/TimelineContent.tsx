@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState } from "react";
 import { useEditor } from "../../contexts/EditorContext";
 import { useLayout } from "../../contexts/LayoutContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 import { Point } from "../../types";
 import {
   downloadFramesAsZip,
@@ -24,6 +25,7 @@ interface ExportDropdownProps {
 function ExportDropdown({ frames, fps, onExportSpriteSheet }: ExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const { t } = useLanguage();
 
   const projectName = "sprite-project"; // TODO: Get from context
 
@@ -49,7 +51,7 @@ function ExportDropdown({ frames, fps, onExportSpriteSheet }: ExportDropdownProp
       }
     } catch (error) {
       console.error("Export failed:", error);
-      alert("내보내기 실패: " + (error as Error).message);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
     } finally {
       setIsExporting(false);
       setIsOpen(false);
@@ -229,6 +231,7 @@ export default function TimelineContent() {
   const [isFileDragOver, setIsFileDragOver] = useState(false);
 
   const { openFloatingWindow } = useLayout();
+  const { t } = useLanguage();
 
   // Preview frame drawing
   const drawPreviewFrame = useCallback(
@@ -768,7 +771,7 @@ export default function TimelineContent() {
         </div>
 
         <span className="text-xs text-text-secondary">
-          {frames.length > 0 ? `${currentFrameIndex + 1} / ${frames.length}` : "프레임 없음"}
+          {frames.length > 0 ? `${currentFrameIndex + 1} / ${frames.length}` : t.noFrames}
         </span>
 
         <div className="divider" />
@@ -778,7 +781,7 @@ export default function TimelineContent() {
           <button
             onClick={() => setTimelineMode("reorder")}
             className={`tool-btn ${timelineMode === "reorder" ? "active" : ""}`}
-            title="순서 변경 모드"
+            title={t.reorderMode}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -788,12 +791,11 @@ export default function TimelineContent() {
                 d="M8 9l4-4 4 4m0 6l-4 4-4-4"
               />
             </svg>
-            순서
           </button>
           <button
             onClick={() => setTimelineMode("offset")}
             className={`tool-btn ${timelineMode === "offset" ? "active" : ""}`}
-            title="위치 조정 모드"
+            title={t.offsetMode}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -809,7 +811,6 @@ export default function TimelineContent() {
                 d="M19 14l-7 7m0 0l-7-7"
               />
             </svg>
-            위치
           </button>
         </div>
 
@@ -901,7 +902,7 @@ export default function TimelineContent() {
         <button
           onClick={() => setIsBackgroundRemovalMode(!isBackgroundRemovalMode)}
           className={`btn ${isBackgroundRemovalMode ? "btn-danger" : "btn-ghost"}`}
-          title={isBackgroundRemovalMode ? "배경삭제 모드 종료" : "프레임 클릭 시 배경 제거"}
+          title={t.backgroundRemovalMode}
         >
           {isBackgroundRemovalMode ? (
             <>
@@ -913,7 +914,7 @@ export default function TimelineContent() {
                   d="M6 18L18 6M6 6l12 12"
                 />
               </svg>
-              닫기
+              {t.close}
             </>
           ) : (
             <>
@@ -925,7 +926,6 @@ export default function TimelineContent() {
                   d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
                 />
               </svg>
-              배경삭제
             </>
           )}
         </button>
@@ -936,16 +936,20 @@ export default function TimelineContent() {
               <button
                 onClick={() => setEraserMode("connected")}
                 className={`tool-btn ${eraserMode === "connected" ? "active" : ""}`}
-                title="클릭한 위치에서 연결된 영역만 삭제"
+                title={t.connectedAreaOnly}
               >
-                연결만
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="3" strokeWidth={2} />
+                </svg>
               </button>
               <button
                 onClick={() => setEraserMode("all")}
                 className={`tool-btn ${eraserMode === "all" ? "active" : ""}`}
-                title="이미지 전체에서 같은 색상 모두 삭제"
+                title={t.allSameColor}
               >
-                전체색상
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
               </button>
             </div>
             <div className="flex items-center gap-2 bg-surface-secondary rounded-full px-3 py-1.5">
@@ -1079,12 +1083,12 @@ export default function TimelineContent() {
                     deleteFrame(frame.id);
                   }}
                   className="absolute -top-2 -right-2 w-5 h-5 bg-accent-danger hover:bg-accent-danger-hover rounded-full flex items-center justify-center text-xs z-10 text-white transition-all hover:scale-110 shadow-sm"
-                  title="프레임 삭제"
+                  title={t.deleteFrame}
                 >
                   ×
                 </button>
 
-                {/* Reset button - 배경 삭제 모드일 때 표시 */}
+                {/* Reset button - shown in background removal mode */}
                 {isBackgroundRemovalMode && (
                   <button
                     onClick={(e) => {
@@ -1092,7 +1096,7 @@ export default function TimelineContent() {
                       resetFrameImage(frame.id);
                     }}
                     className="absolute -top-2 right-5 w-5 h-5 bg-accent-warning hover:bg-accent-warning-hover rounded-full flex items-center justify-center text-xs z-10 text-white transition-all hover:scale-110 shadow-sm"
-                    title="원본으로 초기화"
+                    title={t.resetToOriginal}
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path

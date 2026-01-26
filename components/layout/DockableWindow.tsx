@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, ReactNode } from "react";
 import { useDocking } from "../../contexts/DockingContext";
+import { useLanguage } from "../../contexts/LanguageContext";
 import { Point, Size } from "../../types";
 
 // ============================================
@@ -43,6 +44,7 @@ export default function DockableWindow({
     undockWindow,
     activeDropZone,
   } = useDocking();
+  const { t } = useLanguage();
 
   const [position, setPosition] = useState<Point>(initialPosition);
   const [size, setSize] = useState<Size>(initialSize);
@@ -175,7 +177,7 @@ export default function DockableWindow({
             <button
               onClick={handleUndock}
               className="p-1 hover:bg-interactive-hover rounded text-text-secondary hover:text-text-primary transition-colors"
-              title="언도킹"
+              title={t.undock}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
