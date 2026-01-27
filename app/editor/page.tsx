@@ -2629,12 +2629,14 @@ export default function ImageEditor() {
     icon: React.ReactNode;
     name: string;
     description: string;
+    keys?: string[];
     shortcut: string;
   }[] = [
     {
       mode: "marquee",
       name: t.marquee,
-      description: "⌥+drag: clone | ⇧: axis lock",
+      description: t.marquee,
+      keys: ["⌥+Drag: Clone", "⇧: Axis lock", "Delete: Clear"],
       shortcut: "M",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2646,6 +2648,7 @@ export default function ImageEditor() {
       mode: "brush",
       name: t.brush,
       description: t.brushToolTip,
+      keys: ["[ ]: Size -/+", "⇧: Straight line"],
       shortcut: "B",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2662,6 +2665,7 @@ export default function ImageEditor() {
       mode: "eraser",
       name: t.eraser,
       description: t.eraserToolTip,
+      keys: ["[ ]: Size -/+"],
       shortcut: "E",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2669,7 +2673,7 @@ export default function ImageEditor() {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+            d="M5.506 18.97L3.03 21.446a.75.75 0 01-1.06-1.06l2.474-2.476a4.002 4.002 0 01-.356-4.818l8.574-8.574a3 3 0 014.243 0l1.414 1.414a3 3 0 010 4.243l-8.574 8.574a4.002 4.002 0 01-4.239-.78z"
           />
         </svg>
       ),
@@ -2678,6 +2682,7 @@ export default function ImageEditor() {
       mode: "fill",
       name: t.fill,
       description: t.fillToolTip,
+      keys: ["Click: Fill area"],
       shortcut: "G",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2685,7 +2690,13 @@ export default function ImageEditor() {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
+            d="M19 11V5a2 2 0 00-2-2H7a2 2 0 00-2 2v6M5 11l7 10 7-10H5z"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 17c0 1.657-1.343 3-3 3s-3-1.343-3-3c0-2 3-5 3-5s3 3 3 5z"
           />
         </svg>
       ),
@@ -2694,6 +2705,7 @@ export default function ImageEditor() {
       mode: "eyedropper",
       name: t.eyedropper,
       description: t.eyedropperToolTip,
+      keys: ["Click: Pick color", "⌥+Click: From any tool"],
       shortcut: "I",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2701,8 +2713,9 @@ export default function ImageEditor() {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+            d="M20.354 3.646a2.5 2.5 0 00-3.536 0l-1.06 1.061 3.535 3.536 1.061-1.061a2.5 2.5 0 000-3.536zM14.172 6.293l-8.586 8.586a2 2 0 00-.498.83l-1.06 3.535a.5.5 0 00.631.632l3.536-1.06a2 2 0 00.829-.499l8.586-8.586-3.438-3.438z"
           />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.5 21.5l-1-1" />
         </svg>
       ),
     },
@@ -2710,6 +2723,7 @@ export default function ImageEditor() {
       mode: "stamp",
       name: t.cloneStamp,
       description: t.cloneStampToolTip,
+      keys: ["⌥+Click: Set source", "Drag: Clone paint"],
       shortcut: "S",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2717,7 +2731,7 @@ export default function ImageEditor() {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+            d="M12 3v4M12 7c-3 0-6 1-6 4v1h12v-1c0-3-3-4-6-4zM4 14h16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM8 18v3M16 18v3"
           />
         </svg>
       ),
@@ -2726,6 +2740,7 @@ export default function ImageEditor() {
       mode: "crop",
       name: t.crop,
       description: t.cropToolTip,
+      keys: ["Drag: Select area", "Enter: Apply crop"],
       shortcut: "C",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2742,6 +2757,7 @@ export default function ImageEditor() {
       mode: "hand",
       name: t.hand,
       description: t.handToolTip,
+      keys: ["Drag: Pan canvas", "Space: Temp hand", "Wheel: Zoom"],
       shortcut: "H",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2758,6 +2774,7 @@ export default function ImageEditor() {
       mode: "zoom",
       name: t.zoomInOut,
       description: t.zoomToolTip,
+      keys: ["Click: Zoom in", "⌥+Click: Zoom out", "Wheel: Zoom"],
       shortcut: "Z",
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2832,9 +2849,18 @@ export default function ImageEditor() {
                 <Tooltip
                   key={tool.mode}
                   content={
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-1">
                       <span className="font-medium">{tool.name}</span>
-                      <span className="text-text-tertiary text-[10px]">{tool.description}</span>
+                      <span className="text-text-tertiary text-[11px]">{tool.description}</span>
+                      {tool.keys && tool.keys.length > 0 && (
+                        <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default">
+                          {tool.keys.map((key, i) => (
+                            <span key={i} className="text-[10px] text-text-tertiary font-mono">
+                              {key}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   }
                   shortcut={tool.shortcut}
