@@ -36,3 +36,14 @@ export {
   compositionLayerToUnified,
   imageLayerToUnified,
 } from "./types";
+
+// Utils
+export {
+  loadEditorAutosaveData,
+  saveEditorAutosaveData,
+  clearEditorAutosaveData,
+  EDITOR_AUTOSAVE_KEY,
+  EDITOR_AUTOSAVE_DEBOUNCE_MS,
+} from "./utils";
+
+export type { EditorAutosaveData } from "./utils";

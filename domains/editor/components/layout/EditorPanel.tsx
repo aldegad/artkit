@@ -4,7 +4,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { useEditorLayout } from "../../contexts/EditorLayoutContext";
 import { useLanguage } from "../../../../shared/contexts";
 import { PanelNode } from "../../../../types/layout";
-import { getEditorPanelContent, getEditorPanelTitle, isEditorPanelHeaderVisible } from "./EditorPanelRegistry";
+import { getEditorPanelContent, getEditorPanelTitle, isEditorPanelHeaderVisible, usePanelUpdate } from "./EditorPanelRegistry";
 
 // ============================================
 // Types
@@ -25,6 +25,9 @@ export default function EditorPanel({ node }: EditorPanelProps) {
   const { t } = useLanguage();
   const panelRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<DockPosition>(null);
+
+  // Subscribe to panel content updates
+  usePanelUpdate();
 
   const content = getEditorPanelContent(node.panelId);
   const showHeader = isEditorPanelHeaderVisible(node.panelId);

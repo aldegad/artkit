@@ -11,7 +11,7 @@ import {
   SpriteFrame,
 } from "../../domains/sprite";
 import { useLanguage } from "../../shared/contexts";
-import { SettingsMenu, Tooltip } from "../../shared/components";
+import { Tooltip } from "../../shared/components";
 import {
   saveProject as saveProjectToDB,
   getAllProjects,
@@ -772,10 +772,7 @@ function SpriteEditorMain() {
           | {t.spaceAltToPan} | {t.wheelToZoom} ({Math.round(zoom * 100)}%)
         </span>
 
-        <div className="h-6 w-px bg-border-default" />
-
-        <SettingsMenu />
-      </div>
+        </div>
 
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">

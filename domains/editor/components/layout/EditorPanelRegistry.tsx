@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 
 // ============================================
 // Panel Metadata
@@ -41,9 +41,35 @@ const PANEL_META: Record<string, PanelMeta> = {
 // Panel component registry - will be set dynamically from page
 let panelComponents: Record<string, () => ReactNode> = {};
 
+// Listeners for panel updates
+const updateListeners: Set<() => void> = new Set();
+
+// Subscribe to panel updates
+export function subscribeToPanelUpdates(listener: () => void): () => void {
+  updateListeners.add(listener);
+  return () => {
+    updateListeners.delete(listener);
+  };
+}
+
+// Notify all listeners of panel update
+function notifyPanelUpdate() {
+  updateListeners.forEach((listener) => listener());
+}
+
+// Hook to force re-render when panels update
+export function usePanelUpdate() {
+  const [, setVersion] = useState(0);
+
+  useEffect(() => {
+    return subscribeToPanelUpdates(() => setVersion((v) => v + 1));
+  }, []);
+}
+
 // Register a panel component
 export function registerEditorPanelComponent(panelId: string, component: () => ReactNode) {
   panelComponents[panelId] = component;
+  notifyPanelUpdate();
 }
 
 // Clear all registered components

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLanguage } from "../../shared/contexts";
-import { SettingsMenu, Tooltip, ImageDropZone } from "../../shared/components";
+import { Tooltip, ImageDropZone } from "../../shared/components";
 import {
   EditorToolMode,
   AspectRatio,
@@ -16,6 +16,10 @@ import {
   createImageLayer,
   createPaintLayer,
   ProjectListModal,
+  loadEditorAutosaveData,
+  saveEditorAutosaveData,
+  clearEditorAutosaveData,
+  EDITOR_AUTOSAVE_DEBOUNCE_MS,
 } from "../../domains/editor";
 import {
   saveImageProject,
@@ -113,6 +117,9 @@ export default function ImageEditor() {
   // Drag state for image layers
   const [isDraggingLayer, setIsDraggingLayer] = useState(false);
   const [layerDragStart, setLayerDragStart] = useState<Point>({ x: 0, y: 0 });
+  // Drag state for layer panel reordering
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -397,6 +404,26 @@ export default function ImageEditor() {
     });
   }, []);
 
+  // Reorder layers via drag and drop
+  const reorderLayers = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) return;
+
+    setLayers((prev) => {
+      const sortedLayers = [...prev].sort((a, b) => b.zIndex - a.zIndex);
+      const fromIndex = sortedLayers.findIndex((l) => l.id === fromId);
+      const toIndex = sortedLayers.findIndex((l) => l.id === toId);
+
+      if (fromIndex === -1 || toIndex === -1) return prev;
+
+      const newSorted = [...sortedLayers];
+      const [removed] = newSorted.splice(fromIndex, 1);
+      newSorted.splice(toIndex, 0, removed);
+
+      // Update zIndex based on new order (higher index in sorted = higher zIndex)
+      return newSorted.map((l, i) => ({ ...l, zIndex: newSorted.length - 1 - i }));
+    });
+  }, []);
+
   // Merge paint layer down (only for paint layers)
   const mergeLayerDown = useCallback(
     (layerId: string) => {
@@ -517,10 +544,7 @@ export default function ImageEditor() {
         const src = event.target?.result as string;
         const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        // Always add as image layer
-        addImageLayer(src, fileName);
-
-        // Also set as main image if no main image exists
+        // If no main image exists, set this as the main image first
         if (!imageSrc) {
           setImageSrc(src);
           setRotation(0);
@@ -533,14 +557,43 @@ export default function ImageEditor() {
           img.onload = () => {
             imageRef.current = img;
             setImageSize({ width: img.width, height: img.height });
-            initEditCanvas(img.width, img.height);
+
+            // Create image layer and default paint layer together
+            const imageLayer = createImageLayer(
+              src,
+              fileName,
+              { width: img.width, height: img.height },
+              1 // Higher zIndex for image layer
+            );
+            const paintLayer = createPaintLayer(`${t.layer} 1`, 0);
+
+            // Create paint canvas
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            layerCanvasesRef.current.set(paintLayer.id, canvas);
+            editCanvasRef.current = canvas;
+
+            // Set layers and active layer
+            setLayers([imageLayer, paintLayer]);
+            setActiveLayerId(paintLayer.id);
+
+            // Load image for the image layer
+            setLayerImages((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(imageLayer.id, img);
+              return newMap;
+            });
           };
           img.src = src;
+        } else {
+          // Add as image layer to existing project
+          addImageLayer(src, fileName);
         }
       };
       reader.readAsDataURL(file);
     },
-    [initEditCanvas, addImageLayer, imageSrc],
+    [addImageLayer, imageSrc, t.layer],
   );
 
   // Handle file input
@@ -831,11 +884,41 @@ export default function ImageEditor() {
               .map((layer) => (
                 <div
                   key={layer.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedLayerId(layer.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedLayerId && draggedLayerId !== layer.id) {
+                      setDragOverLayerId(layer.id);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    setDragOverLayerId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedLayerId && draggedLayerId !== layer.id) {
+                      reorderLayers(draggedLayerId, layer.id);
+                    }
+                    setDraggedLayerId(null);
+                    setDragOverLayerId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedLayerId(null);
+                    setDragOverLayerId(null);
+                  }}
                   onClick={() => selectLayer(layer.id)}
-                  className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                  className={`flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
                     activeLayerId === layer.id
                       ? "bg-accent-primary/20 border border-accent-primary/50"
                       : "hover:bg-interactive-hover border border-transparent"
+                  } ${
+                    draggedLayerId === layer.id ? "opacity-50 scale-95" : ""
+                  } ${
+                    dragOverLayerId === layer.id ? "border-accent-primary! bg-accent-primary/10 scale-105" : ""
                   }`}
                 >
                   {/* Visibility toggle */}
@@ -2224,6 +2307,130 @@ export default function ImageEditor() {
     loadProjects();
   }, []);
 
+  // ============================================
+  // Auto-save/load functionality
+  // ============================================
+  const isInitializedRef = useRef(false);
+  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Load autosave data on mount
+  useEffect(() => {
+    const loadAutosave = async () => {
+      try {
+        const data = await loadEditorAutosaveData();
+        // Only restore if autosave exists AND no image has been loaded yet
+        if (data && data.imageSrc && !imageSrc) {
+          // Restore state from autosave
+          setImageSrc(data.imageSrc);
+          setImageSize(data.imageSize);
+          setRotation(data.rotation);
+          setZoom(data.zoom);
+          setPan(data.pan);
+          setProjectName(data.projectName);
+          setActiveLayerId(data.activeLayerId);
+          setBrushSize(data.brushSize);
+          setBrushColor(data.brushColor);
+          setBrushHardness(data.brushHardness);
+
+          // Load image and restore layers
+          const img = new Image();
+          img.onload = () => {
+            imageRef.current = img;
+            const { width, height } = data.imageSize;
+            initEditCanvas(width, height, data.layers);
+          };
+          img.src = data.imageSrc;
+        }
+      } catch (error) {
+        console.error("Failed to load autosave:", error);
+      }
+      isInitializedRef.current = true;
+    };
+    loadAutosave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-save on state change (debounced)
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
+    if (!imageSrc) return;
+
+    // Clear existing timeout
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+    }
+
+    // Debounced save
+    autosaveTimeoutRef.current = setTimeout(() => {
+      // Prepare layers with paint data
+      const savedLayers: UnifiedLayer[] = layers.map((layer) => {
+        if (layer.type === "paint") {
+          const canvas = layerCanvasesRef.current.get(layer.id);
+          return {
+            ...layer,
+            paintData: canvas ? canvas.toDataURL("image/png") : layer.paintData || "",
+          };
+        }
+        return { ...layer };
+      });
+
+      saveEditorAutosaveData({
+        imageSrc,
+        imageSize,
+        rotation,
+        zoom,
+        pan,
+        projectName,
+        layers: savedLayers,
+        activeLayerId,
+        brushSize,
+        brushColor,
+        brushHardness,
+      });
+    }, EDITOR_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, [
+    imageSrc,
+    imageSize,
+    rotation,
+    zoom,
+    pan,
+    projectName,
+    layers,
+    activeLayerId,
+    brushSize,
+    brushColor,
+    brushHardness,
+  ]);
+
+  // Clear autosave when starting fresh
+  const handleNewProject = useCallback(() => {
+    clearEditorAutosaveData();
+    setImageSrc(null);
+    setImageSize({ width: 0, height: 0 });
+    setRotation(0);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setProjectName("Untitled");
+    setCurrentProjectId(null);
+    setLayers([]);
+    setActiveLayerId(null);
+    setCropArea(null);
+    setSelection(null);
+    setStampSource(null);
+    historyRef.current = [];
+    historyIndexRef.current = -1;
+    layerCanvasesRef.current.clear();
+    setLayerImages(new Map());
+    editCanvasRef.current = null;
+    imageRef.current = null;
+  }, []);
+
   // Save current project
   const handleSaveProject = useCallback(async () => {
     if (!imageSrc || !imageRef.current) return;
@@ -2389,7 +2596,12 @@ export default function ImageEditor() {
   const handleNewCanvas = useCallback(() => {
     if (imageSrc && !confirm(t.unsavedChangesConfirm)) return;
 
+    // Clear autosave
+    clearEditorAutosaveData();
+
+    // Reset image state
     setImageSrc(null);
+    setImageSize({ width: 0, height: 0 });
     setProjectName("Untitled");
     setCurrentProjectId(null);
     setRotation(0);
@@ -2398,6 +2610,14 @@ export default function ImageEditor() {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setStampSource(null);
+
+    // Reset layers
+    setLayers([]);
+    setActiveLayerId(null);
+    layerCanvasesRef.current.clear();
+    setLayerImages(new Map());
+
+    // Reset refs
     imageRef.current = null;
     editCanvasRef.current = null;
     historyRef.current = [];
@@ -2870,10 +3090,7 @@ export default function ImageEditor() {
           </div>
         )}
 
-        <div className="h-5 w-px bg-border-default" />
-
-        <SettingsMenu />
-      </div>
+        </div>
 
       {/* Main Content Area with Docking System */}
       <EditorLayoutProvider>

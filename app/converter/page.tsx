@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "../../shared/contexts";
-import { SettingsMenu, ImageDropZone } from "../../shared/components";
+import { ImageDropZone } from "../../shared/components";
 import { OutputFormat, ImageFile, formatBytes } from "../../domains/converter";
 
 export default function ImageConverter() {
@@ -241,10 +241,7 @@ export default function ImageConverter() {
           </div>
         )}
 
-        <div className="h-5 w-px bg-border-default" />
-
-        <SettingsMenu />
-      </div>
+        </div>
 
       {/* Main Content */}
       <div className={`flex-1 overflow-auto bg-surface-secondary relative ${images.length > 0 ? "p-4" : ""}`}>
