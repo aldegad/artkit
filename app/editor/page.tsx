@@ -2269,7 +2269,10 @@ export default function ImageEditor() {
     if (activeMode === "zoom") return "zoom-in";
     if (activeMode === "eyedropper") return "crosshair";
     if (activeMode === "fill") return "crosshair";
-    if (activeMode === "brush" || activeMode === "eraser" || activeMode === "stamp") return "none";
+    // Only hide cursor when mouse is over the image (where brush preview is shown)
+    if (activeMode === "brush" || activeMode === "eraser" || activeMode === "stamp") {
+      return mousePos ? "none" : "crosshair";
+    }
     if (activeMode === "marquee") {
       if (isDragging && isMovingSelection) {
         return isDuplicating ? "copy" : "move";
@@ -2673,8 +2676,9 @@ export default function ImageEditor() {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M5.506 18.97L3.03 21.446a.75.75 0 01-1.06-1.06l2.474-2.476a4.002 4.002 0 01-.356-4.818l8.574-8.574a3 3 0 014.243 0l1.414 1.414a3 3 0 010 4.243l-8.574 8.574a4.002 4.002 0 01-4.239-.78z"
+            d="M18.364 5.636l-1.414-1.414a2 2 0 00-2.828 0L3.636 14.707a2 2 0 000 2.829l2.828 2.828a2 2 0 002.829 0L19.778 9.879a2 2 0 000-2.829l-1.414-1.414zM9.172 20.485L3.515 14.83M15 9l-6 6"
           />
+          <path strokeLinecap="round" strokeWidth={2} d="M3 21h18" />
         </svg>
       ),
     },
