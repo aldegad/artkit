@@ -9,6 +9,7 @@ interface Translations {
   spriteEditor: string;
   imageEditor: string;
   imageConverter: string;
+  soundEditor: string;
 
   // Settings menu
   settings: string;
@@ -211,6 +212,7 @@ const translations: Record<Language, Translations> = {
     spriteEditor: "스프라이트 에디터",
     imageEditor: "이미지 에디터",
     imageConverter: "이미지 컨버터",
+    soundEditor: "사운드 에디터",
 
     // Settings menu
     settings: "설정",
@@ -411,6 +413,7 @@ const translations: Record<Language, Translations> = {
     spriteEditor: "Sprite Editor",
     imageEditor: "Image Editor",
     imageConverter: "Image Converter",
+    soundEditor: "Sound Editor",
 
     // Settings menu
     settings: "Settings",

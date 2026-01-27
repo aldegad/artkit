@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "../../shared/contexts";
+import SettingsMenu from "../SettingsMenu";
 
 interface Tool {
   id: string;
-  nameKey: "spriteEditor" | "imageEditor" | "imageConverter";
+  nameKey: "spriteEditor" | "imageEditor" | "imageConverter" | "soundEditor";
   path: string;
   icon: React.ReactNode;
 }
@@ -64,6 +65,22 @@ const tools: Tool[] = [
       </svg>
     ),
   },
+  {
+    id: "sound",
+    nameKey: "soundEditor",
+    path: "/sound",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Sound wave / audio icon */}
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+        />
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar() {
@@ -99,6 +116,10 @@ export default function Sidebar() {
       })}
 
       <div className="flex-1" />
+
+      <div className="w-8 h-px bg-border-default" />
+
+      <SettingsMenu />
     </div>
   );
 }
