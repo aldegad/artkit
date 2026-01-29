@@ -47,7 +47,6 @@ function SpriteEditorMain() {
     selectedFrameId,
     selectedPointIndex,
     setIsSpacePressed,
-    zoom,
     projectName,
     setProjectName,
     savedProjects,
@@ -578,7 +577,19 @@ function SpriteEditorMain() {
 
         {/* Tool mode buttons */}
         <div className="flex gap-1 bg-surface-secondary rounded-lg p-1">
-          <Tooltip content={t.pen} shortcut="P">
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.pen}</span>
+                <span className="text-text-tertiary text-[11px]">{t.penToolTip}</span>
+                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                  <span>{t.clickToAddPoint}</span>
+                  <span>{t.firstPointToComplete}</span>
+                </div>
+              </div>
+            }
+            shortcut="P"
+          >
             <button
               onClick={() => setToolMode("pen")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
@@ -598,7 +609,19 @@ function SpriteEditorMain() {
               {t.pen}
             </button>
           </Tooltip>
-          <Tooltip content={t.select} shortcut="V">
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.select}</span>
+                <span className="text-text-tertiary text-[11px]">{t.selectToolTip}</span>
+                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                  <span>{t.clickToSelect}</span>
+                  <span>{t.dragToMove}</span>
+                </div>
+              </div>
+            }
+            shortcut="V"
+          >
             <button
               onClick={() => setToolMode("select")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
@@ -618,7 +641,20 @@ function SpriteEditorMain() {
               {t.select}
             </button>
           </Tooltip>
-          <Tooltip content={t.hand} shortcut="H">
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.hand}</span>
+                <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
+                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                  <span>{t.dragToPan}</span>
+                  <span>{t.spaceAltToPan}</span>
+                  <span>{t.wheelToZoom}</span>
+                </div>
+              </div>
+            }
+            shortcut="H"
+          >
             <button
               onClick={() => setToolMode("hand")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
@@ -760,17 +796,6 @@ function SpriteEditorMain() {
             )}
           </button>
         </Tooltip>
-
-        <div className="h-6 w-px bg-border-default" />
-
-        <span className="text-text-tertiary text-xs">
-          {toolMode === "pen"
-            ? `${t.clickToAddPoint} | ${t.firstPointToComplete}`
-            : toolMode === "select"
-              ? `${t.clickToSelect} | ${t.dragToMove}`
-              : t.dragToPan}{" "}
-          | {t.spaceAltToPan} | {t.wheelToZoom} ({Math.round(zoom * 100)}%)
-        </span>
 
         </div>
 
