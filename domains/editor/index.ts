@@ -9,6 +9,8 @@ export { useBrushTool } from "./hooks";
 
 // Components
 export { ProjectListModal } from "./components";
+export { EditorToolOptions } from "./components";
+export { EditorStatusBar } from "./components";
 
 // Types
 export type {

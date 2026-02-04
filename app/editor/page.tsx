@@ -11,7 +11,6 @@ import {
   SavedImageProject,
   UnifiedLayer,
   Point,
-  ASPECT_RATIOS,
   ASPECT_RATIO_VALUES,
   createPaintLayer,
   ProjectListModal,
@@ -22,6 +21,8 @@ import {
   useHistory,
   useLayerManagement,
   useBrushTool,
+  EditorToolOptions,
+  EditorStatusBar,
 } from "../../domains/editor";
 import {
   saveImageProject,
@@ -2680,111 +2681,29 @@ export default function ImageEditor() {
 
       {/* Top Toolbar - Row 3: Tool-specific controls */}
       {layers.length > 0 && (
-        <div className="flex items-center gap-2 px-2 md:px-4 py-1 bg-surface-secondary border-b border-border-default shrink-0 overflow-x-auto min-h-[32px]">
-          {/* Brush controls */}
-          {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp") && (
-            <>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-text-secondary">{t.size}:</span>
-                <button
-                  onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
-                  className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  value={brushSize}
-                  onChange={(e) =>
-                    setBrushSize(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))
-                  }
-                  className="w-10 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                  min={1}
-                  max={200}
-                />
-                <button
-                  onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
-                  className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-                >
-                  +
-                </button>
-              </div>
-
-              {(toolMode === "brush" || toolMode === "eraser") && (
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-text-secondary">{t.hardness}:</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={brushHardness}
-                    onChange={(e) => setBrushHardness(parseInt(e.target.value))}
-                    className="w-14 accent-accent-primary"
-                  />
-                  <span className="text-xs text-text-tertiary w-6">{brushHardness}%</span>
-                </div>
-              )}
-
-              {toolMode === "brush" && (
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-text-secondary">{t.color}:</span>
-                  <input
-                    type="color"
-                    value={brushColor}
-                    onChange={(e) => setBrushColor(e.target.value)}
-                    className="w-6 h-6 rounded cursor-pointer border border-border-default"
-                  />
-                  <span className="text-xs text-text-tertiary hidden md:inline">{brushColor}</span>
-                </div>
-              )}
-
-              {toolMode === "stamp" && (
-                <span className="text-xs text-text-secondary">
-                  {stampSource
-                    ? `${t.source}: (${Math.round(stampSource.x)}, ${Math.round(stampSource.y)})`
-                    : t.altClickToSetSource}
-                </span>
-              )}
-            </>
-          )}
-
-          {/* Crop ratio */}
-          {toolMode === "crop" && (
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-secondary">Ratio:</span>
-              <select
-                value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-                className="px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
-              >
-                {ASPECT_RATIOS.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={selectAll}
-                className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-              >
-                All
-              </button>
-              {cropArea && (
-                <button
-                  onClick={clearCrop}
-                  className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Default message when no tool-specific controls */}
-          {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && (
-            <span className="text-xs text-text-tertiary">{toolButtons.find(t => t.mode === toolMode)?.name}</span>
-          )}
-        </div>
+        <EditorToolOptions
+          toolMode={toolMode}
+          brushSize={brushSize}
+          setBrushSize={setBrushSize}
+          brushHardness={brushHardness}
+          setBrushHardness={setBrushHardness}
+          brushColor={brushColor}
+          setBrushColor={setBrushColor}
+          stampSource={stampSource}
+          aspectRatio={aspectRatio}
+          setAspectRatio={setAspectRatio}
+          cropArea={cropArea}
+          selectAll={selectAll}
+          clearCrop={clearCrop}
+          currentToolName={toolButtons.find(tb => tb.mode === toolMode)?.name}
+          translations={{
+            size: t.size,
+            hardness: t.hardness,
+            color: t.color,
+            source: t.source,
+            altClickToSetSource: t.altClickToSetSource,
+          }}
+        />
       )}
 
       {/* Main Content Area with Docking System */}
@@ -2880,30 +2799,13 @@ export default function ImageEditor() {
 
       {/* Bottom status bar */}
       {layers.length > 0 && (
-        <div className="px-4 py-1.5 bg-surface-primary border-t border-border-default text-xs text-text-tertiary flex items-center gap-4">
-          <span>
-            Original: {canvasSize.width} × {canvasSize.height}
-          </span>
-          {rotation !== 0 && <span>Rotation: {rotation}°</span>}
-          <span>Zoom: {Math.round(zoom * 100)}%</span>
-          {cropArea && (
-            <span className="text-accent-primary">
-              Crop: {Math.round(cropArea.width)} × {Math.round(cropArea.height)} at (
-              {Math.round(cropArea.x)}, {Math.round(cropArea.y)})
-            </span>
-          )}
-          {selection && (
-            <span className="text-accent-success">
-              Selection: {Math.round(selection.width)} × {Math.round(selection.height)} at (
-              {Math.round(selection.x)}, {Math.round(selection.y)})
-            </span>
-          )}
-          <div className="flex-1" />
-          <span className="text-text-quaternary">
-            ⌘Z: 실행취소 | ⌘⇧Z: 다시실행 | M: 선택 | ⌘C/V: 복사/붙여넣기 | ⌥+드래그: 복제 | ⇧:
-            수평/수직 고정
-          </span>
-        </div>
+        <EditorStatusBar
+          canvasSize={canvasSize}
+          rotation={rotation}
+          zoom={zoom}
+          cropArea={cropArea}
+          selection={selection}
+        />
       )}
 
       {/* Hidden file input */}

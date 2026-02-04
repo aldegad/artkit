@@ -6,3 +6,6 @@ export { default as ProjectListModal } from "./ProjectListModal";
 
 // Re-export layout components
 export * from "./layout";
+
+// Re-export toolbar components
+export * from "./toolbars";
