@@ -83,7 +83,11 @@ const tools: Tool[] = [
   },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export default function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
 
@@ -103,6 +107,7 @@ export default function Sidebar() {
           <Link
             key={tool.id}
             href={tool.path}
+            onClick={onNavigate}
             className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
               isActive
                 ? "bg-accent-primary text-white"

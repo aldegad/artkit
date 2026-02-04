@@ -15,8 +15,7 @@ let dbInstance: IDBDatabase | null = null;
 
 export interface EditorAutosaveData {
   id: string; // Always "current" for autosave
-  imageSrc: string | null;
-  imageSize: { width: number; height: number };
+  canvasSize: { width: number; height: number };
   rotation: number;
   zoom: number;
   pan: { x: number; y: number };

@@ -66,8 +66,6 @@ export interface UnifiedLayer {
   scale?: number;
   rotation?: number;
   originalSize?: Size;
-  /** @deprecated Use paintData instead */
-  imageSrc?: string;
 }
 
 // ============================================
@@ -105,15 +103,17 @@ export interface CompositionLayer {
 export interface SavedImageProject {
   id: string;
   name: string;
-  imageSrc: string;
   // New unified layer system
   unifiedLayers?: UnifiedLayer[];
   activeLayerId?: string;
-  canvasSize?: Size;
-  imageSize: Size;
+  canvasSize: Size;
   rotation: number;
   savedAt: number;
   // Legacy fields (for backward compatibility)
+  /** @deprecated Use canvasSize instead */
+  imageSize?: Size;
+  /** @deprecated No longer used */
+  imageSrc?: string;
   editLayerData?: string;
   layers?: ImageLayer[];
   compositionLayers?: CompositionLayer[];

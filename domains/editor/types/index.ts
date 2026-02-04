@@ -16,7 +16,7 @@ export type {
 } from "../../../shared/types";
 
 export {
-  createImageLayer,
+  createLayerWithSize,
   createPaintLayer,
   compositionLayerToUnified,
   imageLayerToUnified,
@@ -58,16 +58,17 @@ export interface CropArea {
 export interface SavedImageProject {
   id: string;
   name: string;
-  imageSrc: string;
   // New unified layer system
   unifiedLayers?: import("../../../shared/types").UnifiedLayer[];
   activeLayerId?: string;
-  // Canvas size
-  canvasSize?: Size;
-  imageSize: Size;
+  canvasSize: Size;
   rotation: number;
   savedAt: number;
   // Legacy fields (for backward compatibility)
+  /** @deprecated Use canvasSize instead */
+  imageSize?: Size;
+  /** @deprecated No longer used */
+  imageSrc?: string;
   editLayerData?: string;
   layers?: import("../../../shared/types").ImageLayer[];
   compositionLayers?: import("../../../shared/types").CompositionLayer[];

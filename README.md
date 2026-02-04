@@ -6,6 +6,7 @@ A web-based graphics editor for sprites, pixel art, and SVG.
 
 ### Current
 - **Sprite Editor** - Extract frames from sprite sheets using polygon selection
+- **AI Background Removal** - One-click background removal powered by [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) (runs entirely in browser via [Transformers.js](https://huggingface.co/docs/transformers.js))
 - **Image Converter** - Convert images between WebP, JPEG, and PNG formats
 - **Project Management** - Save/load projects with IndexedDB
 - **Dark/Light Theme** - System-aware theme support

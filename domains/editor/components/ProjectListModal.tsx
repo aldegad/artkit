@@ -121,7 +121,7 @@ export default function ProjectListModal({
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{project.name}</div>
                     <div className="text-xs text-text-tertiary">
-                      {project.imageSize.width} × {project.imageSize.height}
+                      {(project.canvasSize || project.imageSize)?.width ?? 0} × {(project.canvasSize || project.imageSize)?.height ?? 0}
                       {project.rotation !== 0 && ` • ${project.rotation}°`}
                     </div>
                     <div className="text-xs text-text-quaternary">

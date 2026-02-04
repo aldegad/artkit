@@ -27,21 +27,13 @@ export interface UnifiedLayer {
   scale?: number; // 1 = 100%
   rotation?: number; // degrees (per-layer rotation)
   originalSize?: Size; // original dimensions before any transforms
-
-  // Legacy field - kept for backward compatibility during migration
-  /** @deprecated Use paintData instead - images are now drawn to canvas */
-  imageSrc?: string;
 }
 
 /**
- * Create a new paint layer (all layers are paint layers now)
- * If imageSrc is provided, it's stored temporarily for migration purposes
- * The actual image should be drawn to the canvas by the calling code
- *
- * @deprecated for image loading - use createPaintLayer and draw image to canvas instead
+ * Create a new paint layer with original size info
+ * Use this when importing an image - caller should draw image to canvas and set paintData
  */
-export function createImageLayer(
-  imageSrc: string,
+export function createLayerWithSize(
   name: string,
   originalSize: Size,
   zIndex: number
@@ -58,8 +50,6 @@ export function createImageLayer(
     scale: 1,
     rotation: 0,
     originalSize,
-    // Store imageSrc temporarily - calling code should draw to canvas and set paintData
-    imageSrc,
   };
 }
 
@@ -119,7 +109,7 @@ export interface ImageLayer {
 
 /**
  * Convert legacy CompositionLayer to UnifiedLayer
- * Note: The imageSrc is stored but should be drawn to canvas during load
+ * Note: The caller should draw the image to canvas and set paintData
  */
 export function compositionLayerToUnified(layer: CompositionLayer): UnifiedLayer {
   return {
@@ -130,7 +120,6 @@ export function compositionLayerToUnified(layer: CompositionLayer): UnifiedLayer
     locked: layer.locked,
     opacity: layer.opacity,
     zIndex: layer.zIndex,
-    imageSrc: layer.imageSrc, // Legacy - should be drawn to canvas
     position: layer.position,
     scale: layer.scale,
     rotation: layer.rotation,
