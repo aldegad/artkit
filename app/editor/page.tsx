@@ -35,7 +35,14 @@ import {
   deleteImageProject,
   getStorageInfo,
 } from "../../utils/storage";
-import { EditorLayoutProvider, useEditorLayout } from "../../domains/editor/contexts/EditorLayoutContext";
+import {
+  EditorLayoutProvider,
+  useEditorLayout,
+  EditorStateProvider,
+  EditorRefsProvider,
+  useEditorState,
+  useEditorRefs,
+} from "../../domains/editor/contexts";
 import {
   EditorSplitContainer,
   EditorFloatingWindows,
@@ -56,48 +63,63 @@ function EditorDockableArea() {
 
 type ToolMode = EditorToolMode;
 
+// Main export - wraps with all providers
 export default function ImageEditor() {
+  return (
+    <EditorStateProvider>
+      <EditorRefsProvider>
+        <ImageEditorContent />
+      </EditorRefsProvider>
+    </EditorStateProvider>
+  );
+}
+
+// Inner component that uses contexts
+function ImageEditorContent() {
   const { t } = useLanguage();
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [rotation, setRotation] = useState(0);
-  // cropArea and aspectRatio - moved to useCropTool hook
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>("png");
-  const [quality, setQuality] = useState(0.9);
-  // isDragging, dragStart, dragType, resizeHandle - moved to useMouseHandlers hook
 
-  // Tool & View state
-  const [toolMode, setToolMode] = useState<ToolMode>("brush");
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  // Get state and setters from context
+  const {
+    state: {
+      canvasSize,
+      rotation,
+      outputFormat,
+      quality,
+      toolMode,
+      zoom,
+      pan,
+      isSpacePressed,
+      projectName,
+      currentProjectId,
+      savedProjects,
+      isProjectListOpen,
+      storageInfo,
+      showBgRemovalConfirm,
+    },
+    setCanvasSize,
+    setRotation,
+    setOutputFormat,
+    setQuality,
+    setToolMode,
+    setZoom,
+    setPan,
+    setIsSpacePressed,
+    setProjectName,
+    setCurrentProjectId,
+    setSavedProjects,
+    setIsProjectListOpen,
+    setStorageInfo,
+    setShowBgRemovalConfirm,
+  } = useEditorState();
 
-  // Brush/Eraser state - moved to useBrushTool hook below
-
-  // Project management state
-  const [projectName, setProjectName] = useState("Untitled");
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [savedProjects, setSavedProjects] = useState<SavedImageProject[]>([]);
-  const [isProjectListOpen, setIsProjectListOpen] = useState(false);
-  const [storageInfo, setStorageInfo] = useState<{
-    used: number;
-    quota: number;
-    percentage: number;
-  }>({ used: 0, quota: 0, percentage: 0 });
-
-  // Clone stamp state - moved to useBrushTool hook
-
-  // Background removal confirmation UI state (actual removal handled by useBackgroundRemoval hook)
-  const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
-
-  // mousePos - moved to useMouseHandlers hook
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Edit canvas stores all paint operations
-  const editCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Get refs from context (shared canvas refs only)
+  const {
+    canvasRef,
+    containerRef,
+    imageRef,
+    fileInputRef,
+    editCanvasRef,
+  } = useEditorRefs();
 
   // Undo/Redo history - using extracted hook
   const { saveToHistory, undo, redo, clearHistory, historyRef, historyIndexRef } = useHistory({
@@ -231,29 +253,18 @@ export default function ImageEditor() {
     saveToHistory,
   });
 
-  // Keyboard shortcuts - using extracted hook
+  // Keyboard shortcuts - using extracted hook (gets state, setters, and refs from context)
   useKeyboardShortcuts({
-    setToolMode,
-    setIsSpacePressed,
     setIsAltPressed,
     setBrushSize,
-    setZoom,
-    setPan,
     undo,
     redo,
     selection,
     setSelection,
     clipboardRef,
     floatingLayerRef,
-    canvasRef,
-    imageRef,
-    editCanvasRef,
     getDisplayDimensions,
-    rotation,
-    canvasSize,
     saveToHistory,
-    isProjectListOpen,
-    setIsProjectListOpen,
   });
 
   // ============================================
@@ -290,7 +301,7 @@ export default function ImageEditor() {
     return toolMode;
   }, [isSpacePressed, toolMode]);
 
-  // Mouse handlers - using extracted hook
+  // Mouse handlers - using extracted hook (gets zoom, pan, rotation, canvasSize, refs from context)
   const {
     isDragging,
     mousePos,
@@ -301,16 +312,7 @@ export default function ImageEditor() {
   } = useMouseHandlers({
     layers,
     getActiveToolMode,
-    zoom,
-    setZoom: (z) => setZoom(z),
-    pan,
-    setPan,
-    canvasRef,
-    editCanvasRef,
-    imageRef,
     getDisplayDimensions,
-    canvasSize,
-    rotation,
     getMousePos,
     screenToImage,
     drawOnEditCanvas,
@@ -334,20 +336,12 @@ export default function ImageEditor() {
     fillWithColor,
   });
 
-  // Canvas rendering - using extracted hook
+  // Canvas rendering - using extracted hook (gets zoom, pan, rotation, canvasSize, toolMode, refs from context)
   useCanvasRendering({
-    canvasRef,
-    containerRef,
     layerCanvasesRef,
-    editCanvasRef,
     floatingLayerRef,
     layers,
-    canvasSize,
-    rotation,
     cropArea,
-    zoom,
-    pan,
-    toolMode,
     mousePos,
     brushSize,
     brushColor,
@@ -711,7 +705,7 @@ export default function ImageEditor() {
     }
 
     // Update the refs
-    (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = canvas;
+    canvasRef.current = canvas;
     currentCanvasRef.current = canvas;
 
     if (canvas) {
@@ -748,7 +742,8 @@ export default function ImageEditor() {
 
   // Actions
   const rotate = (deg: number) => {
-    setRotation((r) => (r + deg + 360) % 360);
+    const newRotation = (rotation + deg + 360) % 360;
+    setRotation(newRotation);
     setCropArea(null);
     // Reinitialize edit canvas for new dimensions
     const { width, height } = getDisplayDimensions();

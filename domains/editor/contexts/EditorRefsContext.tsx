@@ -13,7 +13,7 @@ import {
 // ============================================
 
 export interface EditorRefsContextValue {
-  // Canvas refs
+  // Canvas refs (shared across components)
   canvasRef: RefObject<HTMLCanvasElement | null>;
   containerRef: RefObject<HTMLDivElement | null>;
   editCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -21,27 +21,13 @@ export interface EditorRefsContextValue {
   // Image ref
   imageRef: RefObject<HTMLImageElement | null>;
 
-  // Layer canvases
-  layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
-
   // File input
   fileInputRef: RefObject<HTMLInputElement | null>;
 
-  // Floating layer (for selection move/duplicate)
-  floatingLayerRef: RefObject<{
-    imageData: ImageData;
-    x: number;
-    y: number;
-    originX: number;
-    originY: number;
-  } | null>;
-
-  // Drag origin for selection
-  dragStartOriginRef: RefObject<{ x: number; y: number } | null>;
-
-  // History refs
-  historyRef: RefObject<ImageData[]>;
-  historyIndexRef: RefObject<number>;
+  // Note: The following refs are managed by specialized hooks:
+  // - layerCanvasesRef: managed by useLayerManagement
+  // - floatingLayerRef, dragStartOriginRef: managed by useSelectionTool
+  // - historyRef, historyIndexRef: managed by useHistory
 }
 
 // ============================================
@@ -59,7 +45,7 @@ interface EditorRefsProviderProps {
 }
 
 export function EditorRefsProvider({ children }: EditorRefsProviderProps) {
-  // Canvas refs
+  // Canvas refs (shared across components)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -67,39 +53,15 @@ export function EditorRefsProvider({ children }: EditorRefsProviderProps) {
   // Image ref
   const imageRef = useRef<HTMLImageElement | null>(null);
 
-  // Layer canvases
-  const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
-
   // File input
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Floating layer
-  const floatingLayerRef = useRef<{
-    imageData: ImageData;
-    x: number;
-    y: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-
-  // Drag origin
-  const dragStartOriginRef = useRef<{ x: number; y: number } | null>(null);
-
-  // History refs
-  const historyRef = useRef<ImageData[]>([]);
-  const historyIndexRef = useRef<number>(-1);
 
   const value: EditorRefsContextValue = {
     canvasRef,
     containerRef,
     editCanvasRef,
     imageRef,
-    layerCanvasesRef,
     fileInputRef,
-    floatingLayerRef,
-    dragStartOriginRef,
-    historyRef,
-    historyIndexRef,
   };
 
   return (

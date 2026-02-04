@@ -2,6 +2,7 @@
 
 import { useState, useCallback, RefObject } from "react";
 import { EditorToolMode, CropArea, Point, DragType } from "../types";
+import { useEditorState, useEditorRefs } from "../contexts";
 
 // ============================================
 // Types
@@ -19,28 +20,15 @@ interface UseMouseHandlersOptions {
   // Layers
   layers: unknown[];
 
-  // Tool state
+  // Tool state (temporary - getActiveToolMode checks isSpacePressed)
   getActiveToolMode: () => EditorToolMode;
-
-  // Canvas/View state
-  zoom: number;
-  setZoom: (zoom: number) => void;
-  pan: Point;
-  setPan: (pan: Point | ((p: Point) => Point)) => void;
-
-  // Canvas refs
-  canvasRef: RefObject<HTMLCanvasElement | null>;
-  editCanvasRef: RefObject<HTMLCanvasElement | null>;
-  imageRef: RefObject<HTMLImageElement | null>;
-
-  // Dimensions
-  getDisplayDimensions: () => { width: number; height: number };
-  canvasSize: { width: number; height: number };
-  rotation: number;
 
   // Input functions (from useCanvasInput)
   getMousePos: (e: React.MouseEvent) => Point;
   screenToImage: (x: number, y: number) => Point;
+
+  // Display dimensions helper
+  getDisplayDimensions: () => { width: number; height: number };
 
   // Brush functions (from useBrushTool)
   drawOnEditCanvas: (x: number, y: number, isStart?: boolean) => void;
@@ -106,20 +94,21 @@ const isInHandle = (pos: Point, handle: { x: number; y: number }, size: number =
 // ============================================
 
 export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHandlersReturn {
+  // Get state and setters from EditorStateContext
+  const {
+    state: { zoom, pan, rotation, canvasSize },
+    setZoom,
+    setPan,
+  } = useEditorState();
+
+  // Get refs from EditorRefsContext
+  const { canvasRef, editCanvasRef, imageRef } = useEditorRefs();
+
+  // Props from other hooks (still required as options)
   const {
     layers,
-    // toolMode and isSpacePressed are used via getActiveToolMode
     getActiveToolMode,
-    zoom,
-    setZoom,
-    pan,
-    setPan,
-    canvasRef,
-    editCanvasRef,
-    imageRef,
     getDisplayDimensions,
-    canvasSize,
-    rotation,
     getMousePos,
     screenToImage,
     drawOnEditCanvas,

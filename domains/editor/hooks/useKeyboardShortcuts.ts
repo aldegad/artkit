@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, RefObject } from "react";
-import { EditorToolMode, CropArea, Point } from "../types";
+import { CropArea } from "../types";
+import { useEditorState, useEditorRefs } from "../contexts";
 
 // ============================================
 // Types
@@ -16,44 +17,23 @@ interface FloatingLayer {
 }
 
 interface UseKeyboardShortcutsOptions {
-  // Tool state setters
-  setToolMode: (mode: EditorToolMode) => void;
-  setIsSpacePressed: (pressed: boolean) => void;
+  // Brush state (from useBrushTool)
   setIsAltPressed: (pressed: boolean) => void;
-
-  // Brush state
   setBrushSize: (fn: (size: number) => number) => void;
 
-  // View state
-  setZoom: (fn: (zoom: number) => number) => void;
-  setPan: (pan: Point) => void;
-
-  // History
+  // History (from useHistory)
   undo: () => void;
   redo: () => void;
+  saveToHistory: () => void;
 
-  // Selection state
+  // Selection state (from useSelectionTool)
   selection: CropArea | null;
   setSelection: (selection: CropArea | null) => void;
   clipboardRef: RefObject<ImageData | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
 
-  // Canvas refs
-  canvasRef: RefObject<HTMLCanvasElement | null>;
-  imageRef: RefObject<HTMLImageElement | null>;
-  editCanvasRef: RefObject<HTMLCanvasElement | null>;
-
-  // Dimensions
+  // Dimensions helper
   getDisplayDimensions: () => { width: number; height: number };
-  rotation: number;
-  canvasSize: { width: number; height: number };
-
-  // History
-  saveToHistory: () => void;
-
-  // Project modal state
-  isProjectListOpen: boolean;
-  setIsProjectListOpen: (open: boolean) => void;
 
   // Whether shortcuts are enabled
   enabled?: boolean;
@@ -64,30 +44,35 @@ interface UseKeyboardShortcutsOptions {
 // ============================================
 
 export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void {
+  // Get state and setters from EditorStateContext
   const {
+    state: { rotation, canvasSize, isProjectListOpen },
     setToolMode,
     setIsSpacePressed,
-    setIsAltPressed,
-    setBrushSize,
     setZoom,
     setPan,
+    setIsProjectListOpen,
+  } = useEditorState();
+
+  // Get refs from EditorRefsContext
+  const { canvasRef, imageRef, editCanvasRef } = useEditorRefs();
+
+  // Props from other hooks (still required as options)
+  const {
+    setIsAltPressed,
+    setBrushSize,
     undo,
     redo,
     selection,
     setSelection,
     clipboardRef,
     floatingLayerRef,
-    canvasRef,
-    imageRef,
-    editCanvasRef,
     getDisplayDimensions,
-    rotation,
-    canvasSize,
     saveToHistory,
-    isProjectListOpen,
-    setIsProjectListOpen,
     enabled = true,
   } = options;
+
+  // Note: setIsProjectListOpen comes from context now, not from options
 
   useEffect(() => {
     if (!enabled) return;

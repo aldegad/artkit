@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, RefObject, useCallback, useRef } from "react";
-import { UnifiedLayer, Point, CropArea, EditorToolMode } from "../types";
+import { UnifiedLayer, Point, CropArea } from "../types";
+import { useEditorState, useEditorRefs } from "../contexts";
 
 // ============================================
 // Types
@@ -16,21 +17,13 @@ interface FloatingLayer {
 }
 
 interface UseCanvasRenderingOptions {
-  // Refs
-  canvasRef: RefObject<HTMLCanvasElement | null>;
-  containerRef: RefObject<HTMLDivElement | null>;
+  // Refs from other hooks (not in context)
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
-  editCanvasRef: RefObject<HTMLCanvasElement | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
 
-  // State
+  // State from other hooks (not in context)
   layers: UnifiedLayer[];
-  canvasSize: { width: number; height: number };
-  rotation: number;
   cropArea: CropArea | null;
-  zoom: number;
-  pan: Point;
-  toolMode: EditorToolMode;
   mousePos: Point | null;
   brushSize: number;
   brushColor: string;
@@ -56,19 +49,20 @@ interface UseCanvasRenderingReturn {
 export function useCanvasRendering(
   options: UseCanvasRenderingOptions
 ): UseCanvasRenderingReturn {
+  // Get state from EditorStateContext
   const {
-    canvasRef,
-    containerRef,
+    state: { zoom, pan, rotation, canvasSize, toolMode },
+  } = useEditorState();
+
+  // Get refs from EditorRefsContext
+  const { canvasRef, containerRef, editCanvasRef } = useEditorRefs();
+
+  // Props from other hooks (still required as options)
+  const {
     layerCanvasesRef,
-    editCanvasRef,
     floatingLayerRef,
     layers,
-    canvasSize,
-    rotation,
     cropArea,
-    zoom,
-    pan,
-    toolMode,
     mousePos,
     brushSize,
     brushColor,
