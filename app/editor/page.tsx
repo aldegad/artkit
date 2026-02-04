@@ -21,6 +21,7 @@ import {
   useCanvasInput,
   useSelectionTool,
   useCropTool,
+  useKeyboardShortcuts,
   EditorToolOptions,
   EditorStatusBar,
 } from "../../domains/editor";
@@ -234,6 +235,31 @@ export default function ImageEditor() {
     getRotation: () => rotation,
     getCanvasSize: () => canvasSize,
     saveToHistory,
+  });
+
+  // Keyboard shortcuts - using extracted hook
+  useKeyboardShortcuts({
+    setToolMode,
+    setIsSpacePressed,
+    setIsAltPressed,
+    setBrushSize,
+    setZoom,
+    setPan,
+    undo,
+    redo,
+    selection,
+    setSelection,
+    clipboardRef,
+    floatingLayerRef,
+    canvasRef,
+    imageRef,
+    editCanvasRef,
+    getDisplayDimensions,
+    rotation,
+    canvasSize,
+    saveToHistory,
+    isProjectListOpen,
+    setIsProjectListOpen,
   });
 
   // ============================================
@@ -1376,194 +1402,7 @@ export default function ImageEditor() {
     handleMouseUp();
   };
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if focus is on input elements
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA"
-      ) {
-        return;
-      }
-
-      if (e.code === "Space" && !e.repeat) {
-        e.preventDefault();
-        setIsSpacePressed(true);
-      }
-
-      // Track Alt for marquee tool cursor
-      if (e.altKey) setIsAltPressed(true);
-
-      // Tool shortcuts
-      if (e.key === "c" && !e.metaKey && !e.ctrlKey) setToolMode("crop");
-      if (e.key === "h") setToolMode("hand");
-      if (e.key === "z" && !e.metaKey && !e.ctrlKey) setToolMode("zoom");
-      if (e.key === "b") setToolMode("brush");
-      if (e.key === "e") setToolMode("eraser");
-      if (e.key === "g") setToolMode("fill");
-      if (e.key === "i") setToolMode("eyedropper");
-      if (e.key === "s" && !e.metaKey && !e.ctrlKey) setToolMode("stamp");
-      if (e.key === "m") setToolMode("marquee");
-      if (e.key === "v" && !e.metaKey && !e.ctrlKey) setToolMode("move");
-
-      // Brush size shortcuts
-      if (e.key === "[" || (e.key === "-" && !e.metaKey && !e.ctrlKey)) {
-        setBrushSize((s) => Math.max(1, s - (e.shiftKey ? 10 : 1)));
-      }
-      if (e.key === "]" || (e.key === "=" && !e.metaKey && !e.ctrlKey)) {
-        setBrushSize((s) => Math.min(200, s + (e.shiftKey ? 10 : 1)));
-      }
-
-      // Zoom shortcuts
-      if ((e.key === "=" || e.key === "+") && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setZoom((z) => Math.min(10, z * 1.25));
-      }
-      if (e.key === "-" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setZoom((z) => Math.max(0.1, z * 0.8));
-      }
-      if (e.key === "0" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
-      }
-
-      // Undo/Redo shortcuts
-      if (e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      }
-      if (
-        (e.key === "z" && (e.metaKey || e.ctrlKey) && e.shiftKey) ||
-        (e.key === "y" && (e.metaKey || e.ctrlKey))
-      ) {
-        e.preventDefault();
-        redo();
-      }
-
-      // Copy (Cmd+C)
-      if (e.key === "c" && (e.metaKey || e.ctrlKey) && selection) {
-        e.preventDefault();
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        const img = imageRef.current;
-        const editCanvas = editCanvasRef.current;
-        if (!canvas || !ctx || !img) return;
-
-        const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-        // Create composite canvas
-        const compositeCanvas = document.createElement("canvas");
-        compositeCanvas.width = displayWidth;
-        compositeCanvas.height = displayHeight;
-        const compositeCtx = compositeCanvas.getContext("2d");
-        if (!compositeCtx) return;
-
-        // Draw rotated original
-        compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-        compositeCtx.rotate((rotation * Math.PI) / 180);
-        compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-        compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-
-        // Draw edits
-        if (editCanvas) {
-          compositeCtx.drawImage(editCanvas, 0, 0);
-        }
-
-        // Copy selection to clipboard
-        const imageData = compositeCtx.getImageData(
-          Math.round(selection.x),
-          Math.round(selection.y),
-          Math.round(selection.width),
-          Math.round(selection.height),
-        );
-        clipboardRef.current = imageData;
-      }
-
-      // Paste (Cmd+V)
-      if (e.key === "v" && (e.metaKey || e.ctrlKey) && clipboardRef.current) {
-        e.preventDefault();
-        const editCanvas = editCanvasRef.current;
-        const ctx = editCanvas?.getContext("2d");
-        if (!editCanvas || !ctx) return;
-
-        const clipData = clipboardRef.current;
-        const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-        saveToHistory();
-
-        // Create temp canvas to draw clipboard data
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = clipData.width;
-        tempCanvas.height = clipData.height;
-        const tempCtx = tempCanvas.getContext("2d");
-        if (!tempCtx) return;
-        tempCtx.putImageData(clipData, 0, 0);
-
-        // Paste at center or at current selection position
-        const pasteX = selection ? selection.x : (displayWidth - clipData.width) / 2;
-        const pasteY = selection ? selection.y : (displayHeight - clipData.height) / 2;
-
-        ctx.drawImage(tempCanvas, pasteX, pasteY);
-
-        // Create floating layer for move operation
-        floatingLayerRef.current = {
-          imageData: clipData,
-          x: pasteX,
-          y: pasteY,
-          originX: pasteX,
-          originY: pasteY,
-        };
-
-        // Update selection to new position
-        setSelection({
-          x: pasteX,
-          y: pasteY,
-          width: clipData.width,
-          height: clipData.height,
-        });
-      }
-
-      // Escape to clear selection
-      if (e.key === "Escape") {
-        if (isProjectListOpen) {
-          setIsProjectListOpen(false);
-        } else {
-          setSelection(null);
-          floatingLayerRef.current = null;
-        }
-      }
-
-      // Save (Cmd+S) - handled separately
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsSpacePressed(false);
-      }
-      if (!e.altKey) setIsAltPressed(false);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [
-    undo,
-    redo,
-    selection,
-    getDisplayDimensions,
-    rotation,
-    canvasSize,
-    saveToHistory,
-    isProjectListOpen,
-  ]);
+  // Keyboard shortcuts - moved to useKeyboardShortcuts hook
 
   // Refs for wheel handler to access current values without stale closure
   const zoomRef = useRef(zoom);
