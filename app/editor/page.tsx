@@ -1103,7 +1103,14 @@ function ImageEditorContent() {
 
   // Load a saved project
   const handleLoadProject = useCallback(
-    async (project: SavedImageProject) => {
+    async (projectMeta: SavedImageProject) => {
+      // Fetch full project data (including layer images) from storage
+      const project = await storageProvider.getProject(projectMeta.id);
+      if (!project) {
+        alert("Failed to load project");
+        return;
+      }
+
       setProjectName(project.name);
       setCurrentProjectId(project.id);
       setRotation(project.rotation);
@@ -1165,7 +1172,7 @@ function ImageEditorContent() {
 
       setIsProjectListOpen(false);
     },
-    [initEditCanvas],
+    [initEditCanvas, storageProvider],
   );
 
   // Delete a project
