@@ -6,6 +6,14 @@
 export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
+export { useCanvasInput } from "./hooks";
+export type {
+  CanvasInputEvent,
+  InputModifiers,
+  InputType,
+  EditorTool,
+  ToolContext,
+} from "./hooks";
 
 // Components
 export { ProjectListModal } from "./components";
