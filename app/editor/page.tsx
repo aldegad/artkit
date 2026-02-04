@@ -13,7 +13,6 @@ import {
   Point,
   ASPECT_RATIOS,
   ASPECT_RATIO_VALUES,
-  createImageLayer,
   createPaintLayer,
   ProjectListModal,
   loadEditorAutosaveData,
@@ -27,6 +26,7 @@ import {
   deleteImageProject,
   getStorageInfo,
 } from "../../utils/storage";
+import { removeBackground } from "../../utils/backgroundRemoval";
 import { EditorLayoutProvider, useEditorLayout } from "../../domains/editor/contexts/EditorLayoutContext";
 import {
   EditorSplitContainer,
@@ -89,6 +89,11 @@ export default function ImageEditor() {
   // Clone stamp state
   const [stampSource, setStampSource] = useState<Point | null>(null);
 
+  // Background removal state
+  const [isRemovingBackground, setIsRemovingBackground] = useState(false);
+  const [bgRemovalProgress, setBgRemovalProgress] = useState(0);
+  const [bgRemovalStatus, setBgRemovalStatus] = useState("");
+
   // Mouse position for brush preview
   const [mousePos, setMousePos] = useState<Point | null>(null);
 
@@ -110,13 +115,8 @@ export default function ImageEditor() {
   // Unified Layer system (combines image and paint layers)
   const [layers, setLayers] = useState<UnifiedLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
-  // Canvas storage for paint layers
+  // Canvas storage for all layers (all layers are paint layers now)
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
-  // Image storage for image layers
-  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
-  // Drag state for image layers
-  const [isDraggingLayer, setIsDraggingLayer] = useState(false);
-  const [layerDragStart, setLayerDragStart] = useState<Point>({ x: 0, y: 0 });
   // Drag state for layer panel reordering
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
@@ -154,47 +154,42 @@ export default function ImageEditor() {
       layerCanvasesRef.current.clear();
 
       if (existingLayers && existingLayers.length > 0) {
-        // Load existing layers
-        setLayers(existingLayers);
-        // Find first paint layer to set as active, or first layer
-        const firstPaintLayer = existingLayers.find(l => l.type === "paint");
-        setActiveLayerId(firstPaintLayer?.id || existingLayers[0].id);
+        // Load existing layers - all layers are paint layers now
+        // Migrate any legacy image layers by forcing type to "paint"
+        const migratedLayers = existingLayers.map(l => ({ ...l, type: "paint" as const }));
+        setLayers(migratedLayers);
+        setActiveLayerId(migratedLayers[0].id);
 
-        // Create canvases/load images for each layer
-        existingLayers.forEach((layer) => {
-          if (layer.type === "paint") {
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            layerCanvasesRef.current.set(layer.id, canvas);
+        // Create canvases for each layer
+        migratedLayers.forEach((layer) => {
+          const layerWidth = layer.originalSize?.width || width;
+          const layerHeight = layer.originalSize?.height || height;
+          const canvas = document.createElement("canvas");
+          canvas.width = layerWidth;
+          canvas.height = layerHeight;
+          layerCanvasesRef.current.set(layer.id, canvas);
 
-            // Load paint data if exists
-            if (layer.paintData) {
-              const img = new Image();
-              img.onload = () => {
-                const ctx = canvas.getContext("2d");
-                if (ctx) ctx.drawImage(img, 0, 0);
-              };
-              img.src = layer.paintData;
-            }
-          } else if (layer.type === "image" && layer.imageSrc) {
-            // Load image layer
+          // Load paint data if exists
+          if (layer.paintData) {
             const img = new Image();
             img.onload = () => {
-              setLayerImages(prev => {
-                const newMap = new Map(prev);
-                newMap.set(layer.id, img);
-                return newMap;
-              });
+              const ctx = canvas.getContext("2d");
+              if (ctx) ctx.drawImage(img, 0, 0);
+            };
+            img.src = layer.paintData;
+          } else if (layer.imageSrc) {
+            // Legacy image layer - draw image to canvas
+            const img = new Image();
+            img.onload = () => {
+              const ctx = canvas.getContext("2d");
+              if (ctx) ctx.drawImage(img, 0, 0);
             };
             img.src = layer.imageSrc;
           }
         });
 
-        // Set first paint layer as edit canvas for backward compatibility
-        if (firstPaintLayer) {
-          editCanvasRef.current = layerCanvasesRef.current.get(firstPaintLayer.id) || null;
-        }
+        // Set first layer as edit canvas
+        editCanvasRef.current = layerCanvasesRef.current.get(migratedLayers[0].id) || null;
       } else {
         // Create default paint layer
         const defaultLayer = createPaintLayer(`${t.layer} 1`, 0);
@@ -294,25 +289,32 @@ export default function ImageEditor() {
     editCanvasRef.current = canvas;
   }, [layers, getDisplayDimensions, t.layer]);
 
-  // Add new image layer
+  // Add new layer with image drawn to canvas
   const addImageLayer = useCallback((imageSrc: string, name?: string) => {
     const img = new Image();
     img.onload = () => {
       const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
-      const newLayer = createImageLayer(
-        imageSrc,
-        name || `Image ${layers.filter(l => l.type === "image").length + 1}`,
-        { width: img.width, height: img.height },
+      const newLayer = createPaintLayer(
+        name || `Layer ${layers.length + 1}`,
         maxZIndex
       );
+      newLayer.originalSize = { width: img.width, height: img.height };
+
+      // Create canvas for this layer and draw the image
+      const layerCanvas = document.createElement("canvas");
+      layerCanvas.width = img.width;
+      layerCanvas.height = img.height;
+      const ctx = layerCanvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+      }
+
+      // Store canvas in ref
+      layerCanvasesRef.current.set(newLayer.id, layerCanvas);
 
       setLayers((prev) => [newLayer, ...prev]);
       setActiveLayerId(newLayer.id);
-      setLayerImages((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(newLayer.id, img);
-        return newMap;
-      });
+      editCanvasRef.current = layerCanvas;
     };
     img.src = imageSrc;
   }, [layers]);
@@ -325,43 +327,28 @@ export default function ImageEditor() {
         return;
       }
 
-      const layer = layers.find(l => l.id === layerId);
-
       setLayers((prev) => {
         const newLayers = prev.filter((l) => l.id !== layerId);
         // If deleted active layer, switch to first available
         if (activeLayerId === layerId && newLayers.length > 0) {
           const nextLayer = newLayers[0];
           setActiveLayerId(nextLayer.id);
-          if (nextLayer.type === "paint") {
-            editCanvasRef.current = layerCanvasesRef.current.get(nextLayer.id) || null;
-          }
+          editCanvasRef.current = layerCanvasesRef.current.get(nextLayer.id) || null;
         }
         return newLayers;
       });
 
-      // Clean up resources
-      if (layer?.type === "paint") {
-        layerCanvasesRef.current.delete(layerId);
-      } else {
-        setLayerImages(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(layerId);
-          return newMap;
-        });
-      }
+      // Clean up layer canvas
+      layerCanvasesRef.current.delete(layerId);
     },
     [layers, activeLayerId, t.minOneLayerRequired],
   );
 
   // Select layer
   const selectLayer = useCallback((layerId: string) => {
-    const layer = layers.find(l => l.id === layerId);
     setActiveLayerId(layerId);
-    if (layer?.type === "paint") {
-      editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
-    }
-  }, [layers]);
+    editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
+  }, []);
 
   // Toggle layer visibility
   const toggleLayerVisibility = useCallback((layerId: string) => {
@@ -470,38 +457,20 @@ export default function ImageEditor() {
       zIndex: maxZIndex,
     };
 
-    if (layer.type === "image") {
-      // Offset the copy slightly
-      newLayer.position = {
-        x: (layer.position?.x || 0) + 20,
-        y: (layer.position?.y || 0) + 20,
-      };
-      // Copy image reference
-      const existingImg = layerImages.get(layerId);
-      if (existingImg) {
-        setLayerImages(prev => {
-          const newMap = new Map(prev);
-          newMap.set(newLayer.id, existingImg);
-          return newMap;
-        });
-      }
-    } else if (layer.type === "paint") {
-      // Copy canvas data
-      const { width, height } = getDisplayDimensions();
+    // Copy canvas data
+    const srcCanvas = layerCanvasesRef.current.get(layerId);
+    if (srcCanvas) {
       const newCanvas = document.createElement("canvas");
-      newCanvas.width = width;
-      newCanvas.height = height;
-      const srcCanvas = layerCanvasesRef.current.get(layerId);
-      if (srcCanvas) {
-        const ctx = newCanvas.getContext("2d");
-        if (ctx) ctx.drawImage(srcCanvas, 0, 0);
-      }
+      newCanvas.width = srcCanvas.width;
+      newCanvas.height = srcCanvas.height;
+      const ctx = newCanvas.getContext("2d");
+      if (ctx) ctx.drawImage(srcCanvas, 0, 0);
       layerCanvasesRef.current.set(newLayer.id, newCanvas);
     }
 
     setLayers(prev => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
-  }, [layers, layerImages, getDisplayDimensions]);
+  }, [layers]);
 
   // Legacy alias for backward compatibility
   const addLayer = addPaintLayer;
@@ -558,32 +527,24 @@ export default function ImageEditor() {
             imageRef.current = img;
             setImageSize({ width: img.width, height: img.height });
 
-            // Create image layer and default paint layer together
-            const imageLayer = createImageLayer(
-              src,
-              fileName,
-              { width: img.width, height: img.height },
-              1 // Higher zIndex for image layer
-            );
-            const paintLayer = createPaintLayer(`${t.layer} 1`, 0);
+            // Create a single paint layer with the image drawn on it
+            const imageLayer = createPaintLayer(fileName, 0);
+            imageLayer.originalSize = { width: img.width, height: img.height };
 
-            // Create paint canvas
+            // Create canvas and draw image
             const canvas = document.createElement("canvas");
             canvas.width = img.width;
             canvas.height = img.height;
-            layerCanvasesRef.current.set(paintLayer.id, canvas);
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img, 0, 0);
+            }
+            layerCanvasesRef.current.set(imageLayer.id, canvas);
             editCanvasRef.current = canvas;
 
             // Set layers and active layer
-            setLayers([imageLayer, paintLayer]);
-            setActiveLayerId(paintLayer.id);
-
-            // Load image for the image layer
-            setLayerImages((prev) => {
-              const newMap = new Map(prev);
-              newMap.set(imageLayer.id, img);
-              return newMap;
-            });
+            setLayers([imageLayer]);
+            setActiveLayerId(imageLayer.id);
           };
           img.src = src;
         } else {
@@ -939,22 +900,14 @@ export default function ImageEditor() {
                     </svg>
                   </button>
 
-                  {/* Layer thumbnail/type indicator */}
+                  {/* Layer thumbnail */}
                   <div className="w-10 h-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0 flex items-center justify-center">
-                    {layer.type === "image" && layer.imageSrc ? (
-                      <img
-                        src={layer.imageSrc}
-                        alt={layer.name}
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <svg className="w-5 h-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                    )}
+                    <svg className="w-5 h-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
                   </div>
 
-                  {/* Layer name and type */}
+                  {/* Layer name */}
                   <div className="flex-1 min-w-0">
                     <input
                       type="text"
@@ -964,7 +917,7 @@ export default function ImageEditor() {
                       className="w-full text-xs bg-transparent border-none focus:outline-none focus:bg-surface-secondary px-1 rounded truncate"
                     />
                     <span className="text-[10px] text-text-quaternary px-1">
-                      {layer.type === "image" ? "Image" : "Paint"}
+                      Layer
                     </span>
                   </div>
 
@@ -1107,49 +1060,13 @@ export default function ImageEditor() {
       ctx.save();
       ctx.globalAlpha = layer.opacity / 100;
 
-      if (layer.type === "image") {
-        // Render image layer
-        const layerImg = layerImages.get(layer.id);
-        if (!layerImg || !layer.originalSize) {
-          ctx.restore();
-          continue;
-        }
-
-        const layerScale = layer.scale || 1;
-        const layerRotation = layer.rotation || 0;
-        const layerWidth = layer.originalSize.width * layerScale * zoom;
-        const layerHeight = layer.originalSize.height * layerScale * zoom;
-        const layerX = offsetX + (layer.position?.x || 0) * zoom;
-        const layerY = offsetY + (layer.position?.y || 0) * zoom;
-
-        // Apply per-layer rotation if needed
-        if (layerRotation !== 0) {
-          const centerX = layerX + layerWidth / 2;
-          const centerY = layerY + layerHeight / 2;
-          ctx.translate(centerX, centerY);
-          ctx.rotate((layerRotation * Math.PI) / 180);
-          ctx.translate(-centerX, -centerY);
-        }
-
-        ctx.drawImage(layerImg, layerX, layerY, layerWidth, layerHeight);
-
-        // Draw selection border for active layer
-        if (layer.id === activeLayerId) {
-          ctx.strokeStyle = "#00aaff";
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          ctx.strokeRect(layerX, layerY, layerWidth, layerHeight);
-          ctx.setLineDash([]);
-        }
-      } else if (layer.type === "paint") {
-        // Render paint layer
-        const layerCanvas = layerCanvasesRef.current.get(layer.id);
-        if (layerCanvas) {
-          ctx.imageSmoothingEnabled = false;
-          ctx.translate(offsetX, offsetY);
-          ctx.scale(zoom, zoom);
-          ctx.drawImage(layerCanvas, 0, 0);
-        }
+      // All layers are paint layers now - render from canvas
+      const layerCanvas = layerCanvasesRef.current.get(layer.id);
+      if (layerCanvas) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(zoom, zoom);
+        ctx.drawImage(layerCanvas, 0, 0);
       }
 
       ctx.restore();
@@ -1368,7 +1285,6 @@ export default function ImageEditor() {
     isDuplicating,
     isMovingSelection,
     layers,
-    layerImages,
     activeLayerId,
   ]);
 
@@ -1438,38 +1354,6 @@ export default function ImageEditor() {
       setDragStart(screenPos);
       setIsDragging(true);
       return;
-    }
-
-    // Check for image layer dragging
-    if (activeLayerId) {
-      const activeLayer = layers.find(l => l.id === activeLayerId);
-      if (activeLayer && activeLayer.type === "image" && activeLayer.visible && !activeLayer.locked && activeLayer.originalSize) {
-        // Calculate layer bounds in screen space
-        const layerScale = activeLayer.scale || 1;
-        const layerWidth = activeLayer.originalSize.width * layerScale * zoom;
-        const layerHeight = activeLayer.originalSize.height * layerScale * zoom;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const scaledWidth = displayWidth * zoom;
-          const scaledHeight = displayHeight * zoom;
-          const offsetX = (canvas.width - scaledWidth) / 2 + pan.x;
-          const offsetY = (canvas.height - scaledHeight) / 2 + pan.y;
-          const layerX = offsetX + (activeLayer.position?.x || 0) * zoom;
-          const layerY = offsetY + (activeLayer.position?.y || 0) * zoom;
-
-          // Check if click is within active image layer
-          if (
-            screenPos.x >= layerX &&
-            screenPos.x <= layerX + layerWidth &&
-            screenPos.y >= layerY &&
-            screenPos.y <= layerY + layerHeight
-          ) {
-            setIsDraggingLayer(true);
-            setLayerDragStart({ x: screenPos.x, y: screenPos.y });
-            return;
-          }
-        }
-      }
     }
 
     if (activeMode === "zoom") {
@@ -1676,24 +1560,6 @@ export default function ImageEditor() {
       setMousePos(null);
     }
 
-    // Handle image layer dragging
-    if (isDraggingLayer && activeLayerId) {
-      const dx = (screenPos.x - layerDragStart.x) / zoom;
-      const dy = (screenPos.y - layerDragStart.y) / zoom;
-
-      const activeLayer = layers.find(l => l.id === activeLayerId);
-      if (activeLayer && activeLayer.type === "image") {
-        updateLayer(activeLayerId, {
-          position: {
-            x: (activeLayer.position?.x || 0) + dx,
-            y: (activeLayer.position?.y || 0) + dy,
-          },
-        });
-      }
-      setLayerDragStart({ x: screenPos.x, y: screenPos.y });
-      return;
-    }
-
     if (!isDragging) return;
 
     const ratioValue = getAspectRatioValue(aspectRatio);
@@ -1873,7 +1739,6 @@ export default function ImageEditor() {
     setResizeHandle(null);
     setIsMovingSelection(false);
     setIsDuplicating(false);
-    setIsDraggingLayer(false);
     lastDrawPoint.current = null;
     dragStartOriginRef.current = null;
 
@@ -2147,6 +2012,110 @@ export default function ImageEditor() {
     // Reinitialize edit canvas for new dimensions
     const { width, height } = getDisplayDimensions();
     initEditCanvas(rotation % 180 === 0 ? height : width, rotation % 180 === 0 ? width : height);
+  };
+
+  // Background removal handler
+  const handleRemoveBackground = async () => {
+    if (isRemovingBackground) return;
+
+    // Get active layer
+    const activeLayer = activeLayerId ? layers.find(l => l.id === activeLayerId) : null;
+    if (!activeLayer) {
+      alert("Please select a layer to remove background.");
+      return;
+    }
+
+    // Get layer canvas
+    const layerCanvas = layerCanvasesRef.current.get(activeLayer.id);
+    if (!layerCanvas) {
+      alert("Layer canvas not found.");
+      return;
+    }
+
+    setIsRemovingBackground(true);
+    setBgRemovalProgress(0);
+    setBgRemovalStatus("Initializing...");
+
+    try {
+      // Save current state to history
+      saveToHistory();
+
+      let resultCanvas: HTMLCanvasElement;
+
+      if (selection) {
+        // Process only the selected area
+        setBgRemovalStatus("Extracting selection...");
+
+        // Create a canvas with the selection area
+        const selectionCanvas = document.createElement("canvas");
+        selectionCanvas.width = Math.round(selection.width);
+        selectionCanvas.height = Math.round(selection.height);
+        const selCtx = selectionCanvas.getContext("2d")!;
+
+        // Draw the selection area from the layer canvas
+        selCtx.drawImage(
+          layerCanvas,
+          Math.round(selection.x),
+          Math.round(selection.y),
+          Math.round(selection.width),
+          Math.round(selection.height),
+          0,
+          0,
+          Math.round(selection.width),
+          Math.round(selection.height)
+        );
+
+        const sourceImage = selectionCanvas.toDataURL("image/png");
+
+        // Remove background from selection
+        resultCanvas = await removeBackground(sourceImage, (progress, status) => {
+          setBgRemovalProgress(progress);
+          setBgRemovalStatus(status);
+        });
+
+        // Composite the result back onto the layer canvas
+        const ctx = layerCanvas.getContext("2d")!;
+        // Clear the selection area
+        ctx.clearRect(
+          Math.round(selection.x),
+          Math.round(selection.y),
+          Math.round(selection.width),
+          Math.round(selection.height)
+        );
+        // Draw the processed result
+        ctx.drawImage(
+          resultCanvas,
+          Math.round(selection.x),
+          Math.round(selection.y)
+        );
+      } else {
+        // Process the entire layer canvas
+        const sourceImage = layerCanvas.toDataURL("image/png");
+
+        resultCanvas = await removeBackground(sourceImage, (progress, status) => {
+          setBgRemovalProgress(progress);
+          setBgRemovalStatus(status);
+        });
+
+        // Replace layer canvas content with result
+        const ctx = layerCanvas.getContext("2d")!;
+        ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+        ctx.drawImage(resultCanvas, 0, 0);
+      }
+
+      setBgRemovalStatus("Done!");
+    } catch (error) {
+      console.error("Background removal failed:", error);
+      setBgRemovalStatus("Failed");
+      alert(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
+    } finally {
+      setIsRemovingBackground(false);
+      // Clear status after a delay
+      setTimeout(() => {
+        setBgRemovalProgress(0);
+        setBgRemovalStatus("");
+      }, 2000);
+    }
   };
 
   const selectAll = () => {
@@ -2429,7 +2398,6 @@ export default function ImageEditor() {
     historyRef.current = [];
     historyIndexRef.current = -1;
     layerCanvasesRef.current.clear();
-    setLayerImages(new Map());
     editCanvasRef.current = null;
     imageRef.current = null;
   }, []);
@@ -2618,7 +2586,6 @@ export default function ImageEditor() {
     setLayers([]);
     setActiveLayerId(null);
     layerCanvasesRef.current.clear();
-    setLayerImages(new Map());
 
     // Reset refs
     imageRef.current = null;
@@ -2988,6 +2955,51 @@ export default function ImageEditor() {
 
             <div className="h-5 w-px bg-border-default" />
 
+            {/* Background Removal */}
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{t.removeBackground}</span>
+                  <span className="text-text-tertiary text-[11px]">
+                    AI 모델을 사용해 이미지 배경을 제거합니다
+                  </span>
+                  <span className="text-[10px] text-text-tertiary">
+                    첫 실행 시 모델 다운로드 (~30MB)
+                  </span>
+                </div>
+              }
+            >
+              <button
+                onClick={handleRemoveBackground}
+                disabled={isRemovingBackground}
+                className={`p-1.5 rounded transition-colors ${
+                  isRemovingBackground
+                    ? "bg-accent-primary text-white cursor-wait"
+                    : "hover:bg-interactive-hover"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {/* Person silhouette with transparent/dashed background */}
+                  <circle cx="12" cy="7" r="3" strokeWidth={2} />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
+                  />
+                  {/* Diagonal line indicating removal/transparency */}
+                  <path
+                    strokeLinecap="round"
+                    strokeWidth={2}
+                    strokeDasharray="2 2"
+                    d="M3 21L21 3"
+                  />
+                </svg>
+              </button>
+            </Tooltip>
+
+            <div className="h-5 w-px bg-border-default" />
+
             {/* Zoom controls */}
             <div className="flex items-center gap-1">
               <button
@@ -3128,6 +3140,42 @@ export default function ImageEditor() {
           <EditorDockableArea />
         </div>
       </EditorLayoutProvider>
+
+      {/* Background Removal Loading Overlay */}
+      {isRemovingBackground && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface-primary rounded-lg p-6 shadow-xl flex flex-col items-center gap-4 min-w-[280px]">
+            <div className="relative">
+              <svg className="w-12 h-12 animate-spin text-accent-primary" viewBox="0 0 24 24" fill="none">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+            </div>
+            <div className="text-center">
+              <p className="text-text-primary font-medium">{t.removeBackground}</p>
+              <p className="text-text-secondary text-sm mt-1">{bgRemovalStatus}</p>
+              <div className="mt-3 w-full bg-surface-secondary rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-accent-primary h-full transition-all duration-300 ease-out"
+                  style={{ width: `${bgRemovalProgress}%` }}
+                />
+              </div>
+              <p className="text-text-tertiary text-xs mt-2">{Math.round(bgRemovalProgress)}%</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom status bar */}
       {imageSrc && (

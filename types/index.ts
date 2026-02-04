@@ -48,24 +48,26 @@ export interface SavedProject {
 // ============================================
 
 /**
- * UnifiedLayer: Single layer type that can hold both image and paint data
+ * UnifiedLayer: All layers are pixel-based (paint layers)
+ * Images imported are drawn onto the layer canvas
  */
 export interface UnifiedLayer {
   id: string;
   name: string;
-  type: "image" | "paint";
+  type: "paint"; // All layers are paint layers now
   visible: boolean;
   locked: boolean;
   opacity: number;
   zIndex: number;
-  // For image layers
-  imageSrc?: string;
+  // Canvas data
+  paintData?: string;
+  // Optional transform
   position?: Point;
   scale?: number;
   rotation?: number;
   originalSize?: Size;
-  // For paint layers
-  paintData?: string;
+  /** @deprecated Use paintData instead */
+  imageSrc?: string;
 }
 
 // ============================================

@@ -158,6 +158,9 @@ interface Translations {
   deleteFrame: string;
   resetToOriginal: string;
   backgroundRemovalMode: string;
+  removeBackground: string;
+  removingBackground: string;
+  backgroundRemovalFailed: string;
   connectedAreaOnly: string;
   allSameColor: string;
 
@@ -361,6 +364,9 @@ const translations: Record<Language, Translations> = {
     deleteFrame: "프레임 삭제",
     resetToOriginal: "원본으로 초기화",
     backgroundRemovalMode: "배경 삭제 모드",
+    removeBackground: "AI 배경 삭제",
+    removingBackground: "배경 삭제 중...",
+    backgroundRemovalFailed: "배경 삭제에 실패했습니다. 다시 시도해주세요.",
     connectedAreaOnly: "연결된 영역만 삭제",
     allSameColor: "같은 색상 모두 삭제",
 
@@ -562,6 +568,9 @@ const translations: Record<Language, Translations> = {
     deleteFrame: "Delete Frame",
     resetToOriginal: "Reset to Original",
     backgroundRemovalMode: "Background Removal Mode",
+    removeBackground: "AI Remove BG",
+    removingBackground: "Removing background...",
+    backgroundRemovalFailed: "Background removal failed. Please try again.",
     connectedAreaOnly: "Connected area only",
     allSameColor: "All same color",
 
