@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { CropArea, AspectRatio, ASPECT_RATIO_VALUES } from "../../types";
+import { useEditorState } from "../../contexts";
 
 // ============================================
 // Types
 // ============================================
 
-interface UseCropToolOptions {
-  getDisplayDimensions: () => { width: number; height: number };
-}
+// No options needed - everything comes from context
 
 interface UseCropToolReturn {
   // State
@@ -41,8 +40,18 @@ interface UseCropToolReturn {
 // Hook Implementation
 // ============================================
 
-export function useCropTool(options: UseCropToolOptions): UseCropToolReturn {
-  const { getDisplayDimensions } = options;
+export function useCropTool(): UseCropToolReturn {
+  // Get state from EditorStateContext
+  const {
+    state: { rotation, canvasSize },
+  } = useEditorState();
+
+  // Calculate display dimensions (rotated canvas size)
+  const getDisplayDimensions = useCallback(() => {
+    const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
+    const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
+    return { width, height };
+  }, [rotation, canvasSize]);
 
   // State
   const [cropArea, setCropArea] = useState<CropArea | null>(null);

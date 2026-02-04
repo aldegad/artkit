@@ -1,20 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef, RefObject } from "react";
-import { Point, EditorToolMode } from "../types";
+import { Point } from "../types";
+import { useEditorState, useEditorRefs } from "../contexts";
 
 // ============================================
 // Types
 // ============================================
 
-interface UseBrushToolOptions {
-  editCanvasRef: RefObject<HTMLCanvasElement | null>;
-  getDisplayDimensions: () => { width: number; height: number };
-  imageRef: RefObject<HTMLImageElement | null>;
-  canvasSize: { width: number; height: number };
-  rotation: number;
-  toolMode: EditorToolMode;
-}
+// No options needed - everything comes from context
 
 interface UseBrushToolReturn {
   // State
@@ -37,8 +31,21 @@ interface UseBrushToolReturn {
 // Hook Implementation
 // ============================================
 
-export function useBrushTool(options: UseBrushToolOptions): UseBrushToolReturn {
-  const { editCanvasRef, getDisplayDimensions, imageRef, canvasSize, rotation, toolMode } = options;
+export function useBrushTool(): UseBrushToolReturn {
+  // Get state from EditorStateContext
+  const {
+    state: { canvasSize, rotation, toolMode },
+  } = useEditorState();
+
+  // Get refs from EditorRefsContext
+  const { editCanvasRef, imageRef } = useEditorRefs();
+
+  // Calculate display dimensions (rotated canvas size)
+  const getDisplayDimensions = useCallback(() => {
+    const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
+    const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
+    return { width, height };
+  }, [rotation, canvasSize]);
 
   // State
   const [brushSize, setBrushSize] = useState(10);

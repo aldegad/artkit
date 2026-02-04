@@ -149,9 +149,7 @@ function ImageEditorContent() {
     startCrop,
     updateCrop,
     validateCrop,
-  } = useCropTool({
-    getDisplayDimensions,
-  });
+  } = useCropTool();
 
   // Layer management - using extracted hook
   const {
@@ -205,14 +203,7 @@ function ImageEditorContent() {
     drawOnEditCanvas,
     pickColor,
     resetLastDrawPoint,
-  } = useBrushTool({
-    editCanvasRef,
-    getDisplayDimensions,
-    imageRef,
-    canvasSize,
-    rotation,
-    toolMode,
-  });
+  } = useBrushTool();
 
   // Canvas input handling - normalized pointer events
   const { getMousePos, screenToImage, createInputEvent } = useCanvasInput({
@@ -245,11 +236,7 @@ function ImageEditorContent() {
     pasteFromClipboard,
     selectAll: selectAllSelection,
   } = useSelectionTool({
-    editCanvasRef,
-    imageRef,
     getDisplayDimensions,
-    getRotation: () => rotation,
-    getCanvasSize: () => canvasSize,
     saveToHistory,
   });
 

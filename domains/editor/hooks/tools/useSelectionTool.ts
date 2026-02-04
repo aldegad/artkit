@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, RefObject } from "react";
+import { useState, useCallback, useRef } from "react";
 import { CropArea, Point } from "../../types";
+import { useEditorState, useEditorRefs } from "../../contexts";
 
 // ============================================
 // Types
@@ -16,11 +17,9 @@ interface FloatingLayer {
 }
 
 interface UseSelectionToolOptions {
-  editCanvasRef: RefObject<HTMLCanvasElement | null>;
-  imageRef: RefObject<HTMLImageElement | null>;
+  // Display dimensions helper
   getDisplayDimensions: () => { width: number; height: number };
-  getRotation: () => number;
-  getCanvasSize: () => { width: number; height: number };
+  // History (from useHistory)
   saveToHistory: () => void;
 }
 
@@ -57,14 +56,16 @@ interface UseSelectionToolReturn {
 // ============================================
 
 export function useSelectionTool(options: UseSelectionToolOptions): UseSelectionToolReturn {
+  // Get state from EditorStateContext
   const {
-    editCanvasRef,
-    imageRef,
-    getDisplayDimensions,
-    getRotation,
-    getCanvasSize,
-    saveToHistory,
-  } = options;
+    state: { rotation, canvasSize },
+  } = useEditorState();
+
+  // Get refs from EditorRefsContext
+  const { editCanvasRef, imageRef } = useEditorRefs();
+
+  // Props from other hooks (still required as options)
+  const { getDisplayDimensions, saveToHistory } = options;
 
   // State
   const [selection, setSelection] = useState<CropArea | null>(null);
@@ -120,8 +121,6 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       if (!editCanvas || !ctx || !img) return;
 
       const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-      const rotation = getRotation();
-      const canvasSize = getCanvasSize();
 
       // Create composite canvas to get the selected area
       const compositeCanvas = document.createElement("canvas");
@@ -167,7 +166,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       setIsDuplicating(isDuplicate);
       dragStartOriginRef.current = { x: selection.x, y: selection.y };
     },
-    [selection, editCanvasRef, imageRef, getDisplayDimensions, getRotation, getCanvasSize, saveToHistory]
+    [selection, editCanvasRef, imageRef, getDisplayDimensions, rotation, canvasSize, saveToHistory]
   );
 
   // Move the floating layer
@@ -226,8 +225,6 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     if (!editCanvas || !ctx || !img) return;
 
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const rotation = getRotation();
-    const canvasSize = getCanvasSize();
 
     // Create composite canvas
     const compositeCanvas = document.createElement("canvas");
@@ -250,7 +247,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       Math.round(selection.height)
     );
     clipboardRef.current = imageData;
-  }, [selection, editCanvasRef, imageRef, getDisplayDimensions, getRotation, getCanvasSize]);
+  }, [selection, editCanvasRef, imageRef, getDisplayDimensions, rotation, canvasSize]);
 
   // Paste from clipboard
   const pasteFromClipboard = useCallback((): FloatingLayer | null => {
