@@ -786,7 +786,6 @@ export default function ImageEditor() {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseLeave}
-            onWheel={handleWheel}
             className="w-full h-full"
             style={{ cursor: getCursor(), imageRendering: "pixelated" }}
           />
@@ -1183,7 +1182,8 @@ export default function ImageEditor() {
     }
 
     // Draw marquee selection (dotted line)
-    if (selection && (toolMode === "marquee" || floatingLayerRef.current)) {
+    // Show selection for tools that use it: marquee, move, fill, brush, eraser
+    if (selection && (toolMode === "marquee" || toolMode === "move" || toolMode === "fill" || toolMode === "brush" || toolMode === "eraser" || floatingLayerRef.current)) {
       const selX = offsetX + selection.x * zoom;
       const selY = offsetY + selection.y * zoom;
       const selW = selection.width * zoom;
@@ -1827,29 +1827,6 @@ export default function ImageEditor() {
     handleMouseUp();
   };
 
-  // Wheel zoom
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      if (!imageSrc) return;
-      e.preventDefault();
-
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
-
-      const screenPos = getMousePos(e);
-      const dx = screenPos.x - canvasRef.current!.width / 2;
-      const dy = screenPos.y - canvasRef.current!.height / 2;
-      const scale = newZoom / zoom;
-
-      setPan((p) => ({
-        x: p.x * scale - dx * (scale - 1),
-        y: p.y * scale - dy * (scale - 1),
-      }));
-      setZoom(newZoom);
-    },
-    [imageSrc, zoom],
-  );
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2038,6 +2015,38 @@ export default function ImageEditor() {
     saveToHistory,
     isProjectListOpen,
   ]);
+
+  // Wheel zoom handler (use non-passive listener to allow preventDefault)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const wheelHandler = (e: WheelEvent) => {
+      if (!imageSrc) return;
+      e.preventDefault();
+
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
+
+      const rect = canvas.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const dx = screenX - canvas.width / 2;
+      const dy = screenY - canvas.height / 2;
+      const scale = newZoom / zoom;
+
+      setPan((p) => ({
+        x: p.x * scale + dx * (1 - scale),
+        y: p.y * scale + dy * (1 - scale),
+      }));
+      setZoom(newZoom);
+    };
+
+    canvas.addEventListener("wheel", wheelHandler, { passive: false });
+    return () => {
+      canvas.removeEventListener("wheel", wheelHandler);
+    };
+  }, [imageSrc, zoom]);
 
   // Update crop area when aspect ratio changes
   useEffect(() => {
