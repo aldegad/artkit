@@ -26,3 +26,6 @@ Thumbs.db
 # Build
 dist/
 build/
+
+# Firebase cache
+.firebase/
