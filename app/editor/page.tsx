@@ -5,13 +5,10 @@ import { useLanguage } from "../../shared/contexts";
 import { Tooltip, ImageDropZone } from "../../shared/components";
 import {
   EditorToolMode,
-  AspectRatio,
   OutputFormat,
-  CropArea,
   SavedImageProject,
   UnifiedLayer,
   Point,
-  ASPECT_RATIO_VALUES,
   createPaintLayer,
   ProjectListModal,
   loadEditorAutosaveData,
@@ -22,6 +19,8 @@ import {
   useLayerManagement,
   useBrushTool,
   useCanvasInput,
+  useSelectionTool,
+  useCropTool,
   EditorToolOptions,
   EditorStatusBar,
 } from "../../domains/editor";
@@ -57,8 +56,7 @@ export default function ImageEditor() {
   const { t } = useLanguage();
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [rotation, setRotation] = useState(0);
-  const [cropArea, setCropArea] = useState<CropArea | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
+  // cropArea and aspectRatio - moved to useCropTool hook
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("png");
   const [quality, setQuality] = useState(0.9);
   const [isDragging, setIsDragging] = useState(false);
@@ -98,21 +96,6 @@ export default function ImageEditor() {
   // Mouse position for brush preview
   const [mousePos, setMousePos] = useState<Point | null>(null);
 
-  // Marquee selection state
-  const [selection, setSelection] = useState<CropArea | null>(null);
-  const [isMovingSelection, setIsMovingSelection] = useState(false);
-  const [isDuplicating, setIsDuplicating] = useState(false);
-  const [isAltPressed, setIsAltPressed] = useState(false);
-  const clipboardRef = useRef<ImageData | null>(null);
-  const floatingLayerRef = useRef<{
-    imageData: ImageData;
-    x: number;
-    y: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-  const dragStartOriginRef = useRef<Point | null>(null); // 드래그 시작 시 원본 위치 (Shift 제한용)
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -127,17 +110,31 @@ export default function ImageEditor() {
     maxHistory: 50,
   });
 
-  // Use imported ASPECT_RATIOS and ASPECT_RATIO_VALUES from domain
-  const getAspectRatioValue = (ratio: AspectRatio): number | null => {
-    return ASPECT_RATIO_VALUES[ratio];
-  };
-
   // Get display dimensions (considering rotation)
   const getDisplayDimensions = useCallback(() => {
     const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
     const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
     return { width, height };
   }, [rotation, canvasSize]);
+
+  // Crop tool - using extracted hook
+  const {
+    cropArea,
+    setCropArea,
+    aspectRatio,
+    setAspectRatio,
+    selectAllCrop,
+    clearCrop,
+    getAspectRatioValue,
+    getCropHandleAtPosition,
+    moveCrop,
+    resizeCrop,
+    startCrop,
+    updateCrop,
+    validateCrop,
+  } = useCropTool({
+    getDisplayDimensions,
+  });
 
   // Layer management - using extracted hook
   const {
@@ -206,6 +203,37 @@ export default function ImageEditor() {
     zoom,
     pan,
     getDisplayDimensions,
+  });
+
+  // Marquee selection - using extracted hook
+  const {
+    selection,
+    setSelection,
+    isMovingSelection,
+    setIsMovingSelection,
+    isDuplicating,
+    setIsDuplicating,
+    isAltPressed,
+    setIsAltPressed,
+    floatingLayerRef,
+    clipboardRef,
+    dragStartOriginRef,
+    startSelection,
+    updateSelection: updateSelectionArea,
+    clearSelection,
+    commitFloatingLayer,
+    createFloatingLayer,
+    moveFloatingLayer,
+    copyToClipboard,
+    pasteFromClipboard,
+    selectAll: selectAllSelection,
+  } = useSelectionTool({
+    editCanvasRef,
+    imageRef,
+    getDisplayDimensions,
+    getRotation: () => rotation,
+    getCanvasSize: () => canvasSize,
+    saveToHistory,
   });
 
   // ============================================
@@ -1589,43 +1617,7 @@ export default function ImageEditor() {
     }
   }, []);
 
-  // Update crop area when aspect ratio changes
-  useEffect(() => {
-    if (!cropArea) return;
-    const ratioValue = getAspectRatioValue(aspectRatio);
-    if (!ratioValue) return;
-
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-    const centerX = cropArea.x + cropArea.width / 2;
-    const centerY = cropArea.y + cropArea.height / 2;
-
-    let newWidth = cropArea.width;
-    let newHeight = cropArea.width / ratioValue;
-
-    if (newHeight > displayHeight) {
-      newHeight = displayHeight;
-      newWidth = newHeight * ratioValue;
-    }
-
-    if (newWidth > displayWidth) {
-      newWidth = displayWidth;
-      newHeight = newWidth / ratioValue;
-    }
-
-    let newX = Math.round(centerX - newWidth / 2);
-    let newY = Math.round(centerY - newHeight / 2);
-
-    newX = Math.max(0, Math.min(newX, displayWidth - newWidth));
-    newY = Math.max(0, Math.min(newY, displayHeight - newHeight));
-
-    setCropArea({
-      x: newX,
-      y: newY,
-      width: Math.round(newWidth),
-      height: Math.round(newHeight),
-    });
-  }, [aspectRatio]);
+  // Update crop area when aspect ratio changes - moved to useCropTool hook
 
   // Actions
   const rotate = (deg: number) => {
@@ -1740,31 +1732,7 @@ export default function ImageEditor() {
     }
   };
 
-  const selectAll = () => {
-    const { width, height } = getDisplayDimensions();
-    const ratioValue = getAspectRatioValue(aspectRatio);
-
-    if (ratioValue) {
-      let newWidth = width;
-      let newHeight = width / ratioValue;
-
-      if (newHeight > height) {
-        newHeight = height;
-        newWidth = height * ratioValue;
-      }
-
-      const x = Math.round((width - newWidth) / 2);
-      const y = Math.round((height - newHeight) / 2);
-
-      setCropArea({ x, y, width: Math.round(newWidth), height: Math.round(newHeight) });
-    } else {
-      setCropArea({ x: 0, y: 0, width, height });
-    }
-  };
-
-  const clearCrop = () => {
-    setCropArea(null);
-  };
+  // selectAllCrop and clearCrop - moved to useCropTool hook
 
   const clearEdits = () => {
     if (confirm(t.clearEditConfirm)) {
@@ -2670,7 +2638,7 @@ export default function ImageEditor() {
           aspectRatio={aspectRatio}
           setAspectRatio={setAspectRatio}
           cropArea={cropArea}
-          selectAll={selectAll}
+          selectAll={selectAllCrop}
           clearCrop={clearCrop}
           currentToolName={toolButtons.find(tb => tb.mode === toolMode)?.name}
           translations={{

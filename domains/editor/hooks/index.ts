@@ -14,7 +14,7 @@ export type {
   UseCanvasInputReturn,
 } from "./useCanvasInput";
 
-// Tool types
+// Tool types and hooks
 export type {
   EditorTool,
   ToolContext,
@@ -22,3 +22,5 @@ export type {
   SelectionToolState,
   CropToolState,
 } from "./tools";
+
+export { useSelectionTool, useCropTool } from "./tools";

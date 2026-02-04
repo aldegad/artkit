@@ -9,3 +9,6 @@ export type {
   SelectionToolState,
   CropToolState,
 } from "./types";
+
+export { useSelectionTool } from "./useSelectionTool";
+export { useCropTool } from "./useCropTool";
