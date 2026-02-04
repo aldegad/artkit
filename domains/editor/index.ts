@@ -7,7 +7,7 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useProjectManagement } from "./hooks";
 export type {
   CanvasInputEvent,
   InputModifiers,

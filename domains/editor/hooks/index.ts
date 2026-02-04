@@ -25,3 +25,4 @@ export type {
 
 export { useSelectionTool, useCropTool } from "./tools";
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+export { useProjectManagement } from "./useProjectManagement";
