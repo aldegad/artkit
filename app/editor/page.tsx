@@ -2016,24 +2016,31 @@ export default function ImageEditor() {
     isProjectListOpen,
   ]);
 
+  // Refs for wheel handler to access current values without stale closure
+  const zoomRef = useRef(zoom);
+  const imageSrcRef = useRef(imageSrc);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { imageSrcRef.current = imageSrc; }, [imageSrc]);
+
   // Wheel zoom handler (use non-passive listener to allow preventDefault)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const wheelHandler = (e: WheelEvent) => {
-      if (!imageSrc) return;
+      if (!imageSrcRef.current) return;
       e.preventDefault();
 
+      const currentZoom = zoomRef.current;
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
+      const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
 
       const rect = canvas.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const dx = screenX - canvas.width / 2;
       const dy = screenY - canvas.height / 2;
-      const scale = newZoom / zoom;
+      const scale = newZoom / currentZoom;
 
       setPan((p) => ({
         x: p.x * scale + dx * (1 - scale),
@@ -2046,7 +2053,7 @@ export default function ImageEditor() {
     return () => {
       canvas.removeEventListener("wheel", wheelHandler);
     };
-  }, [imageSrc, zoom]);
+  }, [imageSrc]); // Re-attach when imageSrc changes (canvas may be created/destroyed)
 
   // Update crop area when aspect ratio changes
   useEffect(() => {
