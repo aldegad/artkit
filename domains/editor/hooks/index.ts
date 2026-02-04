@@ -27,3 +27,5 @@ export { useSelectionTool, useCropTool } from "./tools";
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export { useProjectManagement } from "./useProjectManagement";
 export { useMouseHandlers } from "./useMouseHandlers";
+export { useCanvasRendering } from "./useCanvasRendering";
+export { useBackgroundRemoval } from "./useBackgroundRemoval";

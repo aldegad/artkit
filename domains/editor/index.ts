@@ -7,7 +7,7 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useProjectManagement, useMouseHandlers } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useProjectManagement, useMouseHandlers, useCanvasRendering, useBackgroundRemoval } from "./hooks";
 export type {
   CanvasInputEvent,
   InputModifiers,
@@ -20,6 +20,7 @@ export type {
 export { ProjectListModal } from "./components";
 export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
+export { BackgroundRemovalModals } from "./components";
 
 // Types
 export type {

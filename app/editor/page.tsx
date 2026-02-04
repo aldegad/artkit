@@ -23,6 +23,9 @@ import {
   useCropTool,
   useKeyboardShortcuts,
   useMouseHandlers,
+  useCanvasRendering,
+  useBackgroundRemoval,
+  BackgroundRemovalModals,
   EditorToolOptions,
   EditorStatusBar,
 } from "../../domains/editor";
@@ -32,7 +35,6 @@ import {
   deleteImageProject,
   getStorageInfo,
 } from "../../utils/storage";
-import { removeBackground } from "../../utils/backgroundRemoval";
 import { EditorLayoutProvider, useEditorLayout } from "../../domains/editor/contexts/EditorLayoutContext";
 import {
   EditorSplitContainer,
@@ -84,10 +86,7 @@ export default function ImageEditor() {
 
   // Clone stamp state - moved to useBrushTool hook
 
-  // Background removal state
-  const [isRemovingBackground, setIsRemovingBackground] = useState(false);
-  const [bgRemovalProgress, setBgRemovalProgress] = useState(0);
-  const [bgRemovalStatus, setBgRemovalStatus] = useState("");
+  // Background removal confirmation UI state (actual removal handled by useBackgroundRemoval hook)
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
 
   // mousePos - moved to useMouseHandlers hook
@@ -333,6 +332,48 @@ export default function ImageEditor() {
     getAspectRatioValue,
     saveToHistory,
     fillWithColor,
+  });
+
+  // Canvas rendering - using extracted hook
+  useCanvasRendering({
+    canvasRef,
+    containerRef,
+    layerCanvasesRef,
+    editCanvasRef,
+    floatingLayerRef,
+    layers,
+    canvasSize,
+    rotation,
+    cropArea,
+    zoom,
+    pan,
+    toolMode,
+    mousePos,
+    brushSize,
+    brushColor,
+    stampSource,
+    selection,
+    isDuplicating,
+    isMovingSelection,
+    activeLayerId,
+    getDisplayDimensions,
+  });
+
+  // Background removal - using extracted hook
+  const {
+    isRemovingBackground,
+    bgRemovalProgress,
+    bgRemovalStatus,
+    handleRemoveBackground,
+  } = useBackgroundRemoval({
+    layers,
+    activeLayerId,
+    selection,
+    layerCanvasesRef,
+    saveToHistory,
+    translations: {
+      backgroundRemovalFailed: t.backgroundRemovalFailed,
+    },
   });
 
   // Load image from file
@@ -646,303 +687,9 @@ export default function ImageEditor() {
     };
   });
 
-  // Draw canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d", { willReadFrequently: true });
-    const img = imageRef.current;
-    const editCanvas = editCanvasRef.current;
-    const container = containerRef.current;
-
-    if (!canvas || !ctx || !container || layers.length === 0) return;
-
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-    // Set canvas size to container size
-    const containerRect = container.getBoundingClientRect();
-    canvas.width = containerRect.width;
-    canvas.height = containerRect.height;
-
-    // Clear canvas with background color
-    ctx.fillStyle =
-      getComputedStyle(document.documentElement).getPropertyValue("--color-surface-tertiary") ||
-      "#2a2a2a";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Calculate centered position with pan and zoom
-    const scaledWidth = displayWidth * zoom;
-    const scaledHeight = displayHeight * zoom;
-    const offsetX = (canvas.width - scaledWidth) / 2 + pan.x;
-    const offsetY = (canvas.height - scaledHeight) / 2 + pan.y;
-
-    // Draw checkerboard pattern for transparency (like Photoshop)
-    const checkerSize = 8;
-    const lightColor = "#ffffff";
-    const darkColor = "#cccccc";
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
-    ctx.clip();
-
-    const startX = Math.floor(offsetX / checkerSize) * checkerSize;
-    const startY = Math.floor(offsetY / checkerSize) * checkerSize;
-    const endX = offsetX + scaledWidth;
-    const endY = offsetY + scaledHeight;
-
-    for (let y = startY; y < endY; y += checkerSize) {
-      for (let x = startX; x < endX; x += checkerSize) {
-        const isLight =
-          (Math.floor((x - startX) / checkerSize) + Math.floor((y - startY) / checkerSize)) % 2 ===
-          0;
-        ctx.fillStyle = isLight ? lightColor : darkColor;
-        ctx.fillRect(x, y, checkerSize, checkerSize);
-      }
-    }
-    ctx.restore();
-
-    // Draw all layers sorted by zIndex (lower first = background)
-    // Unified layer system renders both image and paint layers in correct order
-    const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
-
-    for (const layer of sortedLayers) {
-      if (!layer.visible) continue;
-
-      ctx.save();
-      ctx.globalAlpha = layer.opacity / 100;
-
-      // All layers are paint layers now - render from canvas
-      const layerCanvas = layerCanvasesRef.current.get(layer.id);
-      if (layerCanvas) {
-        ctx.imageSmoothingEnabled = false;
-        ctx.translate(offsetX, offsetY);
-        ctx.scale(zoom, zoom);
-        ctx.drawImage(layerCanvas, 0, 0);
-      }
-
-      ctx.restore();
-    }
-
-    // Fallback: Draw legacy edit canvas if no layers but edit canvas exists
-    if (layers.length === 0 && editCanvas) {
-      ctx.save();
-      ctx.imageSmoothingEnabled = false;
-      ctx.translate(offsetX, offsetY);
-      ctx.scale(zoom, zoom);
-      ctx.drawImage(editCanvas, 0, 0);
-      ctx.restore();
-    }
-
-    // Draw crop overlay
-    if (cropArea && toolMode === "crop") {
-      const cropX = offsetX + cropArea.x * zoom;
-      const cropY = offsetY + cropArea.y * zoom;
-      const cropW = cropArea.width * zoom;
-      const cropH = cropArea.height * zoom;
-
-      // Dark overlay outside crop area
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fillRect(offsetX, offsetY, scaledWidth, cropArea.y * zoom);
-      ctx.fillRect(
-        offsetX,
-        cropY + cropH,
-        scaledWidth,
-        scaledHeight - (cropArea.y + cropArea.height) * zoom,
-      );
-      ctx.fillRect(offsetX, cropY, cropArea.x * zoom, cropH);
-      ctx.fillRect(cropX + cropW, cropY, scaledWidth - (cropArea.x + cropArea.width) * zoom, cropH);
-
-      // Draw crop border
-      ctx.strokeStyle = "#3b82f6";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(cropX, cropY, cropW, cropH);
-
-      // Draw grid lines (rule of thirds)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-      ctx.lineWidth = 1;
-      for (let i = 1; i < 3; i++) {
-        ctx.beginPath();
-        ctx.moveTo(cropX + (cropW * i) / 3, cropY);
-        ctx.lineTo(cropX + (cropW * i) / 3, cropY + cropH);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cropX, cropY + (cropH * i) / 3);
-        ctx.lineTo(cropX + cropW, cropY + (cropH * i) / 3);
-        ctx.stroke();
-      }
-
-      // Draw resize handles
-      const handleSize = 8;
-      ctx.fillStyle = "#3b82f6";
-      const handles = [
-        { x: cropX, y: cropY },
-        { x: cropX + cropW / 2, y: cropY },
-        { x: cropX + cropW, y: cropY },
-        { x: cropX + cropW, y: cropY + cropH / 2 },
-        { x: cropX + cropW, y: cropY + cropH },
-        { x: cropX + cropW / 2, y: cropY + cropH },
-        { x: cropX, y: cropY + cropH },
-        { x: cropX, y: cropY + cropH / 2 },
-      ];
-
-      handles.forEach((h) => {
-        ctx.fillRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
-      });
-    }
-
-    // Draw brush preview cursor
-    if (mousePos && (toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp")) {
-      const screenX = offsetX + mousePos.x * zoom;
-      const screenY = offsetY + mousePos.y * zoom;
-      const brushRadius = (brushSize * zoom) / 2;
-
-      ctx.save();
-      ctx.strokeStyle = toolMode === "eraser" ? "#ff4444" : brushColor;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.arc(screenX, screenY, brushRadius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw crosshair
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(screenX - 5, screenY);
-      ctx.lineTo(screenX + 5, screenY);
-      ctx.moveTo(screenX, screenY - 5);
-      ctx.lineTo(screenX, screenY + 5);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Draw stamp source indicator
-    if (stampSource && toolMode === "stamp") {
-      const sourceX = offsetX + stampSource.x * zoom;
-      const sourceY = offsetY + stampSource.y * zoom;
-
-      ctx.save();
-      ctx.strokeStyle = "#00ff00";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(sourceX - 10, sourceY);
-      ctx.lineTo(sourceX + 10, sourceY);
-      ctx.moveTo(sourceX, sourceY - 10);
-      ctx.lineTo(sourceX, sourceY + 10);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Draw marquee selection (dotted line)
-    // Show selection for tools that use it: marquee, move, fill, brush, eraser
-    if (selection && (toolMode === "marquee" || toolMode === "move" || toolMode === "fill" || toolMode === "brush" || toolMode === "eraser" || floatingLayerRef.current)) {
-      const selX = offsetX + selection.x * zoom;
-      const selY = offsetY + selection.y * zoom;
-      const selW = selection.width * zoom;
-      const selH = selection.height * zoom;
-
-      ctx.save();
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.strokeRect(selX, selY, selW, selH);
-
-      // Draw second layer with offset for "marching ants" effect
-      ctx.strokeStyle = "#000000";
-      ctx.lineDashOffset = 4;
-      ctx.strokeRect(selX, selY, selW, selH);
-      ctx.restore();
-    }
-
-    // Draw floating layer (when moving selection - both duplicate and cut-move)
-    if (floatingLayerRef.current && isMovingSelection) {
-      const floating = floatingLayerRef.current;
-      const origW = floating.imageData.width * zoom;
-      const origH = floating.imageData.height * zoom;
-
-      // Draw original selection area indicator (where the copy/cut came from) - only for duplicate
-      if (isDuplicating) {
-        ctx.save();
-        const origX = offsetX + floating.originX * zoom;
-        const origY = offsetY + floating.originY * zoom;
-        ctx.strokeStyle = "#3b82f6";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 2]);
-        ctx.strokeRect(origX, origY, origW, origH);
-        ctx.restore();
-      }
-
-      // Draw the floating image being moved
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = floating.imageData.width;
-      tempCanvas.height = floating.imageData.height;
-      const tempCtx = tempCanvas.getContext("2d");
-      if (tempCtx) {
-        tempCtx.putImageData(floating.imageData, 0, 0);
-
-        ctx.save();
-        ctx.globalAlpha = isDuplicating ? 0.8 : 1.0;
-        const floatX = offsetX + floating.x * zoom;
-        const floatY = offsetY + floating.y * zoom;
-        ctx.drawImage(tempCanvas, floatX, floatY, origW, origH);
-        ctx.restore();
-
-        // Draw selection border around floating layer
-        ctx.save();
-        ctx.strokeStyle = isDuplicating ? "#22c55e" : "#f59e0b";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(floatX, floatY, origW, origH);
-        ctx.restore();
-      }
-    }
-
-    // Draw eyedropper preview
-    if (mousePos && toolMode === "eyedropper") {
-      const screenX = offsetX + mousePos.x * zoom;
-      const screenY = offsetY + mousePos.y * zoom;
-
-      // Get color at position
-      const pixel = ctx.getImageData(screenX, screenY, 1, 1).data;
-      const previewColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
-
-      ctx.save();
-      ctx.fillStyle = previewColor;
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(screenX, screenY - 30, 15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.strokeStyle = "#000000";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(screenX, screenY - 30, 16, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-  }, [
-    layers,
-    canvasSize,
-    rotation,
-    cropArea,
-    zoom,
-    pan,
-    getDisplayDimensions,
-    toolMode,
-    mousePos,
-    brushSize,
-    brushColor,
-    stampSource,
-    selection,
-    isDuplicating,
-    isMovingSelection,
-    activeLayerId,
-  ]);
-
+  // Canvas rendering - moved to useCanvasRendering hook
   // screenToImage and getMousePos are now provided by useCanvasInput hook
   // isInHandle, getActiveToolMode, useMouseHandlers moved above canvas rendering useEffect
-
   // Keyboard shortcuts - moved to useKeyboardShortcuts hook
 
   // Refs for wheel handler to access current values without stale closure
@@ -1008,110 +755,7 @@ export default function ImageEditor() {
     initEditCanvas(rotation % 180 === 0 ? height : width, rotation % 180 === 0 ? width : height);
   };
 
-  // Background removal handler
-  const handleRemoveBackground = async () => {
-    if (isRemovingBackground) return;
-
-    // Get active layer
-    const activeLayer = activeLayerId ? layers.find(l => l.id === activeLayerId) : null;
-    if (!activeLayer) {
-      alert("Please select a layer to remove background.");
-      return;
-    }
-
-    // Get layer canvas
-    const layerCanvas = layerCanvasesRef.current.get(activeLayer.id);
-    if (!layerCanvas) {
-      alert("Layer canvas not found.");
-      return;
-    }
-
-    setIsRemovingBackground(true);
-    setBgRemovalProgress(0);
-    setBgRemovalStatus("Initializing...");
-
-    try {
-      // Save current state to history
-      saveToHistory();
-
-      let resultCanvas: HTMLCanvasElement;
-
-      if (selection) {
-        // Process only the selected area
-        setBgRemovalStatus("Extracting selection...");
-
-        // Create a canvas with the selection area
-        const selectionCanvas = document.createElement("canvas");
-        selectionCanvas.width = Math.round(selection.width);
-        selectionCanvas.height = Math.round(selection.height);
-        const selCtx = selectionCanvas.getContext("2d")!;
-
-        // Draw the selection area from the layer canvas
-        selCtx.drawImage(
-          layerCanvas,
-          Math.round(selection.x),
-          Math.round(selection.y),
-          Math.round(selection.width),
-          Math.round(selection.height),
-          0,
-          0,
-          Math.round(selection.width),
-          Math.round(selection.height)
-        );
-
-        const sourceImage = selectionCanvas.toDataURL("image/png");
-
-        // Remove background from selection
-        resultCanvas = await removeBackground(sourceImage, (progress, status) => {
-          setBgRemovalProgress(progress);
-          setBgRemovalStatus(status);
-        });
-
-        // Composite the result back onto the layer canvas
-        const ctx = layerCanvas.getContext("2d")!;
-        // Clear the selection area
-        ctx.clearRect(
-          Math.round(selection.x),
-          Math.round(selection.y),
-          Math.round(selection.width),
-          Math.round(selection.height)
-        );
-        // Draw the processed result
-        ctx.drawImage(
-          resultCanvas,
-          Math.round(selection.x),
-          Math.round(selection.y)
-        );
-      } else {
-        // Process the entire layer canvas
-        const sourceImage = layerCanvas.toDataURL("image/png");
-
-        resultCanvas = await removeBackground(sourceImage, (progress, status) => {
-          setBgRemovalProgress(progress);
-          setBgRemovalStatus(status);
-        });
-
-        // Replace layer canvas content with result
-        const ctx = layerCanvas.getContext("2d")!;
-        ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-        ctx.drawImage(resultCanvas, 0, 0);
-      }
-
-      setBgRemovalStatus("Done!");
-    } catch (error) {
-      console.error("Background removal failed:", error);
-      setBgRemovalStatus("Failed");
-      alert(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
-    } finally {
-      setIsRemovingBackground(false);
-      // Clear status after a delay
-      setTimeout(() => {
-        setBgRemovalProgress(0);
-        setBgRemovalStatus("");
-      }, 2000);
-    }
-  };
-
+  // Background removal handler - moved to useBackgroundRemoval hook
   // selectAllCrop and clearCrop - moved to useCropTool hook
 
   const clearEdits = () => {
@@ -2038,89 +1682,24 @@ export default function ImageEditor() {
         </div>
       </EditorLayoutProvider>
 
-      {/* Background Removal Confirmation Popup */}
-      {showBgRemovalConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-primary rounded-lg p-6 shadow-xl max-w-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-accent-primary/20 flex items-center justify-center">
-                <svg className="w-5 h-5 text-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="7" r="3" strokeWidth={2} />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-text-primary">{t.removeBackground}</h3>
-            </div>
-            <p className="text-text-secondary text-sm mb-2">
-              AI 모델을 사용해 선택된 레이어의 배경을 자동으로 제거합니다.
-            </p>
-            <p className="text-text-tertiary text-xs mb-4">
-              {selection ? "선택 영역의 배경만 제거됩니다." : "전체 레이어의 배경이 제거됩니다."}
-            </p>
-            <p className="text-text-tertiary text-xs mb-4">
-              첫 실행 시 AI 모델을 다운로드합니다 (~30MB)
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowBgRemovalConfirm(false)}
-                className="px-4 py-2 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
-              >
-                {t.cancel}
-              </button>
-              <button
-                onClick={() => {
-                  setShowBgRemovalConfirm(false);
-                  handleRemoveBackground();
-                }}
-                className="px-4 py-2 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors"
-              >
-                {t.confirm}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Background Removal Loading Overlay */}
-      {isRemovingBackground && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-primary rounded-lg p-6 shadow-xl flex flex-col items-center gap-4 min-w-[280px]">
-            <div className="relative">
-              <svg className="w-12 h-12 animate-spin text-accent-primary" viewBox="0 0 24 24" fill="none">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-            </div>
-            <div className="text-center">
-              <p className="text-text-primary font-medium">{t.removeBackground}</p>
-              <p className="text-text-secondary text-sm mt-1">{bgRemovalStatus}</p>
-              <div className="mt-3 w-full bg-surface-secondary rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-accent-primary h-full transition-all duration-300 ease-out"
-                  style={{ width: `${bgRemovalProgress}%` }}
-                />
-              </div>
-              <p className="text-text-tertiary text-xs mt-2">{Math.round(bgRemovalProgress)}%</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Background Removal Modals */}
+      <BackgroundRemovalModals
+        showConfirm={showBgRemovalConfirm}
+        onCloseConfirm={() => setShowBgRemovalConfirm(false)}
+        onConfirm={() => {
+          setShowBgRemovalConfirm(false);
+          handleRemoveBackground();
+        }}
+        hasSelection={!!selection}
+        isRemoving={isRemovingBackground}
+        progress={bgRemovalProgress}
+        status={bgRemovalStatus}
+        translations={{
+          removeBackground: t.removeBackground,
+          cancel: t.cancel,
+          confirm: t.confirm,
+        }}
+      />
 
       {/* Bottom status bar */}
       {layers.length > 0 && (

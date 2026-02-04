@@ -3,6 +3,7 @@
 // ============================================
 
 export { default as ProjectListModal } from "./ProjectListModal";
+export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 
 // Re-export layout components
 export * from "./layout";
