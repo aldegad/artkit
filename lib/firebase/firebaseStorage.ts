@@ -12,7 +12,7 @@ import {
 import {
   ref,
   uploadString,
-  getDownloadURL,
+  getBlob,
   deleteObject,
   listAll,
 } from "firebase/storage";
@@ -82,11 +82,9 @@ async function uploadLayerImage(
  */
 async function downloadLayerImage(path: string): Promise<string> {
   const storageRef = ref(storage, path);
-  const url = await getDownloadURL(storageRef);
 
-  // Fetch the image and convert to base64
-  const response = await fetch(url);
-  const blob = await response.blob();
+  // Use getBlob to avoid CORS issues
+  const blob = await getBlob(storageRef);
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
