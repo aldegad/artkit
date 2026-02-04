@@ -1651,10 +1651,10 @@ export default function ImageEditor() {
       return;
     }
 
-    // Handle marquee selection
+    // Handle marquee selection and move tool
     const activeMode = getActiveToolMode();
-    if (activeMode === "marquee") {
-      if (dragType === "create" && selection) {
+    if (activeMode === "marquee" || activeMode === "move") {
+      if (dragType === "create" && selection && activeMode === "marquee") {
         let width = Math.round(imagePos.x) - dragStart.x;
         let height = Math.round(imagePos.y) - dragStart.y;
 
@@ -2036,13 +2036,16 @@ export default function ImageEditor() {
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
 
+        // Use rect dimensions (CSS pixels) for consistent calculation
         const rect = canvas.getBoundingClientRect();
-        const screenX = e.clientX - rect.left;
-        const screenY = e.clientY - rect.top;
-        const dx = screenX - canvas.width / 2;
-        const dy = screenY - canvas.height / 2;
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        // Distance from mouse to canvas center
+        const dx = mouseX - rect.width / 2;
+        const dy = mouseY - rect.height / 2;
         const scale = newZoom / currentZoom;
 
+        // Adjust pan so the point under the mouse stays fixed
         setPan((p) => ({
           x: p.x * scale + dx * (1 - scale),
           y: p.y * scale + dy * (1 - scale),
