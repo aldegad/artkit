@@ -781,7 +781,7 @@ export default function ImageEditor() {
           />
         ) : (
           <canvas
-            ref={canvasRef}
+            ref={canvasRefCallback}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -998,7 +998,7 @@ export default function ImageEditor() {
   // Draw canvas
   useEffect(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
+    const ctx = canvas?.getContext("2d", { willReadFrequently: true });
     const img = imageRef.current;
     const editCanvas = editCanvasRef.current;
     const container = containerRef.current;
@@ -1202,22 +1202,23 @@ export default function ImageEditor() {
       ctx.restore();
     }
 
-    // Draw floating layer (when duplicating and moving)
-    if (floatingLayerRef.current && isDuplicating && isMovingSelection) {
+    // Draw floating layer (when moving selection - both duplicate and cut-move)
+    if (floatingLayerRef.current && isMovingSelection) {
       const floating = floatingLayerRef.current;
-
-      // Draw original selection area indicator (where the copy came from)
-      ctx.save();
-      const origX = offsetX + floating.originX * zoom;
-      const origY = offsetY + floating.originY * zoom;
       const origW = floating.imageData.width * zoom;
       const origH = floating.imageData.height * zoom;
 
-      ctx.strokeStyle = "#3b82f6";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 2]);
-      ctx.strokeRect(origX, origY, origW, origH);
-      ctx.restore();
+      // Draw original selection area indicator (where the copy/cut came from) - only for duplicate
+      if (isDuplicating) {
+        ctx.save();
+        const origX = offsetX + floating.originX * zoom;
+        const origY = offsetY + floating.originY * zoom;
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.strokeRect(origX, origY, origW, origH);
+        ctx.restore();
+      }
 
       // Draw the floating image being moved
       const tempCanvas = document.createElement("canvas");
@@ -1228,7 +1229,7 @@ export default function ImageEditor() {
         tempCtx.putImageData(floating.imageData, 0, 0);
 
         ctx.save();
-        ctx.globalAlpha = 0.8;
+        ctx.globalAlpha = isDuplicating ? 0.8 : 1.0;
         const floatX = offsetX + floating.x * zoom;
         const floatY = offsetY + floating.y * zoom;
         ctx.drawImage(tempCanvas, floatX, floatY, origW, origH);
@@ -1236,7 +1237,7 @@ export default function ImageEditor() {
 
         // Draw selection border around floating layer
         ctx.save();
-        ctx.strokeStyle = "#22c55e";
+        ctx.strokeStyle = isDuplicating ? "#22c55e" : "#f59e0b";
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
         ctx.strokeRect(floatX, floatY, origW, origH);
@@ -2018,42 +2019,43 @@ export default function ImageEditor() {
 
   // Refs for wheel handler to access current values without stale closure
   const zoomRef = useRef(zoom);
-  const imageSrcRef = useRef(imageSrc);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
-  useEffect(() => { imageSrcRef.current = imageSrc; }, [imageSrc]);
 
-  // Wheel zoom handler (use non-passive listener to allow preventDefault)
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // Canvas ref callback to attach wheel listener when canvas is mounted
+  const wheelListenerAttached = useRef(false);
+  const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
+    // Update the ref
+    (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = canvas;
 
-    const wheelHandler = (e: WheelEvent) => {
-      if (!imageSrcRef.current) return;
-      e.preventDefault();
+    if (canvas && !wheelListenerAttached.current) {
+      const wheelHandler = (e: WheelEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-      const currentZoom = zoomRef.current;
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
+        const currentZoom = zoomRef.current;
+        const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
 
-      const rect = canvas.getBoundingClientRect();
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
-      const dx = screenX - canvas.width / 2;
-      const dy = screenY - canvas.height / 2;
-      const scale = newZoom / currentZoom;
+        const rect = canvas.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const dx = screenX - canvas.width / 2;
+        const dy = screenY - canvas.height / 2;
+        const scale = newZoom / currentZoom;
 
-      setPan((p) => ({
-        x: p.x * scale + dx * (1 - scale),
-        y: p.y * scale + dy * (1 - scale),
-      }));
-      setZoom(newZoom);
-    };
+        setPan((p) => ({
+          x: p.x * scale + dx * (1 - scale),
+          y: p.y * scale + dy * (1 - scale),
+        }));
+        setZoom(newZoom);
+      };
 
-    canvas.addEventListener("wheel", wheelHandler, { passive: false });
-    return () => {
-      canvas.removeEventListener("wheel", wheelHandler);
-    };
-  }, [imageSrc]); // Re-attach when imageSrc changes (canvas may be created/destroyed)
+      canvas.addEventListener("wheel", wheelHandler, { passive: false });
+      wheelListenerAttached.current = true;
+    } else if (!canvas) {
+      wheelListenerAttached.current = false;
+    }
+  }, []);
 
   // Update crop area when aspect ratio changes
   useEffect(() => {
