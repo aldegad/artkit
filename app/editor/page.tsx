@@ -468,12 +468,12 @@ function ImageEditorContent() {
         ) : (
           <canvas
             ref={canvasRefCallback}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseLeave}
+            onPointerDown={handleMouseDown}
+            onPointerMove={handleMouseMove}
+            onPointerUp={handleMouseUp}
+            onPointerLeave={handleMouseLeave}
             className="w-full h-full"
-            style={{ cursor: getCursor(), imageRendering: "pixelated" }}
+            style={{ cursor: getCursor(), imageRendering: "pixelated", touchAction: "none" }}
           />
         )}
       </div>

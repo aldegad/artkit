@@ -24,7 +24,7 @@ interface UseMouseHandlersOptions {
   getActiveToolMode: () => EditorToolMode;
 
   // Input functions (from useCanvasInput)
-  getMousePos: (e: React.MouseEvent) => Point;
+  getMousePos: (e: React.MouseEvent | React.PointerEvent) => Point;
   screenToImage: (x: number, y: number) => Point;
 
   // Display dimensions helper
@@ -75,8 +75,8 @@ interface UseMouseHandlersReturn {
   setResizeHandle: (handle: string | null) => void;
 
   // Handlers
-  handleMouseDown: (e: React.MouseEvent) => void;
-  handleMouseMove: (e: React.MouseEvent) => void;
+  handleMouseDown: (e: React.MouseEvent | React.PointerEvent) => void;
+  handleMouseMove: (e: React.MouseEvent | React.PointerEvent) => void;
   handleMouseUp: () => void;
   handleMouseLeave: () => void;
 }
@@ -148,9 +148,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     [getDisplayDimensions]
   );
 
-  // Handle mouse down
+  // Handle mouse/pointer down
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.MouseEvent | React.PointerEvent) => {
       if (layers.length === 0) return;
 
       const screenPos = getMousePos(e);
@@ -452,9 +452,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     ]
   );
 
-  // Handle mouse move
+  // Handle mouse/pointer move
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.MouseEvent | React.PointerEvent) => {
       const screenPos = getMousePos(e);
       const imagePos = screenToImage(screenPos.x, screenPos.y);
       const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
