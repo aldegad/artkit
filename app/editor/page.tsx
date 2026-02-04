@@ -93,6 +93,7 @@ export default function ImageEditor() {
   const [isRemovingBackground, setIsRemovingBackground] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState(0);
   const [bgRemovalStatus, setBgRemovalStatus] = useState("");
+  const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
 
   // Mouse position for brush preview
   const [mousePos, setMousePos] = useState<Point | null>(null);
@@ -1497,6 +1498,76 @@ export default function ImageEditor() {
       return;
     }
 
+    // Move tool mode - only moves existing selections
+    if (activeMode === "move") {
+      if (selection) {
+        // Check if clicking inside selection
+        if (
+          imagePos.x >= selection.x &&
+          imagePos.x <= selection.x + selection.width &&
+          imagePos.y >= selection.y &&
+          imagePos.y <= selection.y + selection.height
+        ) {
+          // If we don't have a floating layer yet, create one (cut operation)
+          if (!floatingLayerRef.current) {
+            const editCanvas = editCanvasRef.current;
+            const ctx = editCanvas?.getContext("2d");
+            const img = imageRef.current;
+            if (!editCanvas || !ctx || !img) return;
+
+            const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+
+            // Create composite canvas to get the selected area
+            const compositeCanvas = document.createElement("canvas");
+            compositeCanvas.width = displayWidth;
+            compositeCanvas.height = displayHeight;
+            const compositeCtx = compositeCanvas.getContext("2d");
+            if (!compositeCtx) return;
+
+            compositeCtx.translate(displayWidth / 2, displayHeight / 2);
+            compositeCtx.rotate((rotation * Math.PI) / 180);
+            compositeCtx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
+            compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            compositeCtx.drawImage(editCanvas, 0, 0);
+
+            // Copy selection to floating layer
+            const imageData = compositeCtx.getImageData(
+              Math.round(selection.x),
+              Math.round(selection.y),
+              Math.round(selection.width),
+              Math.round(selection.height),
+            );
+            floatingLayerRef.current = {
+              imageData,
+              x: selection.x,
+              y: selection.y,
+              originX: selection.x,
+              originY: selection.y,
+            };
+
+            saveToHistory();
+
+            // Clear the original selection area (cut operation)
+            ctx.clearRect(
+              Math.round(selection.x),
+              Math.round(selection.y),
+              Math.round(selection.width),
+              Math.round(selection.height),
+            );
+          }
+
+          setDragType("move");
+          setDragStart(imagePos);
+          dragStartOriginRef.current = { x: imagePos.x, y: imagePos.y };
+          setIsDragging(true);
+          setIsMovingSelection(true);
+          setIsDuplicating(false);
+          return;
+        }
+      }
+      return;
+    }
+
     // Crop tool mode
     if (activeMode === "crop") {
       if (cropArea) {
@@ -1810,6 +1881,7 @@ export default function ImageEditor() {
       if (e.key === "i") setToolMode("eyedropper");
       if (e.key === "s" && !e.metaKey && !e.ctrlKey) setToolMode("stamp");
       if (e.key === "m") setToolMode("marquee");
+      if (e.key === "v" && !e.metaKey && !e.ctrlKey) setToolMode("move");
 
       // Brush size shortcuts
       if (e.key === "[" || (e.key === "-" && !e.metaKey && !e.ctrlKey)) {
@@ -2615,6 +2687,24 @@ export default function ImageEditor() {
       ),
     },
     {
+      mode: "move",
+      name: t.move,
+      description: t.moveToolTip,
+      keys: ["Drag: Move selection"],
+      shortcut: "V",
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Move tool icon - four-way arrow */}
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 4v16m0-16l-3 3m3-3l3 3m-3 13l-3-3m3 3l3-3M4 12h16m-16 0l3-3m-3 3l3 3m13-3l-3-3m3 3l-3 3"
+          />
+        </svg>
+      ),
+    },
+    {
       mode: "brush",
       name: t.brush,
       description: t.brushToolTip,
@@ -2848,6 +2938,52 @@ export default function ImageEditor() {
                   </button>
                 </Tooltip>
               ))}
+
+              {/* Divider */}
+              <div className="w-px bg-border-default mx-0.5" />
+
+              {/* AI Background Removal */}
+              <Tooltip
+                content={
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium">{t.removeBackground}</span>
+                    <span className="text-text-tertiary text-[11px]">
+                      AI 모델을 사용해 이미지 배경을 제거합니다
+                    </span>
+                    <span className="text-[10px] text-text-tertiary">
+                      첫 실행 시 모델 다운로드 (~30MB)
+                    </span>
+                  </div>
+                }
+              >
+                <button
+                  onClick={() => setShowBgRemovalConfirm(true)}
+                  disabled={isRemovingBackground}
+                  className={`p-1.5 rounded transition-colors ${
+                    isRemovingBackground
+                      ? "bg-accent-primary text-white cursor-wait"
+                      : "hover:bg-interactive-hover"
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {/* Person silhouette with transparent/dashed background */}
+                    <circle cx="12" cy="7" r="3" strokeWidth={2} />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
+                    />
+                    {/* Diagonal line indicating removal/transparency */}
+                    <path
+                      strokeLinecap="round"
+                      strokeWidth={2}
+                      strokeDasharray="2 2"
+                      d="M3 21L21 3"
+                    />
+                  </svg>
+                </button>
+              </Tooltip>
             </div>
 
             <div className="h-5 w-px bg-border-default" />
@@ -2952,51 +3088,6 @@ export default function ImageEditor() {
                 </svg>
               </button>
             </div>
-
-            <div className="h-5 w-px bg-border-default" />
-
-            {/* Background Removal */}
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.removeBackground}</span>
-                  <span className="text-text-tertiary text-[11px]">
-                    AI 모델을 사용해 이미지 배경을 제거합니다
-                  </span>
-                  <span className="text-[10px] text-text-tertiary">
-                    첫 실행 시 모델 다운로드 (~30MB)
-                  </span>
-                </div>
-              }
-            >
-              <button
-                onClick={handleRemoveBackground}
-                disabled={isRemovingBackground}
-                className={`p-1.5 rounded transition-colors ${
-                  isRemovingBackground
-                    ? "bg-accent-primary text-white cursor-wait"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {/* Person silhouette with transparent/dashed background */}
-                  <circle cx="12" cy="7" r="3" strokeWidth={2} />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
-                  />
-                  {/* Diagonal line indicating removal/transparency */}
-                  <path
-                    strokeLinecap="round"
-                    strokeWidth={2}
-                    strokeDasharray="2 2"
-                    d="M3 21L21 3"
-                  />
-                </svg>
-              </button>
-            </Tooltip>
 
             <div className="h-5 w-px bg-border-default" />
 
@@ -3140,6 +3231,54 @@ export default function ImageEditor() {
           <EditorDockableArea />
         </div>
       </EditorLayoutProvider>
+
+      {/* Background Removal Confirmation Popup */}
+      {showBgRemovalConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface-primary rounded-lg p-6 shadow-xl max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="7" r="3" strokeWidth={2} />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-text-primary">{t.removeBackground}</h3>
+            </div>
+            <p className="text-text-secondary text-sm mb-2">
+              AI 모델을 사용해 선택된 레이어의 배경을 자동으로 제거합니다.
+            </p>
+            <p className="text-text-tertiary text-xs mb-4">
+              {selection ? "선택 영역의 배경만 제거됩니다." : "전체 레이어의 배경이 제거됩니다."}
+            </p>
+            <p className="text-text-tertiary text-xs mb-4">
+              첫 실행 시 AI 모델을 다운로드합니다 (~30MB)
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowBgRemovalConfirm(false)}
+                className="px-4 py-2 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                onClick={() => {
+                  setShowBgRemovalConfirm(false);
+                  handleRemoveBackground();
+                }}
+                className="px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+              >
+                {t.confirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Background Removal Loading Overlay */}
       {isRemovingBackground && (

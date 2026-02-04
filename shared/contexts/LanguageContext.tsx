@@ -87,6 +87,7 @@ interface Translations {
   eyedropper: string;
   stamp: string;
   marquee: string;
+  move: string;
   fill: string;
   layers: string;
   layer: string;
@@ -151,6 +152,7 @@ interface Translations {
   cloneStampToolTip: string;
   cropToolTip: string;
   zoomToolTip: string;
+  moveToolTip: string;
 
   // Timeline
   reorderMode: string;
@@ -293,6 +295,7 @@ const translations: Record<Language, Translations> = {
     eyedropper: "스포이드",
     stamp: "도장",
     marquee: "선택",
+    move: "이동",
     fill: "채우기",
     layers: "레이어",
     layer: "레이어",
@@ -357,6 +360,7 @@ const translations: Record<Language, Translations> = {
     cloneStampToolTip: "Alt+클릭으로 복제 소스 지정",
     cropToolTip: "영역 지정 후 Export로 잘라내기",
     zoomToolTip: "클릭: 확대 | Alt+클릭: 축소",
+    moveToolTip: "선택 영역 이동",
 
     // Timeline
     reorderMode: "순서 변경 모드",
@@ -497,6 +501,7 @@ const translations: Record<Language, Translations> = {
     eyedropper: "Eyedropper",
     stamp: "Stamp",
     marquee: "Marquee",
+    move: "Move",
     fill: "Fill",
     layers: "Layers",
     layer: "Layer",
@@ -561,6 +566,7 @@ const translations: Record<Language, Translations> = {
     cloneStampToolTip: "Alt+click to set clone source",
     cropToolTip: "Select area and export to crop",
     zoomToolTip: "Click: Zoom in | Alt+click: Zoom out",
+    moveToolTip: "Move selection",
 
     // Timeline
     reorderMode: "Reorder Mode",

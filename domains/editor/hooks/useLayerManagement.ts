@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, MutableRefObject } from "react";
-import { UnifiedLayer, createImageLayer, createPaintLayer } from "../types";
+import { UnifiedLayer, createPaintLayer } from "../types";
 
 // ============================================
 // Types
@@ -78,29 +78,28 @@ export function useLayerManagement(
         const firstPaintLayer = existingLayers.find(l => l.type === "paint");
         setActiveLayerId(firstPaintLayer?.id || existingLayers[0].id);
 
+        // All layers are paint layers now
         existingLayers.forEach((layer) => {
-          if (layer.type === "paint") {
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            layerCanvasesRef.current.set(layer.id, canvas);
+          const layerWidth = layer.originalSize?.width || width;
+          const layerHeight = layer.originalSize?.height || height;
+          const canvas = document.createElement("canvas");
+          canvas.width = layerWidth;
+          canvas.height = layerHeight;
+          layerCanvasesRef.current.set(layer.id, canvas);
 
-            if (layer.paintData) {
-              const img = new Image();
-              img.onload = () => {
-                const ctx = canvas.getContext("2d");
-                if (ctx) ctx.drawImage(img, 0, 0);
-              };
-              img.src = layer.paintData;
-            }
-          } else if (layer.type === "image" && layer.imageSrc) {
+          if (layer.paintData) {
             const img = new Image();
             img.onload = () => {
-              setLayerImages(prev => {
-                const newMap = new Map(prev);
-                newMap.set(layer.id, img);
-                return newMap;
-              });
+              const ctx = canvas.getContext("2d");
+              if (ctx) ctx.drawImage(img, 0, 0);
+            };
+            img.src = layer.paintData;
+          } else if (layer.imageSrc) {
+            // Legacy image layer - draw image to canvas
+            const img = new Image();
+            img.onload = () => {
+              const ctx = canvas.getContext("2d");
+              if (ctx) ctx.drawImage(img, 0, 0);
             };
             img.src = layer.imageSrc;
           }
@@ -142,28 +141,33 @@ export function useLayerManagement(
     editCanvasRef.current = canvas;
   }, [layers, getDisplayDimensions, t.layer]);
 
-  // Add new image layer
+  // Add new layer with image drawn to canvas
   const addImageLayer = useCallback((imageSrc: string, name?: string) => {
     const img = new Image();
     img.onload = () => {
       const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
-      const newLayer = createImageLayer(
-        imageSrc,
-        name || `Image ${layers.filter(l => l.type === "image").length + 1}`,
-        { width: img.width, height: img.height },
+      const newLayer = createPaintLayer(
+        name || `${t.layer} ${layers.length + 1}`,
         maxZIndex
       );
+      newLayer.originalSize = { width: img.width, height: img.height };
+
+      // Create canvas and draw the image
+      const layerCanvas = document.createElement("canvas");
+      layerCanvas.width = img.width;
+      layerCanvas.height = img.height;
+      const ctx = layerCanvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+      }
+      layerCanvasesRef.current.set(newLayer.id, layerCanvas);
 
       setLayers((prev) => [newLayer, ...prev]);
       setActiveLayerId(newLayer.id);
-      setLayerImages((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(newLayer.id, img);
-        return newMap;
-      });
+      editCanvasRef.current = layerCanvas;
     };
     img.src = imageSrc;
-  }, [layers]);
+  }, [layers, t.layer]);
 
   // Delete layer
   const deleteLayer = useCallback(
@@ -279,7 +283,7 @@ export function useLayerManagement(
     [layers, saveToHistory, deleteLayer]
   );
 
-  // Duplicate layer
+  // Duplicate layer (all layers are paint layers now)
   const duplicateLayer = useCallback((layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
     if (!layer) return;
@@ -292,35 +296,27 @@ export function useLayerManagement(
       zIndex: maxZIndex,
     };
 
-    if (layer.type === "image") {
-      newLayer.position = {
-        x: (layer.position?.x || 0) + 20,
-        y: (layer.position?.y || 0) + 20,
-      };
-      const existingImg = layerImages.get(layerId);
-      if (existingImg) {
-        setLayerImages(prev => {
-          const newMap = new Map(prev);
-          newMap.set(newLayer.id, existingImg);
-          return newMap;
-        });
-      }
-    } else if (layer.type === "paint") {
+    // Copy the layer canvas
+    const srcCanvas = layerCanvasesRef.current.get(layerId);
+    if (srcCanvas) {
+      const newCanvas = document.createElement("canvas");
+      newCanvas.width = srcCanvas.width;
+      newCanvas.height = srcCanvas.height;
+      const ctx = newCanvas.getContext("2d");
+      if (ctx) ctx.drawImage(srcCanvas, 0, 0);
+      layerCanvasesRef.current.set(newLayer.id, newCanvas);
+    } else {
+      // Fallback: create empty canvas with display dimensions
       const { width, height } = getDisplayDimensions();
       const newCanvas = document.createElement("canvas");
-      newCanvas.width = width;
-      newCanvas.height = height;
-      const srcCanvas = layerCanvasesRef.current.get(layerId);
-      if (srcCanvas) {
-        const ctx = newCanvas.getContext("2d");
-        if (ctx) ctx.drawImage(srcCanvas, 0, 0);
-      }
+      newCanvas.width = layer.originalSize?.width || width;
+      newCanvas.height = layer.originalSize?.height || height;
       layerCanvasesRef.current.set(newLayer.id, newCanvas);
     }
 
     setLayers(prev => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
-  }, [layers, layerImages, getDisplayDimensions]);
+  }, [layers, getDisplayDimensions]);
 
   return {
     // State
