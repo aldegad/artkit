@@ -232,35 +232,35 @@ export async function getProjectFromFirebase(
 
   const data = docSnap.data() as FirestoreImageProject;
 
-  // Download layer images from Storage
-  const unifiedLayers: UnifiedLayer[] = [];
+  // Download layer images from Storage (in parallel for better mobile performance)
+  const unifiedLayers: UnifiedLayer[] = await Promise.all(
+    data.layers.map(async (layerMeta) => {
+      let paintData = "";
 
-  for (const layerMeta of data.layers) {
-    let paintData = "";
-
-    if (layerMeta.storageRef) {
-      try {
-        paintData = await downloadLayerImage(layerMeta.storageRef);
-      } catch (error) {
-        console.error(`Failed to download layer ${layerMeta.id}:`, error);
+      if (layerMeta.storageRef) {
+        try {
+          paintData = await downloadLayerImage(layerMeta.storageRef);
+        } catch (error) {
+          console.error(`Failed to download layer ${layerMeta.id}:`, error);
+        }
       }
-    }
 
-    unifiedLayers.push({
-      id: layerMeta.id,
-      name: layerMeta.name,
-      type: layerMeta.type,
-      visible: layerMeta.visible,
-      locked: layerMeta.locked,
-      opacity: layerMeta.opacity,
-      zIndex: layerMeta.zIndex,
-      position: layerMeta.position,
-      scale: layerMeta.scale,
-      rotation: layerMeta.rotation,
-      originalSize: layerMeta.originalSize,
-      paintData,
-    });
-  }
+      return {
+        id: layerMeta.id,
+        name: layerMeta.name,
+        type: layerMeta.type,
+        visible: layerMeta.visible,
+        locked: layerMeta.locked,
+        opacity: layerMeta.opacity,
+        zIndex: layerMeta.zIndex,
+        position: layerMeta.position,
+        scale: layerMeta.scale,
+        rotation: layerMeta.rotation,
+        originalSize: layerMeta.originalSize,
+        paintData,
+      };
+    })
+  );
 
   return {
     id: data.id,

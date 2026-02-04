@@ -51,7 +51,7 @@ interface UseLayerManagementReturn {
   duplicateLayer: (layerId: string) => void;
 
   // Initialization
-  initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => void;
+  initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => Promise<void>;
 
   // Legacy alias
   addLayer: () => void;
@@ -82,7 +82,7 @@ export function useLayerManagement(
 
   // Initialize layers
   const initLayers = useCallback(
-    (width: number, height: number, existingLayers?: UnifiedLayer[]) => {
+    async (width: number, height: number, existingLayers?: UnifiedLayer[]): Promise<void> => {
       layerCanvasesRef.current.clear();
 
       if (existingLayers && existingLayers.length > 0) {
@@ -90,24 +90,36 @@ export function useLayerManagement(
         const firstPaintLayer = existingLayers.find(l => l.type === "paint");
         setActiveLayerId(firstPaintLayer?.id || existingLayers[0].id);
 
-        // All layers are paint layers now
-        existingLayers.forEach((layer) => {
-          const layerWidth = layer.originalSize?.width || width;
-          const layerHeight = layer.originalSize?.height || height;
-          const canvas = document.createElement("canvas");
-          canvas.width = layerWidth;
-          canvas.height = layerHeight;
-          layerCanvasesRef.current.set(layer.id, canvas);
+        // Load all layer images in parallel and wait for completion
+        const loadPromises = existingLayers.map((layer) => {
+          return new Promise<void>((resolve) => {
+            const layerWidth = layer.originalSize?.width || width;
+            const layerHeight = layer.originalSize?.height || height;
+            const canvas = document.createElement("canvas");
+            canvas.width = layerWidth;
+            canvas.height = layerHeight;
+            layerCanvasesRef.current.set(layer.id, canvas);
 
-          if (layer.paintData) {
-            const img = new Image();
-            img.onload = () => {
-              const ctx = canvas.getContext("2d");
-              if (ctx) ctx.drawImage(img, 0, 0);
-            };
-            img.src = layer.paintData;
-          }
+            if (layer.paintData) {
+              const img = new Image();
+              img.onload = () => {
+                const ctx = canvas.getContext("2d");
+                if (ctx) ctx.drawImage(img, 0, 0);
+                resolve();
+              };
+              img.onerror = () => {
+                console.error(`Failed to load image for layer ${layer.id}`);
+                resolve(); // Resolve anyway to not block other layers
+              };
+              img.src = layer.paintData;
+            } else {
+              resolve();
+            }
+          });
         });
+
+        // Wait for all images to load
+        await Promise.all(loadPromises);
 
         if (firstPaintLayer) {
           editCanvasRef.current = layerCanvasesRef.current.get(firstPaintLayer.id) || null;

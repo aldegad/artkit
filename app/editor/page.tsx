@@ -947,7 +947,7 @@ function ImageEditorContent() {
 
           // Restore layers
           const { width, height } = data.canvasSize;
-          initEditCanvas(width, height, data.layers);
+          await initEditCanvas(width, height, data.layers);
         } else if (data) {
           // Clear invalid/legacy autosave data
           clearEditorAutosaveData();
@@ -1131,7 +1131,7 @@ function ImageEditorContent() {
 
       // Check if project has new unified layer system
       if (project.unifiedLayers && project.unifiedLayers.length > 0) {
-        initEditCanvas(width, height, project.unifiedLayers);
+        await initEditCanvas(width, height, project.unifiedLayers);
         if (project.activeLayerId) {
           setActiveLayerId(project.activeLayerId);
           const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
@@ -1148,14 +1148,14 @@ function ImageEditorContent() {
           zIndex: project.layers!.length - 1 - index,
           paintData: layer.data,
         }));
-        initEditCanvas(width, height, convertedLayers);
+        await initEditCanvas(width, height, convertedLayers);
         if (project.activeLayerId) {
           setActiveLayerId(project.activeLayerId);
           editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
         }
       } else {
         // Legacy project with single edit layer
-        initEditCanvas(width, height);
+        await initEditCanvas(width, height);
 
         // Load edit layer data if exists
         if (project.editLayerData && editCanvasRef.current) {
