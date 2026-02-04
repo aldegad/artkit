@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useLanguage } from "../../shared/contexts";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useLanguage, useAuth } from "../../shared/contexts";
 import { Tooltip, ImageDropZone } from "../../shared/components";
 import {
   EditorToolMode,
@@ -29,12 +29,16 @@ import {
   EditorToolOptions,
   EditorStatusBar,
 } from "../../domains/editor";
+// IndexedDB storage functions are now used through storageProvider
 import {
-  saveImageProject,
-  getAllImageProjects,
-  deleteImageProject,
-  getStorageInfo,
-} from "../../utils/storage";
+  getStorageProvider,
+  hasLocalProjects,
+  checkCloudProjects,
+  uploadLocalProjectsToCloud,
+  clearLocalProjects,
+  clearCloudProjects,
+} from "../../services/projectStorage";
+import { LoginButton, UserMenu, SyncDialog } from "../../components/auth";
 import {
   EditorLayoutProvider,
   useEditorLayout,
@@ -77,6 +81,15 @@ export default function ImageEditor() {
 // Inner component that uses contexts
 function ImageEditorContent() {
   const { t } = useLanguage();
+  const { user, isLoading: authLoading } = useAuth();
+
+  // Storage provider based on auth state
+  const storageProvider = useMemo(() => getStorageProvider(user), [user]);
+
+  // Sync dialog state
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+  const [localProjectCount, setLocalProjectCount] = useState(0);
+  const [cloudProjectCount, setCloudProjectCount] = useState(0);
 
   // Get state and setters from context
   const {
@@ -860,20 +873,53 @@ function ImageEditorContent() {
 
   const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
-  // Load saved projects on mount
+  // Load saved projects when storage provider changes (login/logout)
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        const projects = await getAllImageProjects();
+        const projects = await storageProvider.getAllProjects();
         setSavedProjects(projects);
-        const info = await getStorageInfo();
+        const info = await storageProvider.getStorageInfo();
         setStorageInfo(info);
       } catch (error) {
         console.error("Failed to load projects:", error);
       }
     };
     loadProjects();
-  }, []);
+  }, [storageProvider]);
+
+  // Check for sync conflicts when user logs in
+  useEffect(() => {
+    const checkSyncConflicts = async () => {
+      if (!user) return;
+
+      try {
+        const hasLocal = await hasLocalProjects();
+        const hasCloud = await checkCloudProjects(user.uid);
+
+        if (hasLocal && hasCloud) {
+          // Both have data - show conflict dialog
+          const localProjects = await (await import("../../utils/storage")).getAllImageProjects();
+          const cloudProjects = await (await import("../../lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
+
+          setLocalProjectCount(localProjects.length);
+          setCloudProjectCount(cloudProjects.length);
+          setShowSyncDialog(true);
+        } else if (hasLocal && !hasCloud) {
+          // Only local data - auto upload to cloud
+          await uploadLocalProjectsToCloud(user);
+          // Refresh project list
+          const projects = await storageProvider.getAllProjects();
+          setSavedProjects(projects);
+        }
+        // If only cloud or neither - just use cloud storage (already handled by storageProvider)
+      } catch (error) {
+        console.error("Failed to check sync conflicts:", error);
+      }
+    };
+
+    checkSyncConflicts();
+  }, [user]);
 
   // ============================================
   // Auto-save/load functionality
@@ -1024,13 +1070,13 @@ function ImageEditorContent() {
     };
 
     try {
-      await saveImageProject(project);
+      await storageProvider.saveProject(project);
       setCurrentProjectId(project.id);
 
       // Refresh project list
-      const projects = await getAllImageProjects();
+      const projects = await storageProvider.getAllProjects();
       setSavedProjects(projects);
-      const info = await getStorageInfo();
+      const info = await storageProvider.getStorageInfo();
       setStorageInfo(info);
 
       alert(`${t.saved}!`);
@@ -1038,7 +1084,7 @@ function ImageEditorContent() {
       console.error("Failed to save project:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
     }
-  }, [projectName, canvasSize, rotation, currentProjectId, layers, activeLayerId]);
+  }, [projectName, canvasSize, rotation, currentProjectId, layers, activeLayerId, storageProvider, user]);
 
   // Cmd+S keyboard shortcut for save
   useEffect(() => {
@@ -1128,10 +1174,10 @@ function ImageEditorContent() {
       if (!confirm(t.deleteConfirm)) return;
 
       try {
-        await deleteImageProject(id);
-        const projects = await getAllImageProjects();
+        await storageProvider.deleteProject(id);
+        const projects = await storageProvider.getAllProjects();
         setSavedProjects(projects);
-        const info = await getStorageInfo();
+        const info = await storageProvider.getStorageInfo();
         setStorageInfo(info);
 
         if (currentProjectId === id) {
@@ -1142,7 +1188,7 @@ function ImageEditorContent() {
         alert(`${t.deleteFailed}: ${(error as Error).message}`);
       }
     },
-    [currentProjectId, t],
+    [currentProjectId, t, storageProvider],
   );
 
   // New canvas
@@ -1426,6 +1472,20 @@ function ImageEditorContent() {
             )}
           </div>
         )}
+
+        {/* Auth UI */}
+        <div className="flex items-center gap-2 ml-2">
+          {user ? (
+            <>
+              {storageProvider.type === "cloud" && (
+                <span className="text-xs text-green-500 hidden md:inline">Cloud</span>
+              )}
+              <UserMenu />
+            </>
+          ) : (
+            <LoginButton />
+          )}
+        </div>
       </div>
 
       {/* Top Toolbar - Row 2: Tools */}
@@ -1717,6 +1777,29 @@ function ImageEditorContent() {
           savedProjects: t.savedProjects || "저장된 프로젝트",
           noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
           delete: t.delete,
+        }}
+      />
+
+      {/* Sync Dialog */}
+      <SyncDialog
+        isOpen={showSyncDialog}
+        localCount={localProjectCount}
+        cloudCount={cloudProjectCount}
+        onKeepCloud={async () => {
+          // Keep cloud data, clear local
+          await clearLocalProjects();
+          setShowSyncDialog(false);
+        }}
+        onKeepLocal={async () => {
+          // Upload local to cloud, overwrite cloud
+          if (user) {
+            await clearCloudProjects(user);
+            await uploadLocalProjectsToCloud(user);
+          }
+          setShowSyncDialog(false);
+        }}
+        onCancel={() => {
+          setShowSyncDialog(false);
         }}
       />
     </div>
