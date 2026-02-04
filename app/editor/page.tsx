@@ -22,6 +22,7 @@ import {
   useSelectionTool,
   useCropTool,
   useKeyboardShortcuts,
+  useMouseHandlers,
   EditorToolOptions,
   EditorStatusBar,
 } from "../../domains/editor";
@@ -60,12 +61,7 @@ export default function ImageEditor() {
   // cropArea and aspectRatio - moved to useCropTool hook
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("png");
   const [quality, setQuality] = useState(0.9);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [dragType, setDragType] = useState<"create" | "move" | "resize" | "pan" | "draw" | null>(
-    null,
-  );
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
+  // isDragging, dragStart, dragType, resizeHandle - moved to useMouseHandlers hook
 
   // Tool & View state
   const [toolMode, setToolMode] = useState<ToolMode>("brush");
@@ -94,8 +90,7 @@ export default function ImageEditor() {
   const [bgRemovalStatus, setBgRemovalStatus] = useState("");
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
 
-  // Mouse position for brush preview
-  const [mousePos, setMousePos] = useState<Point | null>(null);
+  // mousePos - moved to useMouseHandlers hook
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -289,6 +284,56 @@ export default function ImageEditor() {
       ctx.fillRect(0, 0, editCanvas.width, editCanvas.height);
     }
   }, [brushColor, selection, saveToHistory]);
+
+  // Check if in active tool mode (considering space key for temporary hand tool)
+  const getActiveToolMode = useCallback(() => {
+    if (isSpacePressed) return "hand";
+    return toolMode;
+  }, [isSpacePressed, toolMode]);
+
+  // Mouse handlers - using extracted hook
+  const {
+    isDragging,
+    mousePos,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    handleMouseLeave,
+  } = useMouseHandlers({
+    layers,
+    getActiveToolMode,
+    zoom,
+    setZoom: (z) => setZoom(z),
+    pan,
+    setPan,
+    canvasRef,
+    editCanvasRef,
+    imageRef,
+    getDisplayDimensions,
+    canvasSize,
+    rotation,
+    getMousePos,
+    screenToImage,
+    drawOnEditCanvas,
+    pickColor,
+    resetLastDrawPoint,
+    stampSource,
+    setStampSource,
+    selection,
+    setSelection,
+    isMovingSelection,
+    setIsMovingSelection,
+    isDuplicating,
+    setIsDuplicating,
+    floatingLayerRef,
+    dragStartOriginRef,
+    cropArea,
+    setCropArea,
+    aspectRatio,
+    getAspectRatioValue,
+    saveToHistory,
+    fillWithColor,
+  });
 
   // Load image from file
   const loadImageFile = useCallback(
@@ -896,511 +941,7 @@ export default function ImageEditor() {
   ]);
 
   // screenToImage and getMousePos are now provided by useCanvasInput hook
-
-  const isInHandle = (imagePos: { x: number; y: number }, handlePos: { x: number; y: number }) => {
-    const handleSize = 12 / zoom;
-    return (
-      Math.abs(imagePos.x - handlePos.x) < handleSize &&
-      Math.abs(imagePos.y - handlePos.y) < handleSize
-    );
-  };
-
-  // Check if in active tool mode (considering space key for temporary hand tool)
-  const getActiveToolMode = useCallback(() => {
-    if (isSpacePressed) return "hand";
-    return toolMode;
-  }, [isSpacePressed, toolMode]);
-
-  // Mouse handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (layers.length === 0) return;
-
-    const screenPos = getMousePos(e);
-    const imagePos = screenToImage(screenPos.x, screenPos.y);
-    const activeMode = getActiveToolMode();
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-    // Check if within image bounds for drawing tools
-    const inBounds =
-      imagePos.x >= 0 &&
-      imagePos.x <= displayWidth &&
-      imagePos.y >= 0 &&
-      imagePos.y <= displayHeight;
-
-    if (activeMode === "hand") {
-      setDragType("pan");
-      setDragStart(screenPos);
-      setIsDragging(true);
-      return;
-    }
-
-    if (activeMode === "zoom") {
-      const zoomFactor = e.altKey ? 0.8 : 1.25;
-      const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
-      const scale = newZoom / zoom;
-
-      // Adjust pan so the point under the mouse stays fixed
-      setPan((p) => ({
-        x: screenPos.x - (screenPos.x - p.x) * scale,
-        y: screenPos.y - (screenPos.y - p.y) * scale,
-      }));
-      setZoom(newZoom);
-      return;
-    }
-
-    if (activeMode === "eyedropper" && inBounds) {
-      pickColor(imagePos.x, imagePos.y, canvasRef, zoom, pan);
-      return;
-    }
-
-    if (activeMode === "stamp") {
-      if (e.altKey && inBounds) {
-        // Alt+click to set stamp source
-        setStampSource({ x: imagePos.x, y: imagePos.y });
-        return;
-      }
-
-      if (!stampSource) {
-        alert("Alt+클릭으로 복제 소스를 먼저 지정하세요");
-        return;
-      }
-
-      if (inBounds) {
-        saveToHistory(); // Save state before drawing
-        setDragType("draw");
-        resetLastDrawPoint();
-        drawOnEditCanvas(imagePos.x, imagePos.y, true);
-        setIsDragging(true);
-      }
-      return;
-    }
-
-    if ((activeMode === "brush" || activeMode === "eraser") && inBounds) {
-      saveToHistory(); // Save state before drawing
-      setDragType("draw");
-      resetLastDrawPoint();
-      drawOnEditCanvas(imagePos.x, imagePos.y, true);
-      setIsDragging(true);
-      return;
-    }
-
-    // Fill tool - fill selection or clicked area
-    if (activeMode === "fill" && inBounds) {
-      fillWithColor();
-      return;
-    }
-
-    // Marquee tool mode
-    if (activeMode === "marquee") {
-      if (selection) {
-        // Check if clicking inside selection
-        if (
-          imagePos.x >= selection.x &&
-          imagePos.x <= selection.x + selection.width &&
-          imagePos.y >= selection.y &&
-          imagePos.y <= selection.y + selection.height
-        ) {
-          // Alt+click to duplicate and move
-          if (e.altKey) {
-            const editCanvas = editCanvasRef.current;
-            const ctx = editCanvas?.getContext("2d");
-            const img = imageRef.current;
-            if (!editCanvas || !ctx || !img) return;
-
-            const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-            // Create composite canvas to get the selected area
-            const compositeCanvas = document.createElement("canvas");
-            compositeCanvas.width = displayWidth;
-            compositeCanvas.height = displayHeight;
-            const compositeCtx = compositeCanvas.getContext("2d");
-            if (!compositeCtx) return;
-
-            compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-            compositeCtx.rotate((rotation * Math.PI) / 180);
-            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-            compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-            compositeCtx.drawImage(editCanvas, 0, 0);
-
-            // Copy selection to floating layer (keep original position for display)
-            const imageData = compositeCtx.getImageData(
-              Math.round(selection.x),
-              Math.round(selection.y),
-              Math.round(selection.width),
-              Math.round(selection.height),
-            );
-            floatingLayerRef.current = {
-              imageData,
-              x: selection.x,
-              y: selection.y,
-              originX: selection.x,
-              originY: selection.y,
-            };
-
-            saveToHistory();
-            setIsMovingSelection(true);
-            setIsDuplicating(true);
-            setDragType("move");
-            setDragStart(imagePos);
-            dragStartOriginRef.current = { x: imagePos.x, y: imagePos.y };
-            setIsDragging(true);
-            return;
-          }
-
-          // Regular click inside selection - move existing floating layer
-          if (floatingLayerRef.current) {
-            setDragType("move");
-            setDragStart(imagePos);
-            dragStartOriginRef.current = { x: imagePos.x, y: imagePos.y };
-            setIsDragging(true);
-            setIsMovingSelection(true);
-            setIsDuplicating(false);
-            return;
-          }
-        }
-      }
-
-      // Click outside selection or no selection - create new selection
-      if (inBounds) {
-        setSelection(null);
-        floatingLayerRef.current = null;
-        setIsDuplicating(false);
-        setDragType("create");
-        setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
-        setSelection({ x: Math.round(imagePos.x), y: Math.round(imagePos.y), width: 0, height: 0 });
-        setIsDragging(true);
-      }
-      return;
-    }
-
-    // Move tool mode - only moves existing selections
-    if (activeMode === "move") {
-      if (selection) {
-        // Check if clicking inside selection
-        if (
-          imagePos.x >= selection.x &&
-          imagePos.x <= selection.x + selection.width &&
-          imagePos.y >= selection.y &&
-          imagePos.y <= selection.y + selection.height
-        ) {
-          // If we don't have a floating layer yet, create one (cut operation)
-          if (!floatingLayerRef.current) {
-            const editCanvas = editCanvasRef.current;
-            const ctx = editCanvas?.getContext("2d");
-            const img = imageRef.current;
-            if (!editCanvas || !ctx || !img) return;
-
-            const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-            // Create composite canvas to get the selected area
-            const compositeCanvas = document.createElement("canvas");
-            compositeCanvas.width = displayWidth;
-            compositeCanvas.height = displayHeight;
-            const compositeCtx = compositeCanvas.getContext("2d");
-            if (!compositeCtx) return;
-
-            compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-            compositeCtx.rotate((rotation * Math.PI) / 180);
-            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-            compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-            compositeCtx.drawImage(editCanvas, 0, 0);
-
-            // Copy selection to floating layer
-            const imageData = compositeCtx.getImageData(
-              Math.round(selection.x),
-              Math.round(selection.y),
-              Math.round(selection.width),
-              Math.round(selection.height),
-            );
-            floatingLayerRef.current = {
-              imageData,
-              x: selection.x,
-              y: selection.y,
-              originX: selection.x,
-              originY: selection.y,
-            };
-
-            saveToHistory();
-
-            // Clear the original selection area (cut operation)
-            ctx.clearRect(
-              Math.round(selection.x),
-              Math.round(selection.y),
-              Math.round(selection.width),
-              Math.round(selection.height),
-            );
-          }
-
-          setDragType("move");
-          setDragStart(imagePos);
-          dragStartOriginRef.current = { x: imagePos.x, y: imagePos.y };
-          setIsDragging(true);
-          setIsMovingSelection(true);
-          setIsDuplicating(false);
-          return;
-        }
-      }
-      return;
-    }
-
-    // Crop tool mode
-    if (activeMode === "crop") {
-      if (cropArea) {
-        const handles = [
-          { x: cropArea.x, y: cropArea.y, name: "nw" },
-          { x: cropArea.x + cropArea.width / 2, y: cropArea.y, name: "n" },
-          { x: cropArea.x + cropArea.width, y: cropArea.y, name: "ne" },
-          { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height / 2, name: "e" },
-          { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height, name: "se" },
-          { x: cropArea.x + cropArea.width / 2, y: cropArea.y + cropArea.height, name: "s" },
-          { x: cropArea.x, y: cropArea.y + cropArea.height, name: "sw" },
-          { x: cropArea.x, y: cropArea.y + cropArea.height / 2, name: "w" },
-        ];
-
-        for (const handle of handles) {
-          if (isInHandle(imagePos, handle)) {
-            setDragType("resize");
-            setResizeHandle(handle.name);
-            setDragStart(imagePos);
-            setIsDragging(true);
-            return;
-          }
-        }
-
-        if (
-          imagePos.x >= cropArea.x &&
-          imagePos.x <= cropArea.x + cropArea.width &&
-          imagePos.y >= cropArea.y &&
-          imagePos.y <= cropArea.y + cropArea.height
-        ) {
-          setDragType("move");
-          setDragStart(imagePos);
-          setIsDragging(true);
-          return;
-        }
-      }
-
-      if (inBounds) {
-        setDragType("create");
-        setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
-        setCropArea({ x: Math.round(imagePos.x), y: Math.round(imagePos.y), width: 0, height: 0 });
-        setIsDragging(true);
-      }
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const screenPos = getMousePos(e);
-    const imagePos = screenToImage(screenPos.x, screenPos.y);
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-    // Update mouse position for brush preview
-    if (
-      imagePos.x >= 0 &&
-      imagePos.x <= displayWidth &&
-      imagePos.y >= 0 &&
-      imagePos.y <= displayHeight
-    ) {
-      setMousePos(imagePos);
-    } else {
-      setMousePos(null);
-    }
-
-    if (!isDragging) return;
-
-    const ratioValue = getAspectRatioValue(aspectRatio);
-
-    if (dragType === "pan") {
-      const dx = screenPos.x - dragStart.x;
-      const dy = screenPos.y - dragStart.y;
-      setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
-      setDragStart(screenPos);
-      return;
-    }
-
-    if (dragType === "draw") {
-      const clampedX = Math.max(0, Math.min(imagePos.x, displayWidth));
-      const clampedY = Math.max(0, Math.min(imagePos.y, displayHeight));
-      drawOnEditCanvas(clampedX, clampedY);
-      return;
-    }
-
-    // Handle marquee selection and move tool
-    const activeMode = getActiveToolMode();
-    if (activeMode === "marquee" || activeMode === "move") {
-      if (dragType === "create" && selection && activeMode === "marquee") {
-        let width = Math.round(imagePos.x) - dragStart.x;
-        let height = Math.round(imagePos.y) - dragStart.y;
-
-        const newX = width < 0 ? dragStart.x + width : dragStart.x;
-        const newY = height < 0 ? dragStart.y + height : dragStart.y;
-
-        setSelection({
-          x: Math.max(0, newX),
-          y: Math.max(0, newY),
-          width: Math.min(Math.abs(width), displayWidth - Math.max(0, newX)),
-          height: Math.min(Math.abs(height), displayHeight - Math.max(0, newY)),
-        });
-        return;
-      }
-
-      if (dragType === "move" && selection && isMovingSelection && floatingLayerRef.current) {
-        const origin = dragStartOriginRef.current;
-        if (!origin) return;
-
-        // Calculate total delta from original start position
-        let totalDx = imagePos.x - origin.x;
-        let totalDy = imagePos.y - origin.y;
-
-        // Shift key constrains to horizontal or vertical movement
-        if (e.shiftKey) {
-          if (Math.abs(totalDx) > Math.abs(totalDy)) {
-            totalDy = 0; // Horizontal constraint
-          } else {
-            totalDx = 0; // Vertical constraint
-          }
-        }
-
-        // Calculate new position based on origin position of floating layer
-        const baseX = floatingLayerRef.current.originX;
-        const baseY = floatingLayerRef.current.originY;
-        const newX = Math.max(0, Math.min(baseX + totalDx, displayWidth - selection.width));
-        const newY = Math.max(0, Math.min(baseY + totalDy, displayHeight - selection.height));
-
-        floatingLayerRef.current.x = newX;
-        floatingLayerRef.current.y = newY;
-
-        // Update selection position (visual selection box follows the floating layer)
-        if (!isDuplicating) {
-          // When just moving (not duplicating), selection follows
-          setSelection({
-            ...selection,
-            x: newX,
-            y: newY,
-          });
-        }
-        // When duplicating, selection stays at original position (we'll show floating layer separately)
-        return;
-      }
-    }
-
-    if (!cropArea) return;
-
-    if (dragType === "create") {
-      let width = Math.round(imagePos.x) - dragStart.x;
-      let height = Math.round(imagePos.y) - dragStart.y;
-
-      if (ratioValue) {
-        height = Math.round(width / ratioValue);
-      }
-
-      const newX = width < 0 ? dragStart.x + width : dragStart.x;
-      const newY = height < 0 ? dragStart.y + height : dragStart.y;
-
-      setCropArea({
-        x: Math.max(0, newX),
-        y: Math.max(0, newY),
-        width: Math.min(Math.abs(width), displayWidth - Math.max(0, newX)),
-        height: Math.min(Math.abs(height), displayHeight - Math.max(0, newY)),
-      });
-    } else if (dragType === "move") {
-      const dx = Math.round(imagePos.x) - dragStart.x;
-      const dy = Math.round(imagePos.y) - dragStart.y;
-      const newX = Math.max(0, Math.min(cropArea.x + dx, displayWidth - cropArea.width));
-      const newY = Math.max(0, Math.min(cropArea.y + dy, displayHeight - cropArea.height));
-      setCropArea({ ...cropArea, x: newX, y: newY });
-      setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
-    } else if (dragType === "resize" && resizeHandle) {
-      const newArea = { ...cropArea };
-      const dx = Math.round(imagePos.x) - dragStart.x;
-      const dy = Math.round(imagePos.y) - dragStart.y;
-
-      if (resizeHandle.includes("e")) {
-        newArea.width = Math.max(20, cropArea.width + dx);
-      }
-      if (resizeHandle.includes("w")) {
-        newArea.x = cropArea.x + dx;
-        newArea.width = Math.max(20, cropArea.width - dx);
-      }
-      if (resizeHandle.includes("s")) {
-        newArea.height = Math.max(20, cropArea.height + dy);
-      }
-      if (resizeHandle.includes("n")) {
-        newArea.y = cropArea.y + dy;
-        newArea.height = Math.max(20, cropArea.height - dy);
-      }
-
-      if (ratioValue) {
-        if (resizeHandle.includes("e") || resizeHandle.includes("w")) {
-          newArea.height = Math.round(newArea.width / ratioValue);
-        } else {
-          newArea.width = Math.round(newArea.height * ratioValue);
-        }
-      }
-
-      newArea.x = Math.max(0, newArea.x);
-      newArea.y = Math.max(0, newArea.y);
-      newArea.width = Math.min(newArea.width, displayWidth - newArea.x);
-      newArea.height = Math.min(newArea.height, displayHeight - newArea.y);
-
-      setCropArea(newArea);
-      setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
-    }
-  };
-
-  const handleMouseUp = () => {
-    // Commit floating layer to edit canvas when done moving
-    if (isMovingSelection && floatingLayerRef.current) {
-      const editCanvas = editCanvasRef.current;
-      const ctx = editCanvas?.getContext("2d");
-      if (editCanvas && ctx) {
-        const { imageData, x, y } = floatingLayerRef.current;
-
-        // Create temp canvas to draw image data
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = imageData.width;
-        tempCanvas.height = imageData.height;
-        const tempCtx = tempCanvas.getContext("2d");
-        if (tempCtx) {
-          tempCtx.putImageData(imageData, 0, 0);
-          ctx.drawImage(tempCanvas, x, y);
-        }
-
-        // Update selection to floating layer's final position
-        if (isDuplicating) {
-          setSelection({
-            x: x,
-            y: y,
-            width: imageData.width,
-            height: imageData.height,
-          });
-        }
-      }
-      // Clear floating layer after commit
-      floatingLayerRef.current = null;
-    }
-
-    setIsDragging(false);
-    setDragType(null);
-    setResizeHandle(null);
-    setIsMovingSelection(false);
-    setIsDuplicating(false);
-    resetLastDrawPoint();
-    dragStartOriginRef.current = null;
-
-    if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
-      setCropArea(null);
-    }
-
-    if (selection && (selection.width < 5 || selection.height < 5)) {
-      setSelection(null);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setMousePos(null);
-    handleMouseUp();
-  };
+  // isInHandle, getActiveToolMode, useMouseHandlers moved above canvas rendering useEffect
 
   // Keyboard shortcuts - moved to useKeyboardShortcuts hook
 
