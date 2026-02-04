@@ -1361,14 +1361,12 @@ export default function ImageEditor() {
     if (activeMode === "zoom") {
       const zoomFactor = e.altKey ? 0.8 : 1.25;
       const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
-
-      const dx = screenPos.x - canvasRef.current!.width / 2;
-      const dy = screenPos.y - canvasRef.current!.height / 2;
       const scale = newZoom / zoom;
 
+      // Adjust pan so the point under the mouse stays fixed
       setPan((p) => ({
-        x: p.x * scale - dx * (scale - 1),
-        y: p.y * scale - dy * (scale - 1),
+        x: screenPos.x - (screenPos.x - p.x) * scale,
+        y: screenPos.y - (screenPos.y - p.y) * scale,
       }));
       setZoom(newZoom);
       return;
@@ -2036,19 +2034,15 @@ export default function ImageEditor() {
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
 
-        // Use rect dimensions (CSS pixels) for consistent calculation
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-        // Distance from mouse to canvas center
-        const dx = mouseX - rect.width / 2;
-        const dy = mouseY - rect.height / 2;
         const scale = newZoom / currentZoom;
 
         // Adjust pan so the point under the mouse stays fixed
         setPan((p) => ({
-          x: p.x * scale + dx * (1 - scale),
-          y: p.y * scale + dy * (1 - scale),
+          x: mouseX - (mouseX - p.x) * scale,
+          y: mouseY - (mouseY - p.y) * scale,
         }));
         setZoom(newZoom);
       };
@@ -3258,8 +3252,8 @@ export default function ImageEditor() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-surface-primary rounded-lg p-6 shadow-xl max-w-sm">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-full bg-accent-primary/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-accent-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="7" r="3" strokeWidth={2} />
                   <path
                     strokeLinecap="round"
@@ -3292,7 +3286,7 @@ export default function ImageEditor() {
                   setShowBgRemovalConfirm(false);
                   handleRemoveBackground();
                 }}
-                className="px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+                className="px-4 py-2 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors"
               >
                 {t.confirm}
               </button>
