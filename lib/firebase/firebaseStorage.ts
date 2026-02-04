@@ -13,6 +13,7 @@ import {
   ref,
   uploadString,
   getBlob,
+  getDownloadURL,
   deleteObject,
   listAll,
 } from "firebase/storage";
@@ -45,6 +46,7 @@ interface FirestoreImageProject {
   rotation: number;
   layers: FirestoreLayerMeta[];
   activeLayerId: string | null;
+  thumbnailUrl?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -92,6 +94,29 @@ async function downloadLayerImage(path: string): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * Upload thumbnail and return public URL
+ */
+async function uploadThumbnail(
+  userId: string,
+  projectId: string,
+  base64Data: string
+): Promise<string> {
+  const path = `users/${userId}/layers/${projectId}/thumbnail.png`;
+  const storageRef = ref(storage, path);
+
+  const base64Content = base64Data.includes(",")
+    ? base64Data.split(",")[1]
+    : base64Data;
+
+  await uploadString(storageRef, base64Content, "base64", {
+    contentType: "image/png",
+  });
+
+  // Return public download URL
+  return getDownloadURL(storageRef);
 }
 
 /**
@@ -163,7 +188,18 @@ export async function saveProjectToFirebase(
     }
   }
 
-  // 2. Save metadata to Firestore
+  // 2. Upload thumbnail (first layer with paintData)
+  let thumbnailUrl: string | undefined;
+  const firstLayerWithData = project.unifiedLayers?.find(l => l.paintData);
+  if (firstLayerWithData?.paintData) {
+    try {
+      thumbnailUrl = await uploadThumbnail(userId, project.id, firstLayerWithData.paintData);
+    } catch (error) {
+      console.warn("Failed to upload thumbnail:", error);
+    }
+  }
+
+  // 3. Save metadata to Firestore
   const firestoreProject: FirestoreImageProject = {
     id: project.id,
     name: project.name || "Untitled",
@@ -171,6 +207,7 @@ export async function saveProjectToFirebase(
     rotation: project.rotation ?? 0,
     layers: layerMetas,
     activeLayerId: project.activeLayerId ?? null,
+    thumbnailUrl,
     createdAt: Timestamp.fromMillis(project.savedAt || Date.now()),
     updatedAt: Timestamp.now(),
   };
@@ -252,12 +289,13 @@ export async function getAllProjectsFromFirebase(
     const data = docSnap.data() as FirestoreImageProject;
 
     // For list view, we don't need to download layer images
-    // Just return metadata
+    // Just return metadata with thumbnail URL
     projects.push({
       id: data.id,
       name: data.name,
       canvasSize: data.canvasSize,
       rotation: data.rotation,
+      imageSrc: data.thumbnailUrl, // Use thumbnail for list view
       unifiedLayers: data.layers.map((l) => ({
         id: l.id,
         name: l.name,
