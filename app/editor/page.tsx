@@ -21,6 +21,7 @@ import {
   useHistory,
   useLayerManagement,
   useBrushTool,
+  useCanvasInput,
   EditorToolOptions,
   EditorStatusBar,
 } from "../../domains/editor";
@@ -197,6 +198,14 @@ export default function ImageEditor() {
     canvasSize,
     rotation,
     toolMode,
+  });
+
+  // Canvas input handling - normalized pointer events
+  const { getMousePos, screenToImage, createInputEvent } = useCanvasInput({
+    canvasRef,
+    zoom,
+    pan,
+    getDisplayDimensions,
   });
 
   // ============================================
@@ -832,39 +841,7 @@ export default function ImageEditor() {
     activeLayerId,
   ]);
 
-  // Convert screen coords to image coords
-  const screenToImage = useCallback(
-    (screenX: number, screenY: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-
-      const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-      const scaledWidth = displayWidth * zoom;
-      const scaledHeight = displayHeight * zoom;
-      const offsetX = (canvas.width - scaledWidth) / 2 + pan.x;
-      const offsetY = (canvas.height - scaledHeight) / 2 + pan.y;
-
-      return {
-        x: (screenX - offsetX) / zoom,
-        y: (screenY - offsetY) / zoom,
-      };
-    },
-    [zoom, pan, getDisplayDimensions],
-  );
-
-  // Mouse position relative to canvas (converts CSS coordinates to canvas pixel coordinates)
-  const getMousePos = (e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    // Convert CSS coordinates to canvas pixel coordinates
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  };
+  // screenToImage and getMousePos are now provided by useCanvasInput hook
 
   const isInHandle = (imagePos: { x: number; y: number }, handlePos: { x: number; y: number }) => {
     const handleSize = 12 / zoom;

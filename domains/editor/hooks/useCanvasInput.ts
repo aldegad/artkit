@@ -82,15 +82,18 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
   zoomRef.current = zoom;
   panRef.current = pan;
 
-  // Get mouse position relative to canvas
+  // Get mouse position relative to canvas (with high-DPI scaling)
   const getMousePos = useCallback(
     (e: React.MouseEvent | PointerEvent): Point => {
       const canvas = canvasRef.current;
       if (!canvas) return { x: 0, y: 0 };
       const rect = canvas.getBoundingClientRect();
+      // Scale for high-DPI displays (canvas internal resolution vs CSS display size)
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
       return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY,
       };
     },
     [canvasRef]
