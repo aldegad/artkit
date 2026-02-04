@@ -4,5 +4,16 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "hosting": {
+    "target": "artkit",
+    "public": "out",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   }
 }

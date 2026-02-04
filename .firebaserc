@@ -2,7 +2,12 @@
   "projects": {},
   "targets": {
     "tools-b1c33": {
-      "storage": {}
+      "storage": {},
+      "hosting": {
+        "artkit": [
+          "artkit"
+        ]
+      }
     }
   },
   "etags": {}
