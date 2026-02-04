@@ -9,7 +9,8 @@ import { UnifiedLayer, createPaintLayer } from "../types";
 
 interface UseLayerManagementOptions {
   getDisplayDimensions: () => { width: number; height: number };
-  saveToHistory: () => void;
+  saveToHistory?: () => void; // Optional - if not provided, history won't be saved
+  editCanvasRef?: MutableRefObject<HTMLCanvasElement | null>; // Optional - if provided, use external ref
   translations: {
     layer: string;
     minOneLayerRequired: string;
@@ -24,6 +25,11 @@ interface UseLayerManagementReturn {
   setActiveLayerId: React.Dispatch<React.SetStateAction<string | null>>;
   layerImages: Map<string, HTMLImageElement>;
   setLayerImages: React.Dispatch<React.SetStateAction<Map<string, HTMLImageElement>>>;
+  // Drag state for layer panel reordering
+  draggedLayerId: string | null;
+  setDraggedLayerId: React.Dispatch<React.SetStateAction<string | null>>;
+  dragOverLayerId: string | null;
+  setDragOverLayerId: React.Dispatch<React.SetStateAction<string | null>>;
 
   // Refs
   layerCanvasesRef: MutableRefObject<Map<string, HTMLCanvasElement>>;
@@ -40,6 +46,7 @@ interface UseLayerManagementReturn {
   renameLayer: (layerId: string, name: string) => void;
   toggleLayerLock: (layerId: string) => void;
   moveLayer: (layerId: string, direction: "up" | "down") => void;
+  reorderLayers: (fromId: string, toId: string) => void;
   mergeLayerDown: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
 
@@ -57,16 +64,21 @@ interface UseLayerManagementReturn {
 export function useLayerManagement(
   options: UseLayerManagementOptions
 ): UseLayerManagementReturn {
-  const { getDisplayDimensions, saveToHistory, translations: t } = options;
+  const { getDisplayDimensions, saveToHistory, editCanvasRef: externalEditCanvasRef, translations: t } = options;
 
   // State
   const [layers, setLayers] = useState<UnifiedLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
+  // Drag state for layer panel reordering
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
 
   // Refs
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
-  const editCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const internalEditCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Use external ref if provided, otherwise use internal
+  const editCanvasRef = externalEditCanvasRef || internalEditCanvasRef;
 
   // Initialize layers
   const initLayers = useCallback(
@@ -94,14 +106,6 @@ export function useLayerManagement(
               if (ctx) ctx.drawImage(img, 0, 0);
             };
             img.src = layer.paintData;
-          } else if (layer.imageSrc) {
-            // Legacy image layer - draw image to canvas
-            const img = new Image();
-            img.onload = () => {
-              const ctx = canvas.getContext("2d");
-              if (ctx) ctx.drawImage(img, 0, 0);
-            };
-            img.src = layer.imageSrc;
           }
         });
 
@@ -253,6 +257,26 @@ export function useLayerManagement(
     });
   }, []);
 
+  // Reorder layers via drag and drop
+  const reorderLayers = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) return;
+
+    setLayers((prev) => {
+      const sortedLayers = [...prev].sort((a, b) => b.zIndex - a.zIndex);
+      const fromIndex = sortedLayers.findIndex((l) => l.id === fromId);
+      const toIndex = sortedLayers.findIndex((l) => l.id === toId);
+
+      if (fromIndex === -1 || toIndex === -1) return prev;
+
+      const newSorted = [...sortedLayers];
+      const [removed] = newSorted.splice(fromIndex, 1);
+      newSorted.splice(toIndex, 0, removed);
+
+      // Update zIndex based on new order (higher index in sorted = higher zIndex)
+      return newSorted.map((l, i) => ({ ...l, zIndex: newSorted.length - 1 - i }));
+    });
+  }, []);
+
   // Merge paint layer down
   const mergeLayerDown = useCallback(
     (layerId: string) => {
@@ -269,7 +293,7 @@ export function useLayerManagement(
 
       if (!upperCanvas || !lowerCanvas) return;
 
-      saveToHistory();
+      saveToHistory?.();
 
       const ctx = lowerCanvas.getContext("2d");
       if (ctx) {
@@ -326,6 +350,11 @@ export function useLayerManagement(
     setActiveLayerId,
     layerImages,
     setLayerImages,
+    // Drag state
+    draggedLayerId,
+    setDraggedLayerId,
+    dragOverLayerId,
+    setDragOverLayerId,
 
     // Refs
     layerCanvasesRef,
@@ -342,6 +371,7 @@ export function useLayerManagement(
     renameLayer,
     toggleLayerLock,
     moveLayer,
+    reorderLayers,
     mergeLayerDown,
     duplicateLayer,
 

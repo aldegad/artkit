@@ -5,6 +5,7 @@
 // Hooks
 export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
+export { useBrushTool } from "./hooks";
 
 // Components
 export { ProjectListModal } from "./components";
@@ -31,7 +32,7 @@ export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "./types";
 
 // Layer helper functions
 export {
-  createImageLayer,
+  createLayerWithSize,
   createPaintLayer,
   compositionLayerToUnified,
   imageLayerToUnified,

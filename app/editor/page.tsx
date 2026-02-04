@@ -19,6 +19,8 @@ import {
   saveEditorAutosaveData,
   clearEditorAutosaveData,
   EDITOR_AUTOSAVE_DEBOUNCE_MS,
+  useHistory,
+  useLayerManagement,
 } from "../../domains/editor";
 import {
   saveImageProject,
@@ -50,8 +52,7 @@ type ToolMode = EditorToolMode;
 
 export default function ImageEditor() {
   const { t } = useLanguage();
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [rotation, setRotation] = useState(0);
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
@@ -113,15 +114,6 @@ export default function ImageEditor() {
   } | null>(null);
   const dragStartOriginRef = useRef<Point | null>(null); // 드래그 시작 시 원본 위치 (Shift 제한용)
 
-  // Unified Layer system (combines image and paint layers)
-  const [layers, setLayers] = useState<UnifiedLayer[]>([]);
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
-  // Canvas storage for all layers (all layers are paint layers now)
-  const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
-  // Drag state for layer panel reordering
-  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
-  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -131,10 +123,11 @@ export default function ImageEditor() {
   const editCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastDrawPoint = useRef<Point | null>(null);
 
-  // Undo/Redo history
-  const historyRef = useRef<ImageData[]>([]);
-  const historyIndexRef = useRef<number>(-1);
-  const MAX_HISTORY = 50;
+  // Undo/Redo history - using extracted hook
+  const { saveToHistory, undo, redo, clearHistory, historyRef, historyIndexRef } = useHistory({
+    editCanvasRef,
+    maxHistory: 50,
+  });
 
   // Use imported ASPECT_RATIOS and ASPECT_RATIO_VALUES from domain
   const getAspectRatioValue = (ratio: AspectRatio): number | null => {
@@ -143,338 +136,49 @@ export default function ImageEditor() {
 
   // Get display dimensions (considering rotation)
   const getDisplayDimensions = useCallback(() => {
-    const width = rotation % 180 === 0 ? imageSize.width : imageSize.height;
-    const height = rotation % 180 === 0 ? imageSize.height : imageSize.width;
+    const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
+    const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
     return { width, height };
-  }, [rotation, imageSize]);
+  }, [rotation, canvasSize]);
 
-  // Initialize edit canvas and layers when image loads
-  const initEditCanvas = useCallback(
-    (width: number, height: number, existingLayers?: UnifiedLayer[]) => {
-      // Clear layer canvases
-      layerCanvasesRef.current.clear();
-
-      if (existingLayers && existingLayers.length > 0) {
-        // Load existing layers - all layers are paint layers now
-        // Migrate any legacy image layers by forcing type to "paint"
-        const migratedLayers = existingLayers.map(l => ({ ...l, type: "paint" as const }));
-        setLayers(migratedLayers);
-        setActiveLayerId(migratedLayers[0].id);
-
-        // Create canvases for each layer
-        migratedLayers.forEach((layer) => {
-          const layerWidth = layer.originalSize?.width || width;
-          const layerHeight = layer.originalSize?.height || height;
-          const canvas = document.createElement("canvas");
-          canvas.width = layerWidth;
-          canvas.height = layerHeight;
-          layerCanvasesRef.current.set(layer.id, canvas);
-
-          // Load paint data if exists
-          if (layer.paintData) {
-            const img = new Image();
-            img.onload = () => {
-              const ctx = canvas.getContext("2d");
-              if (ctx) ctx.drawImage(img, 0, 0);
-            };
-            img.src = layer.paintData;
-          } else if (layer.imageSrc) {
-            // Legacy image layer - draw image to canvas
-            const img = new Image();
-            img.onload = () => {
-              const ctx = canvas.getContext("2d");
-              if (ctx) ctx.drawImage(img, 0, 0);
-            };
-            img.src = layer.imageSrc;
-          }
-        });
-
-        // Set first layer as edit canvas
-        editCanvasRef.current = layerCanvasesRef.current.get(migratedLayers[0].id) || null;
-      } else {
-        // Create default paint layer
-        const defaultLayer = createPaintLayer(`${t.layer} 1`, 0);
-        setLayers([defaultLayer]);
-        setActiveLayerId(defaultLayer.id);
-
-        const editCanvas = document.createElement("canvas");
-        editCanvas.width = width;
-        editCanvas.height = height;
-        const ctx = editCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, width, height);
-        }
-        editCanvasRef.current = editCanvas;
-        layerCanvasesRef.current.set(defaultLayer.id, editCanvas);
-      }
-
-      // Reset history
-      historyRef.current = [];
-      historyIndexRef.current = -1;
+  // Layer management - using extracted hook
+  const {
+    layers,
+    setLayers,
+    activeLayerId,
+    setActiveLayerId,
+    layerCanvasesRef,
+    draggedLayerId,
+    setDraggedLayerId,
+    dragOverLayerId,
+    setDragOverLayerId,
+    addPaintLayer,
+    addImageLayer,
+    deleteLayer,
+    selectLayer,
+    toggleLayerVisibility,
+    updateLayer,
+    updateLayerOpacity,
+    renameLayer,
+    toggleLayerLock,
+    moveLayer,
+    reorderLayers,
+    mergeLayerDown,
+    duplicateLayer,
+    initLayers,
+    addLayer,
+  } = useLayerManagement({
+    getDisplayDimensions,
+    saveToHistory,
+    editCanvasRef,
+    translations: {
+      layer: t.layer,
+      minOneLayerRequired: t.minOneLayerRequired,
     },
-    [t.layer],
-  );
+  });
 
-  // Save current edit canvas state to history
-  const saveToHistory = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
-
-    // Remove any future states if we're not at the end
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-    }
-
-    // Save current state
-    const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    historyRef.current.push(imageData);
-
-    // Limit history size
-    if (historyRef.current.length > MAX_HISTORY) {
-      historyRef.current.shift();
-    } else {
-      historyIndexRef.current++;
-    }
-  }, []);
-
-  // Undo last edit
-  const undo = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
-
-    if (historyIndexRef.current > 0) {
-      historyIndexRef.current--;
-      const imageData = historyRef.current[historyIndexRef.current];
-      ctx.putImageData(imageData, 0, 0);
-    } else if (historyIndexRef.current === 0) {
-      // Undo to initial blank state
-      historyIndexRef.current = -1;
-      ctx.clearRect(0, 0, editCanvas.width, editCanvas.height);
-    }
-  }, []);
-
-  // Redo last undone edit
-  const redo = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
-
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyIndexRef.current++;
-      const imageData = historyRef.current[historyIndexRef.current];
-      ctx.putImageData(imageData, 0, 0);
-    }
-  }, []);
-
-  // ============================================
-  // Unified Layer Management Functions
-  // ============================================
-
-  // Add new paint layer
-  const addPaintLayer = useCallback(() => {
-    const { width, height } = getDisplayDimensions();
-    if (width === 0 || height === 0) return;
-
-    const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
-    const newLayer = createPaintLayer(`${t.layer} ${layers.length + 1}`, maxZIndex);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    layerCanvasesRef.current.set(newLayer.id, canvas);
-
-    setLayers((prev) => [newLayer, ...prev]); // Add on top (visually)
-    setActiveLayerId(newLayer.id);
-    editCanvasRef.current = canvas;
-  }, [layers, getDisplayDimensions, t.layer]);
-
-  // Add new layer with image drawn to canvas
-  const addImageLayer = useCallback((imageSrc: string, name?: string) => {
-    const img = new Image();
-    img.onload = () => {
-      const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
-      const newLayer = createPaintLayer(
-        name || `Layer ${layers.length + 1}`,
-        maxZIndex
-      );
-      newLayer.originalSize = { width: img.width, height: img.height };
-
-      // Create canvas for this layer and draw the image
-      const layerCanvas = document.createElement("canvas");
-      layerCanvas.width = img.width;
-      layerCanvas.height = img.height;
-      const ctx = layerCanvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-      }
-
-      // Store canvas in ref
-      layerCanvasesRef.current.set(newLayer.id, layerCanvas);
-
-      setLayers((prev) => [newLayer, ...prev]);
-      setActiveLayerId(newLayer.id);
-      editCanvasRef.current = layerCanvas;
-    };
-    img.src = imageSrc;
-  }, [layers]);
-
-  // Delete layer
-  const deleteLayer = useCallback(
-    (layerId: string) => {
-      if (layers.length <= 1) {
-        alert(t.minOneLayerRequired);
-        return;
-      }
-
-      setLayers((prev) => {
-        const newLayers = prev.filter((l) => l.id !== layerId);
-        // If deleted active layer, switch to first available
-        if (activeLayerId === layerId && newLayers.length > 0) {
-          const nextLayer = newLayers[0];
-          setActiveLayerId(nextLayer.id);
-          editCanvasRef.current = layerCanvasesRef.current.get(nextLayer.id) || null;
-        }
-        return newLayers;
-      });
-
-      // Clean up layer canvas
-      layerCanvasesRef.current.delete(layerId);
-    },
-    [layers, activeLayerId, t.minOneLayerRequired],
-  );
-
-  // Select layer
-  const selectLayer = useCallback((layerId: string) => {
-    setActiveLayerId(layerId);
-    editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
-  }, []);
-
-  // Toggle layer visibility
-  const toggleLayerVisibility = useCallback((layerId: string) => {
-    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
-  }, []);
-
-  // Update layer
-  const updateLayer = useCallback((layerId: string, updates: Partial<UnifiedLayer>) => {
-    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, ...updates } : l)));
-  }, []);
-
-  // Update layer opacity
-  const updateLayerOpacity = useCallback((layerId: string, opacity: number) => {
-    updateLayer(layerId, { opacity });
-  }, [updateLayer]);
-
-  // Rename layer
-  const renameLayer = useCallback((layerId: string, name: string) => {
-    updateLayer(layerId, { name });
-  }, [updateLayer]);
-
-  // Toggle layer lock
-  const toggleLayerLock = useCallback((layerId: string) => {
-    setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, locked: !l.locked } : l)));
-  }, []);
-
-  // Move layer up/down
-  const moveLayer = useCallback((layerId: string, direction: "up" | "down") => {
-    setLayers((prev) => {
-      const idx = prev.findIndex((l) => l.id === layerId);
-      if (idx === -1) return prev;
-      if (direction === "up" && idx === 0) return prev;
-      if (direction === "down" && idx === prev.length - 1) return prev;
-
-      const newLayers = [...prev];
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      [newLayers[idx], newLayers[targetIdx]] = [newLayers[targetIdx], newLayers[idx]];
-      // Update zIndex to match position
-      return newLayers.map((l, i) => ({ ...l, zIndex: newLayers.length - 1 - i }));
-    });
-  }, []);
-
-  // Reorder layers via drag and drop
-  const reorderLayers = useCallback((fromId: string, toId: string) => {
-    if (fromId === toId) return;
-
-    setLayers((prev) => {
-      const sortedLayers = [...prev].sort((a, b) => b.zIndex - a.zIndex);
-      const fromIndex = sortedLayers.findIndex((l) => l.id === fromId);
-      const toIndex = sortedLayers.findIndex((l) => l.id === toId);
-
-      if (fromIndex === -1 || toIndex === -1) return prev;
-
-      const newSorted = [...sortedLayers];
-      const [removed] = newSorted.splice(fromIndex, 1);
-      newSorted.splice(toIndex, 0, removed);
-
-      // Update zIndex based on new order (higher index in sorted = higher zIndex)
-      return newSorted.map((l, i) => ({ ...l, zIndex: newSorted.length - 1 - i }));
-    });
-  }, []);
-
-  // Merge paint layer down (only for paint layers)
-  const mergeLayerDown = useCallback(
-    (layerId: string) => {
-      const idx = layers.findIndex((l) => l.id === layerId);
-      if (idx === -1 || idx === layers.length - 1) return;
-
-      const upperLayer = layers[idx];
-      const lowerLayer = layers[idx + 1];
-
-      // Can only merge paint layers
-      if (upperLayer.type !== "paint" || lowerLayer.type !== "paint") return;
-
-      const upperCanvas = layerCanvasesRef.current.get(layerId);
-      const lowerCanvas = layerCanvasesRef.current.get(lowerLayer.id);
-
-      if (!upperCanvas || !lowerCanvas) return;
-
-      saveToHistory();
-
-      // Merge upper into lower
-      const ctx = lowerCanvas.getContext("2d");
-      if (ctx) {
-        ctx.globalAlpha = upperLayer.opacity / 100;
-        ctx.drawImage(upperCanvas, 0, 0);
-        ctx.globalAlpha = 1;
-      }
-
-      // Remove upper layer
-      deleteLayer(layerId);
-    },
-    [layers, saveToHistory, deleteLayer],
-  );
-
-  // Duplicate layer
-  const duplicateLayer = useCallback((layerId: string) => {
-    const layer = layers.find(l => l.id === layerId);
-    if (!layer) return;
-
-    const maxZIndex = Math.max(...layers.map(l => l.zIndex)) + 1;
-    const newLayer: UnifiedLayer = {
-      ...layer,
-      id: crypto.randomUUID(),
-      name: `${layer.name} (copy)`,
-      zIndex: maxZIndex,
-    };
-
-    // Copy canvas data
-    const srcCanvas = layerCanvasesRef.current.get(layerId);
-    if (srcCanvas) {
-      const newCanvas = document.createElement("canvas");
-      newCanvas.width = srcCanvas.width;
-      newCanvas.height = srcCanvas.height;
-      const ctx = newCanvas.getContext("2d");
-      if (ctx) ctx.drawImage(srcCanvas, 0, 0);
-      layerCanvasesRef.current.set(newLayer.id, newCanvas);
-    }
-
-    setLayers(prev => [newLayer, ...prev]);
-    setActiveLayerId(newLayer.id);
-  }, [layers]);
-
-  // Legacy alias for backward compatibility
-  const addLayer = addPaintLayer;
+  // Alias initLayers as initEditCanvas for backward compatibility
+  const initEditCanvas = initLayers;
 
   // ============================================
   // Fill Function
@@ -514,9 +218,8 @@ export default function ImageEditor() {
         const src = event.target?.result as string;
         const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        // If no main image exists, set this as the main image first
-        if (!imageSrc) {
-          setImageSrc(src);
+        // If no canvas exists, create new canvas with this image
+        if (layers.length === 0) {
           setRotation(0);
           setCropArea(null);
           setZoom(1);
@@ -526,7 +229,7 @@ export default function ImageEditor() {
           const img = new Image();
           img.onload = () => {
             imageRef.current = img;
-            setImageSize({ width: img.width, height: img.height });
+            setCanvasSize({ width: img.width, height: img.height });
 
             // Create a single paint layer with the image drawn on it
             const imageLayer = createPaintLayer(fileName, 0);
@@ -555,7 +258,7 @@ export default function ImageEditor() {
       };
       reader.readAsDataURL(file);
     },
-    [addImageLayer, imageSrc, t.layer],
+    [addImageLayer, layers.length, t.layer],
   );
 
   // Handle file input
@@ -697,7 +400,7 @@ export default function ImageEditor() {
         // Draw rotated original image
         tempCtx.translate(displayWidth / 2, displayHeight / 2);
         tempCtx.rotate((rotation * Math.PI) / 180);
-        tempCtx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
+        tempCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
 
         // Get source pixel data
         const sourceX = x - offsetX;
@@ -734,7 +437,7 @@ export default function ImageEditor() {
       brushHardness,
       stampSource,
       rotation,
-      imageSize,
+      canvasSize,
       getDisplayDimensions,
     ],
   );
@@ -774,7 +477,7 @@ export default function ImageEditor() {
         onDragOver={handleDragOver}
         className="w-full h-full overflow-hidden bg-surface-secondary relative"
       >
-        {!imageSrc ? (
+        {layers.length === 0 ? (
           <ImageDropZone
             variant="editor"
             onFileSelect={(files) => files[0] && loadImageFile(files[0])}
@@ -1003,7 +706,7 @@ export default function ImageEditor() {
     const editCanvas = editCanvasRef.current;
     const container = containerRef.current;
 
-    if (!canvas || !ctx || !img || !imageSrc || !container) return;
+    if (!canvas || !ctx || !container || layers.length === 0) return;
 
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
@@ -1271,8 +974,8 @@ export default function ImageEditor() {
       ctx.restore();
     }
   }, [
-    imageSrc,
-    imageSize,
+    layers,
+    canvasSize,
     rotation,
     cropArea,
     zoom,
@@ -1286,7 +989,6 @@ export default function ImageEditor() {
     selection,
     isDuplicating,
     isMovingSelection,
-    layers,
     activeLayerId,
   ]);
 
@@ -1310,14 +1012,17 @@ export default function ImageEditor() {
     [zoom, pan, getDisplayDimensions],
   );
 
-  // Mouse position relative to canvas
+  // Mouse position relative to canvas (converts CSS coordinates to canvas pixel coordinates)
   const getMousePos = (e: React.MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
+    // Convert CSS coordinates to canvas pixel coordinates
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     };
   };
 
@@ -1337,7 +1042,7 @@ export default function ImageEditor() {
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!imageSrc) return;
+    if (layers.length === 0) return;
 
     const screenPos = getMousePos(e);
     const imagePos = screenToImage(screenPos.x, screenPos.y);
@@ -1442,7 +1147,7 @@ export default function ImageEditor() {
 
             compositeCtx.translate(displayWidth / 2, displayHeight / 2);
             compositeCtx.rotate((rotation * Math.PI) / 180);
-            compositeCtx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
+            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
             compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
             compositeCtx.drawImage(editCanvas, 0, 0);
 
@@ -1525,7 +1230,7 @@ export default function ImageEditor() {
 
             compositeCtx.translate(displayWidth / 2, displayHeight / 2);
             compositeCtx.rotate((rotation * Math.PI) / 180);
-            compositeCtx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
+            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
             compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
             compositeCtx.drawImage(editCanvas, 0, 0);
 
@@ -1916,7 +1621,7 @@ export default function ImageEditor() {
         // Draw rotated original
         compositeCtx.translate(displayWidth / 2, displayHeight / 2);
         compositeCtx.rotate((rotation * Math.PI) / 180);
-        compositeCtx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
+        compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
         compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
 
         // Draw edits
@@ -2010,22 +1715,34 @@ export default function ImageEditor() {
     selection,
     getDisplayDimensions,
     rotation,
-    imageSize,
+    canvasSize,
     saveToHistory,
     isProjectListOpen,
   ]);
 
   // Refs for wheel handler to access current values without stale closure
   const zoomRef = useRef(zoom);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  // Refs for wheel handler cleanup
+  const wheelHandlerRef = useRef<((e: WheelEvent) => void) | null>(null);
+  const currentCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Canvas ref callback to attach wheel listener when canvas is mounted
-  const wheelListenerAttached = useRef(false);
   const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
-    // Update the ref
-    (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = canvas;
+    // Remove listener from previous canvas if exists
+    if (currentCanvasRef.current && wheelHandlerRef.current) {
+      currentCanvasRef.current.removeEventListener("wheel", wheelHandlerRef.current);
+      wheelHandlerRef.current = null;
+    }
 
-    if (canvas && !wheelListenerAttached.current) {
+    // Update the refs
+    (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = canvas;
+    currentCanvasRef.current = canvas;
+
+    if (canvas) {
       const wheelHandler = (e: WheelEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2035,8 +1752,11 @@ export default function ImageEditor() {
         const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
 
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        // Convert CSS coordinates to canvas pixel coordinates
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
         const scale = newZoom / currentZoom;
 
         // Adjust pan so the point under the mouse stays fixed
@@ -2047,10 +1767,8 @@ export default function ImageEditor() {
         setZoom(newZoom);
       };
 
+      wheelHandlerRef.current = wheelHandler;
       canvas.addEventListener("wheel", wheelHandler, { passive: false });
-      wheelListenerAttached.current = true;
-    } else if (!canvas) {
-      wheelListenerAttached.current = false;
     }
   }, []);
 
@@ -2239,7 +1957,7 @@ export default function ImageEditor() {
   };
 
   const fitToScreen = () => {
-    if (!containerRef.current || !imageSize.width) return;
+    if (!containerRef.current || !canvasSize.width) return;
     const container = containerRef.current;
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
     const padding = 40;
@@ -2271,7 +1989,7 @@ export default function ImageEditor() {
     // Draw rotated original
     compositeCtx.translate(displayWidth / 2, displayHeight / 2);
     compositeCtx.rotate((rotation * Math.PI) / 180);
-    compositeCtx.drawImage(img, -imageSize.width / 2, -imageSize.height / 2);
+    compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
     compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
 
     // Draw edits
@@ -2316,7 +2034,7 @@ export default function ImageEditor() {
       mimeType,
       quality,
     );
-  }, [cropArea, rotation, imageSize, outputFormat, quality, getDisplayDimensions]);
+  }, [cropArea, rotation, canvasSize, outputFormat, quality, getDisplayDimensions]);
 
   // Get cursor based on tool mode
   const getCursor = () => {
@@ -2377,11 +2095,10 @@ export default function ImageEditor() {
     const loadAutosave = async () => {
       try {
         const data = await loadEditorAutosaveData();
-        // Only restore if autosave exists AND no image has been loaded yet
-        if (data && data.imageSrc && !imageSrc) {
+        // Only restore if autosave has valid data
+        if (data && data.layers && data.layers.length > 0 && data.canvasSize && layers.length === 0) {
           // Restore state from autosave
-          setImageSrc(data.imageSrc);
-          setImageSize(data.imageSize);
+          setCanvasSize(data.canvasSize);
           setRotation(data.rotation);
           setZoom(data.zoom);
           setPan(data.pan);
@@ -2391,14 +2108,12 @@ export default function ImageEditor() {
           setBrushColor(data.brushColor);
           setBrushHardness(data.brushHardness);
 
-          // Load image and restore layers
-          const img = new Image();
-          img.onload = () => {
-            imageRef.current = img;
-            const { width, height } = data.imageSize;
-            initEditCanvas(width, height, data.layers);
-          };
-          img.src = data.imageSrc;
+          // Restore layers
+          const { width, height } = data.canvasSize;
+          initEditCanvas(width, height, data.layers);
+        } else if (data) {
+          // Clear invalid/legacy autosave data
+          clearEditorAutosaveData();
         }
       } catch (error) {
         console.error("Failed to load autosave:", error);
@@ -2412,7 +2127,7 @@ export default function ImageEditor() {
   // Auto-save on state change (debounced)
   useEffect(() => {
     if (!isInitializedRef.current) return;
-    if (!imageSrc) return;
+    if (layers.length === 0) return;
 
     // Clear existing timeout
     if (autosaveTimeoutRef.current) {
@@ -2434,8 +2149,7 @@ export default function ImageEditor() {
       });
 
       saveEditorAutosaveData({
-        imageSrc,
-        imageSize,
+        canvasSize,
         rotation,
         zoom,
         pan,
@@ -2454,13 +2168,12 @@ export default function ImageEditor() {
       }
     };
   }, [
-    imageSrc,
-    imageSize,
+    layers,
+    canvasSize,
     rotation,
     zoom,
     pan,
     projectName,
-    layers,
     activeLayerId,
     brushSize,
     brushColor,
@@ -2470,8 +2183,7 @@ export default function ImageEditor() {
   // Clear autosave when starting fresh
   const handleNewProject = useCallback(() => {
     clearEditorAutosaveData();
-    setImageSrc(null);
-    setImageSize({ width: 0, height: 0 });
+    setCanvasSize({ width: 0, height: 0 });
     setRotation(0);
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -2491,7 +2203,7 @@ export default function ImageEditor() {
 
   // Save current project
   const handleSaveProject = useCallback(async () => {
-    if (!imageSrc || !imageRef.current) return;
+    if (layers.length === 0) return;
 
     // Save all unified layer data
     const savedLayers: UnifiedLayer[] = layers.map((layer) => {
@@ -2502,7 +2214,6 @@ export default function ImageEditor() {
           paintData: canvas ? canvas.toDataURL("image/png") : layer.paintData || "",
         };
       }
-      // Image layers don't need canvas data saved - they have imageSrc
       return { ...layer };
     });
 
@@ -2513,11 +2224,10 @@ export default function ImageEditor() {
     const project: SavedImageProject = {
       id: currentProjectId || crypto.randomUUID(),
       name: projectName,
-      imageSrc,
       editLayerData,
       unifiedLayers: savedLayers,
       activeLayerId: activeLayerId || undefined,
-      imageSize,
+      canvasSize,
       rotation,
       savedAt: Date.now(),
     };
@@ -2537,14 +2247,14 @@ export default function ImageEditor() {
       console.error("Failed to save project:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
     }
-  }, [imageSrc, projectName, imageSize, rotation, currentProjectId, layers, activeLayerId]);
+  }, [projectName, canvasSize, rotation, currentProjectId, layers, activeLayerId]);
 
   // Cmd+S keyboard shortcut for save
   useEffect(() => {
     const handleSave = (e: KeyboardEvent) => {
       if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        if (imageSrc) {
+        if (layers.length > 0) {
           handleSaveProject();
         }
       }
@@ -2552,75 +2262,69 @@ export default function ImageEditor() {
 
     window.addEventListener("keydown", handleSave);
     return () => window.removeEventListener("keydown", handleSave);
-  }, [imageSrc, handleSaveProject]);
+  }, [layers.length, handleSaveProject]);
 
   // Load a saved project
   const handleLoadProject = useCallback(
     async (project: SavedImageProject) => {
-      setImageSrc(project.imageSrc);
       setProjectName(project.name);
       setCurrentProjectId(project.id);
       setRotation(project.rotation);
-      setImageSize(project.imageSize);
+      // Support legacy imageSize field
+      const size = project.canvasSize || project.imageSize || { width: 0, height: 0 };
+      setCanvasSize(size);
       setCropArea(null);
       setSelection(null);
       setZoom(1);
       setPan({ x: 0, y: 0 });
       setStampSource(null);
 
-      // Load image
-      const img = new Image();
-      img.onload = () => {
-        imageRef.current = img;
+      // Initialize edit canvas with layers
+      const { width, height } =
+        project.rotation % 180 === 0
+          ? size
+          : { width: size.height, height: size.width };
 
-        // Initialize edit canvas with layers
-        const { width, height } =
-          project.rotation % 180 === 0
-            ? project.imageSize
-            : { width: project.imageSize.height, height: project.imageSize.width };
-
-        // Check if project has new unified layer system
-        if (project.unifiedLayers && project.unifiedLayers.length > 0) {
-          initEditCanvas(width, height, project.unifiedLayers);
-          if (project.activeLayerId) {
-            setActiveLayerId(project.activeLayerId);
-            const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
-            if (activeLayer?.type === "paint") {
-              editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
-            }
-          }
-        } else if (project.layers && project.layers.length > 0) {
-          // Legacy project with old ImageLayer format - convert to UnifiedLayer
-          const convertedLayers: UnifiedLayer[] = project.layers.map((layer, index) => ({
-            ...layer,
-            type: "paint" as const,
-            locked: false,
-            zIndex: project.layers!.length - 1 - index,
-            paintData: layer.data,
-          }));
-          initEditCanvas(width, height, convertedLayers);
-          if (project.activeLayerId) {
-            setActiveLayerId(project.activeLayerId);
+      // Check if project has new unified layer system
+      if (project.unifiedLayers && project.unifiedLayers.length > 0) {
+        initEditCanvas(width, height, project.unifiedLayers);
+        if (project.activeLayerId) {
+          setActiveLayerId(project.activeLayerId);
+          const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
+          if (activeLayer?.type === "paint") {
             editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
           }
-        } else {
-          // Legacy project with single edit layer
-          initEditCanvas(width, height);
-
-          // Load edit layer data if exists
-          if (project.editLayerData && editCanvasRef.current) {
-            const editImg = new Image();
-            editImg.onload = () => {
-              const ctx = editCanvasRef.current?.getContext("2d");
-              if (ctx) {
-                ctx.drawImage(editImg, 0, 0);
-              }
-            };
-            editImg.src = project.editLayerData;
-          }
         }
-      };
-      img.src = project.imageSrc;
+      } else if (project.layers && project.layers.length > 0) {
+        // Legacy project with old ImageLayer format - convert to UnifiedLayer
+        const convertedLayers: UnifiedLayer[] = project.layers.map((layer, index) => ({
+          ...layer,
+          type: "paint" as const,
+          locked: false,
+          zIndex: project.layers!.length - 1 - index,
+          paintData: layer.data,
+        }));
+        initEditCanvas(width, height, convertedLayers);
+        if (project.activeLayerId) {
+          setActiveLayerId(project.activeLayerId);
+          editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
+        }
+      } else {
+        // Legacy project with single edit layer
+        initEditCanvas(width, height);
+
+        // Load edit layer data if exists
+        if (project.editLayerData && editCanvasRef.current) {
+          const editImg = new Image();
+          editImg.onload = () => {
+            const ctx = editCanvasRef.current?.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(editImg, 0, 0);
+            }
+          };
+          editImg.src = project.editLayerData;
+        }
+      }
 
       setIsProjectListOpen(false);
     },
@@ -2652,14 +2356,13 @@ export default function ImageEditor() {
 
   // New canvas
   const handleNewCanvas = useCallback(() => {
-    if (imageSrc && !confirm(t.unsavedChangesConfirm)) return;
+    if (layers.length > 0 && !confirm(t.unsavedChangesConfirm)) return;
 
     // Clear autosave
     clearEditorAutosaveData();
 
-    // Reset image state
-    setImageSrc(null);
-    setImageSize({ width: 0, height: 0 });
+    // Reset canvas state
+    setCanvasSize({ width: 0, height: 0 });
     setProjectName("Untitled");
     setCurrentProjectId(null);
     setRotation(0);
@@ -2679,7 +2382,7 @@ export default function ImageEditor() {
     editCanvasRef.current = null;
     historyRef.current = [];
     historyIndexRef.current = -1;
-  }, [imageSrc, t]);
+  }, [layers.length, t]);
 
   const toolButtons: {
     mode: ToolMode;
@@ -2867,11 +2570,10 @@ export default function ImageEditor() {
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
-      {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
-        <h1 className="text-sm font-semibold">{t.imageEditor}</h1>
-
-        <div className="h-5 w-px bg-border-default" />
+      {/* Top Toolbar - Row 1: File operations & Project name */}
+      <div className="flex items-center gap-2 px-2 md:px-4 py-1.5 bg-surface-primary border-b border-border-default shrink-0">
+        <h1 className="text-xs md:text-sm font-semibold hidden md:block">{t.imageEditor}</h1>
+        <div className="h-4 w-px bg-border-default hidden md:block" />
 
         {/* New / Open / Save buttons */}
         <button
@@ -2894,7 +2596,7 @@ export default function ImageEditor() {
         >
           {t.load}
         </button>
-        {imageSrc && (
+        {layers.length > 0 && (
           <button
             onClick={handleSaveProject}
             className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors"
@@ -2904,329 +2606,25 @@ export default function ImageEditor() {
           </button>
         )}
 
-        {imageSrc && (
+        {layers.length > 0 && (
           <>
-            <div className="h-5 w-px bg-border-default" />
-
+            <div className="h-4 w-px bg-border-default" />
             {/* Project name */}
             <input
               type="text"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-24 focus:outline-none focus:border-accent-primary"
+              className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-20 md:w-24 focus:outline-none focus:border-accent-primary"
               placeholder={t.projectName}
             />
-
-            <div className="h-5 w-px bg-border-default" />
-
-            {/* Tool buttons */}
-            <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
-              {toolButtons.map((tool) => (
-                <Tooltip
-                  key={tool.mode}
-                  content={
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">{tool.name}</span>
-                      <span className="text-text-tertiary text-[11px]">{tool.description}</span>
-                      {tool.keys && tool.keys.length > 0 && (
-                        <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default">
-                          {tool.keys.map((key, i) => (
-                            <span key={i} className="text-[10px] text-text-tertiary font-mono">
-                              {key}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  }
-                  shortcut={tool.shortcut}
-                >
-                  <button
-                    onClick={() => setToolMode(tool.mode)}
-                    className={`p-1.5 rounded transition-colors ${
-                      toolMode === tool.mode
-                        ? "bg-accent-primary text-white"
-                        : "hover:bg-interactive-hover"
-                    }`}
-                  >
-                    {tool.icon}
-                  </button>
-                </Tooltip>
-              ))}
-
-              {/* Divider */}
-              <div className="w-px bg-border-default mx-0.5" />
-
-              {/* AI Background Removal */}
-              <Tooltip
-                content={
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium">{t.removeBackground}</span>
-                    <span className="text-text-tertiary text-[11px]">
-                      AI 모델을 사용해 이미지 배경을 제거합니다
-                    </span>
-                    <span className="text-[10px] text-text-tertiary">
-                      첫 실행 시 모델 다운로드 (~30MB)
-                    </span>
-                  </div>
-                }
-              >
-                <button
-                  onClick={() => setShowBgRemovalConfirm(true)}
-                  disabled={isRemovingBackground}
-                  className={`p-1.5 rounded transition-colors ${
-                    isRemovingBackground
-                      ? "bg-accent-primary text-white cursor-wait"
-                      : "hover:bg-interactive-hover"
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {/* Person silhouette with transparent/dashed background */}
-                    <circle cx="12" cy="7" r="3" strokeWidth={2} />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
-                    />
-                    {/* Diagonal line indicating removal/transparency */}
-                    <path
-                      strokeLinecap="round"
-                      strokeWidth={2}
-                      strokeDasharray="2 2"
-                      d="M3 21L21 3"
-                    />
-                  </svg>
-                </button>
-              </Tooltip>
-            </div>
-
-            <div className="h-5 w-px bg-border-default" />
-
-            {/* Brush controls */}
-            {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp") && (
-              <>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-text-secondary">{t.size}:</span>
-                  <button
-                    onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
-                    className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-                  >
-                    -
-                  </button>
-                  <input
-                    type="number"
-                    value={brushSize}
-                    onChange={(e) =>
-                      setBrushSize(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))
-                    }
-                    className="w-10 px-1 py-0.5 bg-surface-secondary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                    min={1}
-                    max={200}
-                  />
-                  <button
-                    onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
-                    className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-                  >
-                    +
-                  </button>
-                </div>
-
-                {(toolMode === "brush" || toolMode === "eraser") && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-text-secondary">{t.hardness}:</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={brushHardness}
-                      onChange={(e) => setBrushHardness(parseInt(e.target.value))}
-                      className="w-14 accent-accent-primary"
-                    />
-                    <span className="text-xs text-text-tertiary w-6">{brushHardness}%</span>
-                  </div>
-                )}
-
-                {toolMode === "brush" && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-text-secondary">{t.color}:</span>
-                    <input
-                      type="color"
-                      value={brushColor}
-                      onChange={(e) => setBrushColor(e.target.value)}
-                      className="w-6 h-6 rounded cursor-pointer border border-border-default"
-                    />
-                    <span className="text-xs text-text-tertiary">{brushColor}</span>
-                  </div>
-                )}
-
-                {toolMode === "stamp" && (
-                  <span className="text-xs text-text-secondary">
-                    {stampSource
-                      ? `${t.source}: (${Math.round(stampSource.x)}, ${Math.round(stampSource.y)})`
-                      : t.altClickToSetSource}
-                  </span>
-                )}
-
-                <div className="h-5 w-px bg-border-default" />
-              </>
-            )}
-
-            {/* Rotation */}
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={() => rotate(-90)}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title={t.rotateLeft}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={() => rotate(90)}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title={t.rotateRight}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div className="h-5 w-px bg-border-default" />
-
-            {/* Zoom controls */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title={t.zoomOut}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                </svg>
-              </button>
-              <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
-              <button
-                onClick={() => setZoom((z) => Math.min(10, z * 1.25))}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                title={t.zoomIn}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={fitToScreen}
-                className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                title={t.fitToScreen}
-              >
-                Fit
-              </button>
-            </div>
-
-            <div className="h-5 w-px bg-border-default" />
-
-            {/* Crop ratio */}
-            {toolMode === "crop" && (
-              <>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-text-secondary">Ratio:</span>
-                  <select
-                    value={aspectRatio}
-                    onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-                    className="px-1 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
-                  >
-                    {ASPECT_RATIOS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={selectAll}
-                    className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                  >
-                    All
-                  </button>
-                  {cropArea && (
-                    <button
-                      onClick={clearCrop}
-                      className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="h-5 w-px bg-border-default" />
-              </>
-            )}
-
-            {/* Output format */}
-            <div className="flex items-center gap-1">
-              <select
-                value={outputFormat}
-                onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
-                className="px-1 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
-              >
-                <option value="png">PNG</option>
-                <option value="webp">WebP</option>
-                <option value="jpeg">JPEG</option>
-              </select>
-              {outputFormat !== "png" && (
-                <>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={quality}
-                    onChange={(e) => setQuality(parseFloat(e.target.value))}
-                    className="w-12 accent-accent-primary"
-                  />
-                  <span className="text-xs w-6">{Math.round(quality * 100)}%</span>
-                </>
-              )}
-            </div>
-
-            <button
-              onClick={clearEdits}
-              className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors"
-              title={t.resetEdit}
-            >
-              {t.reset}
-            </button>
-
-            <button
-              onClick={exportImage}
-              className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors"
-            >
-              Export
-            </button>
           </>
         )}
 
         <div className="flex-1" />
 
-        {/* Image info */}
-        {imageSrc && (
-          <div className="text-xs text-text-tertiary flex items-center gap-2">
+        {/* Image info - desktop only */}
+        {layers.length > 0 && (
+          <div className="text-xs text-text-tertiary hidden md:flex items-center gap-2">
             <span>
               {displayWidth} × {displayHeight}
             </span>
@@ -3237,8 +2635,318 @@ export default function ImageEditor() {
             )}
           </div>
         )}
+      </div>
 
+      {/* Top Toolbar - Row 2: Tools */}
+      {layers.length > 0 && (
+        <div className="flex items-center gap-1 px-2 md:px-4 py-1 bg-surface-primary border-b border-border-default shrink-0 overflow-x-auto">
+          {/* Tool buttons */}
+          <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
+            {toolButtons.map((tool) => (
+              <Tooltip
+                key={tool.mode}
+                content={
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium">{tool.name}</span>
+                    <span className="text-text-tertiary text-[11px]">{tool.description}</span>
+                    {tool.keys && tool.keys.length > 0 && (
+                      <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default">
+                        {tool.keys.map((key, i) => (
+                          <span key={i} className="text-[10px] text-text-tertiary font-mono">
+                            {key}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                }
+                shortcut={tool.shortcut}
+              >
+                <button
+                  onClick={() => setToolMode(tool.mode)}
+                  className={`p-1.5 rounded transition-colors ${
+                    toolMode === tool.mode
+                      ? "bg-accent-primary text-white"
+                      : "hover:bg-interactive-hover"
+                  }`}
+                >
+                  {tool.icon}
+                </button>
+              </Tooltip>
+            ))}
+
+            {/* Divider */}
+            <div className="w-px bg-border-default mx-0.5" />
+
+            {/* AI Background Removal */}
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{t.removeBackground}</span>
+                  <span className="text-text-tertiary text-[11px]">
+                    AI 모델을 사용해 이미지 배경을 제거합니다
+                  </span>
+                  <span className="text-[10px] text-text-tertiary">
+                    첫 실행 시 모델 다운로드 (~30MB)
+                  </span>
+                </div>
+              }
+            >
+              <button
+                onClick={() => setShowBgRemovalConfirm(true)}
+                disabled={isRemovingBackground}
+                className={`p-1.5 rounded transition-colors ${
+                  isRemovingBackground
+                    ? "bg-accent-primary text-white cursor-wait"
+                    : "hover:bg-interactive-hover"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="7" r="3" strokeWidth={2} />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeWidth={2}
+                    strokeDasharray="2 2"
+                    d="M3 21L21 3"
+                  />
+                </svg>
+              </button>
+            </Tooltip>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Rotation */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => rotate(-90)}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+              title={t.rotateLeft}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => rotate(90)}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+              title={t.rotateRight}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+              title={t.zoomOut}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </button>
+            <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => setZoom((z) => Math.min(10, z * 1.25))}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+              title={t.zoomIn}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={fitToScreen}
+              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+              title={t.fitToScreen}
+            >
+              Fit
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Output format */}
+          <div className="flex items-center gap-1">
+            <select
+              value={outputFormat}
+              onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
+              className="px-1 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
+            >
+              <option value="png">PNG</option>
+              <option value="webp">WebP</option>
+              <option value="jpeg">JPEG</option>
+            </select>
+            {outputFormat !== "png" && (
+              <>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.1"
+                  value={quality}
+                  onChange={(e) => setQuality(parseFloat(e.target.value))}
+                  className="w-12 accent-accent-primary"
+                />
+                <span className="text-xs w-6">{Math.round(quality * 100)}%</span>
+              </>
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          <button
+            onClick={clearEdits}
+            className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors"
+            title={t.resetEdit}
+          >
+            {t.reset}
+          </button>
+
+          <button
+            onClick={exportImage}
+            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors"
+          >
+            Export
+          </button>
         </div>
+      )}
+
+      {/* Top Toolbar - Row 3: Tool-specific controls */}
+      {layers.length > 0 && (
+        <div className="flex items-center gap-2 px-2 md:px-4 py-1 bg-surface-secondary border-b border-border-default shrink-0 overflow-x-auto min-h-[32px]">
+          {/* Brush controls */}
+          {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp") && (
+            <>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-secondary">{t.size}:</span>
+                <button
+                  onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
+                  className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  value={brushSize}
+                  onChange={(e) =>
+                    setBrushSize(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))
+                  }
+                  className="w-10 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
+                  min={1}
+                  max={200}
+                />
+                <button
+                  onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
+                  className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
+                >
+                  +
+                </button>
+              </div>
+
+              {(toolMode === "brush" || toolMode === "eraser") && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-text-secondary">{t.hardness}:</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={brushHardness}
+                    onChange={(e) => setBrushHardness(parseInt(e.target.value))}
+                    className="w-14 accent-accent-primary"
+                  />
+                  <span className="text-xs text-text-tertiary w-6">{brushHardness}%</span>
+                </div>
+              )}
+
+              {toolMode === "brush" && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-text-secondary">{t.color}:</span>
+                  <input
+                    type="color"
+                    value={brushColor}
+                    onChange={(e) => setBrushColor(e.target.value)}
+                    className="w-6 h-6 rounded cursor-pointer border border-border-default"
+                  />
+                  <span className="text-xs text-text-tertiary hidden md:inline">{brushColor}</span>
+                </div>
+              )}
+
+              {toolMode === "stamp" && (
+                <span className="text-xs text-text-secondary">
+                  {stampSource
+                    ? `${t.source}: (${Math.round(stampSource.x)}, ${Math.round(stampSource.y)})`
+                    : t.altClickToSetSource}
+                </span>
+              )}
+            </>
+          )}
+
+          {/* Crop ratio */}
+          {toolMode === "crop" && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-text-secondary">Ratio:</span>
+              <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
+                className="px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
+              >
+                {ASPECT_RATIOS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={selectAll}
+                className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+              >
+                All
+              </button>
+              {cropArea && (
+                <button
+                  onClick={clearCrop}
+                  className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Default message when no tool-specific controls */}
+          {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && (
+            <span className="text-xs text-text-tertiary">{toolButtons.find(t => t.mode === toolMode)?.name}</span>
+          )}
+        </div>
+      )}
 
       {/* Main Content Area with Docking System */}
       <EditorLayoutProvider>
@@ -3332,10 +3040,10 @@ export default function ImageEditor() {
       )}
 
       {/* Bottom status bar */}
-      {imageSrc && (
+      {layers.length > 0 && (
         <div className="px-4 py-1.5 bg-surface-primary border-t border-border-default text-xs text-text-tertiary flex items-center gap-4">
           <span>
-            Original: {imageSize.width} × {imageSize.height}
+            Original: {canvasSize.width} × {canvasSize.height}
           </span>
           {rotation !== 0 && <span>Rotation: {rotation}°</span>}
           <span>Zoom: {Math.round(zoom * 100)}%</span>

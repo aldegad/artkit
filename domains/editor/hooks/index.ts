@@ -4,3 +4,4 @@
 
 export { useLayerManagement } from "./useLayerManagement";
 export { useHistory } from "./useHistory";
+export { useBrushTool } from "./useBrushTool";
