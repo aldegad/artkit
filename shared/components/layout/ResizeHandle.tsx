@@ -20,9 +20,21 @@ interface ResizeHandleProps {
 
 export default function ResizeHandle({ direction, splitId, handleIndex }: ResizeHandleProps) {
   const { startResize, updateResizeAbsolute, endResize, resizeState } = useLayout();
+  const handleRef = useRef<HTMLDivElement>(null);
   // Store the original start position at drag start (not updated during drag)
   const originalStartPositionRef = useRef<number>(0);
+  // Store the actual split container size at drag start
+  const containerSizeRef = useRef<number>(0);
   const isActiveHandle = resizeState?.splitId === splitId && resizeState?.handleIndex === handleIndex;
+
+  // Get the actual split container size from this handle's parent element
+  const getActualContainerSize = useCallback(() => {
+    if (!handleRef.current) return 1000;
+    // The parent element is the flex container of the split
+    const parent = handleRef.current.parentElement;
+    if (!parent) return 1000;
+    return direction === "horizontal" ? parent.clientWidth : parent.clientHeight;
+  }, [direction]);
 
   // Mouse handlers
   const handleMouseDown = useCallback(
@@ -32,15 +44,17 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
 
       const startPos = direction === "horizontal" ? e.clientX : e.clientY;
       originalStartPositionRef.current = startPos;
+      containerSizeRef.current = getActualContainerSize();
 
       startResize({
         splitId,
         handleIndex,
         startPosition: startPos,
         direction,
+        actualContainerSize: containerSizeRef.current,
       });
     },
-    [direction, splitId, handleIndex, startResize]
+    [direction, splitId, handleIndex, startResize, getActualContainerSize]
   );
 
   // Touch handlers
@@ -52,15 +66,17 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
       const touch = e.touches[0];
       const startPos = direction === "horizontal" ? touch.clientX : touch.clientY;
       originalStartPositionRef.current = startPos;
+      containerSizeRef.current = getActualContainerSize();
 
       startResize({
         splitId,
         handleIndex,
         startPosition: startPos,
         direction,
+        actualContainerSize: containerSizeRef.current,
       });
     },
-    [direction, splitId, handleIndex, startResize]
+    [direction, splitId, handleIndex, startResize, getActualContainerSize]
   );
 
   // Global mouse/touch move and up handlers
@@ -105,6 +121,7 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
 
   return (
     <div
+      ref={handleRef}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
       className={`

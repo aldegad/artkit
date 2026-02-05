@@ -270,10 +270,12 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
     const startResize = useCallback((state: ResizeState) => {
       // Store original sizes and container size at drag start for absolute delta calculation
       const node = findNode(layoutState.root, state.splitId);
-      const containerSize =
-        state.direction === "horizontal"
+      // Use actualContainerSize from ResizeHandle if provided (more accurate),
+      // otherwise fall back to containerRef
+      const containerSize = state.actualContainerSize ||
+        (state.direction === "horizontal"
           ? containerRef.current?.clientWidth || 1000
-          : containerRef.current?.clientHeight || 600;
+          : containerRef.current?.clientHeight || 600);
 
       if (node && isSplitNode(node)) {
         const splitNode = node as SplitNode;
@@ -341,11 +343,6 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
 
         // Use the container size from drag start (stable throughout drag)
         const deltaRatio = (totalDelta / originalContainerSize) * total;
-
-        // Debug: check calculation (remove after testing)
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Resize:', { totalDelta, originalContainerSize, total, deltaRatio });
-        }
 
         const minRatio = (10 / total) * 100;
         // Use original sizes, not current sizes
