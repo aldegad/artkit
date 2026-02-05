@@ -35,3 +35,11 @@ export type {
   UseCoordinateTransformOptions,
   UseCoordinateTransformReturn,
 } from "./useCoordinateTransform";
+
+// Snap system
+export { useSnapSystem } from "./useSnapSystem";
+export type { UseSnapSystemOptions, UseSnapSystemReturn } from "./useSnapSystem";
+
+// Guide tool
+export { useGuideTool } from "./useGuideTool";
+export type { UseGuideToolOptions, UseGuideToolReturn } from "./useGuideTool";

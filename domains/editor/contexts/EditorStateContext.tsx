@@ -30,6 +30,12 @@ export interface EditorState {
   // Selection (marquee)
   selection: CropArea | null;
 
+  // Rulers & Guides
+  showRulers: boolean;
+  showGuides: boolean;
+  lockGuides: boolean;
+  snapToGuides: boolean;
+
   // Project Management
   projectName: string;
   currentProjectId: string | null;
@@ -63,6 +69,12 @@ export interface EditorStateContextValue {
 
   // Selection setters
   setSelection: (selection: CropArea | null) => void;
+
+  // Rulers & Guides setters
+  setShowRulers: (show: boolean) => void;
+  setShowGuides: (show: boolean) => void;
+  setLockGuides: (lock: boolean) => void;
+  setSnapToGuides: (snap: boolean) => void;
 
   // Project Management setters
   setProjectName: (name: string) => void;
@@ -98,6 +110,12 @@ const initialState: EditorState = {
 
   // Selection (marquee)
   selection: null,
+
+  // Rulers & Guides
+  showRulers: true,
+  showGuides: true,
+  lockGuides: false,
+  snapToGuides: true,
 
   // Project Management
   projectName: "Untitled",
@@ -179,6 +197,23 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setState((prev) => ({ ...prev, selection }));
   }, []);
 
+  // Rulers & Guides setters
+  const setShowRulers = useCallback((showRulers: boolean) => {
+    setState((prev) => ({ ...prev, showRulers }));
+  }, []);
+
+  const setShowGuides = useCallback((showGuides: boolean) => {
+    setState((prev) => ({ ...prev, showGuides }));
+  }, []);
+
+  const setLockGuides = useCallback((lockGuides: boolean) => {
+    setState((prev) => ({ ...prev, lockGuides }));
+  }, []);
+
+  const setSnapToGuides = useCallback((snapToGuides: boolean) => {
+    setState((prev) => ({ ...prev, snapToGuides }));
+  }, []);
+
   // Project Management setters
   const setProjectName = useCallback((name: string) => {
     setState((prev) => ({ ...prev, projectName: name }));
@@ -225,6 +260,10 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setOutputFormat,
     setQuality,
     setSelection,
+    setShowRulers,
+    setShowGuides,
+    setLockGuides,
+    setSnapToGuides,
     setProjectName,
     setCurrentProjectId,
     setSavedProjects,

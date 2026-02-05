@@ -32,6 +32,15 @@ export interface CanvasColors {
   gridAlt: string;
   textOnColor: string;
 
+  // Guides & Rulers
+  guide: string;
+  guideLocked: string;
+  guideActive: string;
+  rulerBg: string;
+  rulerTick: string;
+  rulerTickMajor: string;
+  rulerText: string;
+
   // Waveform
   waveformBg: string;
   waveformLine: string;
@@ -80,6 +89,15 @@ function getCanvasColors(): CanvasColors {
     grid: getCSSVar("--canvas-grid", "rgba(255, 255, 255, 0.3)"),
     gridAlt: getCSSVar("--canvas-grid-alt", "rgba(0, 255, 255, 0.9)"),
     textOnColor: getCSSVar("--canvas-text-on-color", "#ffffff"),
+
+    // Guides & Rulers
+    guide: getCSSVar("--canvas-guide", "rgba(0, 188, 212, 0.8)"),
+    guideLocked: getCSSVar("--canvas-guide-locked", "rgba(0, 140, 160, 0.6)"),
+    guideActive: getCSSVar("--canvas-guide-active", "rgba(0, 230, 255, 1.0)"),
+    rulerBg: getCSSVar("--ruler-bg", "#e2e8f0"),
+    rulerTick: getCSSVar("--ruler-tick", "#94a3b8"),
+    rulerTickMajor: getCSSVar("--ruler-tick-major", "#475569"),
+    rulerText: getCSSVar("--ruler-text", "#475569"),
 
     // Waveform
     waveformBg: getCSSVar("--waveform-bg", "#1a1a2e"),
@@ -135,6 +153,13 @@ function getServerSnapshot(): CanvasColors {
     grid: "rgba(255, 255, 255, 0.3)",
     gridAlt: "rgba(0, 255, 255, 0.9)",
     textOnColor: "#ffffff",
+    guide: "rgba(0, 188, 212, 0.8)",
+    guideLocked: "rgba(0, 140, 160, 0.6)",
+    guideActive: "rgba(0, 230, 255, 1.0)",
+    rulerBg: "#e2e8f0",
+    rulerTick: "#94a3b8",
+    rulerTickMajor: "#475569",
+    rulerText: "#475569",
     waveformBg: "#1a1a2e",
     waveformLine: "#3b82f6",
     waveformHandle: "#60a5fa",

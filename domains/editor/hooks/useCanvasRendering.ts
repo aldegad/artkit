@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, RefObject, useCallback, useRef } from "react";
-import { UnifiedLayer, Point, CropArea } from "../types";
+import { UnifiedLayer, Point, CropArea, Guide, SnapSource } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
@@ -49,6 +49,14 @@ interface UseCanvasRenderingOptions {
   transformLayerId?: string | null;
   transformOriginalImageData?: ImageData | null;
 
+  // Guides (optional)
+  guides?: Guide[];
+  showGuides?: boolean;
+  lockGuides?: boolean;
+  activeSnapSources?: SnapSource[];
+  // Guide drag preview (from ruler)
+  guideDragPreview?: { orientation: "horizontal" | "vertical"; position: number } | null;
+
   // Functions
   getDisplayDimensions: () => { width: number; height: number };
 }
@@ -92,6 +100,11 @@ export function useCanvasRendering(
     isTransformActive,
     transformLayerId,
     transformOriginalImageData,
+    guides,
+    showGuides,
+    lockGuides,
+    activeSnapSources,
+    guideDragPreview,
     getDisplayDimensions,
   } = options;
 
@@ -391,6 +404,73 @@ export function useCanvasRendering(
       });
     }
 
+    // Draw guides
+    if (showGuides && guides && guides.length > 0) {
+      ctx.save();
+      // Use locked color when guides are locked (darker, less prominent)
+      ctx.strokeStyle = lockGuides ? colors.guideLocked : colors.guide;
+      ctx.lineWidth = 1;
+
+      for (const guide of guides) {
+        ctx.beginPath();
+        if (guide.orientation === "horizontal") {
+          const screenY = offsetY + guide.position * zoom;
+          ctx.moveTo(0, screenY);
+          ctx.lineTo(canvas.width, screenY);
+        } else {
+          const screenX = offsetX + guide.position * zoom;
+          ctx.moveTo(screenX, 0);
+          ctx.lineTo(screenX, canvas.height);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Draw guide drag preview (from ruler drag)
+    if (guideDragPreview) {
+      ctx.save();
+      ctx.strokeStyle = colors.guideActive;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+
+      if (guideDragPreview.orientation === "horizontal") {
+        const screenY = offsetY + guideDragPreview.position * zoom;
+        ctx.moveTo(0, screenY);
+        ctx.lineTo(canvas.width, screenY);
+      } else {
+        const screenX = offsetX + guideDragPreview.position * zoom;
+        ctx.moveTo(screenX, 0);
+        ctx.lineTo(screenX, canvas.height);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw active snap indicator lines
+    if (activeSnapSources && activeSnapSources.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = colors.guideActive;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+
+      for (const source of activeSnapSources) {
+        ctx.beginPath();
+        if (source.orientation === "horizontal") {
+          const screenY = offsetY + source.position * zoom;
+          ctx.moveTo(0, screenY);
+          ctx.lineTo(canvas.width, screenY);
+        } else {
+          const screenX = offsetX + source.position * zoom;
+          ctx.moveTo(screenX, 0);
+          ctx.lineTo(screenX, canvas.height);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // Draw brush preview cursor
     if (mousePos && (toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp")) {
       const screenX = offsetX + mousePos.x * zoom;
@@ -604,6 +684,12 @@ export function useCanvasRendering(
     isTransformActive,
     transformLayerId,
     transformOriginalImageData,
+    // Guide-related dependencies
+    guides,
+    showGuides,
+    lockGuides,
+    activeSnapSources,
+    guideDragPreview,
   ]);
 
   // Store render function in ref for ResizeObserver to call

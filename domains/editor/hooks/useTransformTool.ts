@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES } from "../types";
+import { useState, useCallback, useRef, useMemo } from "react";
+import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG } from "../types";
+import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
 
 // ============================================
 // Types
@@ -48,6 +49,10 @@ interface UseTransformToolOptions {
   layers: UnifiedLayer[];
   activeLayerId: string | null;
   saveToHistory: () => void;
+  // Snap options
+  guides?: Guide[];
+  canvasSize?: { width: number; height: number };
+  snapEnabled?: boolean;
 }
 
 interface UseTransformToolReturn {
@@ -56,6 +61,7 @@ interface UseTransformToolReturn {
   activeHandle: TransformHandle;
   aspectRatio: AspectRatio;
   setAspectRatio: React.Dispatch<React.SetStateAction<AspectRatio>>;
+  activeSnapSources: SnapSource[];
   // Actions
   startTransform: () => void;
   cancelTransform: () => void;
@@ -91,6 +97,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     layers,
     activeLayerId,
     saveToHistory,
+    // Snap options
+    guides = [],
+    canvasSize,
+    snapEnabled = false,
   } = options;
 
   // Transform state
@@ -105,12 +115,24 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
   const [activeHandle, setActiveHandle] = useState<TransformHandle>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
+  const [activeSnapSources, setActiveSnapSources] = useState<SnapSource[]>([]);
 
   // Drag state refs for real-time updates (using refs avoids stale closure issues during fast drag)
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<Point>({ x: 0, y: 0 });
   const originalBoundsOnDragRef = useRef<TransformState["bounds"]>(null);
   const activeHandleRef = useRef<TransformHandle>(null);
+
+  // Compute snap sources
+  const snapSources = useMemo(() => {
+    if (!snapEnabled) return [];
+    return collectSnapSources({
+      guides,
+      canvasSize,
+      includeCanvasEdges: true,
+      includeLayerEdges: false, // Disabled for now to keep it simple
+    });
+  }, [guides, canvasSize, snapEnabled]);
 
   // Check if transform is active
   const isTransformActive = useCallback(() => {
@@ -416,6 +438,21 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         // Move the bounds
         newBounds.x = orig.x + dx;
         newBounds.y = orig.y + dy;
+
+        // Apply snapping when moving
+        if (snapEnabled && snapSources.length > 0) {
+          const boundingBox = rectToBoundingBox(newBounds);
+          const { bounds: snappedBounds, snappedEdges } = snapBounds(
+            boundingBox,
+            snapSources,
+            DEFAULT_SNAP_CONFIG.tolerance,
+            ["left", "right", "top", "bottom"]
+          );
+          newBounds = boundingBoxToRect(snappedBounds);
+          setActiveSnapSources(getActiveSnapSources(snappedEdges));
+        } else {
+          setActiveSnapSources([]);
+        }
       } else {
         // Resize based on handle
         const fromCenter = modifiers.alt;
@@ -598,7 +635,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       // Note: Canvas preview is now rendered directly in useCanvasRendering
       // to avoid coordinate mismatch between layerCanvas and transform bounds
     },
-    [aspectRatio]
+    [aspectRatio, snapEnabled, snapSources]
   );
 
   // Handle mouse up for transform
@@ -607,6 +644,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     setActiveHandle(null);
     activeHandleRef.current = null;
     originalBoundsOnDragRef.current = null;
+    setActiveSnapSources([]); // Clear snap indicators on mouse up
   }, []);
 
   return {
@@ -614,6 +652,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     activeHandle,
     aspectRatio,
     setAspectRatio,
+    activeSnapSources,
     startTransform,
     cancelTransform,
     applyTransform,

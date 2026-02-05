@@ -81,6 +81,7 @@ export interface SavedImageProject {
   rotation: number;
   savedAt: number;
   thumbnailUrl?: string; // For list view
+  guides?: import("../domains/editor/types/guides").Guide[]; // Guide lines (optional for backward compatibility)
 }
 
 // ============================================

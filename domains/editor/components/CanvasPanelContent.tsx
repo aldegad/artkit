@@ -1,7 +1,8 @@
 "use client";
 
-import { useEditorCanvas } from "../contexts";
+import { useEditorCanvas, useEditorState } from "../contexts";
 import { ImageDropZone } from "../../../shared/components";
+import { RulerContainer } from "./rulers";
 
 export default function CanvasPanelContent() {
   const {
@@ -16,9 +17,16 @@ export default function CanvasPanelContent() {
     handleMouseLeave,
     getCursor,
     loadImageFile,
+    displaySize,
+    onGuideCreate,
+    onGuideDragStateChange,
   } = useEditorCanvas();
 
-  return (
+  const {
+    state: { showRulers, zoom, pan },
+  } = useEditorState();
+
+  const canvasContent = (
     <div
       ref={containerRef}
       onDrop={handleDrop}
@@ -42,5 +50,18 @@ export default function CanvasPanelContent() {
         />
       )}
     </div>
+  );
+
+  return (
+    <RulerContainer
+      showRulers={showRulers}
+      zoom={zoom}
+      pan={pan}
+      displaySize={displaySize}
+      onGuideCreate={onGuideCreate}
+      onGuideDragStateChange={onGuideDragStateChange}
+    >
+      {canvasContent}
+    </RulerContainer>
   );
 }

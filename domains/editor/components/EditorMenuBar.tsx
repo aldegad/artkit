@@ -32,8 +32,19 @@ interface MenuBarProps {
   isLayersOpen: boolean;
   canSave: boolean;
   isLoading?: boolean;
+  // View menu props
+  showRulers: boolean;
+  showGuides: boolean;
+  lockGuides: boolean;
+  snapToGuides: boolean;
+  onToggleRulers: () => void;
+  onToggleGuides: () => void;
+  onToggleLockGuides: () => void;
+  onToggleSnapToGuides: () => void;
+  onClearGuides: () => void;
   translations: {
     file: string;
+    view: string;
     window: string;
     new: string;
     load: string;
@@ -41,6 +52,11 @@ interface MenuBarProps {
     saveAs: string;
     importImage: string;
     layers: string;
+    showRulers: string;
+    showGuides: string;
+    lockGuides: string;
+    snapToGuides: string;
+    clearGuides: string;
   };
 }
 
@@ -152,9 +168,18 @@ export default function EditorMenuBar({
   isLayersOpen,
   canSave,
   isLoading,
+  showRulers,
+  showGuides,
+  lockGuides,
+  snapToGuides,
+  onToggleRulers,
+  onToggleGuides,
+  onToggleLockGuides,
+  onToggleSnapToGuides,
+  onClearGuides,
   translations: t,
 }: MenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<"file" | "window" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"file" | "view" | "window" | null>(null);
 
   const fileMenuItems: MenuItem[] = [
     { label: t.new, onClick: onNew, shortcut: "⌘N" },
@@ -164,6 +189,15 @@ export default function EditorMenuBar({
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
+  ];
+
+  const viewMenuItems: MenuItem[] = [
+    { label: t.showRulers, onClick: onToggleRulers, checked: showRulers },
+    { label: t.showGuides, onClick: onToggleGuides, checked: showGuides },
+    { label: t.lockGuides, onClick: onToggleLockGuides, checked: lockGuides, disabled: !showGuides },
+    { label: t.snapToGuides, onClick: onToggleSnapToGuides, checked: snapToGuides, disabled: !showGuides },
+    { divider: true },
+    { label: t.clearGuides, onClick: onClearGuides, disabled: !showGuides },
   ];
 
   const windowMenuItems: MenuItem[] = [
@@ -182,6 +216,12 @@ export default function EditorMenuBar({
         items={fileMenuItems}
         isOpen={openMenu === "file"}
         onOpenChange={(open) => setOpenMenu(open ? "file" : null)}
+      />
+      <MenuDropdown
+        label={t.view}
+        items={viewMenuItems}
+        isOpen={openMenu === "view"}
+        onOpenChange={(open) => setOpenMenu(open ? "view" : null)}
       />
       <MenuDropdown
         label={t.window}

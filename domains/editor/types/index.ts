@@ -12,6 +12,25 @@ export type {
   DrawingParameters,
 } from "./brush";
 
+// Snap system types
+export type {
+  SnapSourceType,
+  SnapOrientation,
+  SnapSource,
+  SnapResult,
+  SnapConfig,
+  SnapEdge,
+} from "./snap";
+export { DEFAULT_SNAP_CONFIG } from "./snap";
+
+// Guide types
+export type {
+  GuideOrientation,
+  Guide,
+  GuideDragState,
+} from "./guides";
+export { INITIAL_GUIDE_DRAG_STATE } from "./guides";
+
 // Re-export shared types for convenience
 export type {
   Point,
@@ -46,7 +65,7 @@ export type AspectRatio = "free" | "fixed" | "1:1" | "16:9" | "9:16" | "4:3" | "
 
 export type OutputFormat = "webp" | "jpeg" | "png";
 
-export type DragType = "create" | "move" | "resize" | "pan" | "draw" | null;
+export type DragType = "create" | "move" | "resize" | "pan" | "draw" | "guide" | null;
 
 export interface CropArea {
   x: number;
@@ -67,6 +86,7 @@ export interface SavedImageProject {
   rotation: number;
   savedAt: number;
   thumbnailUrl?: string; // For list view
+  guides?: import("./guides").Guide[]; // Guide lines (optional for backward compatibility)
 }
 
 // Aspect ratio configuration

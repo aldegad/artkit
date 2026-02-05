@@ -35,9 +35,17 @@ interface Translations {
 
   // Menu
   file: string;
+  view: string;
   window: string;
   importImage: string;
   loading: string;
+
+  // View menu
+  showRulers: string;
+  showGuides: string;
+  lockGuides: string;
+  snapToGuides: string;
+  clearGuides: string;
 
   // Sprite editor
   importSheet: string;
@@ -277,9 +285,17 @@ const translations: Record<Language, Translations> = {
 
     // Menu
     file: "파일",
+    view: "보기",
     window: "창",
     importImage: "이미지 가져오기",
     loading: "로딩 중...",
+
+    // View menu
+    showRulers: "눈금자 표시",
+    showGuides: "가이드 표시",
+    lockGuides: "가이드 잠금",
+    snapToGuides: "가이드 스냅",
+    clearGuides: "가이드 모두 삭제",
 
     // Sprite editor
     importSheet: "시트 가져오기",
@@ -517,9 +533,17 @@ const translations: Record<Language, Translations> = {
 
     // Menu
     file: "File",
+    view: "View",
     window: "Window",
     importImage: "Import Image",
     loading: "Loading...",
+
+    // View menu
+    showRulers: "Show Rulers",
+    showGuides: "Show Guides",
+    lockGuides: "Lock Guides",
+    snapToGuides: "Snap to Guides",
+    clearGuides: "Clear All Guides",
 
     // Sprite editor
     importSheet: "Import Sheet",

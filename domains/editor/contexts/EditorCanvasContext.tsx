@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, ReactNode, RefObject } from "react";
-import { UnifiedLayer } from "../types";
+import { UnifiedLayer, GuideOrientation } from "../types";
 
 // ============================================
 // Context Value Type
@@ -26,6 +26,11 @@ export interface EditorCanvasContextValue {
   // Utilities
   getCursor: () => string;
   loadImageFile: (file: File) => void;
+
+  // Guides
+  displaySize: { width: number; height: number };
+  onGuideCreate?: (orientation: GuideOrientation, position: number) => void;
+  onGuideDragStateChange?: (dragState: { orientation: GuideOrientation; position: number } | null) => void;
 }
 
 // ============================================

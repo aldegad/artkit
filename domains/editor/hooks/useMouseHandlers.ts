@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, RefObject } from "react";
-import { EditorToolMode, CropArea, Point, DragType } from "../types";
+import { EditorToolMode, CropArea, Point, DragType, Guide, GuideOrientation } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 
 // ============================================
@@ -69,6 +69,14 @@ interface UseMouseHandlersOptions {
   handleTransformMouseDown?: (imagePos: Point, modifiers: { shift: boolean; alt: boolean }) => string | null;
   handleTransformMouseMove?: (imagePos: Point, modifiers: { shift: boolean; alt: boolean }) => void;
   handleTransformMouseUp?: () => void;
+
+  // Guide functions (from useGuideTool)
+  guides?: Guide[];
+  showGuides?: boolean;
+  lockGuides?: boolean;
+  moveGuide?: (id: string, newPosition: number) => void;
+  removeGuide?: (id: string) => void;
+  getGuideAtPosition?: (pos: Point, tolerance: number) => Guide | null;
 }
 
 interface UseMouseHandlersReturn {
@@ -77,6 +85,9 @@ interface UseMouseHandlersReturn {
   dragType: DragType;
   resizeHandle: string | null;
   mousePos: Point | null;
+
+  // Guide hover state (for cursor)
+  hoveredGuide: Guide | null;
 
   // State setters (for external use if needed)
   setIsDragging: (value: boolean) => void;
@@ -146,6 +157,13 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     handleTransformMouseDown,
     handleTransformMouseMove,
     handleTransformMouseUp,
+    // Guide options
+    guides,
+    showGuides,
+    lockGuides,
+    moveGuide,
+    removeGuide,
+    getGuideAtPosition,
   } = options;
 
   // Drag state
@@ -156,6 +174,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   const [mousePos, setMousePos] = useState<Point | null>(null);
   // Store original crop area at drag start for center-based resize
   const originalCropAreaRef = useRef<CropArea | null>(null);
+
+  // Guide interaction state
+  const [hoveredGuide, setHoveredGuide] = useState<Guide | null>(null);
+  const draggingGuideRef = useRef<{ guide: Guide; startPosition: number } | null>(null);
 
   // Helper to check if position is in bounds
   const isInBounds = useCallback(
@@ -181,6 +203,23 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       const activeMode = getActiveToolMode();
       const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
       const inBounds = isInBounds(imagePos);
+
+      // Guide interaction - check if clicking on a guide (when not locked)
+      if (showGuides && !lockGuides && getGuideAtPosition) {
+        const tolerance = 5 / zoom; // 5 screen pixels tolerance
+        const guide = getGuideAtPosition(imagePos, tolerance);
+        if (guide) {
+          // Start guide drag
+          draggingGuideRef.current = {
+            guide,
+            startPosition: guide.position,
+          };
+          setDragType("guide");
+          dragStartRef.current = imagePos;
+          setIsDragging(true);
+          return;
+        }
+      }
 
       // Hand tool (pan)
       if (activeMode === "hand") {
@@ -505,6 +544,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       isTransformActive,
       handleTransformMouseDown,
       activeLayerPosition,
+      showGuides,
+      lockGuides,
+      getGuideAtPosition,
     ]
   );
 
@@ -522,9 +564,34 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         setMousePos(null);
       }
 
+      // Check guide hover (when guides are visible and not locked)
+      if (showGuides && !lockGuides && getGuideAtPosition && !isDragging) {
+        const tolerance = 5 / zoom; // 5 screen pixels tolerance
+        const guide = getGuideAtPosition(imagePos, tolerance);
+        setHoveredGuide(guide);
+      } else if (!isDragging) {
+        setHoveredGuide(null);
+      }
+
       if (!isDragging) return;
 
       const ratioValue = getAspectRatioValue(aspectRatio);
+
+      // Guide drag
+      if (dragType === "guide" && draggingGuideRef.current && moveGuide) {
+        const guide = draggingGuideRef.current.guide;
+        let newPosition: number;
+
+        if (guide.orientation === "horizontal") {
+          newPosition = imagePos.y;
+        } else {
+          newPosition = imagePos.x;
+        }
+
+        // Update guide position in real-time
+        moveGuide(guide.id, newPosition);
+        return;
+      }
 
       // Pan
       if (dragType === "pan") {
@@ -763,6 +830,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       isTransformActive,
       handleTransformMouseMove,
       activeLayerPosition,
+      showGuides,
+      lockGuides,
+      getGuideAtPosition,
+      moveGuide,
     ]
   );
 
@@ -771,6 +842,24 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     // Handle transform tool mouse up
     if (handleTransformMouseUp) {
       handleTransformMouseUp();
+    }
+
+    // Handle guide drag end - delete if outside canvas
+    if (dragType === "guide" && draggingGuideRef.current && removeGuide) {
+      const guide = draggingGuideRef.current.guide;
+      const { width, height } = getDisplayDimensions();
+      const maxPosition = guide.orientation === "horizontal" ? height : width;
+
+      // Get current position from guides array
+      const currentGuide = guides?.find((g) => g.id === guide.id);
+      const currentPosition = currentGuide?.position ?? guide.position;
+
+      // Delete if dragged outside canvas bounds (with 10px tolerance)
+      if (currentPosition < -10 || currentPosition > maxPosition + 10) {
+        removeGuide(guide.id);
+      }
+
+      draggingGuideRef.current = null;
     }
 
     // Commit floating layer to edit canvas when done moving
@@ -834,6 +923,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     selection,
     setSelection,
     handleTransformMouseUp,
+    dragType,
+    getDisplayDimensions,
+    guides,
+    removeGuide,
   ]);
 
   // Handle mouse leave
@@ -847,6 +940,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     dragType,
     resizeHandle,
     mousePos,
+    hoveredGuide,
     setIsDragging,
     setDragType,
     setResizeHandle,

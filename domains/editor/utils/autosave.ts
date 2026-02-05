@@ -2,7 +2,7 @@
 // Image Editor Autosave Utilities (IndexedDB)
 // ============================================
 
-import { UnifiedLayer } from "../types";
+import { UnifiedLayer, Guide } from "../types";
 
 export const EDITOR_AUTOSAVE_KEY = "editor-autosave";
 export const EDITOR_AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -25,6 +25,7 @@ export interface EditorAutosaveData {
   brushSize: number;
   brushColor: string;
   brushHardness: number;
+  guides?: Guide[]; // Optional for backward compatibility
   savedAt: number;
 }
 
