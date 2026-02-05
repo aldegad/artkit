@@ -525,8 +525,8 @@ export function useCanvasRendering(
       ctx.setLineDash([]);
       ctx.strokeRect(transformX, transformY, transformW, transformH);
 
-      // Draw resize handles
-      const handleSize = 8;
+      // Draw resize handles (larger for touch-friendly interaction)
+      const handleSize = 16;
       ctx.fillStyle = colors.selection;
       ctx.strokeStyle = colors.textOnColor;
       ctx.lineWidth = 1;

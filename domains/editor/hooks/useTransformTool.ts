@@ -73,7 +73,8 @@ interface UseTransformToolReturn {
 // Helper Functions
 // ============================================
 
-const HANDLE_SIZE = 8;
+// Larger handle size for touch-friendly interaction
+const HANDLE_SIZE = 16;
 
 function isInHandle(pos: Point, handle: Point, size: number = HANDLE_SIZE): boolean {
   return Math.abs(pos.x - handle.x) <= size && Math.abs(pos.y - handle.y) <= size;
@@ -105,10 +106,11 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   const [activeHandle, setActiveHandle] = useState<TransformHandle>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
 
-  // Drag state refs for real-time updates
+  // Drag state refs for real-time updates (using refs avoids stale closure issues during fast drag)
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<Point>({ x: 0, y: 0 });
   const originalBoundsOnDragRef = useRef<TransformState["bounds"]>(null);
+  const activeHandleRef = useRef<TransformHandle>(null);
 
   // Check if transform is active
   const isTransformActive = useCallback(() => {
@@ -228,6 +230,12 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
   // Cancel transform
   const cancelTransform = useCallback(() => {
+    // Reset drag state refs
+    isDraggingRef.current = false;
+    activeHandleRef.current = null;
+    originalBoundsOnDragRef.current = null;
+    setActiveHandle(null);
+
     if (!transformState.isActive || !transformState.layerId || !transformState.originalImageData) {
       setTransformState({
         isActive: false,
@@ -272,6 +280,12 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
   // Apply transform
   const applyTransform = useCallback(() => {
+    // Reset drag state refs
+    isDraggingRef.current = false;
+    activeHandleRef.current = null;
+    originalBoundsOnDragRef.current = null;
+    setActiveHandle(null);
+
     if (!transformState.isActive || !transformState.layerId || !transformState.bounds || !transformState.originalImageData) {
       setTransformState({
         isActive: false,
@@ -369,6 +383,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
       if (handle) {
         setActiveHandle(handle);
+        activeHandleRef.current = handle; // Use ref for synchronous access during drag
         isDraggingRef.current = true;
         dragStartRef.current = imagePos;
         originalBoundsOnDragRef.current = transformState.bounds ? { ...transformState.bounds } : null;
@@ -383,7 +398,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   // Handle mouse move for transform
   const handleTransformMouseMove = useCallback(
     (imagePos: Point, modifiers: { shift: boolean; alt: boolean }) => {
-      if (!isDraggingRef.current || !activeHandle || !originalBoundsOnDragRef.current) return;
+      // Use ref for activeHandle to avoid stale closure during fast drag events
+      const currentHandle = activeHandleRef.current;
+      if (!isDraggingRef.current || !currentHandle || !originalBoundsOnDragRef.current) return;
 
       const dx = imagePos.x - dragStartRef.current.x;
       const dy = imagePos.y - dragStartRef.current.y;
@@ -391,7 +408,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
       let newBounds = { ...orig };
 
-      if (activeHandle === "move") {
+      if (currentHandle === "move") {
         // Move the bounds
         newBounds.x = orig.x + dx;
         newBounds.y = orig.y + dy;
@@ -416,7 +433,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
           }
         }
 
-        switch (activeHandle) {
+        switch (currentHandle) {
           case "se":
             newBounds.width = Math.max(10, orig.width + dx);
             newBounds.height = Math.max(10, orig.height + dy);
@@ -632,13 +649,14 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         }
       }
     },
-    [activeHandle, aspectRatio, transformState.layerId, transformState.originalImageData, transformState.layerPosition, layerCanvasesRef]
+    [aspectRatio, transformState.layerId, transformState.originalImageData, transformState.layerPosition, layerCanvasesRef]
   );
 
   // Handle mouse up for transform
   const handleTransformMouseUp = useCallback((_modifiers?: { shift: boolean; alt: boolean }) => {
     isDraggingRef.current = false;
     setActiveHandle(null);
+    activeHandleRef.current = null;
     originalBoundsOnDragRef.current = null;
   }, []);
 

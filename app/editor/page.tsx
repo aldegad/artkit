@@ -488,6 +488,12 @@ function ImageEditorContent() {
     return toolMode;
   }, [isPanLocked, isSpacePressed, toolMode]);
 
+  // Get active layer's position for coordinate conversion (brush drawing)
+  const activeLayerPosition = useMemo(() => {
+    const activeLayer = layers.find(l => l.id === activeLayerId);
+    return activeLayer?.position || null;
+  }, [layers, activeLayerId]);
+
   // Mouse handlers - using extracted hook (gets zoom, pan, rotation, canvasSize, refs from context)
   const {
     isDragging,
@@ -498,6 +504,7 @@ function ImageEditorContent() {
     handleMouseLeave,
   } = useMouseHandlers({
     layers,
+    activeLayerPosition,
     getActiveToolMode,
     getDisplayDimensions,
     getMousePos,

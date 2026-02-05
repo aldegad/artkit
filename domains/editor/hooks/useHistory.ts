@@ -6,6 +6,12 @@ import { useCallback, useRef, RefObject } from "react";
 // Types
 // ============================================
 
+interface HistoryEntry {
+  imageData: ImageData;
+  width: number;
+  height: number;
+}
+
 interface UseHistoryOptions {
   maxHistory?: number;
   editCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -18,7 +24,7 @@ interface UseHistoryReturn {
   canUndo: () => boolean;
   canRedo: () => boolean;
   clearHistory: () => void;
-  historyRef: RefObject<ImageData[]>;
+  historyRef: RefObject<HistoryEntry[]>;
   historyIndexRef: RefObject<number>;
 }
 
@@ -29,7 +35,7 @@ interface UseHistoryReturn {
 export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
   const { maxHistory = 50, editCanvasRef } = options;
 
-  const historyRef = useRef<ImageData[]>([]);
+  const historyRef = useRef<HistoryEntry[]>([]);
   const historyIndexRef = useRef<number>(-1);
 
   // Clear history
@@ -49,9 +55,14 @@ export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
       historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
     }
 
-    // Save current state
+    // Save current state with canvas dimensions
     const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    historyRef.current.push(imageData);
+    const entry: HistoryEntry = {
+      imageData,
+      width: editCanvas.width,
+      height: editCanvas.height,
+    };
+    historyRef.current.push(entry);
 
     // Limit history size
     if (historyRef.current.length > maxHistory) {
@@ -69,12 +80,23 @@ export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
 
     if (historyIndexRef.current > 0) {
       historyIndexRef.current--;
-      const imageData = historyRef.current[historyIndexRef.current];
-      ctx.putImageData(imageData, 0, 0);
-    } else if (historyIndexRef.current === 0) {
-      // Undo to initial blank state
+      const entry = historyRef.current[historyIndexRef.current];
+      // Restore canvas size if changed
+      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
+        editCanvas.width = entry.width;
+        editCanvas.height = entry.height;
+      }
+      ctx.putImageData(entry.imageData, 0, 0);
+    } else if (historyIndexRef.current === 0 && historyRef.current.length > 0) {
+      // Restore to the first saved state (before any edits in this session)
+      const entry = historyRef.current[0];
       historyIndexRef.current = -1;
-      ctx.clearRect(0, 0, editCanvas.width, editCanvas.height);
+      // Restore canvas size
+      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
+        editCanvas.width = entry.width;
+        editCanvas.height = entry.height;
+      }
+      ctx.putImageData(entry.imageData, 0, 0);
     }
   }, [editCanvasRef]);
 
@@ -86,8 +108,13 @@ export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
 
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current++;
-      const imageData = historyRef.current[historyIndexRef.current];
-      ctx.putImageData(imageData, 0, 0);
+      const entry = historyRef.current[historyIndexRef.current];
+      // Restore canvas size if changed
+      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
+        editCanvas.width = entry.width;
+        editCanvas.height = entry.height;
+      }
+      ctx.putImageData(entry.imageData, 0, 0);
     }
   }, [editCanvasRef]);
 

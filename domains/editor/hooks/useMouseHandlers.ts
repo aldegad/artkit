@@ -20,6 +20,9 @@ interface UseMouseHandlersOptions {
   // Layers
   layers: unknown[];
 
+  // Active layer position for coordinate offset (for brush drawing)
+  activeLayerPosition?: { x: number; y: number } | null;
+
   // Tool state (temporary - getActiveToolMode checks isSpacePressed)
   getActiveToolMode: () => EditorToolMode;
 
@@ -113,6 +116,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   // Props from other hooks (still required as options)
   const {
     layers,
+    activeLayerPosition,
     getActiveToolMode,
     getDisplayDimensions,
     getMousePos,
@@ -229,7 +233,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           setDragType("draw");
           resetLastDrawPoint();
           const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
-          drawOnEditCanvas(imagePos.x, imagePos.y, true, pressure);
+          // Convert from image coordinates to layer-local coordinates
+          const layerX = imagePos.x - (activeLayerPosition?.x || 0);
+          const layerY = imagePos.y - (activeLayerPosition?.y || 0);
+          drawOnEditCanvas(layerX, layerY, true, pressure);
           setIsDragging(true);
         }
         return;
@@ -242,7 +249,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         resetLastDrawPoint();
         // Extract pressure from pointer event (React.PointerEvent has pressure property)
         const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
-        drawOnEditCanvas(imagePos.x, imagePos.y, true, pressure);
+        // Convert from image coordinates to layer-local coordinates
+        const layerX = imagePos.x - (activeLayerPosition?.x || 0);
+        const layerY = imagePos.y - (activeLayerPosition?.y || 0);
+        drawOnEditCanvas(layerX, layerY, true, pressure);
         setIsDragging(true);
         return;
       }
@@ -491,6 +501,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       canvasExpandMode,
       isTransformActive,
       handleTransformMouseDown,
+      activeLayerPosition,
     ]
   );
 
@@ -527,7 +538,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         const clampedY = Math.max(0, Math.min(imagePos.y, displayHeight));
         // Extract pressure from pointer event
         const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
-        drawOnEditCanvas(clampedX, clampedY, false, pressure);
+        // Convert from image coordinates to layer-local coordinates
+        const layerX = clampedX - (activeLayerPosition?.x || 0);
+        const layerY = clampedY - (activeLayerPosition?.y || 0);
+        drawOnEditCanvas(layerX, layerY, false, pressure);
         return;
       }
 
@@ -707,6 +721,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       updateCropExpand,
       isTransformActive,
       handleTransformMouseMove,
+      activeLayerPosition,
     ]
   );
 
