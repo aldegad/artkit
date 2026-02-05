@@ -3,6 +3,7 @@
 import { useEffect, RefObject, useCallback, useRef } from "react";
 import { UnifiedLayer, Point, CropArea } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
+import { getCanvasColorsSync } from "@/hooks";
 
 // ============================================
 // Types
@@ -14,6 +15,13 @@ interface FloatingLayer {
   y: number;
   originX: number;
   originY: number;
+}
+
+interface TransformBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 interface UseCanvasRenderingOptions {
@@ -33,6 +41,10 @@ interface UseCanvasRenderingOptions {
   isDuplicating: boolean;
   isMovingSelection: boolean;
   activeLayerId: string | null;
+
+  // Transform state (optional)
+  transformBounds?: TransformBounds | null;
+  isTransformActive?: boolean;
 
   // Functions
   getDisplayDimensions: () => { width: number; height: number };
@@ -73,6 +85,8 @@ export function useCanvasRendering(
     isDuplicating,
     isMovingSelection,
     activeLayerId,
+    transformBounds,
+    isTransformActive,
     getDisplayDimensions,
   } = options;
 
@@ -147,6 +161,9 @@ export function useCanvasRendering(
 
     if (!canvas || !ctx || !container || layers.length === 0) return;
 
+    // Get theme colors from CSS variables
+    const colors = getCanvasColorsSync();
+
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
     // Set canvas size to container size
@@ -168,8 +185,8 @@ export function useCanvasRendering(
 
     // Draw checkerboard pattern for transparency (like Photoshop)
     const checkerSize = 8;
-    const lightColor = "#ffffff";
-    const darkColor = "#cccccc";
+    const lightColor = colors.checkerboardLight;
+    const darkColor = colors.checkerboardDark;
 
     ctx.save();
     ctx.beginPath();
@@ -243,9 +260,9 @@ export function useCanvasRendering(
         patternCanvas.height = checkerSize * 2;
         const patternCtx = patternCanvas.getContext("2d");
         if (patternCtx) {
-          patternCtx.fillStyle = "#e5e5e5";
+          patternCtx.fillStyle = colors.checkerboardLight;
           patternCtx.fillRect(0, 0, checkerSize * 2, checkerSize * 2);
-          patternCtx.fillStyle = "#cccccc";
+          patternCtx.fillStyle = colors.checkerboardDark;
           patternCtx.fillRect(0, 0, checkerSize, checkerSize);
           patternCtx.fillRect(checkerSize, checkerSize, checkerSize, checkerSize);
         }
@@ -283,7 +300,7 @@ export function useCanvasRendering(
       }
 
       // Dark overlay outside crop area (only for areas within canvas)
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fillStyle = colors.overlay;
       // Calculate visible crop area (intersection with canvas)
       const visibleCropX = Math.max(0, cropArea.x);
       const visibleCropY = Math.max(0, cropArea.y);
@@ -323,12 +340,12 @@ export function useCanvasRendering(
       }
 
       // Draw crop border
-      ctx.strokeStyle = "#3b82f6";
+      ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 2;
       ctx.strokeRect(cropX, cropY, cropW, cropH);
 
       // Draw grid lines (rule of thirds)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.strokeStyle = colors.grid;
       ctx.lineWidth = 1;
       for (let i = 1; i < 3; i++) {
         ctx.beginPath();
@@ -343,7 +360,7 @@ export function useCanvasRendering(
 
       // Draw resize handles
       const handleSize = 8;
-      ctx.fillStyle = "#3b82f6";
+      ctx.fillStyle = colors.selection;
       const handles = [
         { x: cropX, y: cropY },
         { x: cropX + cropW / 2, y: cropY },
@@ -367,7 +384,7 @@ export function useCanvasRendering(
       const brushRadius = (brushSize * zoom) / 2;
 
       ctx.save();
-      ctx.strokeStyle = toolMode === "eraser" ? "#ff4444" : brushColor;
+      ctx.strokeStyle = toolMode === "eraser" ? colors.toolErase : brushColor;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -391,7 +408,7 @@ export function useCanvasRendering(
       const sourceY = offsetY + stampSource.y * zoom;
 
       ctx.save();
-      ctx.strokeStyle = "#00ff00";
+      ctx.strokeStyle = colors.toolDraw;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(sourceX - 10, sourceY);
@@ -411,7 +428,7 @@ export function useCanvasRendering(
       const selH = selection.height * zoom;
 
       ctx.save();
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = colors.textOnColor;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.strokeRect(selX, selY, selW, selH);
@@ -434,7 +451,7 @@ export function useCanvasRendering(
         ctx.save();
         const origX = offsetX + floating.originX * zoom;
         const origY = offsetY + floating.originY * zoom;
-        ctx.strokeStyle = "#3b82f6";
+        ctx.strokeStyle = colors.selection;
         ctx.lineWidth = 1;
         ctx.setLineDash([2, 2]);
         ctx.strokeRect(origX, origY, origW, origH);
@@ -458,7 +475,7 @@ export function useCanvasRendering(
 
         // Draw selection border around floating layer
         ctx.save();
-        ctx.strokeStyle = isDuplicating ? "#22c55e" : "#f59e0b";
+        ctx.strokeStyle = isDuplicating ? colors.stateDuplicate : colors.stateMove;
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
         ctx.strokeRect(floatX, floatY, origW, origH);
@@ -477,7 +494,7 @@ export function useCanvasRendering(
 
       ctx.save();
       ctx.fillStyle = previewColor;
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = colors.textOnColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(screenX, screenY - 30, 15, 0, Math.PI * 2);
@@ -489,6 +506,47 @@ export function useCanvasRendering(
       ctx.beginPath();
       ctx.arc(screenX, screenY - 30, 16, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw transform overlay
+    if (isTransformActive && transformBounds) {
+      const bounds = transformBounds;
+      const transformX = offsetX + bounds.x * zoom;
+      const transformY = offsetY + bounds.y * zoom;
+      const transformW = bounds.width * zoom;
+      const transformH = bounds.height * zoom;
+
+      ctx.save();
+
+      // Draw border
+      ctx.strokeStyle = colors.selection;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.strokeRect(transformX, transformY, transformW, transformH);
+
+      // Draw resize handles
+      const handleSize = 8;
+      ctx.fillStyle = colors.selection;
+      ctx.strokeStyle = colors.textOnColor;
+      ctx.lineWidth = 1;
+
+      const handles = [
+        { x: transformX, y: transformY }, // nw
+        { x: transformX + transformW / 2, y: transformY }, // n
+        { x: transformX + transformW, y: transformY }, // ne
+        { x: transformX + transformW, y: transformY + transformH / 2 }, // e
+        { x: transformX + transformW, y: transformY + transformH }, // se
+        { x: transformX + transformW / 2, y: transformY + transformH }, // s
+        { x: transformX, y: transformY + transformH }, // sw
+        { x: transformX, y: transformY + transformH / 2 }, // w
+      ];
+
+      handles.forEach((h) => {
+        ctx.fillRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
+        ctx.strokeRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
+      });
+
       ctx.restore();
     }
   }, [
@@ -514,6 +572,8 @@ export function useCanvasRendering(
     isDuplicating,
     isMovingSelection,
     activeLayerId,
+    transformBounds,
+    isTransformActive,
   ]);
 
   // Store render function in ref for ResizeObserver to call

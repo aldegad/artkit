@@ -12,6 +12,7 @@ import {
   getFrameFillColor,
 } from "../../utils/canvas";
 import { imageToScreen, TransformParams } from "../../utils/geometry";
+import { getCanvasColorsSync } from "@/hooks";
 
 // ============================================
 // Types
@@ -96,6 +97,9 @@ export default function EditorCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Get theme colors
+    const colors = getCanvasColorsSync();
+
     const displayWidth = img.width * scale * zoom;
     const displayHeight = img.height * scale * zoom;
 
@@ -118,8 +122,8 @@ export default function EditorCanvas({
 
       // 폴리곤 그리기
       drawPolygon(ctx, screenPoints, {
-        fillColor: isSelected ? "rgba(0, 150, 255, 0.25)" : getFrameFillColor(idx),
-        strokeColor: isSelected ? "#00aaff" : getFrameColor(idx),
+        fillColor: isSelected ? colors.selectionAltFill : getFrameFillColor(idx),
+        strokeColor: isSelected ? colors.selectionAlt : getFrameColor(idx),
         lineWidth: isSelected ? 3 : 2,
       });
 
@@ -129,7 +133,7 @@ export default function EditorCanvas({
       const centerScreen = imageToScreen(centerX, centerY, transform);
 
       drawCircleLabel(ctx, centerScreen, String(idx + 1), {
-        backgroundColor: isSelected ? "#00aaff" : getFrameColor(idx),
+        backgroundColor: isSelected ? colors.selectionAlt : getFrameColor(idx),
       });
 
       // 선택된 프레임의 점들 표시
@@ -138,8 +142,8 @@ export default function EditorCanvas({
           const screen = imageToScreen(p.x, p.y, transform);
           drawPoint(ctx, screen, {
             radius: 7,
-            fillColor: pIdx === selectedPointIndex ? "#ff0000" : "#00aaff",
-            strokeColor: "#fff",
+            fillColor: pIdx === selectedPointIndex ? colors.toolHighlight : colors.selectionAlt,
+            strokeColor: colors.textOnColor,
             strokeWidth: 2,
           });
         });
@@ -153,7 +157,7 @@ export default function EditorCanvas({
       // 라인 그리기
       if (screenPoints.length >= 2) {
         drawPolyline(ctx, screenPoints, {
-          strokeColor: "#00ff00",
+          strokeColor: colors.toolDraw,
           lineWidth: 2,
         });
       }
@@ -163,8 +167,8 @@ export default function EditorCanvas({
         const screen = imageToScreen(p.x, p.y, transform);
         drawPoint(ctx, screen, {
           radius: 5,
-          fillColor: idx === 0 ? "#ff0000" : "#00ff00",
-          strokeColor: "#fff",
+          fillColor: idx === 0 ? colors.toolHighlight : colors.toolDraw,
+          strokeColor: colors.textOnColor,
           strokeWidth: 1,
         });
       });

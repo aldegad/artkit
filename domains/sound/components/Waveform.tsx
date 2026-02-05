@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { cn } from "@/shared/utils/cn";
+import { getCanvasColorsSync } from "@/hooks";
 
 interface WaveformProps {
   className?: string;
@@ -36,6 +37,9 @@ export function Waveform({ className }: WaveformProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Get theme colors
+    const colors = getCanvasColorsSync();
+
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
     canvas.width = rect.width * dpr;
@@ -48,7 +52,7 @@ export function Waveform({ className }: WaveformProps) {
     const height = rect.height;
 
     // Clear canvas
-    ctx.fillStyle = "#1a1a2e";
+    ctx.fillStyle = colors.waveformBg;
     ctx.fillRect(0, 0, width, height);
 
     // Get channel data (mix to mono for display)
@@ -70,12 +74,12 @@ export function Waveform({ className }: WaveformProps) {
       const trimEndX = ((trimRegion.end - startTime) / visibleDuration) * width;
 
       // Dim areas outside trim region
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fillStyle = colors.overlay;
       ctx.fillRect(0, 0, Math.max(0, trimStartX), height);
       ctx.fillRect(Math.min(width, trimEndX), 0, width - Math.min(width, trimEndX), height);
 
       // Highlight trim region
-      ctx.fillStyle = "rgba(59, 130, 246, 0.1)";
+      ctx.fillStyle = colors.waveformTrimFill;
       ctx.fillRect(
         Math.max(0, trimStartX),
         0,
@@ -86,7 +90,7 @@ export function Waveform({ className }: WaveformProps) {
 
     // Draw waveform
     ctx.beginPath();
-    ctx.strokeStyle = "#3b82f6";
+    ctx.strokeStyle = colors.waveformLine;
     ctx.lineWidth = 1;
 
     const midY = height / 2;
@@ -115,7 +119,7 @@ export function Waveform({ className }: WaveformProps) {
 
     // Draw center line
     ctx.beginPath();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.strokeStyle = colors.grid;
     ctx.moveTo(0, midY);
     ctx.lineTo(width, midY);
     ctx.stroke();
@@ -127,19 +131,19 @@ export function Waveform({ className }: WaveformProps) {
 
       // Start handle
       if (trimStartX >= 0 && trimStartX <= width) {
-        ctx.fillStyle = "#3b82f6";
+        ctx.fillStyle = colors.waveformLine;
         ctx.fillRect(trimStartX - 2, 0, 4, height);
         // Handle grip
-        ctx.fillStyle = "#60a5fa";
+        ctx.fillStyle = colors.waveformHandle;
         ctx.fillRect(trimStartX - 6, height / 2 - 15, 8, 30);
       }
 
       // End handle
       if (trimEndX >= 0 && trimEndX <= width) {
-        ctx.fillStyle = "#3b82f6";
+        ctx.fillStyle = colors.waveformLine;
         ctx.fillRect(trimEndX - 2, 0, 4, height);
         // Handle grip
-        ctx.fillStyle = "#60a5fa";
+        ctx.fillStyle = colors.waveformHandle;
         ctx.fillRect(trimEndX - 2, height / 2 - 15, 8, 30);
       }
     }
@@ -148,14 +152,14 @@ export function Waveform({ className }: WaveformProps) {
     const playheadX = ((currentTime - startTime) / visibleDuration) * width;
     if (playheadX >= 0 && playheadX <= width) {
       ctx.beginPath();
-      ctx.strokeStyle = "#ef4444";
+      ctx.strokeStyle = colors.waveformPlayhead;
       ctx.lineWidth = 2;
       ctx.moveTo(playheadX, 0);
       ctx.lineTo(playheadX, height);
       ctx.stroke();
 
       // Playhead triangle
-      ctx.fillStyle = "#ef4444";
+      ctx.fillStyle = colors.waveformPlayhead;
       ctx.beginPath();
       ctx.moveTo(playheadX - 6, 0);
       ctx.lineTo(playheadX + 6, 0);
@@ -165,7 +169,7 @@ export function Waveform({ className }: WaveformProps) {
     }
 
     // Draw time markers
-    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.fillStyle = colors.textOnColor;
     ctx.font = "10px sans-serif";
     const markerInterval = getMarkerInterval(visibleDuration);
     const firstMarker = Math.ceil(startTime / markerInterval) * markerInterval;
@@ -316,7 +320,7 @@ export function Waveform({ className }: WaveformProps) {
     return (
       <div
         className={cn(
-          "flex items-center justify-center bg-gray-900 text-gray-500",
+          "flex items-center justify-center bg-surface-tertiary text-text-tertiary",
           className
         )}
       >

@@ -1,4 +1,5 @@
 import { Point } from "../types";
+import { getCanvasColorsSync } from "@/hooks";
 
 // ============================================
 // Checkerboard Pattern
@@ -19,7 +20,8 @@ export const drawCheckerboard = (
   height: number,
   options: CheckerboardOptions = {},
 ): void => {
-  const { size = 10, lightColor = "#1a1a1a", darkColor = "#252525" } = options;
+  const colors = getCanvasColorsSync();
+  const { size = 10, lightColor = colors.checkerboardLight, darkColor = colors.checkerboardDark } = options;
 
   for (let y = 0; y < height; y += size) {
     for (let x = 0; x < width; x += size) {
@@ -50,7 +52,8 @@ export const drawPolygon = (
 ): void => {
   if (points.length < 2) return;
 
-  const { fillColor = "rgba(0, 150, 255, 0.25)", strokeColor = "#00aaff", lineWidth = 2 } = style;
+  const colors = getCanvasColorsSync();
+  const { fillColor = colors.selectionAltFill, strokeColor = colors.selectionAlt, lineWidth = 2 } = style;
 
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -79,7 +82,8 @@ export const drawPolyline = (
 ): void => {
   if (points.length < 2) return;
 
-  const { strokeColor = "#00ff00", lineWidth = 2 } = style;
+  const colors = getCanvasColorsSync();
+  const { strokeColor = colors.toolDraw, lineWidth = 2 } = style;
 
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -111,7 +115,8 @@ export const drawPoint = (
   point: Point,
   style: PointStyle = {},
 ): void => {
-  const { radius = 5, fillColor = "#00ff00", strokeColor = "#fff", strokeWidth = 1 } = style;
+  const colors = getCanvasColorsSync();
+  const { radius = 5, fillColor = colors.toolDraw, strokeColor = colors.textOnColor, strokeWidth = 1 } = style;
 
   ctx.beginPath();
   ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
@@ -135,11 +140,12 @@ export const drawPoints = (
   highlightIndex?: number,
   highlightColor?: string,
 ): void => {
+  const colors = getCanvasColorsSync();
   points.forEach((p, idx) => {
     const isHighlighted = idx === highlightIndex;
     drawPoint(ctx, p, {
       ...style,
-      fillColor: isHighlighted ? highlightColor || "#ff0000" : style.fillColor,
+      fillColor: isHighlighted ? highlightColor || colors.toolHighlight : style.fillColor,
     });
   });
 };
@@ -164,9 +170,10 @@ export const drawCircleLabel = (
   text: string,
   style: LabelStyle = {},
 ): void => {
+  const colors = getCanvasColorsSync();
   const {
-    backgroundColor = "#00aaff",
-    textColor = "#fff",
+    backgroundColor = colors.selectionAlt,
+    textColor = colors.textOnColor,
     font = "bold 11px sans-serif",
     radius = 12,
   } = style;

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { SpriteFrame, Point } from "../types";
+import { getCanvasColorsSync } from "@/hooks";
 
 interface SpriteSheetImportModalProps {
   isOpen: boolean;
@@ -53,6 +54,9 @@ export default function SpriteSheetImportModal({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Get theme colors
+    const colors = getCanvasColorsSync();
+
     // Calculate display size to fit in preview area
     const maxWidth = 500;
     const maxHeight = 400;
@@ -73,14 +77,14 @@ export default function SpriteSheetImportModal({
     // Draw selected cells with highlight
     cells.forEach((cell) => {
       if (cell.selected) {
-        ctx.fillStyle = "rgba(59, 130, 246, 0.3)";
+        ctx.fillStyle = colors.selectionFill;
         ctx.fillRect(cell.col * cellWidth, cell.row * cellHeight, cellWidth, cellHeight);
       }
     });
 
     // Draw grid lines (black shadow + cyan line for visibility on any background)
     // First pass: black shadow
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.strokeStyle = colors.overlay;
     ctx.lineWidth = 2;
 
     for (let i = 0; i <= cols; i++) {
@@ -97,7 +101,7 @@ export default function SpriteSheetImportModal({
     }
 
     // Second pass: cyan line
-    ctx.strokeStyle = "rgba(0, 255, 255, 0.9)";
+    ctx.strokeStyle = colors.gridAlt;
     ctx.lineWidth = 1;
 
     for (let i = 0; i <= cols; i++) {
@@ -124,11 +128,11 @@ export default function SpriteSheetImportModal({
       // Background circle
       ctx.beginPath();
       ctx.arc(x, y, 10, 0, Math.PI * 2);
-      ctx.fillStyle = cell.selected ? "rgba(59, 130, 246, 0.9)" : "rgba(0, 0, 0, 0.5)";
+      ctx.fillStyle = cell.selected ? colors.selection : colors.overlay;
       ctx.fill();
 
       // Number
-      ctx.fillStyle = "white";
+      ctx.fillStyle = colors.textOnColor;
       ctx.fillText(String(idx + 1), x, y);
     });
   }, [imageSrc, rows, cols, cells]);

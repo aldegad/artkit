@@ -67,6 +67,34 @@
   /* Checkerboard (투명 배경 표시용) */
   --checkerboard-light: #ffffff;
   --checkerboard-dark: #e5e7eb;
+
+  /* Canvas Selection */
+  --canvas-selection: #3b82f6;
+  --canvas-selection-fill: rgba(59, 130, 246, 0.25);
+  --canvas-selection-alt: #00aaff;
+  --canvas-selection-alt-fill: rgba(0, 150, 255, 0.25);
+
+  /* Canvas Tools */
+  --canvas-tool-draw: #00ff00;
+  --canvas-tool-erase: #ff4444;
+  --canvas-tool-highlight: #ff0000;
+
+  /* Canvas States */
+  --canvas-state-duplicate: #22c55e;
+  --canvas-state-move: #f59e0b;
+
+  /* Canvas UI */
+  --canvas-overlay: rgba(0, 0, 0, 0.5);
+  --canvas-grid: rgba(255, 255, 255, 0.3);
+  --canvas-grid-alt: rgba(0, 255, 255, 0.9);
+  --canvas-text-on-color: #ffffff;
+
+  /* Waveform */
+  --waveform-bg: #1a1a2e;
+  --waveform-line: #3b82f6;
+  --waveform-handle: #60a5fa;
+  --waveform-playhead: #ef4444;
+  --waveform-trim-fill: rgba(59, 130, 246, 0.1);
 }
 
 /* =============================================
@@ -135,6 +163,34 @@
   /* Checkerboard - Warm tones */
   --checkerboard-light: #2c2a28;
   --checkerboard-dark: #242220;
+
+  /* Canvas Selection - 다크 모드에서 약간 밝게 */
+  --canvas-selection: #60a5fa;
+  --canvas-selection-fill: rgba(96, 165, 250, 0.25);
+  --canvas-selection-alt: #38bdf8;
+  --canvas-selection-alt-fill: rgba(56, 189, 248, 0.25);
+
+  /* Canvas Tools - 캔버스 위 요소이므로 동일 유지 */
+  --canvas-tool-draw: #00ff00;
+  --canvas-tool-erase: #ff4444;
+  --canvas-tool-highlight: #ff0000;
+
+  /* Canvas States */
+  --canvas-state-duplicate: #22c55e;
+  --canvas-state-move: #f59e0b;
+
+  /* Canvas UI */
+  --canvas-overlay: rgba(0, 0, 0, 0.6);
+  --canvas-grid: rgba(255, 255, 255, 0.3);
+  --canvas-grid-alt: rgba(0, 255, 255, 0.9);
+  --canvas-text-on-color: #ffffff;
+
+  /* Waveform */
+  --waveform-bg: #0f0f1e;
+  --waveform-line: #60a5fa;
+  --waveform-handle: #93c5fd;
+  --waveform-playhead: #f87171;
+  --waveform-trim-fill: rgba(96, 165, 250, 0.1);
 }
 
 /* =============================================
@@ -170,6 +226,10 @@
   --color-accent-danger-hover: var(--accent-danger-hover);
   --color-accent-warning: var(--accent-warning);
   --color-accent-warning-hover: var(--accent-warning-hover);
+
+  /* Canvas Colors */
+  --color-canvas-selection: var(--canvas-selection);
+  --color-canvas-text-on-color: var(--canvas-text-on-color);
 }
 
 /* =============================================

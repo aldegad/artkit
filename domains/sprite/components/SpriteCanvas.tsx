@@ -6,6 +6,7 @@ import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame, UnifiedLayer } from "../types";
 import { getBoundingBox, isPointInPolygon } from "../../../utils/geometry";
 import { ImageDropZone } from "../../../shared/components";
+import { getCanvasColorsSync } from "@/hooks";
 
 // ============================================
 // Component
@@ -357,9 +358,9 @@ export default function CanvasContent() {
     canvas.height = container.clientHeight;
 
     // Checkerboard background - read CSS variables
-    const computedStyle = getComputedStyle(document.documentElement);
-    const checkerLight = computedStyle.getPropertyValue("--checkerboard-light").trim() || "#ffffff";
-    const checkerDark = computedStyle.getPropertyValue("--checkerboard-dark").trim() || "#e5e7eb";
+    const colors = getCanvasColorsSync();
+    const checkerLight = colors.checkerboardLight;
+    const checkerDark = colors.checkerboardDark;
 
     const checkerSize = 10;
     for (let y = 0; y < canvas.height; y += checkerSize) {
@@ -402,7 +403,7 @@ export default function CanvasContent() {
 
       // Draw selection border for active layer
       if (layer.id === activeLayerId) {
-        ctx.strokeStyle = "#00aaff";
+        ctx.strokeStyle = colors.selectionAlt;
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(layerX, layerY, layerWidth, layerHeight);
@@ -432,10 +433,10 @@ export default function CanvasContent() {
       ctx.closePath();
 
       ctx.fillStyle = isSelected
-        ? "rgba(0, 150, 255, 0.25)"
+        ? colors.selectionAltFill
         : `hsla(${(idx * 60) % 360}, 70%, 50%, 0.15)`;
       ctx.fill();
-      ctx.strokeStyle = isSelected ? "#00aaff" : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
+      ctx.strokeStyle = isSelected ? colors.selectionAlt : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
       ctx.lineWidth = isSelected ? 3 : 2;
       ctx.stroke();
 
@@ -444,12 +445,12 @@ export default function CanvasContent() {
       const centerY = frame.points.reduce((sum, p) => sum + p.y, 0) / frame.points.length;
       const centerScreen = imageToScreen(centerX, centerY);
 
-      ctx.fillStyle = isSelected ? "#00aaff" : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
+      ctx.fillStyle = isSelected ? colors.selectionAlt : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
       ctx.beginPath();
       ctx.arc(centerScreen.x, centerScreen.y, 12, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = colors.textOnColor;
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -461,9 +462,9 @@ export default function CanvasContent() {
           const screen = imageToScreen(p.x, p.y);
           ctx.beginPath();
           ctx.arc(screen.x, screen.y, 7, 0, Math.PI * 2);
-          ctx.fillStyle = pIdx === selectedPointIndex ? "#ff0000" : "#00aaff";
+          ctx.fillStyle = pIdx === selectedPointIndex ? colors.toolHighlight : colors.selectionAlt;
           ctx.fill();
-          ctx.strokeStyle = "#fff";
+          ctx.strokeStyle = colors.textOnColor;
           ctx.lineWidth = 2;
           ctx.stroke();
         });
@@ -481,7 +482,7 @@ export default function CanvasContent() {
         ctx.lineTo(screen.x, screen.y);
       });
 
-      ctx.strokeStyle = "#00ff00";
+      ctx.strokeStyle = colors.toolDraw;
       ctx.lineWidth = 2;
       ctx.stroke();
 
@@ -489,9 +490,9 @@ export default function CanvasContent() {
         const screen = imageToScreen(p.x, p.y);
         ctx.beginPath();
         ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = idx === 0 ? "#ff0000" : "#00ff00";
+        ctx.fillStyle = idx === 0 ? colors.toolHighlight : colors.toolDraw;
         ctx.fill();
-        ctx.strokeStyle = "#fff";
+        ctx.strokeStyle = colors.textOnColor;
         ctx.lineWidth = 1;
         ctx.stroke();
       });
