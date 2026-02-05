@@ -32,6 +32,15 @@ interface EditorToolOptionsProps {
   cropArea: CropArea | null;
   selectAll: () => void;
   clearCrop: () => void;
+  // Extended crop props
+  canvasExpandMode: boolean;
+  setCanvasExpandMode: React.Dispatch<React.SetStateAction<boolean>>;
+  lockAspect: boolean;
+  setLockAspect: React.Dispatch<React.SetStateAction<boolean>>;
+  setCropSize: (width: number, height: number) => void;
+  expandToSquare: () => void;
+  fitToSquare: () => void;
+  onApplyCrop: () => void;
   // Tool name for default display
   currentToolName?: string;
   // Translations
@@ -71,9 +80,35 @@ export function EditorToolOptions({
   cropArea,
   selectAll,
   clearCrop,
+  canvasExpandMode,
+  setCanvasExpandMode,
+  lockAspect,
+  setLockAspect,
+  setCropSize,
+  expandToSquare,
+  fitToSquare,
+  onApplyCrop,
   currentToolName,
   translations: t,
 }: EditorToolOptionsProps) {
+  // Handle width/height input changes with aspect ratio lock
+  const handleWidthChange = (newWidth: number) => {
+    if (lockAspect && cropArea && cropArea.width > 0) {
+      const ratio = cropArea.height / cropArea.width;
+      setCropSize(newWidth, Math.round(newWidth * ratio));
+    } else {
+      setCropSize(newWidth, cropArea?.height || newWidth);
+    }
+  };
+
+  const handleHeightChange = (newHeight: number) => {
+    if (lockAspect && cropArea && cropArea.height > 0) {
+      const ratio = cropArea.width / cropArea.height;
+      setCropSize(Math.round(newHeight * ratio), newHeight);
+    } else {
+      setCropSize(cropArea?.width || newHeight, newHeight);
+    }
+  };
   return (
     <Scrollbar
       className="bg-surface-secondary border-b border-border-default shrink-0 min-h-[32px]"
@@ -167,29 +202,139 @@ export function EditorToolOptions({
         </>
       )}
 
-      {/* Crop ratio */}
+      {/* Crop ratio and canvas resize controls */}
       {toolMode === "crop" && (
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-text-secondary">Ratio:</span>
-          <Select
-            value={aspectRatio}
-            onChange={(value) => setAspectRatio(value as AspectRatio)}
-            options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
-            size="sm"
-          />
+        <div className="flex items-center gap-2">
+          {/* Aspect ratio selector */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">Ratio:</span>
+            <Select
+              value={aspectRatio}
+              onChange={(value) => setAspectRatio(value as AspectRatio)}
+              options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
+              size="sm"
+            />
+          </div>
+
+          {/* Width/Height input */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">W:</span>
+            <input
+              type="number"
+              value={cropArea?.width ? Math.round(cropArea.width) : ""}
+              onChange={(e) => handleWidthChange(Math.max(10, parseInt(e.target.value) || 10))}
+              placeholder="---"
+              className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
+              min={10}
+            />
+            <span className="text-xs text-text-tertiary">×</span>
+            <span className="text-xs text-text-secondary">H:</span>
+            <input
+              type="number"
+              value={cropArea?.height ? Math.round(cropArea.height) : ""}
+              onChange={(e) => handleHeightChange(Math.max(10, parseInt(e.target.value) || 10))}
+              placeholder="---"
+              className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
+              min={10}
+            />
+            {/* Lock aspect ratio button */}
+            <button
+              onClick={() => setLockAspect(!lockAspect)}
+              className={`w-6 h-6 flex items-center justify-center rounded text-xs transition-colors ${
+                lockAspect
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover text-text-secondary"
+              }`}
+              title={lockAspect ? "Unlock aspect ratio" : "Lock aspect ratio"}
+            >
+              {lockAspect ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-border-default" />
+
+          {/* Square buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={expandToSquare}
+              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
+              title="Expand to square (longer side)"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="1" />
+                <path d="M12 8v8M8 12h8" />
+              </svg>
+              <span>Expand</span>
+            </button>
+            <button
+              onClick={fitToSquare}
+              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
+              title="Fit to square (shorter side)"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="1" />
+                <path d="M9 9l6 6M15 9l-6 6" />
+              </svg>
+              <span>Fit</span>
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-border-default" />
+
+          {/* Canvas expand mode toggle */}
+          <button
+            onClick={() => setCanvasExpandMode(!canvasExpandMode)}
+            className={`px-1.5 py-0.5 text-xs rounded transition-colors flex items-center gap-0.5 ${
+              canvasExpandMode
+                ? "bg-accent-primary text-white"
+                : "hover:bg-interactive-hover"
+            }`}
+            title={canvasExpandMode ? "Canvas expand mode ON" : "Canvas expand mode OFF"}
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+            <span>Canvas</span>
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-border-default" />
+
+          {/* All, Apply, Clear buttons */}
           <button
             onClick={selectAll}
-            className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+            className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
           >
             All
           </button>
           {cropArea && (
-            <button
-              onClick={clearCrop}
-              className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-            >
-              Clear
-            </button>
+            <>
+              <button
+                onClick={onApplyCrop}
+                className="px-1.5 py-0.5 text-xs bg-accent-primary text-white hover:bg-accent-primary/90 rounded transition-colors font-medium"
+                title="Apply crop/resize to canvas"
+              >
+                Apply
+              </button>
+              <button
+                onClick={clearCrop}
+                className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+              >
+                Clear
+              </button>
+            </>
           )}
         </div>
       )}

@@ -32,6 +32,8 @@ import {
   EditorMenuBar,
   EditorLayersProvider,
   LayersPanelContent,
+  EditorCanvasProvider,
+  CanvasPanelContent,
 } from "../../domains/editor";
 // IndexedDB storage functions are now used through storageProvider
 import {
@@ -223,14 +225,22 @@ function ImageEditorContent() {
     setCropArea,
     aspectRatio,
     setAspectRatio,
+    canvasExpandMode,
+    setCanvasExpandMode,
+    lockAspect,
+    setLockAspect,
     selectAllCrop,
     clearCrop,
     getAspectRatioValue,
+    setCropSize,
+    expandToSquare,
+    fitToSquare,
     getCropHandleAtPosition,
     moveCrop,
     resizeCrop,
     startCrop,
     updateCrop,
+    updateCropExpand,
     validateCrop,
   } = useCropTool();
 
@@ -470,6 +480,8 @@ function ImageEditorContent() {
     setCropArea,
     aspectRatio,
     getAspectRatioValue,
+    canvasExpandMode,
+    updateCropExpand,
     saveToHistory,
     fillWithColor,
   });
@@ -480,6 +492,7 @@ function ImageEditorContent() {
     floatingLayerRef,
     layers,
     cropArea,
+    canvasExpandMode,
     mousePos,
     brushSize,
     brushColor,
@@ -843,6 +856,93 @@ function ImageEditorContent() {
     setPan({ x: 0, y: 0 });
   };
 
+  // Apply crop/canvas resize to actually change canvas size and continue editing
+  const handleApplyCrop = useCallback(() => {
+    if (!cropArea) return;
+
+    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+
+    // New canvas dimensions from crop area
+    const newWidth = Math.round(cropArea.width);
+    const newHeight = Math.round(cropArea.height);
+    const offsetX = Math.round(cropArea.x);
+    const offsetY = Math.round(cropArea.y);
+
+    // Update each layer's canvas
+    layers.forEach((layer) => {
+      const oldCanvas = layerCanvasesRef.current.get(layer.id);
+      if (!oldCanvas) return;
+
+      // Create new canvas with new dimensions
+      const newCanvas = document.createElement("canvas");
+      newCanvas.width = newWidth;
+      newCanvas.height = newHeight;
+      const ctx = newCanvas.getContext("2d");
+      if (!ctx) return;
+
+      // For JPEG-like formats or if we want white background for extended areas
+      // Leave transparent for now (PNG-like behavior)
+
+      // Calculate source and destination regions
+      // Source: intersection of crop area with original canvas
+      const srcX = Math.max(0, offsetX);
+      const srcY = Math.max(0, offsetY);
+      const srcRight = Math.min(displayWidth, offsetX + newWidth);
+      const srcBottom = Math.min(displayHeight, offsetY + newHeight);
+      const srcWidth = Math.max(0, srcRight - srcX);
+      const srcHeight = Math.max(0, srcBottom - srcY);
+
+      // Destination: where to draw in new canvas
+      const destX = srcX - offsetX;
+      const destY = srcY - offsetY;
+
+      // Draw the portion of old canvas that intersects with crop area
+      if (srcWidth > 0 && srcHeight > 0) {
+        ctx.drawImage(
+          oldCanvas,
+          srcX, srcY, srcWidth, srcHeight,
+          destX, destY, srcWidth, srcHeight
+        );
+      }
+
+      // Replace the canvas in the ref
+      layerCanvasesRef.current.set(layer.id, newCanvas);
+
+      // Update editCanvasRef if this is the active layer
+      if (layer.id === activeLayerId) {
+        editCanvasRef.current = newCanvas;
+      }
+    });
+
+    // Update canvas size in state
+    setCanvasSize({ width: newWidth, height: newHeight });
+
+    // Reset rotation to 0 since we're applying the crop at current rotation
+    if (rotation !== 0) {
+      setRotation(0);
+    }
+
+    // Clear crop area
+    setCropArea(null);
+    setCanvasExpandMode(false);
+
+    // Save to history
+    saveToHistory();
+
+    // Fit to screen with new dimensions
+    setTimeout(() => {
+      const container = containerRef.current;
+      if (container) {
+        const padding = 40;
+        const maxWidth = container.clientWidth - padding;
+        const maxHeight = container.clientHeight - padding;
+        const fitZoom = Math.min(maxWidth / newWidth, maxHeight / newHeight, 1);
+        setZoom(fitZoom);
+        setPan({ x: 0, y: 0 });
+      }
+    }, 0);
+  }, [cropArea, layers, activeLayerId, rotation, getDisplayDimensions, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
+
   const exportImage = useCallback(() => {
     const img = imageRef.current;
     const editCanvas = editCanvasRef.current;
@@ -875,17 +975,62 @@ function ImageEditorContent() {
     if (cropArea) {
       exportCanvas.width = cropArea.width;
       exportCanvas.height = cropArea.height;
-      ctx.drawImage(
-        compositeCanvas,
-        cropArea.x,
-        cropArea.y,
-        cropArea.width,
-        cropArea.height,
-        0,
-        0,
-        cropArea.width,
-        cropArea.height,
-      );
+
+      // Check if crop extends beyond canvas (canvas expand mode)
+      const extendsLeft = cropArea.x < 0;
+      const extendsTop = cropArea.y < 0;
+      const extendsRight = cropArea.x + cropArea.width > displayWidth;
+      const extendsBottom = cropArea.y + cropArea.height > displayHeight;
+      const extendsCanvas = extendsLeft || extendsTop || extendsRight || extendsBottom;
+
+      if (extendsCanvas) {
+        // Fill with white background for JPEG (which doesn't support transparency)
+        if (outputFormat === "jpeg") {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, cropArea.width, cropArea.height);
+        }
+        // For PNG/WebP, leave transparent (canvas is transparent by default)
+
+        // Calculate the intersection of crop area with canvas
+        const srcX = Math.max(0, cropArea.x);
+        const srcY = Math.max(0, cropArea.y);
+        const srcRight = Math.min(displayWidth, cropArea.x + cropArea.width);
+        const srcBottom = Math.min(displayHeight, cropArea.y + cropArea.height);
+        const srcWidth = srcRight - srcX;
+        const srcHeight = srcBottom - srcY;
+
+        // Calculate destination position (where to draw in export canvas)
+        const destX = srcX - cropArea.x;
+        const destY = srcY - cropArea.y;
+
+        // Only draw if there's actual intersection with canvas
+        if (srcWidth > 0 && srcHeight > 0) {
+          ctx.drawImage(
+            compositeCanvas,
+            srcX,
+            srcY,
+            srcWidth,
+            srcHeight,
+            destX,
+            destY,
+            srcWidth,
+            srcHeight,
+          );
+        }
+      } else {
+        // Normal crop within canvas bounds
+        ctx.drawImage(
+          compositeCanvas,
+          cropArea.x,
+          cropArea.y,
+          cropArea.width,
+          cropArea.height,
+          0,
+          0,
+          cropArea.width,
+          cropArea.height,
+        );
+      }
     } else {
       exportCanvas.width = displayWidth;
       exportCanvas.height = displayHeight;
@@ -1825,6 +1970,14 @@ function ImageEditorContent() {
           cropArea={cropArea}
           selectAll={selectAllCrop}
           clearCrop={clearCrop}
+          canvasExpandMode={canvasExpandMode}
+          setCanvasExpandMode={setCanvasExpandMode}
+          lockAspect={lockAspect}
+          setLockAspect={setLockAspect}
+          setCropSize={setCropSize}
+          expandToSquare={expandToSquare}
+          fitToSquare={fitToSquare}
+          onApplyCrop={handleApplyCrop}
           currentToolName={toolButtons.find(tb => tb.mode === toolMode)?.name}
           translations={{
             size: t.size,

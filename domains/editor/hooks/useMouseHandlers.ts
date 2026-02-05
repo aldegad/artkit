@@ -52,6 +52,8 @@ interface UseMouseHandlersOptions {
   setCropArea: (area: CropArea | null) => void;
   aspectRatio: string;
   getAspectRatioValue: (ratio: any) => number | null;
+  canvasExpandMode: boolean;
+  updateCropExpand: (x: number, y: number, startX: number, startY: number) => void;
 
   // History
   saveToHistory: () => void;
@@ -126,6 +128,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setCropArea,
     aspectRatio,
     getAspectRatioValue,
+    canvasExpandMode,
+    updateCropExpand,
     saveToHistory,
     fillWithColor,
   } = options;
@@ -424,7 +428,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           }
         }
 
-        if (inBounds) {
+        // In canvas expand mode, allow creating crop outside bounds
+        if (inBounds || canvasExpandMode) {
           setDragType("create");
           dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
           setCropArea({ x: Math.round(imagePos.x), y: Math.round(imagePos.y), width: 0, height: 0 });
@@ -463,6 +468,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       setIsDuplicating,
       cropArea,
       setCropArea,
+      canvasExpandMode,
     ]
   );
 
@@ -563,28 +569,48 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       // Crop create
       if (dragType === "create") {
-        let width = Math.round(imagePos.x) - dragStartRef.current.x;
-        let height = Math.round(imagePos.y) - dragStartRef.current.y;
+        if (canvasExpandMode) {
+          // Canvas expand mode - no bounds clamping
+          updateCropExpand(
+            Math.round(imagePos.x),
+            Math.round(imagePos.y),
+            dragStartRef.current.x,
+            dragStartRef.current.y
+          );
+        } else {
+          // Normal mode - clamp to canvas bounds
+          let width = Math.round(imagePos.x) - dragStartRef.current.x;
+          let height = Math.round(imagePos.y) - dragStartRef.current.y;
 
-        if (ratioValue) {
-          height = Math.round(width / ratioValue);
+          if (ratioValue) {
+            height = Math.round(width / ratioValue);
+          }
+
+          const newX = width < 0 ? dragStartRef.current.x + width : dragStartRef.current.x;
+          const newY = height < 0 ? dragStartRef.current.y + height : dragStartRef.current.y;
+
+          setCropArea({
+            x: Math.max(0, newX),
+            y: Math.max(0, newY),
+            width: Math.min(Math.abs(width), displayWidth - Math.max(0, newX)),
+            height: Math.min(Math.abs(height), displayHeight - Math.max(0, newY)),
+          });
         }
-
-        const newX = width < 0 ? dragStartRef.current.x + width : dragStartRef.current.x;
-        const newY = height < 0 ? dragStartRef.current.y + height : dragStartRef.current.y;
-
-        setCropArea({
-          x: Math.max(0, newX),
-          y: Math.max(0, newY),
-          width: Math.min(Math.abs(width), displayWidth - Math.max(0, newX)),
-          height: Math.min(Math.abs(height), displayHeight - Math.max(0, newY)),
-        });
       } else if (dragType === "move") {
         // Crop move
         const dx = Math.round(imagePos.x) - dragStartRef.current.x;
         const dy = Math.round(imagePos.y) - dragStartRef.current.y;
-        const newX = Math.max(0, Math.min(cropArea.x + dx, displayWidth - cropArea.width));
-        const newY = Math.max(0, Math.min(cropArea.y + dy, displayHeight - cropArea.height));
+
+        let newX, newY;
+        if (canvasExpandMode) {
+          // Canvas expand mode - allow moving beyond bounds
+          newX = cropArea.x + dx;
+          newY = cropArea.y + dy;
+        } else {
+          // Normal mode - clamp to canvas bounds
+          newX = Math.max(0, Math.min(cropArea.x + dx, displayWidth - cropArea.width));
+          newY = Math.max(0, Math.min(cropArea.y + dy, displayHeight - cropArea.height));
+        }
         setCropArea({ ...cropArea, x: newX, y: newY });
         dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
       } else if (dragType === "resize" && resizeHandle) {
@@ -616,10 +642,13 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           }
         }
 
-        newArea.x = Math.max(0, newArea.x);
-        newArea.y = Math.max(0, newArea.y);
-        newArea.width = Math.min(newArea.width, displayWidth - newArea.x);
-        newArea.height = Math.min(newArea.height, displayHeight - newArea.y);
+        // Only clamp to bounds if not in canvas expand mode
+        if (!canvasExpandMode) {
+          newArea.x = Math.max(0, newArea.x);
+          newArea.y = Math.max(0, newArea.y);
+          newArea.width = Math.min(newArea.width, displayWidth - newArea.x);
+          newArea.height = Math.min(newArea.height, displayHeight - newArea.y);
+        }
 
         setCropArea(newArea);
         dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
@@ -646,6 +675,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       dragStartOriginRef,
       cropArea,
       setCropArea,
+      canvasExpandMode,
+      updateCropExpand,
     ]
   );
 

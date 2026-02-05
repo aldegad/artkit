@@ -41,7 +41,7 @@ export type EditorToolMode =
   | "move"
   | "fill";
 
-export type AspectRatio = "free" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
+export type AspectRatio = "free" | "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "custom";
 
 export type OutputFormat = "webp" | "jpeg" | "png";
 
@@ -90,4 +90,5 @@ export const ASPECT_RATIO_VALUES: Record<AspectRatio, number | null> = {
   "9:16": 9 / 16,
   "4:3": 4 / 3,
   "3:4": 3 / 4,
+  custom: null, // Custom ratio uses lockAspect for dynamic ratio
 };

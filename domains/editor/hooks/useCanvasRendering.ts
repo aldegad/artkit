@@ -24,6 +24,7 @@ interface UseCanvasRenderingOptions {
   // State from other hooks (not in context)
   layers: UnifiedLayer[];
   cropArea: CropArea | null;
+  canvasExpandMode: boolean;
   mousePos: Point | null;
   brushSize: number;
   brushColor: string;
@@ -63,6 +64,7 @@ export function useCanvasRendering(
     floatingLayerRef,
     layers,
     cropArea,
+    canvasExpandMode,
     mousePos,
     brushSize,
     brushColor,
@@ -229,17 +231,93 @@ export function useCanvasRendering(
       const cropW = cropArea.width * zoom;
       const cropH = cropArea.height * zoom;
 
-      // Dark overlay outside crop area
+      // In canvas expand mode, draw checkerboard pattern for extended areas
+      if (canvasExpandMode) {
+        // Create checkerboard pattern for areas outside canvas
+        const checkerSize = 10;
+        const patternCanvas = document.createElement("canvas");
+        patternCanvas.width = checkerSize * 2;
+        patternCanvas.height = checkerSize * 2;
+        const patternCtx = patternCanvas.getContext("2d");
+        if (patternCtx) {
+          patternCtx.fillStyle = "#e5e5e5";
+          patternCtx.fillRect(0, 0, checkerSize * 2, checkerSize * 2);
+          patternCtx.fillStyle = "#cccccc";
+          patternCtx.fillRect(0, 0, checkerSize, checkerSize);
+          patternCtx.fillRect(checkerSize, checkerSize, checkerSize, checkerSize);
+        }
+        const checkerPattern = ctx.createPattern(patternCanvas, "repeat");
+
+        // Draw extended areas with checkerboard
+        if (checkerPattern) {
+          ctx.save();
+          ctx.fillStyle = checkerPattern;
+
+          // Left extension (if crop extends left of canvas)
+          if (cropArea.x < 0) {
+            const extW = Math.abs(cropArea.x) * zoom;
+            ctx.fillRect(cropX, cropY, extW, cropH);
+          }
+          // Right extension (if crop extends right of canvas)
+          if (cropArea.x + cropArea.width > displayWidth) {
+            const extX = offsetX + displayWidth * zoom;
+            const extW = (cropArea.x + cropArea.width - displayWidth) * zoom;
+            ctx.fillRect(extX, cropY, extW, cropH);
+          }
+          // Top extension (if crop extends above canvas)
+          if (cropArea.y < 0) {
+            const extH = Math.abs(cropArea.y) * zoom;
+            ctx.fillRect(cropX, cropY, cropW, extH);
+          }
+          // Bottom extension (if crop extends below canvas)
+          if (cropArea.y + cropArea.height > displayHeight) {
+            const extY = offsetY + displayHeight * zoom;
+            const extH = (cropArea.y + cropArea.height - displayHeight) * zoom;
+            ctx.fillRect(cropX, extY, cropW, extH);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Dark overlay outside crop area (only for areas within canvas)
       ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fillRect(offsetX, offsetY, scaledWidth, cropArea.y * zoom);
-      ctx.fillRect(
-        offsetX,
-        cropY + cropH,
-        scaledWidth,
-        scaledHeight - (cropArea.y + cropArea.height) * zoom,
-      );
-      ctx.fillRect(offsetX, cropY, cropArea.x * zoom, cropH);
-      ctx.fillRect(cropX + cropW, cropY, scaledWidth - (cropArea.x + cropArea.width) * zoom, cropH);
+      // Calculate visible crop area (intersection with canvas)
+      const visibleCropX = Math.max(0, cropArea.x);
+      const visibleCropY = Math.max(0, cropArea.y);
+      const visibleCropRight = Math.min(displayWidth, cropArea.x + cropArea.width);
+      const visibleCropBottom = Math.min(displayHeight, cropArea.y + cropArea.height);
+
+      // Top dark overlay
+      if (visibleCropY > 0) {
+        ctx.fillRect(offsetX, offsetY, scaledWidth, visibleCropY * zoom);
+      }
+      // Bottom dark overlay
+      if (visibleCropBottom < displayHeight) {
+        ctx.fillRect(
+          offsetX,
+          offsetY + visibleCropBottom * zoom,
+          scaledWidth,
+          (displayHeight - visibleCropBottom) * zoom,
+        );
+      }
+      // Left dark overlay
+      if (visibleCropX > 0) {
+        ctx.fillRect(
+          offsetX,
+          offsetY + visibleCropY * zoom,
+          visibleCropX * zoom,
+          (visibleCropBottom - visibleCropY) * zoom
+        );
+      }
+      // Right dark overlay
+      if (visibleCropRight < displayWidth) {
+        ctx.fillRect(
+          offsetX + visibleCropRight * zoom,
+          offsetY + visibleCropY * zoom,
+          (displayWidth - visibleCropRight) * zoom,
+          (visibleCropBottom - visibleCropY) * zoom
+        );
+      }
 
       // Draw crop border
       ctx.strokeStyle = "#3b82f6";
@@ -420,6 +498,7 @@ export function useCanvasRendering(
     canvasSize,
     rotation,
     cropArea,
+    canvasExpandMode,
     zoom,
     pan,
     getDisplayDimensions,
