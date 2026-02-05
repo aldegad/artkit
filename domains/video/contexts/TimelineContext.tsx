@@ -67,6 +67,7 @@ interface TimelineContextValue {
   moveClip: (clipId: string, trackId: string, startTime: number) => void;
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
+  duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
   restoreClips: (clips: Clip[]) => void;
 
   // Queries
@@ -393,6 +394,36 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     updateProjectDuration();
   }, [updateProjectDuration]);
 
+  // Duplicate a clip to a target track (or new track if not specified)
+  const duplicateClip = useCallback((clipId: string, targetTrackId?: string): string | null => {
+    const sourceClip = clips.find((c) => c.id === clipId);
+    if (!sourceClip) return null;
+
+    // Determine target track
+    let trackId = targetTrackId;
+    if (!trackId) {
+      // Create a new track for the duplicate
+      const newTrack = createVideoTrack(
+        `Video ${tracks.length + 1}`,
+        tracks.length
+      );
+      setTracks((prev) => [...prev, newTrack]);
+      trackId = newTrack.id;
+    }
+
+    // Create duplicate with new ID
+    const newClip: Clip = {
+      ...sourceClip,
+      id: crypto.randomUUID(),
+      trackId,
+      name: `${sourceClip.name} (Copy)`,
+    };
+
+    setClips((prev) => [...prev, newClip]);
+    updateProjectDuration();
+    return newClip.id;
+  }, [clips, tracks, updateProjectDuration]);
+
   // Queries
   const getClipAtTime = useCallback(
     (trackId: string, time: number): Clip | null => {
@@ -445,6 +476,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     moveClip,
     trimClipStart,
     trimClipEnd,
+    duplicateClip,
     restoreClips,
     getClipAtTime,
     getClipsInTrack,

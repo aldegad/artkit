@@ -34,7 +34,7 @@ function VideoEditorContent() {
     stepForward,
     stepBackward,
   } = useVideoState();
-  const { clips } = useTimeline();
+  const { clips, duplicateClip } = useTimeline();
   const { isEditingMask, startMaskEdit } = useMask();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +103,15 @@ function VideoEditorContent() {
     console.log("Delete");
   }, []);
 
+  const handleDuplicate = useCallback(() => {
+    if (selectedClipIds.length > 0) {
+      // Duplicate each selected clip to a new track
+      selectedClipIds.forEach((clipId) => {
+        duplicateClip(clipId);
+      });
+    }
+  }, [selectedClipIds, duplicateClip]);
+
   // View menu handlers
   const handleZoomIn = useCallback(() => {
     // TODO: implement zoom in
@@ -164,8 +173,14 @@ function VideoEditorContent() {
       case "arrowright":
         stepForward();
         break;
+      case "d":
+        if (e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          handleDuplicate();
+        }
+        break;
     }
-  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward]);
+  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward, handleDuplicate]);
 
   const menuTranslations = {
     file: t.file,
