@@ -97,16 +97,14 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
     <div className={`w-14 h-full bg-surface-primary flex flex-col items-center gap-2 ${
       isMobile ? "pt-2" : "border-r border-border-default"
     }`}>
-      {/* Logo area - Desktop only: link to home */}
+      {/* Logo area - Desktop only: link to home (colored icon, no box) */}
       {!isMobile && (
         <Link
           href="/"
-          className="h-10 w-full flex items-center justify-center shrink-0"
+          className="h-10 w-full flex items-center justify-center shrink-0 text-accent-primary hover:text-accent-primary/80 transition-colors"
           aria-label="Home"
         >
-          <div className="w-7 h-7 bg-accent-primary rounded-md flex items-center justify-center text-white">
-            <ArtkitLogo size={22} />
-          </div>
+          <ArtkitLogo size={28} />
         </Link>
       )}
 
