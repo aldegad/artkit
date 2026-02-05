@@ -12,17 +12,17 @@ function MobileSidebarOverlay() {
 
   return (
     <div className={`md:hidden ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
-      {/* Backdrop with fade animation - starts below header */}
+      {/* Backdrop - full screen, below sidebar */}
       <div
-        className={`fixed inset-0 top-10 bg-black/50 z-40 transition-opacity duration-300 ease-out ${
+        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ease-out ${
           isOpen ? "opacity-100" : "opacity-0"
         }`}
         onClick={close}
         aria-hidden={!isOpen}
       />
-      {/* Sidebar with slide animation - starts below header */}
+      {/* Sidebar - slides from left, above header but below logo (z-50) */}
       <div
-        className={`fixed left-0 top-10 bottom-0 z-50 transition-transform duration-300 ease-out ${
+        className={`fixed left-0 top-0 bottom-0 z-50 pt-10 transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

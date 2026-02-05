@@ -1753,7 +1753,7 @@ function ImageEditorContent() {
 
       {/* Row 2: Tools (only when layers exist) */}
       {layers.length > 0 && (
-        <div className="flex items-center gap-1 px-2 md:px-4 py-1 bg-surface-primary border-b border-border-default shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-1 px-4 py-1 bg-surface-primary border-b border-border-default shrink-0 overflow-x-auto">
           {/* Tool buttons */}
           <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
             {toolButtons.map((tool) => (
