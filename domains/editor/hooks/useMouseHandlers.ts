@@ -60,6 +60,12 @@ interface UseMouseHandlersOptions {
 
   // Fill function
   fillWithColor: () => void;
+
+  // Transform functions (from useTransformTool)
+  isTransformActive?: () => boolean;
+  handleTransformMouseDown?: (imagePos: Point, modifiers: { shift: boolean; alt: boolean }) => string | null;
+  handleTransformMouseMove?: (imagePos: Point, modifiers: { shift: boolean; alt: boolean }) => void;
+  handleTransformMouseUp?: () => void;
 }
 
 interface UseMouseHandlersReturn {
@@ -132,6 +138,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     updateCropExpand,
     saveToHistory,
     fillWithColor,
+    isTransformActive,
+    handleTransformMouseDown,
+    handleTransformMouseMove,
+    handleTransformMouseUp,
   } = options;
 
   // Drag state
@@ -391,6 +401,16 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         return;
       }
 
+      // Transform tool
+      if (activeMode === "transform" && isTransformActive?.() && handleTransformMouseDown) {
+        const handle = handleTransformMouseDown(imagePos, { shift: e.shiftKey, alt: e.altKey });
+        if (handle) {
+          setDragType("move");
+          setIsDragging(true);
+          return;
+        }
+      }
+
       // Crop tool
       if (activeMode === "crop") {
         if (cropArea) {
@@ -469,6 +489,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       cropArea,
       setCropArea,
       canvasExpandMode,
+      isTransformActive,
+      handleTransformMouseDown,
     ]
   );
 
@@ -509,8 +531,14 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         return;
       }
 
-      // Handle marquee selection and move tool
+      // Handle transform tool
       const activeMode = getActiveToolMode();
+      if (activeMode === "transform" && isTransformActive?.() && handleTransformMouseMove) {
+        handleTransformMouseMove(imagePos, { shift: e.shiftKey, alt: e.altKey });
+        return;
+      }
+
+      // Handle marquee selection and move tool
       if (activeMode === "marquee" || activeMode === "move") {
         if (dragType === "create" && selection && activeMode === "marquee") {
           let width = Math.round(imagePos.x) - dragStartRef.current.x;
@@ -677,11 +705,18 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       setCropArea,
       canvasExpandMode,
       updateCropExpand,
+      isTransformActive,
+      handleTransformMouseMove,
     ]
   );
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
+    // Handle transform tool mouse up
+    if (handleTransformMouseUp) {
+      handleTransformMouseUp();
+    }
+
     // Commit floating layer to edit canvas when done moving
     if (isMovingSelection && floatingLayerRef.current) {
       const editCanvas = editCanvasRef.current;
@@ -741,6 +776,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setCropArea,
     selection,
     setSelection,
+    handleTransformMouseUp,
   ]);
 
   // Handle mouse leave

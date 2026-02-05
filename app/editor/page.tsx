@@ -25,6 +25,7 @@ import {
   useMouseHandlers,
   useCanvasRendering,
   useBackgroundRemoval,
+  useTransformTool,
   BackgroundRemovalModals,
   EditorToolOptions,
   EditorStatusBar,
@@ -419,6 +420,24 @@ function ImageEditorContent() {
     saveToHistory,
   });
 
+  // Transform tool - using extracted hook
+  const {
+    transformState,
+    startTransform,
+    cancelTransform,
+    applyTransform,
+    handleTransformMouseDown,
+    handleTransformMouseMove,
+    handleTransformMouseUp,
+    isTransformActive,
+  } = useTransformTool({
+    layerCanvasesRef,
+    editCanvasRef,
+    layers,
+    activeLayerId,
+    saveToHistory,
+  });
+
   // Keyboard shortcuts - using extracted hook (gets state, setters, and refs from context)
   useKeyboardShortcuts({
     setIsAltPressed,
@@ -502,6 +521,10 @@ function ImageEditorContent() {
     updateCropExpand,
     saveToHistory,
     fillWithColor,
+    isTransformActive,
+    handleTransformMouseDown,
+    handleTransformMouseMove,
+    handleTransformMouseUp,
   });
 
   // Canvas rendering - using extracted hook (gets zoom, pan, rotation, canvasSize, toolMode, refs from context)
@@ -519,6 +542,8 @@ function ImageEditorContent() {
     isDuplicating,
     isMovingSelection,
     activeLayerId,
+    transformBounds: transformState.bounds,
+    isTransformActive: transformState.isActive,
     getDisplayDimensions,
   });
 
@@ -538,6 +563,58 @@ function ImageEditorContent() {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
     },
   });
+
+  // Transform tool keyboard shortcuts and mode handling
+  useEffect(() => {
+    // Start transform when entering transform mode
+    if (toolMode === "transform" && !transformState.isActive && activeLayerId) {
+      startTransform();
+    }
+  }, [toolMode, transformState.isActive, activeLayerId, startTransform]);
+
+  // Transform keyboard shortcuts (Enter to apply, Escape to cancel, Cmd+T to enter)
+  useEffect(() => {
+    const handleTransformKeys = (e: KeyboardEvent) => {
+      // Skip if focus is on input elements
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA"
+      ) {
+        return;
+      }
+
+      // Cmd+T to enter transform mode - prevent browser new tab first!
+      if (e.code === "KeyT" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeLayerId && layers.length > 0) {
+          setToolMode("transform");
+        }
+        return;
+      }
+
+      // Only handle Enter/Escape when transform is active
+      if (!transformState.isActive) return;
+
+      if (e.code === "Enter") {
+        e.preventDefault();
+        applyTransform();
+        // Stay in transform mode for another transform
+      }
+
+      if (e.code === "Escape") {
+        e.preventDefault();
+        cancelTransform();
+        setToolMode("move"); // Switch back to move tool
+      }
+    };
+
+    // Use capture phase to intercept before browser handles Cmd+T
+    window.addEventListener("keydown", handleTransformKeys, { capture: true });
+    return () => window.removeEventListener("keydown", handleTransformKeys, { capture: true });
+  }, [transformState.isActive, activeLayerId, layers.length, applyTransform, cancelTransform, setToolMode]);
 
   // Load image from file
   const loadImageFile = useCallback(
@@ -938,9 +1015,8 @@ function ImageEditorContent() {
   }, [cropArea, layers, activeLayerId, rotation, getDisplayDimensions, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
 
   const exportImage = useCallback(() => {
-    const img = imageRef.current;
-    const editCanvas = editCanvasRef.current;
-    if (!img) return;
+    // Check if we have any layers to export
+    if (layers.length === 0) return;
 
     const exportCanvas = document.createElement("canvas");
     const ctx = exportCanvas.getContext("2d");
@@ -948,27 +1024,29 @@ function ImageEditorContent() {
 
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
-    // Create composite canvas (original + edits)
+    // Create composite canvas from all visible layers
     const compositeCanvas = document.createElement("canvas");
     compositeCanvas.width = displayWidth;
     compositeCanvas.height = displayHeight;
     const compositeCtx = compositeCanvas.getContext("2d");
     if (!compositeCtx) return;
 
-    // Draw rotated original
-    compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-    compositeCtx.rotate((rotation * Math.PI) / 180);
-    compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-    compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+    // Draw all visible layers in order (bottom to top)
+    layers.forEach((layer) => {
+      if (!layer.visible) return;
 
-    // Draw edits
-    if (editCanvas) {
-      compositeCtx.drawImage(editCanvas, 0, 0);
-    }
+      const layerCanvas = layerCanvasesRef.current.get(layer.id);
+      if (!layerCanvas) return;
+
+      // Apply layer opacity
+      compositeCtx.globalAlpha = layer.opacity;
+      compositeCtx.drawImage(layerCanvas, 0, 0);
+      compositeCtx.globalAlpha = 1;
+    });
 
     if (cropArea) {
-      exportCanvas.width = cropArea.width;
-      exportCanvas.height = cropArea.height;
+      exportCanvas.width = Math.round(cropArea.width);
+      exportCanvas.height = Math.round(cropArea.height);
 
       // Check if crop extends beyond canvas (canvas expand mode)
       const extendsLeft = cropArea.x < 0;
@@ -1015,19 +1093,24 @@ function ImageEditorContent() {
         // Normal crop within canvas bounds
         ctx.drawImage(
           compositeCanvas,
-          cropArea.x,
-          cropArea.y,
-          cropArea.width,
-          cropArea.height,
+          Math.round(cropArea.x),
+          Math.round(cropArea.y),
+          Math.round(cropArea.width),
+          Math.round(cropArea.height),
           0,
           0,
-          cropArea.width,
-          cropArea.height,
+          Math.round(cropArea.width),
+          Math.round(cropArea.height),
         );
       }
     } else {
       exportCanvas.width = displayWidth;
       exportCanvas.height = displayHeight;
+      // Fill with white background for JPEG
+      if (outputFormat === "jpeg") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, displayWidth, displayHeight);
+      }
       ctx.drawImage(compositeCanvas, 0, 0);
     }
 
@@ -1041,14 +1124,14 @@ function ImageEditorContent() {
         const link = document.createElement("a");
         const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
         link.href = url;
-        link.download = `edited-image.${ext}`;
+        link.download = `${projectName || "edited-image"}.${ext}`;
         link.click();
         URL.revokeObjectURL(url);
       },
       mimeType,
       quality,
     );
-  }, [cropArea, rotation, canvasSize, outputFormat, quality, getDisplayDimensions]);
+  }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
 
   // Get cursor based on tool mode
   const getCursor = () => {
@@ -1504,6 +1587,23 @@ function ImageEditorContent() {
             strokeWidth={2}
             d="M12 4v16m0-16l-3 3m3-3l3 3m-3 13l-3-3m3 3l3-3M4 12h16m-16 0l3-3m-3 3l3 3m13-3l-3-3m3 3l-3 3"
           />
+        </svg>
+      ),
+    },
+    {
+      mode: "transform",
+      name: "Transform",
+      description: "Scale and move layer content",
+      keys: ["⌘T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
+      shortcut: "T",
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Transform tool icon - bounding box with handles */}
+          <rect x="4" y="4" width="16" height="16" strokeWidth={2} rx="1" />
+          <circle cx="4" cy="4" r="2" fill="currentColor" />
+          <circle cx="20" cy="4" r="2" fill="currentColor" />
+          <circle cx="4" cy="20" r="2" fill="currentColor" />
+          <circle cx="20" cy="20" r="2" fill="currentColor" />
         </svg>
       ),
     },
@@ -2003,6 +2103,12 @@ function ImageEditorContent() {
           fitToSquare={fitToSquare}
           onApplyCrop={handleApplyCrop}
           currentToolName={toolButtons.find(tb => tb.mode === toolMode)?.name}
+          isTransformActive={transformState.isActive}
+          onApplyTransform={applyTransform}
+          onCancelTransform={() => {
+            cancelTransform();
+            setToolMode("move");
+          }}
           translations={{
             size: t.size,
             hardness: t.hardness,

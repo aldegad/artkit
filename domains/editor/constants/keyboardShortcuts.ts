@@ -38,7 +38,17 @@ export const TOOL_SHORTCUTS: Record<string, EditorToolMode> = {
   KeyS: "stamp",
   KeyM: "marquee",
   KeyV: "move",
+  KeyT: "transform",
 };
+
+/**
+ * Transform tool shortcuts (with Cmd/Ctrl modifier)
+ */
+export const TRANSFORM_SHORTCUTS = {
+  enterTransform: { code: "KeyT", ctrlOrMeta: true } as const,
+  applyTransform: "Enter",
+  cancelTransform: "Escape",
+} as const;
 
 /**
  * Brush size adjustment shortcuts

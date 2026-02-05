@@ -28,3 +28,5 @@ export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export { useMouseHandlers } from "./useMouseHandlers";
 export { useCanvasRendering } from "./useCanvasRendering";
 export { useBackgroundRemoval } from "./useBackgroundRemoval";
+export { useTransformTool } from "./useTransformTool";
+export type { TransformState, TransformHandle } from "./useTransformTool";

@@ -43,6 +43,10 @@ interface EditorToolOptionsProps {
   onApplyCrop: () => void;
   // Tool name for default display
   currentToolName?: string;
+  // Transform props
+  isTransformActive?: boolean;
+  onApplyTransform?: () => void;
+  onCancelTransform?: () => void;
   // Translations
   translations: {
     size: string;
@@ -89,6 +93,9 @@ export function EditorToolOptions({
   fitToSquare,
   onApplyCrop,
   currentToolName,
+  isTransformActive,
+  onApplyTransform,
+  onCancelTransform,
   translations: t,
 }: EditorToolOptionsProps) {
   // Handle width/height input changes with aspect ratio lock
@@ -339,8 +346,36 @@ export function EditorToolOptions({
         </div>
       )}
 
+      {/* Transform controls */}
+      {toolMode === "transform" && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-secondary">
+            {isTransformActive
+              ? "Drag handles to resize. Shift: keep ratio, Alt: from center"
+              : "Select a layer with content to transform"}
+          </span>
+          {isTransformActive && (
+            <>
+              <div className="w-px h-4 bg-border-default" />
+              <button
+                onClick={onApplyTransform}
+                className="px-2 py-0.5 text-xs bg-accent-primary text-white hover:bg-accent-primary/90 rounded transition-colors font-medium"
+              >
+                Apply (Enter)
+              </button>
+              <button
+                onClick={onCancelTransform}
+                className="px-2 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+              >
+                Cancel (Esc)
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Default message when no tool-specific controls */}
-      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && (
+      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && toolMode !== "transform" && (
         <span className="text-xs text-text-tertiary">{currentToolName}</span>
       )}
       </div>
