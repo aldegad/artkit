@@ -169,6 +169,7 @@ function ImageEditorContent() {
   // Transform discard confirmation state
   const [showTransformDiscardConfirm, setShowTransformDiscardConfirm] = useState(false);
   const pendingToolModeRef = useRef<EditorToolMode | null>(null);
+  const previousToolModeRef = useRef<EditorToolMode | null>(null);
 
   // Get state and setters from context
   const {
@@ -280,6 +281,7 @@ function ImageEditorContent() {
     toggleLayerVisibility,
     updateLayer,
     updateLayerOpacity,
+    updateLayerPosition,
     renameLayer,
     toggleLayerLock,
     moveLayer,
@@ -481,8 +483,12 @@ function ImageEditorContent() {
       setShowTransformDiscardConfirm(true);
       return;
     }
+    // Save current tool before entering transform mode
+    if (mode === "transform" && toolMode !== "transform") {
+      previousToolModeRef.current = toolMode;
+    }
     setToolMode(mode);
-  }, [transformState.isActive, setToolMode]);
+  }, [transformState.isActive, toolMode, setToolMode]);
 
   // Handle transform discard confirmation actions
   const handleTransformDiscardConfirm = useCallback(() => {
@@ -491,6 +497,7 @@ function ImageEditorContent() {
       setToolMode(pendingToolModeRef.current);
       pendingToolModeRef.current = null;
     }
+    previousToolModeRef.current = null;
     setShowTransformDiscardConfirm(false);
   }, [cancelTransform, setToolMode]);
 
@@ -500,6 +507,7 @@ function ImageEditorContent() {
       setToolMode(pendingToolModeRef.current);
       pendingToolModeRef.current = null;
     }
+    previousToolModeRef.current = null;
     setShowTransformDiscardConfirm(false);
   }, [applyTransform, setToolMode]);
 
@@ -613,6 +621,9 @@ function ImageEditorContent() {
     moveGuide,
     removeGuide,
     getGuideAtPosition,
+    // Layer movement
+    activeLayerId,
+    updateLayerPosition,
   });
 
   // Guide drag preview state for showing preview line on main canvas
@@ -705,6 +716,10 @@ function ImageEditorContent() {
         e.preventDefault();
         e.stopPropagation();
         if (activeLayerId && layers.length > 0) {
+          // Save current tool before entering transform mode
+          if (toolMode !== "transform") {
+            previousToolModeRef.current = toolMode;
+          }
           setToolMode("transform");
         }
         return;
@@ -716,20 +731,30 @@ function ImageEditorContent() {
       if (e.code === "Enter") {
         e.preventDefault();
         applyTransform();
-        // Stay in transform mode for another transform
+        // Return to previous tool after applying transform
+        if (previousToolModeRef.current) {
+          setToolMode(previousToolModeRef.current);
+          previousToolModeRef.current = null;
+        }
       }
 
       if (e.code === "Escape") {
         e.preventDefault();
         cancelTransform();
-        setToolMode("move"); // Switch back to move tool
+        // Return to previous tool after canceling transform
+        if (previousToolModeRef.current) {
+          setToolMode(previousToolModeRef.current);
+          previousToolModeRef.current = null;
+        } else {
+          setToolMode("move"); // Default to move tool
+        }
       }
     };
 
     // Use capture phase to intercept before browser handles Cmd+T
     window.addEventListener("keydown", handleTransformKeys, { capture: true });
     return () => window.removeEventListener("keydown", handleTransformKeys, { capture: true });
-  }, [transformState.isActive, activeLayerId, layers.length, applyTransform, cancelTransform, setToolMode]);
+  }, [transformState.isActive, activeLayerId, layers.length, toolMode, applyTransform, cancelTransform, setToolMode]);
 
   // Load image from file
   const loadImageFile = useCallback(

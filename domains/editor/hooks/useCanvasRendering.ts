@@ -613,6 +613,12 @@ export function useCanvasRendering(
 
       ctx.save();
 
+      // Apply layer opacity to transform preview
+      const transformLayer = transformLayerId ? layers.find(l => l.id === transformLayerId) : null;
+      if (transformLayer) {
+        ctx.globalAlpha = transformLayer.opacity / 100;
+      }
+
       // Draw the transformed image from originalImageData
       if (transformOriginalImageData) {
         const tempCanvas = document.createElement("canvas");
@@ -626,6 +632,9 @@ export function useCanvasRendering(
           ctx.drawImage(tempCanvas, transformX, transformY, transformW, transformH);
         }
       }
+
+      // Reset alpha for handles and border
+      ctx.globalAlpha = 1;
 
       // Draw border
       ctx.strokeStyle = colors.selection;
