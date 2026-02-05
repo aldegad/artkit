@@ -32,25 +32,25 @@
   --interactive-active: #cbd5e1;
 
   /* Accent (Primary Orange) */
-  --accent-primary: #FF6B00;
-  --accent-primary-hover: #E65C00;
-  --accent-primary-active: #CC5200;
-  --accent-primary-surface: #FFF4EB;
+  --accent-primary: #FF8C00;
+  --accent-primary-hover: #FF7A00;
+  --accent-primary-active: #E67A00;
+  --accent-primary-surface: #FFF7F0;
 
   /* Success (Orange based - bright) */
-  --accent-success: #FF6B00;
-  --accent-success-hover: #E65C00;
-  --accent-success-surface: #FFF4EB;
+  --accent-success: #FF9F33;
+  --accent-success-hover: #FF8C00;
+  --accent-success-surface: #FFF7F0;
 
   /* Danger (Orange based - dark) */
-  --accent-danger: #CC4400;
-  --accent-danger-hover: #AA3300;
-  --accent-danger-surface: #FFF0E6;
+  --accent-danger: #E65C00;
+  --accent-danger-hover: #CC5200;
+  --accent-danger-surface: #FFF4EB;
 
   /* Warning (Same as primary orange) */
-  --accent-warning: #FF6B00;
-  --accent-warning-hover: #E65C00;
-  --accent-warning-surface: #FFF4EB;
+  --accent-warning: #FF8C00;
+  --accent-warning-hover: #FF7A00;
+  --accent-warning-surface: #FFF7F0;
 
   /* Special UI */
   --toolbar-bg: #ffffff;
@@ -101,7 +101,7 @@
   --waveform-bg: #1a1a2e;
   --waveform-line: #3b82f6;
   --waveform-handle: #60a5fa;
-  --waveform-playhead: #FF6B00;
+  --waveform-playhead: #FF8C00;
   --waveform-trim-fill: rgba(59, 130, 246, 0.1);
 }
 
@@ -136,25 +136,25 @@
   --interactive-active: #4A4A4A;
 
   /* Accent Colors - Orange Primary */
-  --accent-primary: #FF6B00;
-  --accent-primary-hover: #FF7A1A;
-  --accent-primary-active: #E65C00;
-  --accent-primary-surface: #1A1400;
+  --accent-primary: #FF8C00;
+  --accent-primary-hover: #FFA033;
+  --accent-primary-active: #FF7A00;
+  --accent-primary-surface: #1F1A10;
 
   /* Success - Orange based (bright) */
-  --accent-success: #FF8533;
-  --accent-success-hover: #FF9F4D;
-  --accent-success-surface: #1A1400;
+  --accent-success: #FFA64D;
+  --accent-success-hover: #FFB866;
+  --accent-success-surface: #1F1A10;
 
   /* Danger - Orange based (dark) */
-  --accent-danger: #CC4400;
-  --accent-danger-hover: #DD5500;
-  --accent-danger-surface: #1A1000;
+  --accent-danger: #E67300;
+  --accent-danger-hover: #FF8000;
+  --accent-danger-surface: #1A1200;
 
   /* Warning - Same as primary orange */
-  --accent-warning: #FF6B00;
-  --accent-warning-hover: #FF7A1A;
-  --accent-warning-surface: #1A1400;
+  --accent-warning: #FF8C00;
+  --accent-warning-hover: #FFA033;
+  --accent-warning-surface: #1F1A10;
 
   /* Special UI */
   --toolbar-bg: #1A1A1A;
@@ -205,7 +205,7 @@
   --waveform-bg: #0F0F0F;
   --waveform-line: #60a5fa;
   --waveform-handle: #93c5fd;
-  --waveform-playhead: #FF6B00;
+  --waveform-playhead: #FF8C00;
   --waveform-trim-fill: rgba(96, 165, 250, 0.1);
 }
 
@@ -419,7 +419,7 @@ body {
 
 .input:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.15);
+  box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.15);
 }
 
 .input::placeholder {
