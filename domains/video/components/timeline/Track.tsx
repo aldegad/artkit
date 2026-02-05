@@ -7,11 +7,10 @@ import { cn } from "@/shared/utils/cn";
 interface TrackProps {
   track: VideoTrack;
   clips: ClipType[];
-  onSelectClip?: (clipId: string, addToSelection: boolean) => void;
   className?: string;
 }
 
-export function Track({ track, clips, onSelectClip, className }: TrackProps) {
+export function Track({ track, clips, className }: TrackProps) {
   return (
     <div
       className={cn(
@@ -30,7 +29,6 @@ export function Track({ track, clips, onSelectClip, className }: TrackProps) {
         <Clip
           key={clip.id}
           clip={clip}
-          onSelect={onSelectClip}
         />
       ))}
     </div>
