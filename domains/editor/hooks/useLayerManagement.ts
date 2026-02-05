@@ -478,20 +478,67 @@ export function useLayerManagement(
     setSelectedLayerIds([]);
   }, []);
 
-  // Get layer bounds (position + size)
-  // Canvas size is prioritized because it gets updated after transforms
+  // Get layer content bounds (position + actual content size, not canvas size)
+  // This scans for non-transparent pixels to find the actual content area
   const getLayerBounds = useCallback((layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
     if (!layer) return null;
 
     const canvas = layerCanvasesRef.current.get(layerId);
-    // Canvas size first (updated after transforms), fallback to originalSize
-    const width = canvas?.width || layer.originalSize?.width || 0;
-    const height = canvas?.height || layer.originalSize?.height || 0;
-    const x = layer.position?.x || 0;
-    const y = layer.position?.y || 0;
+    if (!canvas) {
+      // Fallback to originalSize if no canvas
+      const width = layer.originalSize?.width || 0;
+      const height = layer.originalSize?.height || 0;
+      const x = layer.position?.x || 0;
+      const y = layer.position?.y || 0;
+      return { x, y, width, height };
+    }
 
-    return { x, y, width, height };
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      const width = canvas.width;
+      const height = canvas.height;
+      const x = layer.position?.x || 0;
+      const y = layer.position?.y || 0;
+      return { x, y, width, height };
+    }
+
+    // Scan for actual content bounds (non-transparent pixels)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let minX = canvas.width;
+    let minY = canvas.height;
+    let maxX = 0;
+    let maxY = 0;
+    let hasContent = false;
+
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
+        if (alpha > 0) {
+          hasContent = true;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+
+    if (!hasContent) {
+      // No content, return zero-size bounds at position
+      return { x: layer.position?.x || 0, y: layer.position?.y || 0, width: 0, height: 0 };
+    }
+
+    // Return content bounds in image coordinates (layer position + content offset)
+    const layerPosX = layer.position?.x || 0;
+    const layerPosY = layer.position?.y || 0;
+
+    return {
+      x: layerPosX + minX,
+      y: layerPosY + minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1,
+    };
   }, [layers]);
 
   // Align layers
@@ -509,31 +556,47 @@ export function useLayerManagement(
       if (!targetIds.includes(layer.id)) return layer;
 
       const layerBounds = getLayerBounds(layer.id);
-      if (!layerBounds) return layer;
+      if (!layerBounds || layerBounds.width === 0 || layerBounds.height === 0) return layer;
 
-      let newX = layer.position?.x || 0;
-      let newY = layer.position?.y || 0;
+      const currentPosX = layer.position?.x || 0;
+      const currentPosY = layer.position?.y || 0;
+
+      // Content offset within layer canvas
+      // layerBounds.x is the content's position in image coordinates
+      // contentOffsetX is how far the content is from the layer canvas origin
+      const contentOffsetX = layerBounds.x - currentPosX;
+      const contentOffsetY = layerBounds.y - currentPosY;
+
+      // Calculate where the content should be in image coordinates
+      let targetContentX = layerBounds.x;
+      let targetContentY = layerBounds.y;
 
       switch (alignment) {
         case "left":
-          newX = alignBounds.x;
+          targetContentX = alignBounds.x;
           break;
         case "center":
-          newX = alignBounds.x + (alignBounds.width - layerBounds.width) / 2;
+          targetContentX = alignBounds.x + (alignBounds.width - layerBounds.width) / 2;
           break;
         case "right":
-          newX = alignBounds.x + alignBounds.width - layerBounds.width;
+          targetContentX = alignBounds.x + alignBounds.width - layerBounds.width;
           break;
         case "top":
-          newY = alignBounds.y;
+          targetContentY = alignBounds.y;
           break;
         case "middle":
-          newY = alignBounds.y + (alignBounds.height - layerBounds.height) / 2;
+          targetContentY = alignBounds.y + (alignBounds.height - layerBounds.height) / 2;
           break;
         case "bottom":
-          newY = alignBounds.y + alignBounds.height - layerBounds.height;
+          targetContentY = alignBounds.y + alignBounds.height - layerBounds.height;
           break;
       }
+
+      // Calculate new layer position by subtracting content offset
+      // If content should be at targetContentX, and content is at offset within canvas,
+      // then layer position = targetContentX - contentOffsetX
+      const newX = targetContentX - contentOffsetX;
+      const newY = targetContentY - contentOffsetY;
 
       return {
         ...layer,
@@ -555,9 +618,13 @@ export function useLayerManagement(
 
     // Get all layer bounds and sort by position
     const layerBoundsList = targetIds
-      .map(id => ({ id, bounds: getLayerBounds(id) }))
-      .filter((item): item is { id: string; bounds: NonNullable<ReturnType<typeof getLayerBounds>> } =>
-        item.bounds !== null
+      .map(id => {
+        const layer = layers.find(l => l.id === id);
+        const layerBounds = getLayerBounds(id);
+        return { id, bounds: layerBounds, layer };
+      })
+      .filter((item): item is { id: string; bounds: NonNullable<ReturnType<typeof getLayerBounds>>; layer: NonNullable<typeof item.layer> } =>
+        item.bounds !== null && item.layer !== undefined
       )
       .sort((a, b) =>
         direction === "horizontal"
@@ -574,11 +641,19 @@ export function useLayerManagement(
 
       let currentX = alignBounds.x;
       setLayers(prev => prev.map(layer => {
-        const idx = layerBoundsList.findIndex(item => item.id === layer.id);
-        if (idx === -1) return layer;
+        const item = layerBoundsList.find(i => i.id === layer.id);
+        if (!item) return layer;
 
-        const newX = currentX;
-        currentX += layerBoundsList[idx].bounds.width + gap;
+        // Content offset within layer canvas
+        const currentPosX = layer.position?.x || 0;
+        const contentOffsetX = item.bounds.x - currentPosX;
+
+        // Target content position
+        const targetContentX = currentX;
+        currentX += item.bounds.width + gap;
+
+        // New layer position = target content position - content offset
+        const newX = targetContentX - contentOffsetX;
 
         return {
           ...layer,
@@ -592,11 +667,19 @@ export function useLayerManagement(
 
       let currentY = alignBounds.y;
       setLayers(prev => prev.map(layer => {
-        const idx = layerBoundsList.findIndex(item => item.id === layer.id);
-        if (idx === -1) return layer;
+        const item = layerBoundsList.find(i => i.id === layer.id);
+        if (!item) return layer;
 
-        const newY = currentY;
-        currentY += layerBoundsList[idx].bounds.height + gap;
+        // Content offset within layer canvas
+        const currentPosY = layer.position?.y || 0;
+        const contentOffsetY = item.bounds.y - currentPosY;
+
+        // Target content position
+        const targetContentY = currentY;
+        currentY += item.bounds.height + gap;
+
+        // New layer position = target content position - content offset
+        const newY = targetContentY - contentOffsetY;
 
         return {
           ...layer,
