@@ -2,6 +2,12 @@
 
 import { useCallback, useRef, RefObject } from "react";
 import { Point } from "../types";
+import {
+  screenToCanvas,
+  canvasToImage,
+  isInImageBounds,
+  ViewContext,
+} from "../utils/coordinateSystem";
 
 // ============================================
 // Types
@@ -88,36 +94,30 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
       const canvas = canvasRef.current;
       if (!canvas) return { x: 0, y: 0 };
       const rect = canvas.getBoundingClientRect();
-      // Scale for high-DPI displays (canvas internal resolution vs CSS display size)
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
-      };
+      return screenToCanvas(
+        { x: e.clientX, y: e.clientY },
+        rect,
+        { width: canvas.width, height: canvas.height }
+      );
     },
     [canvasRef]
   );
 
   // Convert screen coordinates to image coordinates
-  const screenToImage = useCallback(
+  const screenToImageFn = useCallback(
     (screenX: number, screenY: number): Point => {
       const canvas = canvasRef.current;
       if (!canvas) return { x: 0, y: 0 };
 
-      const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-      const currentZoom = zoomRef.current;
-      const currentPan = panRef.current;
-
-      const scaledWidth = displayWidth * currentZoom;
-      const scaledHeight = displayHeight * currentZoom;
-      const offsetX = (canvas.width - scaledWidth) / 2 + currentPan.x;
-      const offsetY = (canvas.height - scaledHeight) / 2 + currentPan.y;
-
-      return {
-        x: (screenX - offsetX) / currentZoom,
-        y: (screenY - offsetY) / currentZoom,
+      const displaySize = getDisplayDimensions();
+      const viewContext: ViewContext = {
+        canvasSize: { width: canvas.width, height: canvas.height },
+        displaySize,
+        zoom: zoomRef.current,
+        pan: panRef.current,
       };
+
+      return canvasToImage({ x: screenX, y: screenY }, viewContext);
     },
     [canvasRef, getDisplayDimensions]
   );
@@ -129,15 +129,11 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
       type: "start" | "move" | "end"
     ): CanvasInputEvent => {
       const screenPosition = getMousePos(e as React.MouseEvent);
-      const imagePosition = screenToImage(screenPosition.x, screenPosition.y);
-      const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+      const imagePosition = screenToImageFn(screenPosition.x, screenPosition.y);
+      const displaySize = getDisplayDimensions();
 
-      // Check bounds
-      const inBounds =
-        imagePosition.x >= 0 &&
-        imagePosition.x <= displayWidth &&
-        imagePosition.y >= 0 &&
-        imagePosition.y <= displayHeight;
+      // Check bounds using utility
+      const inBounds = isInImageBounds(imagePosition, displaySize);
 
       // Determine input type
       let inputType: InputType = "mouse";
@@ -171,7 +167,7 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
         originalEvent: e as PointerEvent | MouseEvent,
       };
     },
-    [getMousePos, screenToImage, getDisplayDimensions]
+    [getMousePos, screenToImageFn, getDisplayDimensions]
   );
 
   // Event handlers
@@ -204,7 +200,7 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
 
   return {
     getMousePos,
-    screenToImage,
+    screenToImage: screenToImageFn,
     createInputEvent,
     handlers,
   };

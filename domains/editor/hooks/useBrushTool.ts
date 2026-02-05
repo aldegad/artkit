@@ -12,6 +12,7 @@ import {
   loadActivePresetId,
   saveActivePresetId,
 } from "../constants/brushPresets";
+import { imageToCanvas, ViewContext } from "../utils/coordinateSystem";
 
 // ============================================
 // Types
@@ -327,17 +328,18 @@ export function useBrushTool(): UseBrushToolReturn {
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
 
-      const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-      const scaledWidth = displayWidth * zoom;
-      const scaledHeight = displayHeight * zoom;
-      const offsetX = (canvas.width - scaledWidth) / 2 + pan.x;
-      const offsetY = (canvas.height - scaledHeight) / 2 + pan.y;
+      const displaySize = getDisplayDimensions();
+      const viewContext: ViewContext = {
+        canvasSize: { width: canvas.width, height: canvas.height },
+        displaySize,
+        zoom,
+        pan,
+      };
 
-      // Convert to screen position
-      const screenX = offsetX + x * zoom;
-      const screenY = offsetY + y * zoom;
+      // Convert image position to screen position using utility
+      const screenPos = imageToCanvas({ x, y }, viewContext);
 
-      const pixel = ctx.getImageData(screenX, screenY, 1, 1).data;
+      const pixel = ctx.getImageData(screenPos.x, screenPos.y, 1, 1).data;
       const hex =
         "#" + [pixel[0], pixel[1], pixel[2]].map((c) => c.toString(16).padStart(2, "0")).join("");
       setBrushColor(hex);

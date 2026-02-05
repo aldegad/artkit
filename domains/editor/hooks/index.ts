@@ -30,3 +30,8 @@ export { useCanvasRendering } from "./useCanvasRendering";
 export { useBackgroundRemoval } from "./useBackgroundRemoval";
 export { useTransformTool } from "./useTransformTool";
 export type { TransformState, TransformHandle } from "./useTransformTool";
+export { useCoordinateTransform } from "./useCoordinateTransform";
+export type {
+  UseCoordinateTransformOptions,
+  UseCoordinateTransformReturn,
+} from "./useCoordinateTransform";

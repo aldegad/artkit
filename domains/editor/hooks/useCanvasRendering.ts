@@ -4,6 +4,7 @@ import { useEffect, RefObject, useCallback, useRef } from "react";
 import { UnifiedLayer, Point, CropArea } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/hooks";
+import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 
 // ============================================
 // Types
@@ -45,6 +46,8 @@ interface UseCanvasRenderingOptions {
   // Transform state (optional)
   transformBounds?: TransformBounds | null;
   isTransformActive?: boolean;
+  transformLayerId?: string | null;
+  transformOriginalImageData?: ImageData | null;
 
   // Functions
   getDisplayDimensions: () => { width: number; height: number };
@@ -87,6 +90,8 @@ export function useCanvasRendering(
     activeLayerId,
     transformBounds,
     isTransformActive,
+    transformLayerId,
+    transformOriginalImageData,
     getDisplayDimensions,
   } = options;
 
@@ -177,11 +182,18 @@ export function useCanvasRendering(
       "#2a2a2a";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Calculate centered position with pan and zoom
+    // Calculate centered position with pan and zoom using coordinate utility
+    const viewContext: ViewContext = {
+      canvasSize: { width: canvas.width, height: canvas.height },
+      displaySize: { width: displayWidth, height: displayHeight },
+      zoom,
+      pan,
+    };
+    const viewOffset = calculateViewOffset(viewContext);
+    const offsetX = viewOffset.x;
+    const offsetY = viewOffset.y;
     const scaledWidth = displayWidth * zoom;
     const scaledHeight = displayHeight * zoom;
-    const offsetX = (canvas.width - scaledWidth) / 2 + pan.x;
-    const offsetY = (canvas.height - scaledHeight) / 2 + pan.y;
 
     // Draw checkerboard pattern for transparency (like Photoshop)
     const checkerSize = 8;
@@ -215,6 +227,8 @@ export function useCanvasRendering(
 
     for (const layer of sortedLayers) {
       if (!layer.visible) continue;
+      // Skip layer being transformed - it will be rendered in transform overlay
+      if (isTransformActive && transformLayerId === layer.id) continue;
 
       ctx.save();
       ctx.globalAlpha = layer.opacity / 100;
@@ -359,7 +373,7 @@ export function useCanvasRendering(
       }
 
       // Draw resize handles
-      const handleSize = 8;
+      const handleSize = 10;
       ctx.fillStyle = colors.selection;
       const handles = [
         { x: cropX, y: cropY },
@@ -519,14 +533,28 @@ export function useCanvasRendering(
 
       ctx.save();
 
+      // Draw the transformed image from originalImageData
+      if (transformOriginalImageData) {
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = transformOriginalImageData.width;
+        tempCanvas.height = transformOriginalImageData.height;
+        const tempCtx = tempCanvas.getContext("2d");
+        if (tempCtx) {
+          tempCtx.putImageData(transformOriginalImageData, 0, 0);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(tempCanvas, transformX, transformY, transformW, transformH);
+        }
+      }
+
       // Draw border
       ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 2;
       ctx.setLineDash([]);
       ctx.strokeRect(transformX, transformY, transformW, transformH);
 
-      // Draw resize handles (larger for touch-friendly interaction)
-      const handleSize = 16;
+      // Draw resize handles
+      const handleSize = 10;
       ctx.fillStyle = colors.selection;
       ctx.strokeStyle = colors.textOnColor;
       ctx.lineWidth = 1;
@@ -574,6 +602,8 @@ export function useCanvasRendering(
     activeLayerId,
     transformBounds,
     isTransformActive,
+    transformLayerId,
+    transformOriginalImageData,
   ]);
 
   // Store render function in ref for ResizeObserver to call

@@ -73,8 +73,8 @@ interface UseTransformToolReturn {
 // Helper Functions
 // ============================================
 
-// Larger handle size for touch-friendly interaction
-const HANDLE_SIZE = 16;
+// Handle size for interaction detection
+const HANDLE_SIZE = 10;
 
 function isInHandle(pos: Point, handle: Point, size: number = HANDLE_SIZE): boolean {
   return Math.abs(pos.x - handle.x) <= size && Math.abs(pos.y - handle.y) <= size;
@@ -311,7 +311,11 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     const layerPosX = layerPosition?.x || 0;
     const layerPosY = layerPosition?.y || 0;
 
-    // Calculate the canvas-local position
+    // Calculate the original canvas-local position (where content was before transform)
+    const origCanvasX = originalBounds.x - layerPosX;
+    const origCanvasY = originalBounds.y - layerPosY;
+
+    // Calculate the new canvas-local position
     const canvasX = bounds.x - layerPosX;
     const canvasY = bounds.y - layerPosY;
 
@@ -328,19 +332,19 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const newWidth = Math.max(layerCanvas.width, requiredWidth + offsetX);
       const newHeight = Math.max(layerCanvas.height, requiredHeight + offsetY);
 
-      // Save current content if any (shouldn't be any since we're in transform)
+      // Save current content
       const oldData = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
 
       // Resize canvas
       layerCanvas.width = newWidth;
       layerCanvas.height = newHeight;
 
-      // Restore old content at offset position (in case there's other content)
+      // Restore old content at offset position
       ctx.putImageData(oldData, offsetX, offsetY);
     }
 
-    // Clear the canvas
-    ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+    // Clear only the original content area (not the entire canvas)
+    ctx.clearRect(origCanvasX + offsetX, origCanvasY + offsetY, originalBounds.width, originalBounds.height);
 
     // Create temp canvas with original image data
     const tempCanvas = document.createElement("canvas");
@@ -591,65 +595,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         ...prev,
         bounds: newBounds,
       }));
-
-      // Update the canvas preview in real-time
-      if (transformState.layerId && transformState.originalImageData) {
-        const layerCanvas = layerCanvasesRef.current.get(transformState.layerId);
-        if (layerCanvas) {
-          const ctx = layerCanvas.getContext("2d");
-          if (ctx) {
-            // Convert screen coords to canvas coords
-            const layerPosX = transformState.layerPosition?.x || 0;
-            const layerPosY = transformState.layerPosition?.y || 0;
-
-            // Calculate the canvas-local position
-            const canvasX = newBounds.x - layerPosX;
-            const canvasY = newBounds.y - layerPosY;
-
-            // Calculate required canvas size to fit the transformed content
-            const requiredWidth = Math.max(layerCanvas.width, canvasX + newBounds.width, newBounds.width);
-            const requiredHeight = Math.max(layerCanvas.height, canvasY + newBounds.height, newBounds.height);
-
-            // Calculate offset if content starts at negative coordinates
-            const offsetX = canvasX < 0 ? -canvasX : 0;
-            const offsetY = canvasY < 0 ? -canvasY : 0;
-
-            // Expand canvas if needed
-            if (requiredWidth + offsetX > layerCanvas.width || requiredHeight + offsetY > layerCanvas.height || offsetX > 0 || offsetY > 0) {
-              const newWidth = Math.max(layerCanvas.width, requiredWidth + offsetX);
-              const newHeight = Math.max(layerCanvas.height, requiredHeight + offsetY);
-
-              // Resize canvas (this clears it)
-              layerCanvas.width = newWidth;
-              layerCanvas.height = newHeight;
-            } else {
-              ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-            }
-
-            // Create temp canvas with original image data
-            const tempCanvas = document.createElement("canvas");
-            tempCanvas.width = transformState.originalImageData.width;
-            tempCanvas.height = transformState.originalImageData.height;
-            const tempCtx = tempCanvas.getContext("2d");
-            if (tempCtx) {
-              tempCtx.putImageData(transformState.originalImageData, 0, 0);
-
-              // Draw scaled image (use canvas-local coordinates with offset)
-              ctx.imageSmoothingEnabled = true;
-              ctx.imageSmoothingQuality = "high";
-              ctx.drawImage(
-                tempCanvas,
-                canvasX + offsetX,
-                canvasY + offsetY,
-                newBounds.width,
-                newBounds.height
-              );
-            }
-          }
-        }
-      }
+      // Note: Canvas preview is now rendered directly in useCanvasRendering
+      // to avoid coordinate mismatch between layerCanvas and transform bounds
     },
-    [aspectRatio, transformState.layerId, transformState.originalImageData, transformState.layerPosition, layerCanvasesRef]
+    [aspectRatio]
   );
 
   // Handle mouse up for transform

@@ -94,7 +94,7 @@ interface UseMouseHandlersReturn {
 // Helper Functions
 // ============================================
 
-const isInHandle = (pos: Point, handle: { x: number; y: number }, size: number = 8): boolean => {
+const isInHandle = (pos: Point, handle: { x: number; y: number }, size: number = 10): boolean => {
   return Math.abs(pos.x - handle.x) <= size && Math.abs(pos.y - handle.y) <= size;
 };
 
@@ -154,6 +154,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   const [dragType, setDragType] = useState<DragType>(null);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point | null>(null);
+  // Store original crop area at drag start for center-based resize
+  const originalCropAreaRef = useRef<CropArea | null>(null);
 
   // Helper to check if position is in bounds
   const isInBounds = useCallback(
@@ -440,6 +442,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
               setDragType("resize");
               setResizeHandle(handle.name);
               dragStartRef.current = imagePos;
+              originalCropAreaRef.current = { ...cropArea }; // Save original for center-based resize
               setIsDragging(true);
               return;
             }
@@ -655,32 +658,70 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         }
         setCropArea({ ...cropArea, x: newX, y: newY });
         dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
-      } else if (dragType === "resize" && resizeHandle) {
-        // Crop resize
-        const newArea = { ...cropArea };
+      } else if (dragType === "resize" && resizeHandle && originalCropAreaRef.current) {
+        // Crop resize with modifier keys support
+        // Shift: maintain aspect ratio (current crop ratio)
+        // Alt/Command: resize from center (based on original center at drag start)
+        const orig = originalCropAreaRef.current;
+        const newArea = { ...orig };
+        // Calculate delta from drag start point (not from previous frame)
         const dx = Math.round(imagePos.x) - dragStartRef.current.x;
         const dy = Math.round(imagePos.y) - dragStartRef.current.y;
+        const fromCenter = e.altKey || e.metaKey;
+        const keepAspect = e.shiftKey;
+        const originalAspect = orig.width / orig.height;
 
+        // Apply resize based on handle, using original cropArea as base
         if (resizeHandle.includes("e")) {
-          newArea.width = Math.max(20, cropArea.width + dx);
+          newArea.width = Math.max(20, orig.width + dx);
+          if (fromCenter) {
+            newArea.x = orig.x - dx;
+            newArea.width = Math.max(20, orig.width + dx * 2);
+          }
         }
         if (resizeHandle.includes("w")) {
-          newArea.x = cropArea.x + dx;
-          newArea.width = Math.max(20, cropArea.width - dx);
+          newArea.x = orig.x + dx;
+          newArea.width = Math.max(20, orig.width - dx);
+          if (fromCenter) {
+            newArea.x = orig.x + dx;
+            newArea.width = Math.max(20, orig.width - dx * 2);
+          }
         }
         if (resizeHandle.includes("s")) {
-          newArea.height = Math.max(20, cropArea.height + dy);
+          newArea.height = Math.max(20, orig.height + dy);
+          if (fromCenter) {
+            newArea.y = orig.y - dy;
+            newArea.height = Math.max(20, orig.height + dy * 2);
+          }
         }
         if (resizeHandle.includes("n")) {
-          newArea.y = cropArea.y + dy;
-          newArea.height = Math.max(20, cropArea.height - dy);
+          newArea.y = orig.y + dy;
+          newArea.height = Math.max(20, orig.height - dy);
+          if (fromCenter) {
+            newArea.y = orig.y + dy;
+            newArea.height = Math.max(20, orig.height - dy * 2);
+          }
         }
 
-        if (ratioValue) {
+        // Apply aspect ratio constraint
+        // If ratioValue is set (not free mode), always use it
+        // If free mode and shift is pressed, use original crop aspect ratio
+        const effectiveRatio = ratioValue || (keepAspect ? originalAspect : null);
+        if (effectiveRatio) {
           if (resizeHandle.includes("e") || resizeHandle.includes("w")) {
-            newArea.height = Math.round(newArea.width / ratioValue);
-          } else {
-            newArea.width = Math.round(newArea.height * ratioValue);
+            const newHeight = newArea.width / effectiveRatio;
+            if (fromCenter) {
+              const heightChange = newHeight - orig.height;
+              newArea.y = orig.y - heightChange / 2;
+            }
+            newArea.height = Math.round(newHeight);
+          } else if (resizeHandle.includes("s") || resizeHandle.includes("n")) {
+            const newWidth = newArea.height * effectiveRatio;
+            if (fromCenter) {
+              const widthChange = newWidth - orig.width;
+              newArea.x = orig.x - widthChange / 2;
+            }
+            newArea.width = Math.round(newWidth);
           }
         }
 
@@ -693,7 +734,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         }
 
         setCropArea(newArea);
-        dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
+        // Don't update dragStartRef - we want delta from original start point
       }
     },
     [
@@ -770,6 +811,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setIsDuplicating(false);
     resetLastDrawPoint();
     (dragStartOriginRef as { current: Point | null }).current = null;
+    originalCropAreaRef.current = null;
 
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);

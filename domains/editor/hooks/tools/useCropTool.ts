@@ -182,7 +182,7 @@ export function useCropTool(): UseCropToolReturn {
   const getCropHandleAtPosition = useCallback(
     (
       imagePos: { x: number; y: number },
-      handleSize: number = 8
+      handleSize: number = 10
     ): { type: "handle" | "inside" | null; handle?: string } => {
       if (!cropArea) return { type: null };
 

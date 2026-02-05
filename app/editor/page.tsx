@@ -555,6 +555,8 @@ function ImageEditorContent() {
     activeLayerId,
     transformBounds: transformState.bounds,
     isTransformActive: transformState.isActive,
+    transformLayerId: transformState.layerId,
+    transformOriginalImageData: transformState.originalImageData,
     getDisplayDimensions,
   });
 
@@ -942,8 +944,6 @@ function ImageEditorContent() {
   const handleApplyCrop = useCallback(() => {
     if (!cropArea) return;
 
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
     // New canvas dimensions from crop area
     const newWidth = Math.round(cropArea.width);
     const newHeight = Math.round(cropArea.height);
@@ -951,32 +951,41 @@ function ImageEditorContent() {
     const offsetY = Math.round(cropArea.y);
 
     // Update each layer's canvas
-    layers.forEach((layer) => {
+    // Use setLayers to update layer positions after crop
+    const updatedLayers = layers.map((layer) => {
       const oldCanvas = layerCanvasesRef.current.get(layer.id);
-      if (!oldCanvas) return;
+      if (!oldCanvas) return layer;
+
+      // Get layer position (where layer is placed in image coordinates)
+      const layerPosX = layer.position?.x || 0;
+      const layerPosY = layer.position?.y || 0;
 
       // Create new canvas with new dimensions
       const newCanvas = document.createElement("canvas");
       newCanvas.width = newWidth;
       newCanvas.height = newHeight;
       const ctx = newCanvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) return layer;
 
-      // For JPEG-like formats or if we want white background for extended areas
-      // Leave transparent for now (PNG-like behavior)
+      // Calculate crop area relative to layer's local coordinate system
+      // Crop area (offsetX, offsetY) is in image coordinates
+      // Layer canvas starts at (layerPosX, layerPosY) in image coordinates
+      // So the crop area in layer-local coords is (offsetX - layerPosX, offsetY - layerPosY)
+      const cropInLayerX = offsetX - layerPosX;
+      const cropInLayerY = offsetY - layerPosY;
 
-      // Calculate source and destination regions
-      // Source: intersection of crop area with original canvas
-      const srcX = Math.max(0, offsetX);
-      const srcY = Math.max(0, offsetY);
-      const srcRight = Math.min(displayWidth, offsetX + newWidth);
-      const srcBottom = Math.min(displayHeight, offsetY + newHeight);
+      // Calculate source region from layer canvas (in layer-local coordinates)
+      const srcX = Math.max(0, cropInLayerX);
+      const srcY = Math.max(0, cropInLayerY);
+      const srcRight = Math.min(oldCanvas.width, cropInLayerX + newWidth);
+      const srcBottom = Math.min(oldCanvas.height, cropInLayerY + newHeight);
       const srcWidth = Math.max(0, srcRight - srcX);
       const srcHeight = Math.max(0, srcBottom - srcY);
 
       // Destination: where to draw in new canvas
-      const destX = srcX - offsetX;
-      const destY = srcY - offsetY;
+      // destX/Y accounts for when crop extends beyond the layer's bounds
+      const destX = srcX - cropInLayerX;
+      const destY = srcY - cropInLayerY;
 
       // Draw the portion of old canvas that intersects with crop area
       if (srcWidth > 0 && srcHeight > 0) {
@@ -994,7 +1003,17 @@ function ImageEditorContent() {
       if (layer.id === activeLayerId) {
         editCanvasRef.current = newCanvas;
       }
+
+      // After crop, reset layer position to (0, 0)
+      // because the new canvas is already positioned correctly within the new image bounds
+      return {
+        ...layer,
+        position: { x: 0, y: 0 },
+      };
     });
+
+    // Update layers with new positions
+    setLayers(updatedLayers);
 
     // Update canvas size in state
     setCanvasSize({ width: newWidth, height: newHeight });
@@ -1023,7 +1042,7 @@ function ImageEditorContent() {
         setPan({ x: 0, y: 0 });
       }
     }, 0);
-  }, [cropArea, layers, activeLayerId, rotation, getDisplayDimensions, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
+  }, [cropArea, layers, activeLayerId, rotation, setLayers, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
 
   const exportImage = useCallback(() => {
     // Check if we have any layers to export
