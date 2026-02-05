@@ -5,6 +5,7 @@ import { UnifiedLayer, Point, CropArea, Guide, SnapSource } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
+import { CHECKERBOARD, HANDLE_SIZE } from "../constants";
 
 // ============================================
 // Types
@@ -209,7 +210,7 @@ export function useCanvasRendering(
     const scaledHeight = displayHeight * zoom;
 
     // Draw checkerboard pattern for transparency (like Photoshop)
-    const checkerSize = 8;
+    const checkerSize = CHECKERBOARD.SIZE_DEFAULT;
     const lightColor = colors.checkerboardLight;
     const darkColor = colors.checkerboardDark;
 
@@ -281,7 +282,7 @@ export function useCanvasRendering(
       // In canvas expand mode, draw checkerboard pattern for extended areas
       if (canvasExpandMode) {
         // Create checkerboard pattern for areas outside canvas
-        const checkerSize = 10;
+        const checkerSize = CHECKERBOARD.SIZE_EXPAND;
         const patternCanvas = document.createElement("canvas");
         patternCanvas.width = checkerSize * 2;
         patternCanvas.height = checkerSize * 2;
@@ -386,7 +387,7 @@ export function useCanvasRendering(
       }
 
       // Draw resize handles
-      const handleSize = 10;
+      const handleSize = HANDLE_SIZE.DEFAULT;
       ctx.fillStyle = colors.selection;
       const handles = [
         { x: cropX, y: cropY },
@@ -634,7 +635,7 @@ export function useCanvasRendering(
       ctx.strokeRect(transformX, transformY, transformW, transformH);
 
       // Draw resize handles
-      const handleSize = 10;
+      const handleSize = HANDLE_SIZE.DEFAULT;
       ctx.fillStyle = colors.selection;
       ctx.strokeStyle = colors.textOnColor;
       ctx.lineWidth = 1;

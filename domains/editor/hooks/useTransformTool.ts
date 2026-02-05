@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
+import { HANDLE_SIZE as HANDLE_SIZE_CONST } from "../constants";
 
 // ============================================
 // Types
@@ -79,8 +80,8 @@ interface UseTransformToolReturn {
 // Helper Functions
 // ============================================
 
-// Handle size for interaction detection
-const HANDLE_SIZE = 10;
+// Handle size for interaction detection (from shared constants)
+const HANDLE_SIZE = HANDLE_SIZE_CONST.HIT_AREA;
 
 function isInHandle(pos: Point, handle: Point, size: number = HANDLE_SIZE): boolean {
   return Math.abs(pos.x - handle.x) <= size && Math.abs(pos.y - handle.y) <= size;
