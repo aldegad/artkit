@@ -43,6 +43,10 @@ interface UseKeyboardShortcutsOptions {
   clipboardRef: RefObject<ImageData | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
 
+  // Transform state (from useTransformTool)
+  isTransformActive?: boolean;
+  cancelTransform?: () => void;
+
   // Dimensions helper
   getDisplayDimensions: () => { width: number; height: number };
 
@@ -78,6 +82,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     setSelection,
     clipboardRef,
     floatingLayerRef,
+    isTransformActive = false,
+    cancelTransform,
     getDisplayDimensions,
     saveToHistory,
     enabled = true,
@@ -144,7 +150,12 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       // Undo (Cmd+Z)
       if (matchesShortcut(e, HISTORY_SHORTCUTS.undo) && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        // If transform is active, cancel it instead of undo
+        if (isTransformActive && cancelTransform) {
+          cancelTransform();
+        } else {
+          undo();
+        }
       }
 
       // Redo (Cmd+Shift+Z or Cmd+Y)
@@ -275,6 +286,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     setSelection,
     clipboardRef,
     floatingLayerRef,
+    isTransformActive,
+    cancelTransform,
     canvasRef,
     imageRef,
     editCanvasRef,

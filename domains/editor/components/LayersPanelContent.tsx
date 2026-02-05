@@ -253,6 +253,10 @@ export default function LayersPanelContent() {
   const { state: { selection } } = useEditorState();
   const { t } = useLanguage();
 
+  // Editing state for layer names
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
   // Handle image file upload
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -407,13 +411,51 @@ export default function LayersPanelContent() {
 
                   {/* Layer name */}
                   <div className="flex-1 min-w-0">
-                    <input
-                      type="text"
-                      value={layer.name}
-                      onChange={(e) => renameLayer(layer.id, e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full text-xs bg-transparent border-none focus:outline-none focus:bg-surface-secondary px-1 rounded truncate"
-                    />
+                    {editingLayerId === layer.id ? (
+                      <input
+                        type="text"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={() => {
+                          if (editingName.trim()) {
+                            renameLayer(layer.id, editingName.trim());
+                          }
+                          setEditingLayerId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            if (editingName.trim()) {
+                              renameLayer(layer.id, editingName.trim());
+                            }
+                            setEditingLayerId(null);
+                          } else if (e.key === "Escape") {
+                            setEditingLayerId(null);
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="w-full text-xs bg-surface-secondary border border-accent-primary/50 focus:outline-none px-1 rounded"
+                      />
+                    ) : (
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          const timeout = setTimeout(() => {
+                            setEditingLayerId(layer.id);
+                            setEditingName(layer.name);
+                          }, 500);
+                          const handleUp = () => {
+                            clearTimeout(timeout);
+                            window.removeEventListener("mouseup", handleUp);
+                          };
+                          window.addEventListener("mouseup", handleUp);
+                        }}
+                        className="text-xs px-1 truncate cursor-default select-none"
+                        title="Long press to rename"
+                      >
+                        {layer.name}
+                      </div>
+                    )}
                     <span className="text-[10px] text-text-quaternary px-1">
                       Layer
                     </span>

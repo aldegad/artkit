@@ -450,6 +450,8 @@ function ImageEditorContent() {
     setSelection,
     clipboardRef,
     floatingLayerRef,
+    isTransformActive: transformState.isActive,
+    cancelTransform,
     getDisplayDimensions,
     saveToHistory,
   });
