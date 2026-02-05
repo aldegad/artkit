@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "../../shared/contexts";
-import { ImageDropZone } from "../../shared/components";
+import { ImageDropZone, Select } from "../../shared/components";
 import { OutputFormat, ImageFile, formatBytes } from "../../domains/converter";
 
 export default function ImageConverter() {
@@ -155,15 +155,16 @@ export default function ImageConverter() {
         {/* Format selector */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-text-secondary">{t.format}:</span>
-          <select
+          <Select
             value={outputFormat}
-            onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
-            className="px-3 py-1.5 bg-surface-secondary border border-border-default rounded-lg text-sm focus:outline-none focus:border-accent-primary"
-          >
-            <option value="webp">WebP</option>
-            <option value="jpeg">JPEG</option>
-            <option value="png">PNG</option>
-          </select>
+            onChange={(value) => setOutputFormat(value as OutputFormat)}
+            options={[
+              { value: "webp", label: "WebP" },
+              { value: "jpeg", label: "JPEG" },
+              { value: "png", label: "PNG" },
+            ]}
+            size="md"
+          />
         </div>
 
         {/* Quality slider */}
