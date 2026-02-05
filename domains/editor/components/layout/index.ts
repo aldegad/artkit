@@ -2,11 +2,16 @@
 // Editor Layout Components - Public API
 // ============================================
 
-export { default as EditorSplitContainer } from "./EditorSplitContainer";
-export { default as EditorPanel } from "./EditorPanel";
-export { default as EditorResizeHandle } from "./EditorResizeHandle";
-export { default as EditorFloatingWindows } from "./EditorFloatingWindows";
+// Re-export shared layout components
+export {
+  SplitView as EditorSplitView,
+  SplitContainer as EditorSplitContainer,
+  Panel as EditorPanel,
+  ResizeHandle as EditorResizeHandle,
+  FloatingWindows as EditorFloatingWindows,
+} from "@/shared/components/layout";
 
+// Editor-specific panel registry
 export {
   registerEditorPanelComponent,
   clearEditorPanelComponents,
@@ -16,4 +21,5 @@ export {
   getEditorPanelDefaultSize,
   getEditorPanelMinSize,
   getRegisteredEditorPanelIds,
+  usePanelUpdate,
 } from "./EditorPanelRegistry";

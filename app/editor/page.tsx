@@ -28,6 +28,7 @@ import {
   BackgroundRemovalModals,
   EditorToolOptions,
   EditorStatusBar,
+  PanModeToggle,
 } from "../../domains/editor";
 // IndexedDB storage functions are now used through storageProvider
 import {
@@ -102,6 +103,7 @@ function ImageEditorContent() {
       zoom,
       pan,
       isSpacePressed,
+      isPanLocked,
       projectName,
       currentProjectId,
       savedProjects,
@@ -306,9 +308,9 @@ function ImageEditorContent() {
 
   // Check if in active tool mode (considering space key for temporary hand tool)
   const getActiveToolMode = useCallback(() => {
-    if (isSpacePressed) return "hand";
+    if (isPanLocked || isSpacePressed) return "hand";
     return toolMode;
-  }, [isSpacePressed, toolMode]);
+  }, [isPanLocked, isSpacePressed, toolMode]);
 
   // Mouse handlers - using extracted hook (gets zoom, pan, rotation, canvasSize, refs from context)
   const {
@@ -1543,7 +1545,7 @@ function ImageEditorContent() {
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Top Toolbar - Row 1: File operations & Project name */}
-      <div className="flex items-center gap-2 px-2 md:px-4 py-1.5 bg-surface-primary border-b border-border-default shrink-0">
+      <div className="flex items-center gap-2 px-2 md:px-4 h-11 bg-surface-primary border-b border-border-default shrink-0">
         <h1 className="text-xs md:text-sm font-semibold hidden md:block">{t.imageEditor}</h1>
         <div className="h-4 w-px bg-border-default hidden md:block" />
 
@@ -1811,11 +1813,11 @@ function ImageEditorContent() {
             )}
           </div>
 
-          <div className="flex-1" />
+          <div className="flex-1 min-w-0" />
 
           <button
             onClick={clearEdits}
-            className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors"
+            className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
             title={t.resetEdit}
           >
             {t.reset}
@@ -1823,7 +1825,7 @@ function ImageEditorContent() {
 
           <button
             onClick={exportImage}
-            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors"
+            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
           >
             Export
           </button>
@@ -1870,6 +1872,12 @@ function ImageEditorContent() {
       <EditorLayoutProvider>
         <div className="h-full w-full flex overflow-hidden relative">
           <EditorDockableArea />
+          {/* Mobile Pan Mode Toggle - floating button */}
+          {layers.length > 0 && (
+            <div className="absolute bottom-4 right-4 z-50 md:hidden">
+              <PanModeToggle />
+            </div>
+          )}
         </div>
       </EditorLayoutProvider>
 
