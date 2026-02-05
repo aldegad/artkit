@@ -21,10 +21,10 @@ export default function Header() {
 
   return (
     <div className="flex items-center h-10 bg-surface-primary border-b border-border-default shrink-0">
-      {/* Logo area - Mobile only: fixed position to stay above sidebar (z-[60]) */}
+      {/* Logo area - Mobile only: fixed position to stay above sidebar (z-60) */}
       <button
         onClick={toggle}
-        className="md:hidden w-14 h-10 flex items-center justify-center shrink-0 fixed left-0 top-0 z-60 bg-surface-primary"
+        className="md:hidden w-14 h-10 flex items-center justify-center shrink-0 fixed left-0 top-0 z-60 bg-surface-primary border-b border-border-default"
         aria-label="Toggle menu"
       >
         <div className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
@@ -39,7 +39,7 @@ export default function Header() {
       <div className="md:hidden w-14 shrink-0" />
 
       {/* Slot area - Page-specific content */}
-      <div className="flex-1 min-w-0 flex items-center gap-2 px-4 overflow-x-auto">
+      <div className="flex-1 min-w-0 flex items-center gap-2 pl-2 pr-4 md:px-4 overflow-x-auto">
         {slot}
       </div>
 
