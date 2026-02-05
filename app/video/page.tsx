@@ -17,6 +17,7 @@ import {
   MaskControls,
   VideoMenuBar,
   VideoToolbar,
+  clearVideoAutosave,
 } from "../../domains/video";
 import Tooltip from "../../shared/components/Tooltip";
 
@@ -40,8 +41,9 @@ function VideoEditorContent() {
   const hasContent = clips.length > 0;
 
   // Menu handlers
-  const handleNew = useCallback(() => {
+  const handleNew = useCallback(async () => {
     if (window.confirm(t.newProjectConfirm)) {
+      await clearVideoAutosave();
       window.location.reload();
     }
   }, [t]);
