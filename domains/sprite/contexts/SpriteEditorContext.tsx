@@ -1,161 +1,23 @@
 "use client";
 
+import { createContext, useContext, useRef, useEffect, ReactNode, useCallback } from "react";
+import { SpriteFrame } from "../types";
+import { AUTOSAVE_DEBOUNCE_MS, loadAutosaveData, saveAutosaveData, clearAutosaveData } from "../utils/autosave";
+import { deepCopyFrame } from "../utils/frameUtils";
 import {
-  createContext,
-  useContext,
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  ReactNode,
-} from "react";
-import {
-  Point,
-  Size,
-  SpriteFrame,
-  SpriteToolMode,
-  TimelineMode,
-  SavedSpriteProject,
-  UnifiedLayer,
-} from "../types";
-import {
-  AUTOSAVE_DEBOUNCE_MS,
-  loadAutosaveData,
-  saveAutosaveData,
-  clearAutosaveData,
-} from "../utils/autosave";
-import { deepCopyFrames, deepCopyFrame, generateLayerId } from "../utils/frameUtils";
+  useSpriteFrameStore,
+  useSpriteViewportStore,
+  useSpriteToolStore,
+  useSpriteDragStore,
+  useSpriteUIStore,
+  useSpriteLayerStore,
+} from "../stores";
 
 // ============================================
-// Context Interface
+// Context Interface (Refs Only)
 // ============================================
 
-interface EditorContextValue {
-  // Image
-  imageSrc: string | null;
-  setImageSrc: (src: string | null) => void;
-  imageSize: Size;
-  setImageSize: (size: Size) => void;
-
-  // Frames
-  frames: SpriteFrame[];
-  setFrames: React.Dispatch<React.SetStateAction<SpriteFrame[]>>;
-  nextFrameId: number;
-  setNextFrameId: React.Dispatch<React.SetStateAction<number>>;
-  currentFrameIndex: number;
-  setCurrentFrameIndex: React.Dispatch<React.SetStateAction<number>>;
-  selectedFrameId: number | null;
-  setSelectedFrameId: (id: number | null) => void;
-  selectedPointIndex: number | null;
-  setSelectedPointIndex: (index: number | null) => void;
-
-  // Tools
-  toolMode: SpriteToolMode;
-  setSpriteToolMode: (mode: SpriteToolMode) => void;
-  currentPoints: Point[];
-  setCurrentPoints: React.Dispatch<React.SetStateAction<Point[]>>;
-  isSpacePressed: boolean;
-  setIsSpacePressed: (pressed: boolean) => void;
-
-  // Viewport
-  zoom: number;
-  setZoom: React.Dispatch<React.SetStateAction<number>>;
-  pan: Point;
-  setPan: React.Dispatch<React.SetStateAction<Point>>;
-  scale: number;
-  setScale: (scale: number) => void;
-  canvasHeight: number;
-  setCanvasHeight: React.Dispatch<React.SetStateAction<number>>;
-  isCanvasCollapsed: boolean;
-  setIsCanvasCollapsed: (collapsed: boolean) => void;
-
-  // Animation
-  isPlaying: boolean;
-  setIsPlaying: (playing: boolean) => void;
-  fps: number;
-  setFps: (fps: number) => void;
-
-  // Timeline
-  timelineMode: TimelineMode;
-  setTimelineMode: (mode: TimelineMode) => void;
-
-  // Drag States
-  isDragging: boolean;
-  setIsDragging: (dragging: boolean) => void;
-  dragStart: Point;
-  setDragStart: (start: Point) => void;
-  isPanning: boolean;
-  setIsPanning: (panning: boolean) => void;
-  lastPanPoint: Point;
-  setLastPanPoint: (point: Point) => void;
-  draggedFrameId: number | null;
-  setDraggedFrameId: (id: number | null) => void;
-  dragOverIndex: number | null;
-  setDragOverIndex: (index: number | null) => void;
-  editingOffsetFrameId: number | null;
-  setEditingOffsetFrameId: (id: number | null) => void;
-  offsetDragStart: Point;
-  setOffsetDragStart: (start: Point) => void;
-  isResizing: boolean;
-  setIsResizing: (resizing: boolean) => void;
-
-  // Windows
-  isPreviewWindowOpen: boolean;
-  setIsPreviewWindowOpen: (open: boolean) => void;
-  isFrameEditOpen: boolean;
-  setIsFrameEditOpen: (open: boolean) => void;
-  isProjectListOpen: boolean;
-  setIsProjectListOpen: (open: boolean) => void;
-  isSpriteSheetImportOpen: boolean;
-  setIsSpriteSheetImportOpen: (open: boolean) => void;
-
-  // Brush Tool
-  brushColor: string;
-  setBrushColor: (color: string) => void;
-  brushSize: number;
-  setBrushSize: (size: number) => void;
-
-  // Background Removal
-  isBackgroundRemovalMode: boolean;
-  setIsBackgroundRemovalMode: (mode: boolean) => void;
-  eraserTolerance: number;
-  setEraserTolerance: (tolerance: number) => void;
-  eraserMode: "connected" | "all";
-  setEraserMode: (mode: "connected" | "all") => void;
-
-  // History (Undo/Redo)
-  canUndo: boolean;
-  canRedo: boolean;
-  undo: () => void;
-  redo: () => void;
-  pushHistory: () => void;
-
-  // Project
-  projectName: string;
-  setProjectName: (name: string) => void;
-  savedProjects: SavedSpriteProject[];
-  setSavedSpriteProjects: React.Dispatch<React.SetStateAction<SavedSpriteProject[]>>;
-  currentProjectId: string | null;
-  setCurrentProjectId: (id: string | null) => void;
-  newProject: () => void;
-
-  // Clipboard
-  copyFrame: () => void;
-  pasteFrame: () => void;
-  clipboardFrame: SpriteFrame | null;
-
-  // Composition Layers (using UnifiedLayer)
-  compositionLayers: UnifiedLayer[];
-  setCompositionLayers: React.Dispatch<React.SetStateAction<UnifiedLayer[]>>;
-  activeLayerId: string | null;
-  setActiveLayerId: (id: string | null) => void;
-  addCompositionLayer: (paintData: string, name?: string) => void;
-  removeCompositionLayer: (id: string) => void;
-  updateCompositionLayer: (id: string, updates: Partial<UnifiedLayer>) => void;
-  reorderCompositionLayers: (fromIndex: number, toIndex: number) => void;
-  duplicateCompositionLayer: (id: string) => void;
-
-  // Refs
+interface EditorRefsContextValue {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   canvasContainerRef: React.RefObject<HTMLDivElement | null>;
   previewCanvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -163,16 +25,13 @@ interface EditorContextValue {
   animationRef: React.RefObject<number | null>;
   lastFrameTimeRef: React.RefObject<number>;
   didPanOrDragRef: React.RefObject<boolean>;
-
-  // Computed
-  getTransformParams: () => { scale: number; zoom: number; pan: Point };
 }
 
 // ============================================
 // Context Creation
 // ============================================
 
-const EditorContext = createContext<EditorContextValue | null>(null);
+const EditorRefsContext = createContext<EditorRefsContextValue | null>(null);
 
 // ============================================
 // Provider Component
@@ -183,95 +42,6 @@ interface EditorProviderProps {
 }
 
 export function EditorProvider({ children }: EditorProviderProps) {
-  // Image State
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [imageSize, setImageSize] = useState<Size>({ width: 0, height: 0 });
-
-  // Frame State
-  const [frames, setFrames] = useState<SpriteFrame[]>([]);
-  const [nextFrameId, setNextFrameId] = useState(1);
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-  const [selectedFrameId, setSelectedFrameId] = useState<number | null>(null);
-  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
-
-  // Tool State
-  const [toolMode, setSpriteToolMode] = useState<SpriteToolMode>("pen");
-  const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
-
-  // Viewport State
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
-  const [scale, setScale] = useState(1);
-  const [canvasHeight, setCanvasHeight] = useState(400);
-  const [isCanvasCollapsed, setIsCanvasCollapsed] = useState(false);
-
-  // Animation State
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [fps, setFps] = useState(12);
-
-  // Timeline State
-  const [timelineMode, setTimelineMode] = useState<TimelineMode>("reorder");
-
-  // Drag State
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [lastPanPoint, setLastPanPoint] = useState<Point>({ x: 0, y: 0 });
-  const [draggedFrameId, setDraggedFrameId] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [editingOffsetFrameId, setEditingOffsetFrameId] = useState<number | null>(null);
-  const [offsetDragStart, setOffsetDragStart] = useState<Point>({ x: 0, y: 0 });
-  const [isResizing, setIsResizing] = useState(false);
-
-  // Window State
-  const [isPreviewWindowOpen, setIsPreviewWindowOpen] = useState(false);
-  const [isFrameEditOpen, setIsFrameEditOpen] = useState(false);
-  const [isProjectListOpen, setIsProjectListOpen] = useState(false);
-  const [isSpriteSheetImportOpen, setIsSpriteSheetImportOpen] = useState(false);
-
-  // Brush Tool State
-  const [brushColor, setBrushColor] = useState("#000000");
-  const [brushSize, setBrushSize] = useState(1);
-
-  // Background Removal State
-  const [isBackgroundRemovalMode, setIsBackgroundRemovalMode] = useState(false);
-  const [eraserTolerance, setEraserTolerance] = useState(32);
-  const [eraserMode, setEraserMode] = useState<"connected" | "all">("connected");
-
-  // History State (Undo/Redo)
-  const historyRef = useRef<SpriteFrame[][]>([]);
-  const historyIndexRef = useRef(-1);
-  const [historyVersion, setHistoryVersion] = useState(0); // for re-render trigger
-
-  // Project State
-  const [projectName, setProjectName] = useState("");
-  const [savedProjects, setSavedSpriteProjects] = useState<SavedSpriteProject[]>([]);
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-
-  // Clipboard State
-  const [clipboardFrame, setClipboardFrame] = useState<SpriteFrame | null>(null);
-
-  // Composition Layers State
-  const [compositionLayers, setCompositionLayers] = useState<UnifiedLayer[]>([]);
-  const [activeLayerId, setActiveLayerIdInternal] = useState<string | null>(null);
-
-  // Wrapper for setActiveLayerId to ensure it's always valid
-  const setActiveLayerId = useCallback((id: string | null) => {
-    setActiveLayerIdInternal(id);
-  }, []);
-
-  // Ensure activeLayerId is valid whenever compositionLayers changes
-  useEffect(() => {
-    if (activeLayerId === null && compositionLayers.length > 0) {
-      // If no active layer but layers exist, select the first one
-      setActiveLayerIdInternal(compositionLayers[0].id);
-    } else if (activeLayerId !== null && !compositionLayers.some((l) => l.id === activeLayerId)) {
-      // If active layer was deleted, select another one
-      setActiveLayerIdInternal(compositionLayers.length > 0 ? compositionLayers[0].id : null);
-    }
-  }, [compositionLayers, activeLayerId]);
-
   // Refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -283,25 +53,36 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const isInitializedRef = useRef(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Get store states for autosave
+  const frameStore = useSpriteFrameStore();
+  const viewportStore = useSpriteViewportStore();
+  const uiStore = useSpriteUIStore();
+  const layerStore = useSpriteLayerStore();
+
   // Autosave: Load saved data on mount
   useEffect(() => {
     const loadData = async () => {
       const data = await loadAutosaveData();
       if (data) {
-        // Restore state
-        if (data.imageSrc) setImageSrc(data.imageSrc);
-        if (data.imageSize) setImageSize(data.imageSize);
-        if (data.frames && data.frames.length > 0) setFrames(data.frames);
-        if (data.nextFrameId) setNextFrameId(data.nextFrameId);
-        if (data.fps) setFps(data.fps);
-        if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
-        if (data.zoom) setZoom(data.zoom);
-        if (data.pan) setPan(data.pan);
-        if (data.scale) setScale(data.scale);
-        if (data.projectName) setProjectName(data.projectName);
-        // Restore composition layers
-        if (data.compositionLayers) setCompositionLayers(data.compositionLayers);
-        if (data.activeLayerId !== undefined) setActiveLayerId(data.activeLayerId);
+        // Restore frame state
+        if (data.imageSrc) frameStore.setImageSrc(data.imageSrc);
+        if (data.imageSize) frameStore.setImageSize(data.imageSize);
+        if (data.frames && data.frames.length > 0) frameStore.setFrames(data.frames);
+        if (data.nextFrameId) frameStore.setNextFrameId(data.nextFrameId);
+        if (data.fps) frameStore.setFps(data.fps);
+        if (data.currentFrameIndex !== undefined) frameStore.setCurrentFrameIndex(data.currentFrameIndex);
+
+        // Restore viewport state
+        if (data.zoom) viewportStore.setZoom(data.zoom);
+        if (data.pan) viewportStore.setPan(data.pan);
+        if (data.scale) viewportStore.setScale(data.scale);
+
+        // Restore UI state
+        if (data.projectName) uiStore.setProjectName(data.projectName);
+
+        // Restore layer state
+        if (data.compositionLayers) layerStore.setCompositionLayers(data.compositionLayers);
+        if (data.activeLayerId !== undefined) layerStore.setActiveLayerId(data.activeLayerId);
       }
       isInitializedRef.current = true;
     };
@@ -322,18 +103,18 @@ export function EditorProvider({ children }: EditorProviderProps) {
     // Debounce the save
     autosaveTimeoutRef.current = setTimeout(() => {
       void saveAutosaveData({
-        imageSrc,
-        imageSize,
-        frames,
-        nextFrameId,
-        fps,
-        currentFrameIndex,
-        zoom,
-        pan,
-        scale,
-        projectName,
-        compositionLayers,
-        activeLayerId,
+        imageSrc: frameStore.imageSrc,
+        imageSize: frameStore.imageSize,
+        frames: frameStore.frames,
+        nextFrameId: frameStore.nextFrameId,
+        fps: frameStore.fps,
+        currentFrameIndex: frameStore.currentFrameIndex,
+        zoom: viewportStore.zoom,
+        pan: viewportStore.pan,
+        scale: viewportStore.scale,
+        projectName: uiStore.projectName,
+        compositionLayers: layerStore.compositionLayers,
+        activeLayerId: layerStore.activeLayerId,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -343,380 +124,21 @@ export function EditorProvider({ children }: EditorProviderProps) {
       }
     };
   }, [
-    imageSrc,
-    imageSize,
-    frames,
-    nextFrameId,
-    fps,
-    currentFrameIndex,
-    zoom,
-    pan,
-    scale,
-    projectName,
-    compositionLayers,
-    activeLayerId,
+    frameStore.imageSrc,
+    frameStore.imageSize,
+    frameStore.frames,
+    frameStore.nextFrameId,
+    frameStore.fps,
+    frameStore.currentFrameIndex,
+    viewportStore.zoom,
+    viewportStore.pan,
+    viewportStore.scale,
+    uiStore.projectName,
+    layerStore.compositionLayers,
+    layerStore.activeLayerId,
   ]);
 
-  // Computed
-  const getTransformParams = useCallback(
-    () => ({
-      scale,
-      zoom,
-      pan,
-    }),
-    [scale, zoom, pan],
-  );
-
-  // History functions (historyVersion triggers re-render for canUndo/canRedo)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _historyVersion = historyVersion; // Keep for dependency tracking
-
-  // Track if there are unsaved changes after pushHistory was called
-  const hasUnsavedChangesRef = useRef(false);
-
-  const canUndo = historyIndexRef.current >= 0 && historyRef.current.length > 0;
-  const canRedo = historyIndexRef.current < historyRef.current.length - 1;
-
-  const pushHistory = useCallback(() => {
-    // Remove any future history if we're not at the end
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-    }
-    // Deep copy frames and add to history (this saves the state BEFORE the change)
-    historyRef.current.push(deepCopyFrames(frames));
-    historyIndexRef.current = historyRef.current.length - 1;
-    // Mark that a change is about to happen
-    hasUnsavedChangesRef.current = true;
-    // Limit history to 50 items
-    if (historyRef.current.length > 50) {
-      historyRef.current.shift();
-      historyIndexRef.current--;
-    }
-    setHistoryVersion((v) => v + 1);
-  }, [frames]);
-
-  const undo = useCallback(() => {
-    if (historyRef.current.length > 0 && historyIndexRef.current >= 0) {
-      // If there are unsaved changes (state after pushHistory), save current state for redo
-      if (
-        hasUnsavedChangesRef.current &&
-        historyIndexRef.current === historyRef.current.length - 1
-      ) {
-        historyRef.current.push(deepCopyFrames(frames));
-        hasUnsavedChangesRef.current = false;
-      }
-
-      // Restore previous state
-      const prevFrames = historyRef.current[historyIndexRef.current];
-      historyIndexRef.current--;
-      setFrames(deepCopyFrames(prevFrames));
-      setHistoryVersion((v) => v + 1);
-    }
-  }, [frames, setFrames]);
-
-  const redo = useCallback(() => {
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyIndexRef.current++;
-      const nextFrames = historyRef.current[historyIndexRef.current];
-      setFrames(deepCopyFrames(nextFrames));
-      setHistoryVersion((v) => v + 1);
-    }
-  }, [setFrames]);
-
-  // New Project - reset all state to initial values
-  const newProject = useCallback(() => {
-    // Reset image
-    setImageSrc(null);
-    setImageSize({ width: 0, height: 0 });
-    imageRef.current = null;
-
-    // Reset frames
-    setFrames([]);
-    setNextFrameId(1);
-    setCurrentFrameIndex(0);
-    setSelectedFrameId(null);
-    setSelectedPointIndex(null);
-    setCurrentPoints([]);
-
-    // Reset viewport
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-    setScale(1);
-
-    // Reset tool
-    setSpriteToolMode("pen");
-
-    // Reset animation
-    setIsPlaying(false);
-    setFps(12);
-
-    // Reset project
-    setProjectName("");
-    setCurrentProjectId(null);
-
-    // Reset composition layers
-    setCompositionLayers([]);
-    setActiveLayerId(null);
-
-    // Clear history
-    historyRef.current = [];
-    historyIndexRef.current = -1;
-    setHistoryVersion((v) => v + 1);
-
-    // Clear autosave
-    void clearAutosaveData();
-  }, []);
-
-  // Copy current frame to clipboard
-  const copyFrame = useCallback(() => {
-    if (frames.length === 0) return;
-
-    // Copy the current frame (by index)
-    const frameToCopy = frames[currentFrameIndex];
-    if (!frameToCopy) return;
-
-    // Deep copy the frame
-    const copiedFrame = deepCopyFrame(frameToCopy);
-    setClipboardFrame(copiedFrame);
-    console.log("[Clipboard] Frame copied:", copiedFrame.id);
-  }, [frames, currentFrameIndex]);
-
-  // Paste frame from clipboard
-  const pasteFrame = useCallback(() => {
-    if (!clipboardFrame) return;
-
-    // Create a new frame with a new ID
-    const newFrame: SpriteFrame = {
-      ...deepCopyFrame(clipboardFrame),
-      id: nextFrameId,
-    };
-
-    // Push history before making changes
-    pushHistory();
-
-    // Insert the new frame after the current frame
-    const insertIndex = currentFrameIndex + 1;
-    setFrames((prev) => {
-      const newFrames = [...prev];
-      newFrames.splice(insertIndex, 0, newFrame);
-      return newFrames;
-    });
-
-    // Update frame ID counter and select the new frame
-    setNextFrameId((prev) => prev + 1);
-    setCurrentFrameIndex(insertIndex);
-
-    console.log("[Clipboard] Frame pasted as new frame:", newFrame.id);
-  }, [
-    clipboardFrame,
-    nextFrameId,
-    currentFrameIndex,
-    pushHistory,
-    setFrames,
-    setNextFrameId,
-    setCurrentFrameIndex,
-  ]);
-
-  // Composition Layer Functions
-  const addCompositionLayer = useCallback((paintData: string, name?: string) => {
-    const img = new Image();
-    img.onload = () => {
-      const newLayerId = generateLayerId();
-      setCompositionLayers((prev) => {
-        const newLayer: UnifiedLayer = {
-          id: newLayerId,
-          name: name || `Layer ${prev.length + 1}`,
-          type: "paint",
-          paintData,
-          visible: true,
-          locked: false,
-          opacity: 100,
-          position: { x: 0, y: 0 },
-          scale: 1,
-          rotation: 0,
-          zIndex: prev.length,
-          originalSize: { width: img.width, height: img.height },
-        };
-        return [...prev, newLayer];
-      });
-      setActiveLayerId(newLayerId);
-    };
-    img.src = paintData;
-  }, []);
-
-  const removeCompositionLayer = useCallback((id: string) => {
-    setCompositionLayers((prev) => {
-      const newLayers = prev.filter((layer) => layer.id !== id);
-      // Update zIndex for remaining layers
-      return newLayers.map((layer, index) => ({ ...layer, zIndex: index }));
-    });
-    // The useEffect will handle selecting another layer if needed
-  }, []);
-
-  const updateCompositionLayer = useCallback((id: string, updates: Partial<UnifiedLayer>) => {
-    setCompositionLayers((prev) =>
-      prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
-    );
-  }, []);
-
-  const reorderCompositionLayers = useCallback((fromIndex: number, toIndex: number) => {
-    setCompositionLayers((prev) => {
-      const newLayers = [...prev];
-      const [removed] = newLayers.splice(fromIndex, 1);
-      newLayers.splice(toIndex, 0, removed);
-      // Update zIndex for all layers
-      return newLayers.map((layer, index) => ({ ...layer, zIndex: index }));
-    });
-  }, []);
-
-  const duplicateCompositionLayer = useCallback((id: string) => {
-    setCompositionLayers((prev) => {
-      const layer = prev.find((l) => l.id === id);
-      if (!layer) return prev;
-
-      const newLayerId = generateLayerId();
-      const pos = layer.position ?? { x: 0, y: 0 };
-      const newLayer: UnifiedLayer = {
-        ...layer,
-        id: newLayerId,
-        name: `${layer.name} (copy)`,
-        position: { x: pos.x + 20, y: pos.y + 20 },
-        zIndex: prev.length,
-      };
-
-      // Set active layer after state update
-      setTimeout(() => setActiveLayerId(newLayerId), 0);
-
-      return [...prev, newLayer];
-    });
-  }, []);
-
-  const value: EditorContextValue = {
-    // Image
-    imageSrc,
-    setImageSrc,
-    imageSize,
-    setImageSize,
-
-    // Frames
-    frames,
-    setFrames,
-    nextFrameId,
-    setNextFrameId,
-    currentFrameIndex,
-    setCurrentFrameIndex,
-    selectedFrameId,
-    setSelectedFrameId,
-    selectedPointIndex,
-    setSelectedPointIndex,
-
-    // Tools
-    toolMode,
-    setSpriteToolMode,
-    currentPoints,
-    setCurrentPoints,
-    isSpacePressed,
-    setIsSpacePressed,
-
-    // Viewport
-    zoom,
-    setZoom,
-    pan,
-    setPan,
-    scale,
-    setScale,
-    canvasHeight,
-    setCanvasHeight,
-    isCanvasCollapsed,
-    setIsCanvasCollapsed,
-
-    // Animation
-    isPlaying,
-    setIsPlaying,
-    fps,
-    setFps,
-
-    // Timeline
-    timelineMode,
-    setTimelineMode,
-
-    // Drag States
-    isDragging,
-    setIsDragging,
-    dragStart,
-    setDragStart,
-    isPanning,
-    setIsPanning,
-    lastPanPoint,
-    setLastPanPoint,
-    draggedFrameId,
-    setDraggedFrameId,
-    dragOverIndex,
-    setDragOverIndex,
-    editingOffsetFrameId,
-    setEditingOffsetFrameId,
-    offsetDragStart,
-    setOffsetDragStart,
-    isResizing,
-    setIsResizing,
-
-    // Windows
-    isPreviewWindowOpen,
-    setIsPreviewWindowOpen,
-    isFrameEditOpen,
-    setIsFrameEditOpen,
-    isProjectListOpen,
-    setIsProjectListOpen,
-    isSpriteSheetImportOpen,
-    setIsSpriteSheetImportOpen,
-
-    // Brush Tool
-    brushColor,
-    setBrushColor,
-    brushSize,
-    setBrushSize,
-
-    // Background Removal
-    isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode,
-    eraserTolerance,
-    setEraserTolerance,
-    eraserMode,
-    setEraserMode,
-
-    // History (Undo/Redo)
-    canUndo,
-    canRedo,
-    undo,
-    redo,
-    pushHistory,
-
-    // Project
-    projectName,
-    setProjectName,
-    savedProjects,
-    setSavedSpriteProjects,
-    currentProjectId,
-    setCurrentProjectId,
-    newProject,
-
-    // Clipboard
-    copyFrame,
-    pasteFrame,
-    clipboardFrame,
-
-    // Composition Layers
-    compositionLayers,
-    setCompositionLayers,
-    activeLayerId,
-    setActiveLayerId,
-    addCompositionLayer,
-    removeCompositionLayer,
-    updateCompositionLayer,
-    reorderCompositionLayers,
-    duplicateCompositionLayer,
-
-    // Refs
+  const refsValue: EditorRefsContextValue = {
     canvasRef,
     canvasContainerRef,
     previewCanvasRef,
@@ -724,264 +146,432 @@ export function EditorProvider({ children }: EditorProviderProps) {
     animationRef,
     lastFrameTimeRef,
     didPanOrDragRef,
-
-    // Computed
-    getTransformParams,
   };
 
-  return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
+  return <EditorRefsContext.Provider value={refsValue}>{children}</EditorRefsContext.Provider>;
 }
 
 // ============================================
-// Hook
+// Refs Hook
 // ============================================
 
-export function useEditor(): EditorContextValue {
-  const context = useContext(EditorContext);
+export function useEditorRefs(): EditorRefsContextValue {
+  const context = useContext(EditorRefsContext);
   if (!context) {
-    throw new Error("useEditor must be used within an EditorProvider");
+    throw new Error("useEditorRefs must be used within an EditorProvider");
   }
   return context;
 }
 
 // ============================================
-// Selector Hooks (for performance)
+// Legacy useEditor Hook (Backwards Compatibility)
+// ============================================
+
+export function useEditor() {
+  const refs = useEditorRefs();
+  const frameStore = useSpriteFrameStore();
+  const viewportStore = useSpriteViewportStore();
+  const toolStore = useSpriteToolStore();
+  const dragStore = useSpriteDragStore();
+  const uiStore = useSpriteUIStore();
+  const layerStore = useSpriteLayerStore();
+
+  // New project function
+  const newProject = useCallback(() => {
+    frameStore.reset();
+    viewportStore.reset();
+    toolStore.reset();
+    dragStore.reset();
+    uiStore.reset();
+    layerStore.reset();
+    refs.imageRef.current = null;
+    void clearAutosaveData();
+  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, layerStore, refs.imageRef]);
+
+  // Copy/Paste functions
+  const copyFrame = useCallback(() => {
+    if (frameStore.frames.length === 0) return;
+    const frameToCopy = frameStore.frames[frameStore.currentFrameIndex];
+    if (frameToCopy) {
+      uiStore.copyFrame(frameToCopy);
+    }
+  }, [frameStore.frames, frameStore.currentFrameIndex, uiStore]);
+
+  const pasteFrame = useCallback(() => {
+    const clipboardFrame = uiStore.getClipboardFrame();
+    if (!clipboardFrame) return;
+
+    const newFrame: SpriteFrame = {
+      ...deepCopyFrame(clipboardFrame),
+      id: frameStore.nextFrameId,
+    };
+
+    frameStore.pushHistory();
+    const insertIndex = frameStore.currentFrameIndex + 1;
+    frameStore.setFrames((prev) => {
+      const newFrames = [...prev];
+      newFrames.splice(insertIndex, 0, newFrame);
+      return newFrames;
+    });
+    frameStore.setNextFrameId((prev) => prev + 1);
+    frameStore.setCurrentFrameIndex(insertIndex);
+  }, [uiStore, frameStore]);
+
+  return {
+    // Image
+    imageSrc: frameStore.imageSrc,
+    setImageSrc: frameStore.setImageSrc,
+    imageSize: frameStore.imageSize,
+    setImageSize: frameStore.setImageSize,
+
+    // Frames
+    frames: frameStore.frames,
+    setFrames: frameStore.setFrames,
+    nextFrameId: frameStore.nextFrameId,
+    setNextFrameId: frameStore.setNextFrameId,
+    currentFrameIndex: frameStore.currentFrameIndex,
+    setCurrentFrameIndex: frameStore.setCurrentFrameIndex,
+    selectedFrameId: frameStore.selectedFrameId,
+    setSelectedFrameId: frameStore.setSelectedFrameId,
+    selectedPointIndex: frameStore.selectedPointIndex,
+    setSelectedPointIndex: frameStore.setSelectedPointIndex,
+
+    // Tools
+    toolMode: toolStore.toolMode,
+    setSpriteToolMode: toolStore.setSpriteToolMode,
+    currentPoints: frameStore.currentPoints,
+    setCurrentPoints: frameStore.setCurrentPoints,
+    isSpacePressed: toolStore.isSpacePressed,
+    setIsSpacePressed: toolStore.setIsSpacePressed,
+
+    // Viewport
+    zoom: viewportStore.zoom,
+    setZoom: viewportStore.setZoom,
+    pan: viewportStore.pan,
+    setPan: viewportStore.setPan,
+    scale: viewportStore.scale,
+    setScale: viewportStore.setScale,
+    canvasHeight: viewportStore.canvasHeight,
+    setCanvasHeight: viewportStore.setCanvasHeight,
+    isCanvasCollapsed: viewportStore.isCanvasCollapsed,
+    setIsCanvasCollapsed: viewportStore.setIsCanvasCollapsed,
+
+    // Animation
+    isPlaying: frameStore.isPlaying,
+    setIsPlaying: frameStore.setIsPlaying,
+    fps: frameStore.fps,
+    setFps: frameStore.setFps,
+
+    // Timeline
+    timelineMode: toolStore.timelineMode,
+    setTimelineMode: toolStore.setTimelineMode,
+
+    // Drag States
+    isDragging: dragStore.isDragging,
+    setIsDragging: dragStore.setIsDragging,
+    dragStart: dragStore.dragStart,
+    setDragStart: dragStore.setDragStart,
+    isPanning: dragStore.isPanning,
+    setIsPanning: dragStore.setIsPanning,
+    lastPanPoint: dragStore.lastPanPoint,
+    setLastPanPoint: dragStore.setLastPanPoint,
+    draggedFrameId: dragStore.draggedFrameId,
+    setDraggedFrameId: dragStore.setDraggedFrameId,
+    dragOverIndex: dragStore.dragOverIndex,
+    setDragOverIndex: dragStore.setDragOverIndex,
+    editingOffsetFrameId: dragStore.editingOffsetFrameId,
+    setEditingOffsetFrameId: dragStore.setEditingOffsetFrameId,
+    offsetDragStart: dragStore.offsetDragStart,
+    setOffsetDragStart: dragStore.setOffsetDragStart,
+    isResizing: dragStore.isResizing,
+    setIsResizing: dragStore.setIsResizing,
+
+    // Windows
+    isPreviewWindowOpen: uiStore.isPreviewWindowOpen,
+    setIsPreviewWindowOpen: uiStore.setIsPreviewWindowOpen,
+    isFrameEditOpen: uiStore.isFrameEditOpen,
+    setIsFrameEditOpen: uiStore.setIsFrameEditOpen,
+    isProjectListOpen: uiStore.isProjectListOpen,
+    setIsProjectListOpen: uiStore.setIsProjectListOpen,
+    isSpriteSheetImportOpen: uiStore.isSpriteSheetImportOpen,
+    setIsSpriteSheetImportOpen: uiStore.setIsSpriteSheetImportOpen,
+
+    // Brush Tool
+    brushColor: toolStore.brushColor,
+    setBrushColor: toolStore.setBrushColor,
+    brushSize: toolStore.brushSize,
+    setBrushSize: toolStore.setBrushSize,
+
+    // Background Removal
+    isBackgroundRemovalMode: toolStore.isBackgroundRemovalMode,
+    setIsBackgroundRemovalMode: toolStore.setIsBackgroundRemovalMode,
+    eraserTolerance: toolStore.eraserTolerance,
+    setEraserTolerance: toolStore.setEraserTolerance,
+    eraserMode: toolStore.eraserMode,
+    setEraserMode: toolStore.setEraserMode,
+
+    // History (Undo/Redo)
+    canUndo: frameStore.canUndo,
+    canRedo: frameStore.canRedo,
+    undo: frameStore.undo,
+    redo: frameStore.redo,
+    pushHistory: frameStore.pushHistory,
+
+    // Project
+    projectName: uiStore.projectName,
+    setProjectName: uiStore.setProjectName,
+    savedProjects: uiStore.savedProjects,
+    setSavedSpriteProjects: uiStore.setSavedSpriteProjects,
+    currentProjectId: uiStore.currentProjectId,
+    setCurrentProjectId: uiStore.setCurrentProjectId,
+    newProject,
+
+    // Clipboard
+    copyFrame,
+    pasteFrame,
+    clipboardFrame: uiStore.clipboardFrame,
+
+    // Composition Layers
+    compositionLayers: layerStore.compositionLayers,
+    setCompositionLayers: layerStore.setCompositionLayers,
+    activeLayerId: layerStore.activeLayerId,
+    setActiveLayerId: layerStore.setActiveLayerId,
+    addCompositionLayer: layerStore.addCompositionLayer,
+    removeCompositionLayer: layerStore.removeCompositionLayer,
+    updateCompositionLayer: layerStore.updateCompositionLayer,
+    reorderCompositionLayers: layerStore.reorderCompositionLayers,
+    duplicateCompositionLayer: layerStore.duplicateCompositionLayer,
+
+    // Refs
+    ...refs,
+
+    // Computed
+    getTransformParams: viewportStore.getTransformParams,
+  };
+}
+
+// ============================================
+// Selector Hooks (Zustand-backed)
 // ============================================
 
 export function useEditorImage() {
-  const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditor();
+  const { imageSrc, setImageSrc, imageSize, setImageSize } = useSpriteFrameStore();
+  const { imageRef } = useEditorRefs();
   return { imageSrc, setImageSrc, imageSize, setImageSize, imageRef };
 }
 
 export function useEditorFrames() {
-  const {
-    frames,
-    setFrames,
-    nextFrameId,
-    setNextFrameId,
-    currentFrameIndex,
-    setCurrentFrameIndex,
-    selectedFrameId,
-    setSelectedFrameId,
-    selectedPointIndex,
-    setSelectedPointIndex,
-  } = useEditor();
+  const store = useSpriteFrameStore();
   return {
-    frames,
-    setFrames,
-    nextFrameId,
-    setNextFrameId,
-    currentFrameIndex,
-    setCurrentFrameIndex,
-    selectedFrameId,
-    setSelectedFrameId,
-    selectedPointIndex,
-    setSelectedPointIndex,
+    frames: store.frames,
+    setFrames: store.setFrames,
+    nextFrameId: store.nextFrameId,
+    setNextFrameId: store.setNextFrameId,
+    currentFrameIndex: store.currentFrameIndex,
+    setCurrentFrameIndex: store.setCurrentFrameIndex,
+    selectedFrameId: store.selectedFrameId,
+    setSelectedFrameId: store.setSelectedFrameId,
+    selectedPointIndex: store.selectedPointIndex,
+    setSelectedPointIndex: store.setSelectedPointIndex,
   };
 }
 
 export function useEditorTools() {
-  const {
-    toolMode,
-    setSpriteToolMode,
-    currentPoints,
-    setCurrentPoints,
-    isSpacePressed,
-    setIsSpacePressed,
-  } = useEditor();
+  const frameStore = useSpriteFrameStore();
+  const toolStore = useSpriteToolStore();
   return {
-    toolMode,
-    setSpriteToolMode,
-    currentPoints,
-    setCurrentPoints,
-    isSpacePressed,
-    setIsSpacePressed,
+    toolMode: toolStore.toolMode,
+    setSpriteToolMode: toolStore.setSpriteToolMode,
+    currentPoints: frameStore.currentPoints,
+    setCurrentPoints: frameStore.setCurrentPoints,
+    isSpacePressed: toolStore.isSpacePressed,
+    setIsSpacePressed: toolStore.setIsSpacePressed,
   };
 }
 
 export function useEditorViewport() {
-  const {
-    zoom,
-    setZoom,
-    pan,
-    setPan,
-    scale,
-    setScale,
-    canvasHeight,
-    setCanvasHeight,
-    isCanvasCollapsed,
-    setIsCanvasCollapsed,
-    getTransformParams,
-  } = useEditor();
+  const store = useSpriteViewportStore();
   return {
-    zoom,
-    setZoom,
-    pan,
-    setPan,
-    scale,
-    setScale,
-    canvasHeight,
-    setCanvasHeight,
-    isCanvasCollapsed,
-    setIsCanvasCollapsed,
-    getTransformParams,
+    zoom: store.zoom,
+    setZoom: store.setZoom,
+    pan: store.pan,
+    setPan: store.setPan,
+    scale: store.scale,
+    setScale: store.setScale,
+    canvasHeight: store.canvasHeight,
+    setCanvasHeight: store.setCanvasHeight,
+    isCanvasCollapsed: store.isCanvasCollapsed,
+    setIsCanvasCollapsed: store.setIsCanvasCollapsed,
+    getTransformParams: store.getTransformParams,
   };
 }
 
 export function useEditorAnimation() {
-  const { isPlaying, setIsPlaying, fps, setFps, animationRef, lastFrameTimeRef } = useEditor();
-  return { isPlaying, setIsPlaying, fps, setFps, animationRef, lastFrameTimeRef };
+  const frameStore = useSpriteFrameStore();
+  const { animationRef, lastFrameTimeRef } = useEditorRefs();
+  return {
+    isPlaying: frameStore.isPlaying,
+    setIsPlaying: frameStore.setIsPlaying,
+    fps: frameStore.fps,
+    setFps: frameStore.setFps,
+    animationRef,
+    lastFrameTimeRef,
+  };
 }
 
 export function useEditorDrag() {
-  const {
-    isDragging,
-    setIsDragging,
-    dragStart,
-    setDragStart,
-    isPanning,
-    setIsPanning,
-    lastPanPoint,
-    setLastPanPoint,
-    draggedFrameId,
-    setDraggedFrameId,
-    dragOverIndex,
-    setDragOverIndex,
-    editingOffsetFrameId,
-    setEditingOffsetFrameId,
-    offsetDragStart,
-    setOffsetDragStart,
-    isResizing,
-    setIsResizing,
-    didPanOrDragRef,
-  } = useEditor();
+  const store = useSpriteDragStore();
+  const { didPanOrDragRef } = useEditorRefs();
   return {
-    isDragging,
-    setIsDragging,
-    dragStart,
-    setDragStart,
-    isPanning,
-    setIsPanning,
-    lastPanPoint,
-    setLastPanPoint,
-    draggedFrameId,
-    setDraggedFrameId,
-    dragOverIndex,
-    setDragOverIndex,
-    editingOffsetFrameId,
-    setEditingOffsetFrameId,
-    offsetDragStart,
-    setOffsetDragStart,
-    isResizing,
-    setIsResizing,
+    isDragging: store.isDragging,
+    setIsDragging: store.setIsDragging,
+    dragStart: store.dragStart,
+    setDragStart: store.setDragStart,
+    isPanning: store.isPanning,
+    setIsPanning: store.setIsPanning,
+    lastPanPoint: store.lastPanPoint,
+    setLastPanPoint: store.setLastPanPoint,
+    draggedFrameId: store.draggedFrameId,
+    setDraggedFrameId: store.setDraggedFrameId,
+    dragOverIndex: store.dragOverIndex,
+    setDragOverIndex: store.setDragOverIndex,
+    editingOffsetFrameId: store.editingOffsetFrameId,
+    setEditingOffsetFrameId: store.setEditingOffsetFrameId,
+    offsetDragStart: store.offsetDragStart,
+    setOffsetDragStart: store.setOffsetDragStart,
+    isResizing: store.isResizing,
+    setIsResizing: store.setIsResizing,
     didPanOrDragRef,
   };
 }
 
 export function useEditorWindows() {
-  const {
-    isPreviewWindowOpen,
-    setIsPreviewWindowOpen,
-    isFrameEditOpen,
-    setIsFrameEditOpen,
-    isProjectListOpen,
-    setIsProjectListOpen,
-    isSpriteSheetImportOpen,
-    setIsSpriteSheetImportOpen,
-  } = useEditor();
+  const store = useSpriteUIStore();
   return {
-    isPreviewWindowOpen,
-    setIsPreviewWindowOpen,
-    isFrameEditOpen,
-    setIsFrameEditOpen,
-    isProjectListOpen,
-    setIsProjectListOpen,
-    isSpriteSheetImportOpen,
-    setIsSpriteSheetImportOpen,
+    isPreviewWindowOpen: store.isPreviewWindowOpen,
+    setIsPreviewWindowOpen: store.setIsPreviewWindowOpen,
+    isFrameEditOpen: store.isFrameEditOpen,
+    setIsFrameEditOpen: store.setIsFrameEditOpen,
+    isProjectListOpen: store.isProjectListOpen,
+    setIsProjectListOpen: store.setIsProjectListOpen,
+    isSpriteSheetImportOpen: store.isSpriteSheetImportOpen,
+    setIsSpriteSheetImportOpen: store.setIsSpriteSheetImportOpen,
   };
 }
 
 export function useEditorBrush() {
-  const { brushColor, setBrushColor, brushSize, setBrushSize } = useEditor();
-  return { brushColor, setBrushColor, brushSize, setBrushSize };
+  const store = useSpriteToolStore();
+  return {
+    brushColor: store.brushColor,
+    setBrushColor: store.setBrushColor,
+    brushSize: store.brushSize,
+    setBrushSize: store.setBrushSize,
+  };
 }
 
 export function useEditorBackgroundRemoval() {
-  const {
-    isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode,
-    eraserTolerance,
-    setEraserTolerance,
-    eraserMode,
-    setEraserMode,
-  } = useEditor();
+  const store = useSpriteToolStore();
   return {
-    isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode,
-    eraserTolerance,
-    setEraserTolerance,
-    eraserMode,
-    setEraserMode,
+    isBackgroundRemovalMode: store.isBackgroundRemovalMode,
+    setIsBackgroundRemovalMode: store.setIsBackgroundRemovalMode,
+    eraserTolerance: store.eraserTolerance,
+    setEraserTolerance: store.setEraserTolerance,
+    eraserMode: store.eraserMode,
+    setEraserMode: store.setEraserMode,
   };
 }
 
 export function useEditorHistory() {
-  const { canUndo, canRedo, undo, redo, pushHistory } = useEditor();
-  return { canUndo, canRedo, undo, redo, pushHistory };
+  const store = useSpriteFrameStore();
+  return {
+    canUndo: store.canUndo,
+    canRedo: store.canRedo,
+    undo: store.undo,
+    redo: store.redo,
+    pushHistory: store.pushHistory,
+  };
 }
 
 export function useEditorProject() {
-  const {
-    projectName,
-    setProjectName,
-    savedProjects,
-    setSavedSpriteProjects,
-    currentProjectId,
-    setCurrentProjectId,
-    newProject,
-  } = useEditor();
+  const uiStore = useSpriteUIStore();
+  const frameStore = useSpriteFrameStore();
+  const viewportStore = useSpriteViewportStore();
+  const toolStore = useSpriteToolStore();
+  const dragStore = useSpriteDragStore();
+  const layerStore = useSpriteLayerStore();
+  const refs = useEditorRefs();
+
+  const newProject = useCallback(() => {
+    frameStore.reset();
+    viewportStore.reset();
+    toolStore.reset();
+    dragStore.reset();
+    uiStore.reset();
+    layerStore.reset();
+    refs.imageRef.current = null;
+    void clearAutosaveData();
+  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, layerStore, refs.imageRef]);
+
   return {
-    projectName,
-    setProjectName,
-    savedProjects,
-    setSavedSpriteProjects,
-    currentProjectId,
-    setCurrentProjectId,
+    projectName: uiStore.projectName,
+    setProjectName: uiStore.setProjectName,
+    savedProjects: uiStore.savedProjects,
+    setSavedSpriteProjects: uiStore.setSavedSpriteProjects,
+    currentProjectId: uiStore.currentProjectId,
+    setCurrentProjectId: uiStore.setCurrentProjectId,
     newProject,
   };
 }
 
 export function useEditorClipboard() {
-  const { copyFrame, pasteFrame, clipboardFrame } = useEditor();
-  return { copyFrame, pasteFrame, clipboardFrame };
+  const uiStore = useSpriteUIStore();
+  const frameStore = useSpriteFrameStore();
+
+  const copyFrame = useCallback(() => {
+    if (frameStore.frames.length === 0) return;
+    const frameToCopy = frameStore.frames[frameStore.currentFrameIndex];
+    if (frameToCopy) {
+      uiStore.copyFrame(frameToCopy);
+    }
+  }, [frameStore.frames, frameStore.currentFrameIndex, uiStore]);
+
+  const pasteFrame = useCallback(() => {
+    const clipboardFrame = uiStore.getClipboardFrame();
+    if (!clipboardFrame) return;
+
+    const newFrame: SpriteFrame = {
+      ...deepCopyFrame(clipboardFrame),
+      id: frameStore.nextFrameId,
+    };
+
+    frameStore.pushHistory();
+    const insertIndex = frameStore.currentFrameIndex + 1;
+    frameStore.setFrames((prev) => {
+      const newFrames = [...prev];
+      newFrames.splice(insertIndex, 0, newFrame);
+      return newFrames;
+    });
+    frameStore.setNextFrameId((prev) => prev + 1);
+    frameStore.setCurrentFrameIndex(insertIndex);
+  }, [uiStore, frameStore]);
+
+  return { copyFrame, pasteFrame, clipboardFrame: uiStore.clipboardFrame };
 }
 
-export function useEditorRefs() {
-  const { canvasRef, canvasContainerRef, previewCanvasRef, imageRef } = useEditor();
-  return { canvasRef, canvasContainerRef, previewCanvasRef, imageRef };
-}
+// Keep for backwards compatibility - now just returns refs from context
+export { useEditorRefs as useEditorRefsHook };
 
 export function useEditorUnifiedLayers() {
-  const {
-    compositionLayers,
-    setCompositionLayers,
-    activeLayerId,
-    setActiveLayerId,
-    addCompositionLayer,
-    removeCompositionLayer,
-    updateCompositionLayer,
-    reorderCompositionLayers,
-    duplicateCompositionLayer,
-  } = useEditor();
+  const store = useSpriteLayerStore();
   return {
-    compositionLayers,
-    setCompositionLayers,
-    activeLayerId,
-    setActiveLayerId,
-    addCompositionLayer,
-    removeCompositionLayer,
-    updateCompositionLayer,
-    reorderCompositionLayers,
-    duplicateCompositionLayer,
+    compositionLayers: store.compositionLayers,
+    setCompositionLayers: store.setCompositionLayers,
+    activeLayerId: store.activeLayerId,
+    setActiveLayerId: store.setActiveLayerId,
+    addCompositionLayer: store.addCompositionLayer,
+    removeCompositionLayer: store.removeCompositionLayer,
+    updateCompositionLayer: store.updateCompositionLayer,
+    reorderCompositionLayers: store.reorderCompositionLayers,
+    duplicateCompositionLayer: store.duplicateCompositionLayer,
   };
 }
