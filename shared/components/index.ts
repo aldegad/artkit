@@ -14,3 +14,6 @@ export type { ScrollbarProps } from "./Scrollbar";
 
 // Layout Components
 export * from "./layout";
+
+// Icons
+export * from "./icons";
