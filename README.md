@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="public/logo.svg" alt="artkit logo" width="80" height="80">
+</p>
+
 # artkit
 
 A web-based graphics editor for sprites, pixel art, and SVG.
+
+**Live Demo:** https://artkit.web.app/
 
 ## Features
 
@@ -8,6 +14,7 @@ A web-based graphics editor for sprites, pixel art, and SVG.
 - **Sprite Editor** - Extract frames from sprite sheets using polygon selection
 - **AI Background Removal** - One-click background removal powered by [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) (runs entirely in browser via [Transformers.js](https://huggingface.co/docs/transformers.js))
 - **Image Converter** - Convert images between WebP, JPEG, and PNG formats
+- **Sound Editor** - Convert audio formats and trim/cut audio files
 - **Project Management** - Save/load projects with IndexedDB
 - **Dark/Light Theme** - System-aware theme support
 
