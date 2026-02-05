@@ -1857,7 +1857,7 @@ function ImageEditorContent() {
           onSaveAs={handleSaveAsProject}
           onImportImage={() => fileInputRef.current?.click()}
           canSave={layers.length > 0}
-          isLoading={isLoading}
+          isLoading={isLoading || isSaving}
           showRulers={showRulers}
           showGuides={showGuides}
           lockGuides={lockGuides}
