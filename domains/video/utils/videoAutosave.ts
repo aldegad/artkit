@@ -11,6 +11,7 @@ import {
   TimelineViewState,
   VideoToolMode,
 } from "../types";
+import { clearAllMediaBlobs } from "./mediaStorage";
 
 export const VIDEO_AUTOSAVE_KEY = "video-autosave";
 export const VIDEO_AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -58,6 +59,11 @@ export const loadVideoAutosave = (): Promise<VideoAutosaveData | null> =>
   videoAutosave.load();
 
 /**
- * Clear video editor autosave data
+ * Clear video editor autosave data and media blobs
  */
-export const clearVideoAutosave = (): Promise<void> => videoAutosave.clear();
+export const clearVideoAutosave = async (): Promise<void> => {
+  await Promise.all([
+    videoAutosave.clear(),
+    clearAllMediaBlobs(),
+  ]);
+};

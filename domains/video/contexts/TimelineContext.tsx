@@ -27,6 +27,7 @@ import {
   saveVideoAutosave,
   VIDEO_AUTOSAVE_DEBOUNCE_MS,
 } from "../utils/videoAutosave";
+import { loadMediaBlob } from "../utils/mediaStorage";
 
 interface TimelineContextValue {
   // View state
@@ -131,12 +132,26 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           if (data.tracks && data.tracks.length > 0) {
             setTracks(data.tracks);
           }
-          if (data.clips) {
-            // Filter out clips with blob URLs (they don't persist)
-            const validClips = data.clips.filter(
-              (clip) => !clip.sourceUrl.startsWith("blob:")
-            );
-            setClips(validClips);
+          if (data.clips && data.clips.length > 0) {
+            // Restore clips with blobs from IndexedDB
+            const restoredClips: Clip[] = [];
+
+            for (const clip of data.clips) {
+              // Try to load blob from IndexedDB using clipId
+              const blob = await loadMediaBlob(clip.id);
+
+              if (blob) {
+                // Create new blob URL from stored blob
+                const newUrl = URL.createObjectURL(blob);
+                restoredClips.push({ ...clip, sourceUrl: newUrl });
+              } else if (!clip.sourceUrl.startsWith("blob:")) {
+                // Non-blob URL (e.g., remote URL), keep as is
+                restoredClips.push(clip);
+              }
+              // If blob URL but no stored blob, skip (invalid)
+            }
+
+            setClips(restoredClips);
           }
           if (data.timelineView) {
             setViewStateInternal(data.timelineView);
@@ -178,24 +193,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }
 
     autosaveTimeoutRef.current = setTimeout(() => {
-      // Filter out clips with blob URLs (they don't persist across sessions)
-      const persistableClips = clips.filter(
-        (clip) => !clip.sourceUrl.startsWith("blob:")
-      );
-
-      // Only save if there are persistable clips or no clips at all
+      // Save all clips - blobs are stored separately in IndexedDB
       saveVideoAutosave({
         project,
         projectName,
         tracks,
-        clips: persistableClips,
+        clips,
         masks,
         timelineView: viewState,
         currentTime: playback.currentTime,
         toolMode,
-        selectedClipIds: selectedClipIds.filter((id) =>
-          persistableClips.some((c) => c.id === id)
-        ),
+        selectedClipIds,
       }).catch((error) => {
         console.error("Failed to autosave:", error);
       });
