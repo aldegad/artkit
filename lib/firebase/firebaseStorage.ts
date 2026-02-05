@@ -19,6 +19,7 @@ import {
 } from "firebase/storage";
 import { db, storage } from "./config";
 import { SavedImageProject, UnifiedLayer } from "@/types";
+import { generateThumbnailFromLayers } from "@/utils/thumbnail";
 
 // ============================================
 // Firestore Types
@@ -188,14 +189,17 @@ export async function saveProjectToFirebase(
     }
   }
 
-  // 2. Upload thumbnail (first layer with paintData)
+  // 2. Generate and upload optimized thumbnail (144x144, all layers merged)
   let thumbnailUrl: string | undefined;
-  const firstLayerWithData = project.unifiedLayers?.find(l => l.paintData);
-  if (firstLayerWithData?.paintData) {
+  if (project.unifiedLayers && project.unifiedLayers.length > 0 && project.canvasSize) {
     try {
-      thumbnailUrl = await uploadThumbnail(userId, project.id, firstLayerWithData.paintData);
+      const thumbnailData = await generateThumbnailFromLayers(
+        project.unifiedLayers,
+        project.canvasSize
+      );
+      thumbnailUrl = await uploadThumbnail(userId, project.id, thumbnailData);
     } catch (error) {
-      console.warn("Failed to upload thumbnail:", error);
+      console.warn("Failed to generate/upload thumbnail:", error);
     }
   }
 
