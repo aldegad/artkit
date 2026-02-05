@@ -46,7 +46,13 @@ domains/
 
 Each domain has: `hooks/`, `components/`, `contexts/`, `types/`, `utils/`, and a barrel export via `index.ts`.
 
-**shared/** contains cross-domain code: layout system (split panes, floating windows), UI components, and common types.
+**shared/** contains cross-domain code:
+- `components/layout/` - Layout system (split panes, floating windows)
+- `components/icons/` - Shared icon components (SpinnerIcon, CheckIcon, etc.)
+- `components/` - UI components (Popover, Select, Tooltip, etc.)
+- `utils/` - Common utilities (generateId, download helpers, cn)
+- `contexts/` - Global contexts (Theme, Language, Auth, Sidebar)
+- `types/` - Common types (Point, Size, BoundingBox, UnifiedLayer)
 
 ### State Management
 
@@ -76,6 +82,27 @@ Layer-Local Coords (레이어 캔버스 내 좌표)
 ```
 
 **Important**: Always consider `layer.position` when converting between image and layer coordinates (crop, transform, brush operations).
+
+### Editor Constants
+
+UI constants are centralized in `domains/editor/constants/editorConstants.ts`:
+- `CHECKERBOARD` - Transparency pattern sizes
+- `HANDLE_SIZE` - Transform/crop handle dimensions
+- `INTERACTION` - Thresholds (crop min size, guide tolerance)
+- `FLOATING_WINDOW` - Window dimensions
+
+Use constants instead of magic numbers:
+```typescript
+import { CHECKERBOARD, HANDLE_SIZE } from "@/domains/editor/constants";
+const size = HANDLE_SIZE.DEFAULT; // not: const size = 10;
+```
+
+### Canvas Caching
+
+Canvas operations are cached via `domains/editor/utils/canvasCache.ts`:
+- `canvasCache.getCheckerboardPattern()` - Cached transparency patterns
+- `canvasCache.getTemporary()` - Reusable temporary canvases
+- Reduces GC pressure from frequent canvas creation
 
 ### Canvas Rendering
 
