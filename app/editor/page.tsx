@@ -472,6 +472,8 @@ function ImageEditorContent() {
     guides,
     canvasSize,
     snapEnabled: snapToGuides,
+    // Multi-layer support
+    selectedLayerIds,
   });
 
   // Wrapper to intercept tool mode changes when transform is active
@@ -623,6 +625,8 @@ function ImageEditorContent() {
     // Layer movement
     activeLayerId,
     updateLayerPosition,
+    // Multi-layer support
+    selectedLayerIds,
   });
 
   // Guide drag preview state for showing preview line on main canvas

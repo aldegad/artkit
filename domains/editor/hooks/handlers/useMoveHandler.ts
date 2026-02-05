@@ -28,10 +28,14 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
     activeLayerPosition,
     updateLayerPosition,
     saveToHistory,
+    // Multi-layer support
+    selectedLayerIds,
+    layers,
   } = options;
 
   const [isMovingLayer, setIsMovingLayer] = useState(false);
-  const layerDragStartRef = useRef<{ layerPos: Point; mousePos: Point } | null>(null);
+  // Changed to Map to support multi-layer movement
+  const layerDragStartRef = useRef<Map<string, { layerPos: Point; mousePos: Point }> | null>(null);
 
   const handleMouseDown = useCallback(
     (ctx: MouseEventContext): HandlerResult => {
@@ -106,13 +110,33 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
         }
       }
 
-      // No selection - move entire layer
-      if (activeLayerId && updateLayerPosition) {
-        const currentLayerPos = activeLayerPosition || { x: 0, y: 0 };
-        layerDragStartRef.current = {
-          layerPos: { ...currentLayerPos },
-          mousePos: { ...imagePos },
-        };
+      // No selection - move layer(s)
+      // Determine which layers to move: selected layers or just the active layer
+      const targetLayerIds = (selectedLayerIds && selectedLayerIds.length > 0)
+        ? selectedLayerIds
+        : (activeLayerId ? [activeLayerId] : []);
+
+      if (targetLayerIds.length > 0 && updateLayerPosition && layers) {
+        // Filter out locked layers
+        const movableLayers = targetLayerIds.filter(id => {
+          const layer = layers.find(l => l.id === id);
+          return layer && !layer.locked;
+        });
+
+        if (movableLayers.length === 0) return { handled: false };
+
+        // Store initial positions for all movable layers
+        const startPositions = new Map<string, { layerPos: Point; mousePos: Point }>();
+        movableLayers.forEach(id => {
+          const layer = layers.find(l => l.id === id);
+          const pos = layer?.position || { x: 0, y: 0 };
+          startPositions.set(id, {
+            layerPos: { x: pos.x, y: pos.y },
+            mousePos: { ...imagePos },
+          });
+        });
+
+        layerDragStartRef.current = startPositions;
         saveToHistory();
         setIsMovingLayer(true);
 
@@ -138,6 +162,8 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
       activeLayerId,
       activeLayerPosition,
       updateLayerPosition,
+      selectedLayerIds,
+      layers,
     ]
   );
 
@@ -146,13 +172,17 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
       const { imagePos, e, displayDimensions } = ctx;
       const { width: displayWidth, height: displayHeight } = displayDimensions;
 
-      // Handle layer movement (no selection)
-      if (isMovingLayer && layerDragStartRef.current && updateLayerPosition && activeLayerId) {
-        const { layerPos, mousePos } = layerDragStartRef.current;
+      // Handle multi-layer movement (no selection)
+      if (isMovingLayer && layerDragStartRef.current && layerDragStartRef.current.size > 0 && updateLayerPosition) {
+        // Use the first layer's mousePos as reference for delta calculation
+        const firstEntry = layerDragStartRef.current.entries().next().value;
+        if (!firstEntry) return;
+
+        const refMousePos = firstEntry[1].mousePos;
 
         // Calculate delta from drag start
-        let dx = imagePos.x - mousePos.x;
-        let dy = imagePos.y - mousePos.y;
+        let dx = imagePos.x - refMousePos.x;
+        let dy = imagePos.y - refMousePos.y;
 
         // Shift key constrains to horizontal or vertical movement
         if (e.shiftKey) {
@@ -163,10 +193,12 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
           }
         }
 
-        // Update layer position
-        updateLayerPosition(activeLayerId, {
-          x: layerPos.x + dx,
-          y: layerPos.y + dy,
+        // Update all layer positions
+        layerDragStartRef.current.forEach((start, layerId) => {
+          updateLayerPosition(layerId, {
+            x: start.layerPos.x + dx,
+            y: start.layerPos.y + dy,
+          });
         });
         return;
       }

@@ -47,6 +47,7 @@ interface UseLayerManagementReturn {
   updateLayer: (layerId: string, updates: Partial<UnifiedLayer>) => void;
   updateLayerOpacity: (layerId: string, opacity: number) => void;
   updateLayerPosition: (layerId: string, position: { x: number; y: number }) => void;
+  updateMultipleLayerPositions: (updates: Array<{ layerId: string; position: { x: number; y: number } }>) => void;
   renameLayer: (layerId: string, name: string) => void;
   toggleLayerLock: (layerId: string) => void;
   moveLayer: (layerId: string, direction: "up" | "down") => void;
@@ -273,6 +274,17 @@ export function useLayerManagement(
     updateLayer(layerId, { position });
   }, [updateLayer]);
 
+  // Update multiple layer positions (batch update for multi-layer move)
+  const updateMultipleLayerPositions = useCallback((
+    updates: Array<{ layerId: string; position: { x: number; y: number } }>
+  ) => {
+    setLayers(prev => prev.map(layer => {
+      const update = updates.find(u => u.layerId === layer.id);
+      if (!update) return layer;
+      return { ...layer, position: update.position };
+    }));
+  }, []);
+
   // Rename layer
   const renameLayer = useCallback((layerId: string, name: string) => {
     updateLayer(layerId, { name });
@@ -467,13 +479,15 @@ export function useLayerManagement(
   }, []);
 
   // Get layer bounds (position + size)
+  // Canvas size is prioritized because it gets updated after transforms
   const getLayerBounds = useCallback((layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
     if (!layer) return null;
 
     const canvas = layerCanvasesRef.current.get(layerId);
-    const width = layer.originalSize?.width || canvas?.width || 0;
-    const height = layer.originalSize?.height || canvas?.height || 0;
+    // Canvas size first (updated after transforms), fallback to originalSize
+    const width = canvas?.width || layer.originalSize?.width || 0;
+    const height = canvas?.height || layer.originalSize?.height || 0;
     const x = layer.position?.x || 0;
     const y = layer.position?.y || 0;
 
@@ -621,6 +635,7 @@ export function useLayerManagement(
     updateLayer,
     updateLayerOpacity,
     updateLayerPosition,
+    updateMultipleLayerPositions,
     renameLayer,
     toggleLayerLock,
     moveLayer,

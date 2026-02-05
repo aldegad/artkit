@@ -9,27 +9,41 @@ import { HANDLE_SIZE as HANDLE_SIZE_CONST } from "../constants";
 // Types
 // ============================================
 
+// Per-layer data for multi-layer transform
+export interface PerLayerTransformData {
+  originalImageData: ImageData;
+  originalBounds: { x: number; y: number; width: number; height: number };
+  layerPosition: { x: number; y: number };
+  // Content offset within layer canvas (for proper content extraction)
+  contentOffset: { x: number; y: number };
+}
+
 export interface TransformState {
   isActive: boolean;
+  // Single layer ID (for backward compatibility) or null if multi-layer
   layerId: string | null;
-  // Layer position offset (for converting between screen and canvas coords)
+  // Multiple layer IDs for multi-layer transform
+  layerIds: string[];
+  // Layer position offset (for single layer mode)
   layerPosition: { x: number; y: number } | null;
-  // Original bounds before transform (in screen coordinates)
+  // Combined bounds of all selected layers (in image coordinates)
   originalBounds: {
     x: number;
     y: number;
     width: number;
     height: number;
   } | null;
-  // Current transform values (in screen coordinates)
+  // Current transform values (in image coordinates)
   bounds: {
     x: number;
     y: number;
     width: number;
     height: number;
   } | null;
-  // Original image data for non-destructive transform
+  // Original image data for single layer (backward compatibility)
   originalImageData: ImageData | null;
+  // Per-layer data for multi-layer transform
+  perLayerData: Map<string, PerLayerTransformData> | null;
 }
 
 export type TransformHandle =
@@ -54,6 +68,8 @@ interface UseTransformToolOptions {
   guides?: Guide[];
   canvasSize?: { width: number; height: number };
   snapEnabled?: boolean;
+  // Multi-layer support
+  selectedLayerIds?: string[];
 }
 
 interface UseTransformToolReturn {
@@ -102,16 +118,20 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     guides = [],
     canvasSize,
     snapEnabled = false,
+    // Multi-layer support
+    selectedLayerIds,
   } = options;
 
   // Transform state
   const [transformState, setTransformState] = useState<TransformState>({
     isActive: false,
     layerId: null,
+    layerIds: [],
     layerPosition: null,
     originalBounds: null,
     bounds: null,
     originalImageData: null,
+    perLayerData: null,
   });
 
   const [activeHandle, setActiveHandle] = useState<TransformHandle>(null);
@@ -179,32 +199,21 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     [transformState.bounds]
   );
 
-  // Start transform mode
-  const startTransform = useCallback(() => {
-    if (!activeLayerId) return;
+  // Helper function to find content bounds in a canvas
+  const findContentBounds = useCallback((canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
 
-    const layerCanvas = layerCanvasesRef.current.get(activeLayerId);
-    if (!layerCanvas) return;
-
-    const layer = layers.find((l) => l.id === activeLayerId);
-    if (!layer || layer.locked) return;
-
-    // Get the actual content bounds (non-transparent area)
-    const ctx = layerCanvas.getContext("2d");
-    if (!ctx) return;
-
-    const imageData = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
-
-    // Find content bounds
-    let minX = layerCanvas.width;
-    let minY = layerCanvas.height;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let minX = canvas.width;
+    let minY = canvas.height;
     let maxX = 0;
     let maxY = 0;
     let hasContent = false;
 
-    for (let y = 0; y < layerCanvas.height; y++) {
-      for (let x = 0; x < layerCanvas.width; x++) {
-        const alpha = imageData.data[(y * layerCanvas.width + x) * 4 + 3];
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
         if (alpha > 0) {
           hasContent = true;
           minX = Math.min(minX, x);
@@ -215,41 +224,106 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       }
     }
 
-    if (!hasContent) {
-      // No content to transform
-      return;
+    if (!hasContent) return null;
+
+    return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
+  }, []);
+
+  // Start transform mode
+  const startTransform = useCallback(() => {
+    // Determine target layers: selectedLayerIds or just activeLayerId
+    const targetLayerIds = (selectedLayerIds && selectedLayerIds.length > 0)
+      ? selectedLayerIds
+      : (activeLayerId ? [activeLayerId] : []);
+
+    if (targetLayerIds.length === 0) return;
+
+    // Filter to transformable layers (not locked, visible, has content)
+    const transformableLayers: string[] = [];
+    const perLayerData = new Map<string, PerLayerTransformData>();
+
+    // Combined bounds (in image coordinates)
+    let combinedMinX = Infinity;
+    let combinedMinY = Infinity;
+    let combinedMaxX = -Infinity;
+    let combinedMaxY = -Infinity;
+
+    for (const layerId of targetLayerIds) {
+      const layerCanvas = layerCanvasesRef.current.get(layerId);
+      if (!layerCanvas) continue;
+
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer || layer.locked) continue;
+
+      const contentBounds = findContentBounds(layerCanvas);
+      if (!contentBounds) continue; // No content
+
+      const ctx = layerCanvas.getContext("2d");
+      if (!ctx) continue;
+
+      const layerPosX = layer.position?.x || 0;
+      const layerPosY = layer.position?.y || 0;
+
+      // Convert content bounds to image coordinates
+      const imageBounds = {
+        x: contentBounds.minX + layerPosX,
+        y: contentBounds.minY + layerPosY,
+        width: contentBounds.width,
+        height: contentBounds.height,
+      };
+
+      // Update combined bounds
+      combinedMinX = Math.min(combinedMinX, imageBounds.x);
+      combinedMinY = Math.min(combinedMinY, imageBounds.y);
+      combinedMaxX = Math.max(combinedMaxX, imageBounds.x + imageBounds.width);
+      combinedMaxY = Math.max(combinedMaxY, imageBounds.y + imageBounds.height);
+
+      // Extract content image data for this layer
+      const contentImageData = ctx.getImageData(
+        contentBounds.minX,
+        contentBounds.minY,
+        contentBounds.width,
+        contentBounds.height
+      );
+
+      // Store per-layer data
+      perLayerData.set(layerId, {
+        originalImageData: contentImageData,
+        originalBounds: imageBounds,
+        layerPosition: { x: layerPosX, y: layerPosY },
+        contentOffset: { x: contentBounds.minX, y: contentBounds.minY },
+      });
+
+      transformableLayers.push(layerId);
     }
 
-    // Include layer position offset
-    const layerPosX = layer.position?.x || 0;
-    const layerPosY = layer.position?.y || 0;
+    if (transformableLayers.length === 0) return;
 
-    const bounds = {
-      x: minX + layerPosX,
-      y: minY + layerPosY,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1,
+    const combinedBounds = {
+      x: combinedMinX,
+      y: combinedMinY,
+      width: combinedMaxX - combinedMinX,
+      height: combinedMaxY - combinedMinY,
     };
-
-    // Extract the content as ImageData (use canvas-local coordinates, not screen)
-    const contentImageData = ctx.getImageData(
-      minX,
-      minY,
-      bounds.width,
-      bounds.height
-    );
 
     saveToHistory();
 
+    // For single layer, maintain backward compatibility
+    const isSingleLayer = transformableLayers.length === 1;
+    const singleLayerId = isSingleLayer ? transformableLayers[0] : null;
+    const singleLayerData = singleLayerId ? perLayerData.get(singleLayerId) : null;
+
     setTransformState({
       isActive: true,
-      layerId: activeLayerId,
-      layerPosition: { x: layerPosX, y: layerPosY },
-      originalBounds: { ...bounds },
-      bounds: { ...bounds },
-      originalImageData: contentImageData,
+      layerId: singleLayerId,
+      layerIds: transformableLayers,
+      layerPosition: singleLayerData?.layerPosition || null,
+      originalBounds: { ...combinedBounds },
+      bounds: { ...combinedBounds },
+      originalImageData: singleLayerData?.originalImageData || null,
+      perLayerData: perLayerData,
     });
-  }, [activeLayerId, layerCanvasesRef, layers, saveToHistory]);
+  }, [activeLayerId, selectedLayerIds, layerCanvasesRef, layers, saveToHistory, findContentBounds]);
 
   // Cancel transform
   const cancelTransform = useCallback(() => {
@@ -259,115 +333,126 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     originalBoundsOnDragRef.current = null;
     setActiveHandle(null);
 
-    if (!transformState.isActive || !transformState.layerId || !transformState.originalImageData) {
+    if (!transformState.isActive) {
       setTransformState({
         isActive: false,
         layerId: null,
+        layerIds: [],
         layerPosition: null,
         originalBounds: null,
         bounds: null,
         originalImageData: null,
+        perLayerData: null,
       });
       return;
     }
 
-    // Restore original state
-    const layerCanvas = layerCanvasesRef.current.get(transformState.layerId);
-    if (layerCanvas && transformState.originalBounds) {
-      const ctx = layerCanvas.getContext("2d");
-      if (ctx) {
-        // Convert screen coords to canvas coords
-        const layerPosX = transformState.layerPosition?.x || 0;
-        const layerPosY = transformState.layerPosition?.y || 0;
+    // Multi-layer restore: use perLayerData
+    if (transformState.perLayerData && transformState.perLayerData.size > 0) {
+      transformState.perLayerData.forEach((data, layerId) => {
+        const layerCanvas = layerCanvasesRef.current.get(layerId);
+        if (!layerCanvas) return;
 
-        // Clear the current area
+        const ctx = layerCanvas.getContext("2d");
+        if (!ctx) return;
+
+        // Clear the canvas and restore original content
         ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-        // Restore original (use canvas-local coordinates)
         ctx.putImageData(
-          transformState.originalImageData,
-          transformState.originalBounds.x - layerPosX,
-          transformState.originalBounds.y - layerPosY
+          data.originalImageData,
+          data.contentOffset.x,
+          data.contentOffset.y
         );
+      });
+    }
+    // Backward compatibility: single layer with originalImageData
+    else if (transformState.layerId && transformState.originalImageData && transformState.originalBounds) {
+      const layerCanvas = layerCanvasesRef.current.get(transformState.layerId);
+      if (layerCanvas) {
+        const ctx = layerCanvas.getContext("2d");
+        if (ctx) {
+          const layerPosX = transformState.layerPosition?.x || 0;
+          const layerPosY = transformState.layerPosition?.y || 0;
+
+          ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+          ctx.putImageData(
+            transformState.originalImageData,
+            transformState.originalBounds.x - layerPosX,
+            transformState.originalBounds.y - layerPosY
+          );
+        }
       }
     }
 
     setTransformState({
       isActive: false,
       layerId: null,
+      layerIds: [],
       layerPosition: null,
       originalBounds: null,
       bounds: null,
       originalImageData: null,
+      perLayerData: null,
     });
   }, [transformState, layerCanvasesRef]);
 
-  // Apply transform
-  const applyTransform = useCallback(() => {
-    // Reset drag state refs
-    isDraggingRef.current = false;
-    activeHandleRef.current = null;
-    originalBoundsOnDragRef.current = null;
-    setActiveHandle(null);
-
-    if (!transformState.isActive || !transformState.layerId || !transformState.bounds || !transformState.originalImageData) {
-      setTransformState({
-        isActive: false,
-        layerId: null,
-        layerPosition: null,
-        originalBounds: null,
-        bounds: null,
-        originalImageData: null,
-      });
-      return;
-    }
-
-    const layerCanvas = layerCanvasesRef.current.get(transformState.layerId);
+  // Apply transform to a single layer
+  const applyTransformToLayer = useCallback((
+    layerId: string,
+    data: PerLayerTransformData,
+    scaleX: number,
+    scaleY: number,
+    offsetX: number,
+    offsetY: number
+  ) => {
+    const layerCanvas = layerCanvasesRef.current.get(layerId);
     if (!layerCanvas) return;
 
     const ctx = layerCanvas.getContext("2d");
     if (!ctx) return;
 
-    const { bounds, originalImageData, originalBounds, layerPosition } = transformState;
-    if (!originalBounds) return;
+    const { originalImageData, originalBounds, layerPosition, contentOffset } = data;
 
-    // Convert screen coords to canvas coords
-    const layerPosX = layerPosition?.x || 0;
-    const layerPosY = layerPosition?.y || 0;
+    // Calculate new bounds for this layer based on scale
+    const newWidth = Math.round(originalBounds.width * scaleX);
+    const newHeight = Math.round(originalBounds.height * scaleY);
 
-    // Calculate the original canvas-local position (where content was before transform)
-    const origCanvasX = originalBounds.x - layerPosX;
-    const origCanvasY = originalBounds.y - layerPosY;
+    // Calculate new position (relative offset from combined bounds origin)
+    const relativeX = originalBounds.x - (transformState.originalBounds?.x || 0);
+    const relativeY = originalBounds.y - (transformState.originalBounds?.y || 0);
+    const newX = (transformState.bounds?.x || 0) + relativeX * scaleX;
+    const newY = (transformState.bounds?.y || 0) + relativeY * scaleY;
 
-    // Calculate the new canvas-local position
-    const canvasX = bounds.x - layerPosX;
-    const canvasY = bounds.y - layerPosY;
+    // Convert to canvas-local coordinates
+    const canvasX = newX - layerPosition.x;
+    const canvasY = newY - layerPosition.y;
 
-    // Calculate required canvas size to fit the transformed content
-    const requiredWidth = Math.max(layerCanvas.width, canvasX + bounds.width, bounds.width);
-    const requiredHeight = Math.max(layerCanvas.height, canvasY + bounds.height, bounds.height);
+    // Calculate required canvas size
+    const requiredWidth = Math.max(layerCanvas.width, canvasX + newWidth);
+    const requiredHeight = Math.max(layerCanvas.height, canvasY + newHeight);
 
-    // Calculate offset if content starts at negative coordinates
-    const offsetX = canvasX < 0 ? -canvasX : 0;
-    const offsetY = canvasY < 0 ? -canvasY : 0;
+    // Handle negative coordinates
+    const localOffsetX = canvasX < 0 ? -canvasX : 0;
+    const localOffsetY = canvasY < 0 ? -canvasY : 0;
 
     // Expand canvas if needed
-    if (requiredWidth + offsetX > layerCanvas.width || requiredHeight + offsetY > layerCanvas.height || offsetX > 0 || offsetY > 0) {
-      const newWidth = Math.max(layerCanvas.width, requiredWidth + offsetX);
-      const newHeight = Math.max(layerCanvas.height, requiredHeight + offsetY);
+    if (requiredWidth + localOffsetX > layerCanvas.width || requiredHeight + localOffsetY > layerCanvas.height || localOffsetX > 0 || localOffsetY > 0) {
+      const newCanvasWidth = Math.max(layerCanvas.width, requiredWidth + localOffsetX);
+      const newCanvasHeight = Math.max(layerCanvas.height, requiredHeight + localOffsetY);
 
-      // Save current content
       const oldData = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
-
-      // Resize canvas
-      layerCanvas.width = newWidth;
-      layerCanvas.height = newHeight;
-
-      // Restore old content at offset position
-      ctx.putImageData(oldData, offsetX, offsetY);
+      layerCanvas.width = newCanvasWidth;
+      layerCanvas.height = newCanvasHeight;
+      ctx.putImageData(oldData, localOffsetX, localOffsetY);
     }
 
-    // Clear only the original content area (not the entire canvas)
-    ctx.clearRect(origCanvasX + offsetX, origCanvasY + offsetY, originalBounds.width, originalBounds.height);
+    // Clear original content area
+    ctx.clearRect(
+      contentOffset.x + localOffsetX,
+      contentOffset.y + localOffsetY,
+      originalBounds.width,
+      originalBounds.height
+    );
 
     // Create temp canvas with original image data
     const tempCanvas = document.createElement("canvas");
@@ -377,31 +462,97 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     if (!tempCtx) return;
     tempCtx.putImageData(originalImageData, 0, 0);
 
-    // Draw scaled image to the new bounds (use canvas-local coordinates with offset)
+    // Draw scaled image
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(
       tempCanvas,
-      canvasX + offsetX,
-      canvasY + offsetY,
-      bounds.width,
-      bounds.height
+      canvasX + localOffsetX,
+      canvasY + localOffsetY,
+      newWidth,
+      newHeight
     );
+  }, [transformState.originalBounds, transformState.bounds, layerCanvasesRef]);
 
-    // Update editCanvasRef if this is the active layer
-    if (editCanvasRef.current === layerCanvas) {
-      // Already the same reference
+  // Apply transform
+  const applyTransform = useCallback(() => {
+    // Reset drag state refs
+    isDraggingRef.current = false;
+    activeHandleRef.current = null;
+    originalBoundsOnDragRef.current = null;
+    setActiveHandle(null);
+
+    if (!transformState.isActive || !transformState.bounds || !transformState.originalBounds) {
+      setTransformState({
+        isActive: false,
+        layerId: null,
+        layerIds: [],
+        layerPosition: null,
+        originalBounds: null,
+        bounds: null,
+        originalImageData: null,
+        perLayerData: null,
+      });
+      return;
+    }
+
+    const { bounds, originalBounds } = transformState;
+
+    // Calculate scale factors
+    const scaleX = bounds.width / originalBounds.width;
+    const scaleY = bounds.height / originalBounds.height;
+    const offsetX = bounds.x - originalBounds.x;
+    const offsetY = bounds.y - originalBounds.y;
+
+    // Multi-layer transform: apply to each layer
+    if (transformState.perLayerData && transformState.perLayerData.size > 0) {
+      transformState.perLayerData.forEach((data, layerId) => {
+        applyTransformToLayer(layerId, data, scaleX, scaleY, offsetX, offsetY);
+      });
+    }
+    // Backward compatibility: single layer
+    else if (transformState.layerId && transformState.originalImageData) {
+      const layerCanvas = layerCanvasesRef.current.get(transformState.layerId);
+      if (layerCanvas) {
+        const ctx = layerCanvas.getContext("2d");
+        if (ctx) {
+          const layerPosX = transformState.layerPosition?.x || 0;
+          const layerPosY = transformState.layerPosition?.y || 0;
+
+          const origCanvasX = originalBounds.x - layerPosX;
+          const origCanvasY = originalBounds.y - layerPosY;
+          const canvasX = bounds.x - layerPosX;
+          const canvasY = bounds.y - layerPosY;
+
+          // Clear original area
+          ctx.clearRect(origCanvasX, origCanvasY, originalBounds.width, originalBounds.height);
+
+          // Create temp canvas
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = transformState.originalImageData.width;
+          tempCanvas.height = transformState.originalImageData.height;
+          const tempCtx = tempCanvas.getContext("2d");
+          if (tempCtx) {
+            tempCtx.putImageData(transformState.originalImageData, 0, 0);
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.drawImage(tempCanvas, canvasX, canvasY, bounds.width, bounds.height);
+          }
+        }
+      }
     }
 
     setTransformState({
       isActive: false,
       layerId: null,
+      layerIds: [],
       layerPosition: null,
       originalBounds: null,
       bounds: null,
       originalImageData: null,
+      perLayerData: null,
     });
-  }, [transformState, layerCanvasesRef, editCanvasRef]);
+  }, [transformState, layerCanvasesRef, applyTransformToLayer]);
 
   // Handle mouse down for transform
   const handleTransformMouseDown = useCallback(

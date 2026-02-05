@@ -4,6 +4,7 @@
 
 import { RefObject } from "react";
 import { EditorToolMode, CropArea, Point, DragType, Guide } from "../../types";
+import { UnifiedLayer } from "@/shared/types/layers";
 
 // ============================================
 // Floating Layer (for selection operations)
@@ -148,6 +149,9 @@ export interface MoveHandlerOptions extends BaseHandlerOptions {
   activeLayerPosition?: { x: number; y: number } | null;
   updateLayerPosition?: (layerId: string, position: { x: number; y: number }) => void;
   saveToHistory: () => void;
+  // Multi-layer support
+  selectedLayerIds?: string[];
+  layers?: UnifiedLayer[];
 }
 
 // ============================================

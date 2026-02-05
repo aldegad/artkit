@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, RefObject } from "react";
 import { EditorToolMode, CropArea, Point, DragType, Guide } from "../types";
+import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
 import {
   buildContext,
@@ -21,7 +22,7 @@ import {
 
 interface UseMouseHandlersOptions {
   // Layers
-  layers: unknown[];
+  layers: UnifiedLayer[];
 
   // Active layer position for coordinate offset (for brush drawing)
   activeLayerPosition?: { x: number; y: number } | null;
@@ -84,6 +85,9 @@ interface UseMouseHandlersOptions {
   // Layer movement functions
   activeLayerId?: string | null;
   updateLayerPosition?: (layerId: string, position: { x: number; y: number }) => void;
+  // Multi-layer support
+  selectedLayerIds?: string[];
+  updateMultipleLayerPositions?: (updates: Array<{ layerId: string; position: { x: number; y: number } }>) => void;
 }
 
 interface UseMouseHandlersReturn {
@@ -164,6 +168,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     getGuideAtPosition,
     activeLayerId,
     updateLayerPosition,
+    selectedLayerIds,
+    updateMultipleLayerPositions,
   } = options;
 
   // Drag state
@@ -253,6 +259,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     activeLayerPosition,
     updateLayerPosition,
     saveToHistory,
+    // Multi-layer support
+    selectedLayerIds,
+    layers,
   });
 
   // Helper to check if position is in bounds
