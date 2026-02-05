@@ -153,6 +153,11 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     (e: React.MouseEvent | React.PointerEvent) => {
       if (layers.length === 0) return;
 
+      // Capture pointer for touch/pen to receive move events during drag
+      if ('pointerId' in e && e.target instanceof Element) {
+        e.target.setPointerCapture(e.pointerId);
+      }
+
       const screenPos = getMousePos(e);
       const imagePos = screenToImage(screenPos.x, screenPos.y);
       const activeMode = getActiveToolMode();
