@@ -22,6 +22,7 @@ export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
 export { BrushPresetSelector } from "./components/toolbars/BrushPresetSelector";
+export { PanModeToggle } from "./components/toolbars/PanModeToggle";
 
 // Types
 export type {

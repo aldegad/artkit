@@ -20,6 +20,7 @@ export interface EditorState {
   zoom: number;
   pan: Point;
   isSpacePressed: boolean;
+  isPanLocked: boolean; // Mobile pan mode toggle
 
   // Tool & Settings
   toolMode: EditorToolMode;
@@ -50,6 +51,7 @@ export interface EditorStateContextValue {
   setZoom: (zoom: number | ((z: number) => number)) => void;
   setPan: (pan: Point | ((p: Point) => Point)) => void;
   setIsSpacePressed: (pressed: boolean) => void;
+  setIsPanLocked: (locked: boolean) => void;
 
   // Tool & Settings setters
   setToolMode: (mode: EditorToolMode) => void;
@@ -81,6 +83,7 @@ const initialState: EditorState = {
   zoom: 1,
   pan: { x: 0, y: 0 },
   isSpacePressed: false,
+  isPanLocked: false,
 
   // Tool & Settings
   toolMode: "brush",
@@ -145,6 +148,10 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setState((prev) => ({ ...prev, isSpacePressed: pressed }));
   }, []);
 
+  const setIsPanLocked = useCallback((locked: boolean) => {
+    setState((prev) => ({ ...prev, isPanLocked: locked }));
+  }, []);
+
   // Tool & Settings setters
   const setToolMode = useCallback((mode: EditorToolMode) => {
     setState((prev) => ({ ...prev, toolMode: mode }));
@@ -199,6 +206,7 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setZoom,
     setPan,
     setIsSpacePressed,
+    setIsPanLocked,
     setToolMode,
     setOutputFormat,
     setQuality,

@@ -74,16 +74,70 @@ export function useCanvasRendering(
     getDisplayDimensions,
   } = options;
 
-  // Render request counter for manual triggering
-  const renderCountRef = useRef(0);
+  // Ref to store the render function for direct calls from ResizeObserver
+  const renderFnRef = useRef<(() => void) | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
-  // Manual render trigger
+  // Manual render trigger - calls render function directly via requestAnimationFrame
   const requestRender = useCallback(() => {
-    renderCountRef.current += 1;
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
+    rafIdRef.current = requestAnimationFrame(() => {
+      renderFnRef.current?.();
+      rafIdRef.current = null;
+    });
   }, []);
 
-  // Main canvas rendering effect
+  // Set up ResizeObserver - uses polling to wait for container to be available
+  // because containerRef is set by a panel component that renders after this hook runs
   useEffect(() => {
+    let checkInterval: NodeJS.Timeout | null = null;
+
+    const setupObserver = () => {
+      const container = containerRef.current;
+      if (!container) return false;
+
+      // Already set up
+      if (resizeObserverRef.current) return true;
+
+      resizeObserverRef.current = new ResizeObserver(() => {
+        // Directly trigger render via requestAnimationFrame for immediate response
+        requestRender();
+      });
+
+      resizeObserverRef.current.observe(container);
+      return true;
+    };
+
+    // Try immediately
+    if (!setupObserver()) {
+      // Poll until container is available (panel may render later)
+      checkInterval = setInterval(() => {
+        if (setupObserver() && checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
+      }, 100);
+    }
+
+    return () => {
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, [requestRender]);
+
+  // Canvas render function - extracted so it can be called from ResizeObserver
+  const render = useCallback(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d", { willReadFrequently: true });
     const editCanvas = editCanvasRef.current;
@@ -379,6 +433,16 @@ export function useCanvasRendering(
     isMovingSelection,
     activeLayerId,
   ]);
+
+  // Store render function in ref for ResizeObserver to call
+  useEffect(() => {
+    renderFnRef.current = render;
+  }, [render]);
+
+  // Call render when dependencies change
+  useEffect(() => {
+    render();
+  }, [render]);
 
   return {
     requestRender,
