@@ -1,5 +1,5 @@
 // ============================================
-// Sprite Editor Autosave Utilities (localStorage)
+// Sprite Editor Autosave Utilities (IndexedDB)
 // ============================================
 
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
@@ -25,19 +25,21 @@ export interface AutosaveData extends BaseAutosaveData {
 
 // Create autosave storage using shared abstraction
 const spriteAutosave = createAutosave<AutosaveData>({
-  backend: "localStorage",
   key: AUTOSAVE_KEY,
+  dbName: "sprite-autosave-db",
+  storeName: "autosave",
+  dbVersion: 1,
 });
 
 /**
- * Load autosave data from localStorage
+ * Load autosave data from IndexedDB
  */
 export async function loadAutosaveData(): Promise<AutosaveData | null> {
   return spriteAutosave.load();
 }
 
 /**
- * Save autosave data to localStorage
+ * Save autosave data to IndexedDB
  */
 export async function saveAutosaveData(
   data: Omit<AutosaveData, "savedAt" | "id">
@@ -46,7 +48,7 @@ export async function saveAutosaveData(
 }
 
 /**
- * Clear autosave data from localStorage
+ * Clear autosave data from IndexedDB
  */
 export async function clearAutosaveData(): Promise<void> {
   return spriteAutosave.clear();

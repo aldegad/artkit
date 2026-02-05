@@ -21,16 +21,11 @@ export interface AutosaveStorage<T extends BaseAutosaveData> {
 }
 
 /**
- * Storage backend types
- */
-export type StorageBackend = "indexedDB" | "localStorage";
-
-/**
- * Configuration for autosave
+ * Configuration for autosave (IndexedDB)
  */
 export interface AutosaveConfig {
   key: string;
-  dbName?: string; // For IndexedDB
-  storeName?: string; // For IndexedDB
-  dbVersion?: number; // For IndexedDB
+  dbName?: string;
+  storeName?: string;
+  dbVersion?: number;
 }

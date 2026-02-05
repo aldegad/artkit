@@ -29,7 +29,6 @@ export interface EditorAutosaveData extends BaseAutosaveData {
 
 // Create autosave storage using shared abstraction
 const editorAutosave = createAutosave<EditorAutosaveData>({
-  backend: "indexedDB",
   key: EDITOR_AUTOSAVE_KEY,
   dbName: "editor-autosave-db",
   storeName: "autosave",

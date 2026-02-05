@@ -1,45 +1,28 @@
 // ============================================
-// Autosave Factory
+// Autosave Factory (IndexedDB)
 // ============================================
 
 import { createIndexedDBStorage } from "./indexedDBStorage";
-import { createLocalStorage } from "./localStorageAdapter";
 import type {
   AutosaveConfig,
   AutosaveStorage,
   BaseAutosaveData,
-  StorageBackend,
 } from "./types";
 
 /**
- * Create an autosave storage with the specified backend
+ * Create an autosave storage using IndexedDB
  *
  * @example
- * // Using IndexedDB (recommended for large data)
  * const editorAutosave = createAutosave<EditorAutosaveData>({
- *   backend: "indexedDB",
  *   key: "editor-autosave",
  *   dbName: "editor-autosave-db",
  * });
  *
- * @example
- * // Using localStorage (simpler, but limited storage)
- * const spriteAutosave = createAutosave<SpriteAutosaveData>({
- *   backend: "localStorage",
- *   key: "sprite-editor-autosave",
- * });
+ * await editorAutosave.save(data);
+ * const loaded = await editorAutosave.load();
  */
 export function createAutosave<T extends BaseAutosaveData>(
-  options: AutosaveConfig & { backend: StorageBackend }
+  config: AutosaveConfig
 ): AutosaveStorage<T> {
-  const { backend, ...config } = options;
-
-  switch (backend) {
-    case "indexedDB":
-      return createIndexedDBStorage<T>(config);
-    case "localStorage":
-      return createLocalStorage<T>(config);
-    default:
-      throw new Error(`Unknown storage backend: ${backend}`);
-  }
+  return createIndexedDBStorage<T>(config);
 }

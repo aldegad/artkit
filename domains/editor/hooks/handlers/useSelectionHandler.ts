@@ -1,0 +1,173 @@
+// ============================================
+// Selection (Marquee) Handler
+// ============================================
+
+import { useCallback } from "react";
+import { Point } from "../../types";
+import type { MouseEventContext, HandlerResult, SelectionHandlerOptions, FloatingLayer } from "./types";
+
+export interface UseSelectionHandlerReturn {
+  handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
+  handleMouseMove: (ctx: MouseEventContext, dragStart: Point) => void;
+  handleMouseUp: () => void;
+}
+
+export function useSelectionHandler(options: SelectionHandlerOptions): UseSelectionHandlerReturn {
+  const {
+    editCanvasRef,
+    imageRef,
+    rotation,
+    canvasSize,
+    selection,
+    setSelection,
+    setIsMovingSelection,
+    setIsDuplicating,
+    floatingLayerRef,
+    dragStartOriginRef,
+    saveToHistory,
+  } = options;
+
+  const handleMouseDown = useCallback(
+    (ctx: MouseEventContext): HandlerResult => {
+      const { imagePos, activeMode, inBounds, e, displayDimensions } = ctx;
+      const { width: displayWidth, height: displayHeight } = displayDimensions;
+
+      if (activeMode !== "marquee") return { handled: false };
+
+      if (selection) {
+        // Check if clicking inside selection
+        if (
+          imagePos.x >= selection.x &&
+          imagePos.x <= selection.x + selection.width &&
+          imagePos.y >= selection.y &&
+          imagePos.y <= selection.y + selection.height
+        ) {
+          // Alt+click to duplicate and move
+          if (e.altKey) {
+            const editCanvas = editCanvasRef.current;
+            const ctx2d = editCanvas?.getContext("2d");
+            const img = imageRef.current;
+            if (!editCanvas || !ctx2d || !img) return { handled: false };
+
+            // Create composite canvas to get the selected area
+            const compositeCanvas = document.createElement("canvas");
+            compositeCanvas.width = displayWidth;
+            compositeCanvas.height = displayHeight;
+            const compositeCtx = compositeCanvas.getContext("2d");
+            if (!compositeCtx) return { handled: false };
+
+            compositeCtx.translate(displayWidth / 2, displayHeight / 2);
+            compositeCtx.rotate((rotation * Math.PI) / 180);
+            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
+            compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            compositeCtx.drawImage(editCanvas, 0, 0);
+
+            // Copy selection to floating layer
+            const imageData = compositeCtx.getImageData(
+              Math.round(selection.x),
+              Math.round(selection.y),
+              Math.round(selection.width),
+              Math.round(selection.height)
+            );
+            (floatingLayerRef as { current: FloatingLayer | null }).current = {
+              imageData,
+              x: selection.x,
+              y: selection.y,
+              originX: selection.x,
+              originY: selection.y,
+            };
+
+            saveToHistory();
+            setIsMovingSelection(true);
+            setIsDuplicating(true);
+            (dragStartOriginRef as { current: Point | null }).current = { x: imagePos.x, y: imagePos.y };
+
+            return {
+              handled: true,
+              dragType: "move",
+              dragStart: imagePos,
+            };
+          }
+
+          // Regular click inside selection - move existing floating layer
+          if (floatingLayerRef.current) {
+            setIsMovingSelection(true);
+            setIsDuplicating(false);
+            (dragStartOriginRef as { current: Point | null }).current = { x: imagePos.x, y: imagePos.y };
+
+            return {
+              handled: true,
+              dragType: "move",
+              dragStart: imagePos,
+            };
+          }
+        }
+      }
+
+      // Click outside selection or no selection - create new selection
+      if (inBounds) {
+        setSelection(null);
+        (floatingLayerRef as { current: FloatingLayer | null }).current = null;
+        setIsDuplicating(false);
+        const roundedPos = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
+        setSelection({ x: roundedPos.x, y: roundedPos.y, width: 0, height: 0 });
+
+        return {
+          handled: true,
+          dragType: "create",
+          dragStart: roundedPos,
+        };
+      }
+
+      return { handled: false };
+    },
+    [
+      selection,
+      setSelection,
+      editCanvasRef,
+      imageRef,
+      rotation,
+      canvasSize,
+      floatingLayerRef,
+      dragStartOriginRef,
+      saveToHistory,
+      setIsMovingSelection,
+      setIsDuplicating,
+    ]
+  );
+
+  const handleMouseMove = useCallback(
+    (ctx: MouseEventContext, dragStart: Point) => {
+      const { imagePos, displayDimensions } = ctx;
+      const { width: displayWidth, height: displayHeight } = displayDimensions;
+
+      if (!selection) return;
+
+      let width = Math.round(imagePos.x) - dragStart.x;
+      let height = Math.round(imagePos.y) - dragStart.y;
+
+      const newX = width < 0 ? dragStart.x + width : dragStart.x;
+      const newY = height < 0 ? dragStart.y + height : dragStart.y;
+
+      setSelection({
+        x: Math.max(0, newX),
+        y: Math.max(0, newY),
+        width: Math.min(Math.abs(width), displayWidth - Math.max(0, newX)),
+        height: Math.min(Math.abs(height), displayHeight - Math.max(0, newY)),
+      });
+    },
+    [selection, setSelection]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (selection && (selection.width < 5 || selection.height < 5)) {
+      setSelection(null);
+    }
+  }, [selection, setSelection]);
+
+  return {
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+  };
+}
