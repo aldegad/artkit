@@ -41,7 +41,8 @@ domains/
 ├── editor/     # Image editor (layers, brushes, transforms, crop, selection)
 ├── sprite/     # Sprite sheet editor (frame extraction, animation)
 ├── converter/  # Image format conversion
-└── sound/      # Audio editing (trim, format conversion)
+├── sound/      # Audio editing (trim, format conversion)
+└── video/      # Video editor (timeline, multi-track, masking)
 ```
 
 Each domain has: `hooks/`, `components/`, `contexts/`, `types/`, `utils/`, and a barrel export via `index.ts`.
@@ -134,6 +135,35 @@ const autosave = createAutosave<MyData>({
 await autosave.save(data);
 const loaded = await autosave.load();
 ```
+
+### Video Editor
+
+Premiere-style video editor with timeline and masking (`domains/video/`):
+
+**Architecture:**
+- `VideoStateContext` - Playback state, project management
+- `TimelineContext` - Tracks, clips, zoom/scroll
+- `MaskContext` - Mask editing, keyframes, brush settings
+
+**Key Features:**
+- Multi-track timeline with drag/trim clips
+- Video/image import via drag-and-drop
+- Layer compositing (tracks stacked by zIndex)
+- Masking system (draw on clips to reveal layers below)
+- Soft brush with radial gradients for mask painting
+- Keyframe-based mask interpolation
+
+**Coordinate System:**
+```
+Time (seconds) ←→ Pixel position
+  timeToPixel(time) = (time - scrollX) * zoom
+  pixelToTime(pixel) = scrollX + pixel / zoom
+```
+
+**Mask Storage:**
+- Keyframed mode: Store only keyframes, interpolate at runtime
+- Masks stored as base64 PNG (grayscale alpha channel)
+- White = visible, Black = transparent (reveals below)
 
 ### AI Background Removal
 
