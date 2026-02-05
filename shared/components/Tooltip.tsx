@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, ReactNode, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 interface TooltipProps {
   children: ReactNode;
@@ -73,26 +74,24 @@ export default function Tooltip({
 
   // Mouse handlers (desktop)
   const handleMouseEnter = useCallback(() => {
-    console.log("[Tooltip] mouseEnter", {
-      lastTouch: lastTouchRef.current,
-      timeSinceTouch: Date.now() - lastTouchRef.current,
-      delay,
-    });
     // Ignore mouse events shortly after touch (mobile browsers emit both)
     if (Date.now() - lastTouchRef.current < 500) {
-      console.log("[Tooltip] ignored - too soon after touch");
       return;
     }
     timeoutRef.current = setTimeout(() => {
-      console.log("[Tooltip] showing tooltip");
       updatePosition();
-      console.log("[Tooltip] position after update:", position, "triggerRef:", triggerRef.current?.getBoundingClientRect());
       setMode("hover");
       setIsVisible(true);
     }, delay);
   }, [delay, updatePosition]);
 
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeave = useCallback((e: React.MouseEvent) => {
+    // Check if mouse actually left the trigger area
+    const relatedTarget = e.relatedTarget as Node | null;
+    if (triggerRef.current && relatedTarget && triggerRef.current.contains(relatedTarget)) {
+      // Mouse moved to a child element, don't hide
+      return;
+    }
     hideTooltip();
   }, [hideTooltip]);
 
@@ -194,7 +193,7 @@ export default function Tooltip({
       >
         {children}
       </div>
-      {isVisible && (
+      {isVisible && typeof document !== 'undefined' && createPortal(
         <>
           {/* 모바일 모달: 중앙에 표시 */}
           {isPopupMode ? (
@@ -256,7 +255,8 @@ export default function Tooltip({
               </div>
             </div>
           )}
-        </>
+        </>,
+        document.body
       )}
     </>
   );
