@@ -49,6 +49,7 @@ interface UseLayerManagementReturn {
   reorderLayers: (fromId: string, toId: string) => void;
   mergeLayerDown: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
+  rotateAllLayerCanvases: (degrees: number) => void;
 
   // Initialization
   initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => Promise<void>;
@@ -120,6 +121,10 @@ export function useLayerManagement(
 
         // Wait for all images to load
         await Promise.all(loadPromises);
+
+        // Force re-render by setting layers again with a new array reference
+        // This ensures useCanvasRendering's useEffect runs after images are loaded
+        setLayers([...existingLayers]);
 
         if (firstPaintLayer) {
           editCanvasRef.current = layerCanvasesRef.current.get(firstPaintLayer.id) || null;
@@ -319,6 +324,52 @@ export function useLayerManagement(
     [layers, saveToHistory, deleteLayer]
   );
 
+  // Rotate all layer canvases by degrees (90, -90, 180)
+  const rotateAllLayerCanvases = useCallback((degrees: number) => {
+    const normalizedDeg = ((degrees % 360) + 360) % 360;
+    const isSwapDimensions = normalizedDeg === 90 || normalizedDeg === 270;
+
+    layerCanvasesRef.current.forEach((canvas, layerId) => {
+      const oldWidth = canvas.width;
+      const oldHeight = canvas.height;
+
+      // Create temp canvas to store current content
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = oldWidth;
+      tempCanvas.height = oldHeight;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (tempCtx) {
+        tempCtx.drawImage(canvas, 0, 0);
+      }
+
+      // Resize canvas for rotation (swap dimensions for 90/270)
+      const newWidth = isSwapDimensions ? oldHeight : oldWidth;
+      const newHeight = isSwapDimensions ? oldWidth : oldHeight;
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+
+      // Draw rotated content
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.save();
+        ctx.translate(newWidth / 2, newHeight / 2);
+        ctx.rotate((normalizedDeg * Math.PI) / 180);
+        ctx.drawImage(tempCanvas, -oldWidth / 2, -oldHeight / 2);
+        ctx.restore();
+      }
+
+      // Update layer originalSize if exists
+      const layer = layers.find(l => l.id === layerId);
+      if (layer?.originalSize && isSwapDimensions) {
+        setLayers(prev => prev.map(l =>
+          l.id === layerId
+            ? { ...l, originalSize: { width: l.originalSize!.height, height: l.originalSize!.width } }
+            : l
+        ));
+      }
+    });
+  }, [layers]);
+
   // Duplicate layer (all layers are paint layers now)
   const duplicateLayer = useCallback((layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
@@ -386,6 +437,7 @@ export function useLayerManagement(
     reorderLayers,
     mergeLayerDown,
     duplicateLayer,
+    rotateAllLayerCanvases,
 
     // Initialization
     initLayers,

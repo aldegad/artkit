@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth } from "../../shared/contexts";
-import { Tooltip, ImageDropZone } from "../../shared/components";
+import { Tooltip, ImageDropZone, Select } from "../../shared/components";
 import {
   EditorToolMode,
   OutputFormat,
@@ -188,6 +188,7 @@ function ImageEditorContent() {
     reorderLayers,
     mergeLayerDown,
     duplicateLayer,
+    rotateAllLayerCanvases,
     initLayers,
     addLayer,
   } = useLayerManagement({
@@ -213,6 +214,14 @@ function ImageEditorContent() {
     setBrushHardness,
     stampSource,
     setStampSource,
+    // Preset state
+    activePreset,
+    setActivePreset,
+    presets,
+    deletePreset,
+    pressureEnabled,
+    setPressureEnabled,
+    // Actions
     drawOnEditCanvas,
     pickColor,
     resetLastDrawPoint,
@@ -686,22 +695,36 @@ function ImageEditorContent() {
   // isInHandle, getActiveToolMode, useMouseHandlers moved above canvas rendering useEffect
   // Keyboard shortcuts - moved to useKeyboardShortcuts hook
 
-  // Refs for wheel handler to access current values without stale closure
+  // Refs for wheel/touch handlers - direct ref updates for synchronous zoom/pan
+  // This avoids React's batched state updates causing stale values in fast events
   const zoomRef = useRef(zoom);
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+  const panRef = useRef(pan);
+  zoomRef.current = zoom;
+  panRef.current = pan;
 
-  // Refs for wheel handler cleanup
+  // Refs for wheel and touch handler cleanup
   const wheelHandlerRef = useRef<((e: WheelEvent) => void) | null>(null);
+  const touchHandlersRef = useRef<{
+    start: ((e: TouchEvent) => void) | null;
+    move: ((e: TouchEvent) => void) | null;
+    end: ((e: TouchEvent) => void) | null;
+  }>({ start: null, move: null, end: null });
   const currentCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Canvas ref callback to attach wheel listener when canvas is mounted
+  // Canvas ref callback to attach wheel and touch listeners when canvas is mounted
   const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
-    // Remove listener from previous canvas if exists
-    if (currentCanvasRef.current && wheelHandlerRef.current) {
-      currentCanvasRef.current.removeEventListener("wheel", wheelHandlerRef.current);
-      wheelHandlerRef.current = null;
+    // Remove listeners from previous canvas if exists
+    if (currentCanvasRef.current) {
+      if (wheelHandlerRef.current) {
+        currentCanvasRef.current.removeEventListener("wheel", wheelHandlerRef.current);
+        wheelHandlerRef.current = null;
+      }
+      if (touchHandlersRef.current.start) {
+        currentCanvasRef.current.removeEventListener("touchstart", touchHandlersRef.current.start);
+        currentCanvasRef.current.removeEventListener("touchmove", touchHandlersRef.current.move!);
+        currentCanvasRef.current.removeEventListener("touchend", touchHandlersRef.current.end!);
+        touchHandlersRef.current = { start: null, move: null, end: null };
+      }
     }
 
     // Update the refs
@@ -725,16 +748,122 @@ function ImageEditorContent() {
         const mouseY = (e.clientY - rect.top) * scaleY;
         const scale = newZoom / currentZoom;
 
-        // Adjust pan so the point under the mouse stays fixed
-        setPan((p) => ({
-          x: mouseX - (mouseX - p.x) * scale,
-          y: mouseY - (mouseY - p.y) * scale,
-        }));
+        // Zoom centered on cursor position
+        // mouseX/Y is relative to canvas top-left, but pan is relative to canvas center
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // Calculate new pan using ref (synchronous) for accurate fast zoom
+        const currentPan = panRef.current;
+        const newPan = {
+          x: currentPan.x * scale + (1 - scale) * (mouseX - centerX),
+          y: currentPan.y * scale + (1 - scale) * (mouseY - centerY),
+        };
+
+        // Update refs synchronously for fast consecutive events
+        panRef.current = newPan;
+        zoomRef.current = newZoom;
+
+        // Trigger React render
+        setPan(newPan);
         setZoom(newZoom);
       };
 
       wheelHandlerRef.current = wheelHandler;
       canvas.addEventListener("wheel", wheelHandler, { passive: false });
+
+      // Touch pinch zoom state
+      let lastTouchDistance = 0;
+      let lastTouchCenter = { x: 0, y: 0 };
+      let isPinching = false;
+
+      const getTouchDistance = (touches: TouchList) => {
+        if (touches.length < 2) return 0;
+        const dx = touches[1].clientX - touches[0].clientX;
+        const dy = touches[1].clientY - touches[0].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+      };
+
+      const getTouchCenter = (touches: TouchList, rect: DOMRect, scaleX: number, scaleY: number) => {
+        if (touches.length < 2) return { x: 0, y: 0 };
+        const centerClientX = (touches[0].clientX + touches[1].clientX) / 2;
+        const centerClientY = (touches[0].clientY + touches[1].clientY) / 2;
+        return {
+          x: (centerClientX - rect.left) * scaleX,
+          y: (centerClientY - rect.top) * scaleY,
+        };
+      };
+
+      const touchStartHandler = (e: TouchEvent) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          isPinching = true;
+          lastTouchDistance = getTouchDistance(e.touches);
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          lastTouchCenter = getTouchCenter(e.touches, rect, scaleX, scaleY);
+        }
+      };
+
+      const touchMoveHandler = (e: TouchEvent) => {
+        if (!isPinching || e.touches.length !== 2) return;
+        e.preventDefault();
+
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const newDistance = getTouchDistance(e.touches);
+        const newCenter = getTouchCenter(e.touches, rect, scaleX, scaleY);
+
+        // Calculate zoom
+        const currentZoom = zoomRef.current;
+        const zoomDelta = newDistance / lastTouchDistance;
+        const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomDelta));
+        const scale = newZoom / currentZoom;
+
+        // Calculate pan delta (for two-finger drag)
+        const panDeltaX = newCenter.x - lastTouchCenter.x;
+        const panDeltaY = newCenter.y - lastTouchCenter.y;
+
+        // Zoom centered on pinch center point
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
+        // Calculate new pan using ref (synchronous) for accurate fast zoom
+        const currentPan = panRef.current;
+        const newPan = {
+          x: currentPan.x * scale + (1 - scale) * (lastTouchCenter.x - centerX) + panDeltaX,
+          y: currentPan.y * scale + (1 - scale) * (lastTouchCenter.y - centerY) + panDeltaY,
+        };
+
+        // Update refs synchronously for fast consecutive events
+        panRef.current = newPan;
+        zoomRef.current = newZoom;
+
+        // Trigger React render
+        setPan(newPan);
+        setZoom(newZoom);
+
+        lastTouchDistance = newDistance;
+        lastTouchCenter = newCenter;
+      };
+
+      const touchEndHandler = (e: TouchEvent) => {
+        if (e.touches.length < 2) {
+          isPinching = false;
+        }
+      };
+
+      touchHandlersRef.current = {
+        start: touchStartHandler,
+        move: touchMoveHandler,
+        end: touchEndHandler,
+      };
+      canvas.addEventListener("touchstart", touchStartHandler, { passive: false });
+      canvas.addEventListener("touchmove", touchMoveHandler, { passive: false });
+      canvas.addEventListener("touchend", touchEndHandler);
     }
   }, []);
 
@@ -745,9 +874,8 @@ function ImageEditorContent() {
     const newRotation = (rotation + deg + 360) % 360;
     setRotation(newRotation);
     setCropArea(null);
-    // Reinitialize edit canvas for new dimensions
-    const { width, height } = getDisplayDimensions();
-    initEditCanvas(rotation % 180 === 0 ? height : width, rotation % 180 === 0 ? width : height);
+    // Rotate all layer canvases to preserve drawn content
+    rotateAllLayerCanvases(deg);
   };
 
   // Background removal handler - moved to useBackgroundRemoval hook
@@ -1089,7 +1217,7 @@ function ImageEditorContent() {
   // Cmd+S keyboard shortcut for save
   useEffect(() => {
     const handleSave = (e: KeyboardEvent) => {
-      if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
+      if (e.code === "KeyS" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         if (layers.length > 0) {
           handleSaveProject();
@@ -1480,12 +1608,12 @@ function ImageEditorContent() {
           </div>
         )}
 
-        {/* Auth UI */}
-        <div className="flex items-center gap-2 ml-2">
+        {/* Auth UI - Desktop only (mobile uses MobileHeader) */}
+        <div className="hidden md:flex items-center gap-2 ml-2">
           {user ? (
             <>
               {storageProvider.type === "cloud" && (
-                <span className="text-xs text-green-500 hidden md:inline">Cloud</span>
+                <span className="text-xs text-green-500">Cloud</span>
               )}
               <UserMenu />
             </>
@@ -1582,34 +1710,38 @@ function ImageEditorContent() {
 
           {/* Rotation */}
           <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => rotate(-90)}
-              className="p-1 hover:bg-interactive-hover rounded transition-colors"
-              title={t.rotateLeft}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                />
-              </svg>
-            </button>
-            <button
-              onClick={() => rotate(90)}
-              className="p-1 hover:bg-interactive-hover rounded transition-colors"
-              title={t.rotateRight}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
-                />
-              </svg>
-            </button>
+            <Tooltip content={t.rotateLeft}>
+              <button
+                onClick={() => rotate(-90)}
+                className="p-1 hover:bg-interactive-hover rounded transition-colors relative"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                  />
+                </svg>
+                <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-bold leading-none">90°</span>
+              </button>
+            </Tooltip>
+            <Tooltip content={t.rotateRight}>
+              <button
+                onClick={() => rotate(90)}
+                className="p-1 hover:bg-interactive-hover rounded transition-colors relative"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
+                  />
+                </svg>
+                <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-bold leading-none">90°</span>
+              </button>
+            </Tooltip>
           </div>
 
           <div className="h-4 w-px bg-border-default mx-1" />
@@ -1653,15 +1785,16 @@ function ImageEditorContent() {
 
           {/* Output format */}
           <div className="flex items-center gap-1">
-            <select
+            <Select
               value={outputFormat}
-              onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
-              className="px-1 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
-            >
-              <option value="png">PNG</option>
-              <option value="webp">WebP</option>
-              <option value="jpeg">JPEG</option>
-            </select>
+              onChange={(value) => setOutputFormat(value as OutputFormat)}
+              options={[
+                { value: "png", label: "PNG" },
+                { value: "webp", label: "WebP" },
+                { value: "jpeg", label: "JPEG" },
+              ]}
+              size="sm"
+            />
             {outputFormat !== "png" && (
               <>
                 <input
@@ -1708,6 +1841,12 @@ function ImageEditorContent() {
           brushColor={brushColor}
           setBrushColor={setBrushColor}
           stampSource={stampSource}
+          activePreset={activePreset}
+          presets={presets}
+          onSelectPreset={setActivePreset}
+          onDeletePreset={deletePreset}
+          pressureEnabled={pressureEnabled}
+          onPressureToggle={setPressureEnabled}
           aspectRatio={aspectRatio}
           setAspectRatio={setAspectRatio}
           cropArea={cropArea}
@@ -1720,6 +1859,9 @@ function ImageEditorContent() {
             color: t.color,
             source: t.source,
             altClickToSetSource: t.altClickToSetSource,
+            presets: "Presets",
+            pressure: "Pressure",
+            builtIn: "Built-in",
           }}
         />
       )}

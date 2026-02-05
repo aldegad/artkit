@@ -172,13 +172,21 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       // Zoom tool
       if (activeMode === "zoom") {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
         const zoomFactor = e.altKey ? 0.8 : 1.25;
         const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
         const scale = newZoom / zoom;
 
+        // Zoom centered on cursor position
+        // screenPos is relative to canvas top-left, but pan is relative to canvas center
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+
         setPan((p) => ({
-          x: screenPos.x - (screenPos.x - p.x) * scale,
-          y: screenPos.y - (screenPos.y - p.y) * scale,
+          x: p.x * scale + (1 - scale) * (screenPos.x - centerX),
+          y: p.y * scale + (1 - scale) * (screenPos.y - centerY),
         }));
         setZoom(newZoom);
         return;
