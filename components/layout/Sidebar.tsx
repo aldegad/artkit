@@ -94,7 +94,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
   const isMobile = !!onNavigate;
 
   return (
-    <div className={`w-14 h-full bg-surface-primary flex flex-col items-center gap-2 ${
+    <div className={`w-14 h-full bg-surface-primary flex flex-col items-center gap-2 pb-2 ${
       isMobile ? "pt-2" : "border-r border-border-default"
     }`}>
       {/* Logo area - Desktop only: link to home (colored icon, no box) */}

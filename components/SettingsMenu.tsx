@@ -39,10 +39,10 @@ export default function SettingsMenu() {
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-lg bg-interactive-default hover:bg-interactive-hover transition-colors"
+        className="p-2 rounded-lg text-text-secondary hover:bg-interactive-hover hover:text-text-primary transition-colors"
         title={t.settings}
       >
-        <CogIcon className="w-5 h-5 text-text-primary" />
+        <CogIcon className="w-5 h-5" />
       </button>
 
       {isOpen && (
