@@ -268,16 +268,25 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
 
     // Resize Operations
     const startResize = useCallback((state: ResizeState) => {
-      // Store original sizes at drag start for absolute delta calculation
+      // Store original sizes and container size at drag start for absolute delta calculation
       const node = findNode(layoutState.root, state.splitId);
+      const containerSize =
+        state.direction === "horizontal"
+          ? containerRef.current?.clientWidth || 1000
+          : containerRef.current?.clientHeight || 600;
+
       if (node && isSplitNode(node)) {
         const splitNode = node as SplitNode;
         setResizeState({
           ...state,
           originalSizes: [...splitNode.sizes],
+          originalContainerSize: containerSize,
         });
       } else {
-        setResizeState(state);
+        setResizeState({
+          ...state,
+          originalContainerSize: containerSize,
+        });
       }
     }, [layoutState.root]);
 
@@ -325,17 +334,18 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
     // Absolute delta update (uses total delta from drag start, more stable)
     const updateResizeAbsolute = useCallback(
       (totalDelta: number) => {
-        if (!resizeState || !resizeState.originalSizes) return;
+        if (!resizeState || !resizeState.originalSizes || !resizeState.originalContainerSize) return;
 
-        const { splitId, handleIndex, direction, originalSizes } = resizeState;
+        const { splitId, handleIndex, originalSizes, originalContainerSize } = resizeState;
         const total = originalSizes.reduce((a, b) => a + b, 0);
 
-        const containerSize =
-          direction === "horizontal"
-            ? containerRef.current?.clientWidth || 1000
-            : containerRef.current?.clientHeight || 600;
+        // Use the container size from drag start (stable throughout drag)
+        const deltaRatio = (totalDelta / originalContainerSize) * total;
 
-        const deltaRatio = (totalDelta / containerSize) * total;
+        // Debug: check calculation (remove after testing)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Resize:', { totalDelta, originalContainerSize, total, deltaRatio });
+        }
 
         const minRatio = (10 / total) * 100;
         // Use original sizes, not current sizes
