@@ -37,9 +37,6 @@ export type {
   Point,
   Size,
   UnifiedLayer,
-  // Legacy types (deprecated)
-  CompositionLayer,
-  ImageLayer,
   BoundingBox,
   // Brush preset types
   PressureSettings,
@@ -54,8 +51,6 @@ export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "./types";
 export {
   createLayerWithSize,
   createPaintLayer,
-  compositionLayerToUnified,
-  imageLayerToUnified,
 } from "./types";
 
 // Utils

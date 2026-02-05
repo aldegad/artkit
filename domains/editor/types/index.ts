@@ -18,16 +18,11 @@ export type {
   Size,
   BoundingBox,
   UnifiedLayer,
-  // Legacy types (deprecated)
-  CompositionLayer,
-  ImageLayer,
 } from "../../../shared/types";
 
 export {
   createLayerWithSize,
   createPaintLayer,
-  compositionLayerToUnified,
-  imageLayerToUnified,
 } from "../../../shared/types/layers";
 
 // ============================================
@@ -61,25 +56,16 @@ export interface CropArea {
 
 /**
  * SavedImageProject: Saved project data for image editor
- * Updated to use UnifiedLayer system
  */
 export interface SavedImageProject {
   id: string;
   name: string;
-  // New unified layer system
-  unifiedLayers?: import("../../../shared/types").UnifiedLayer[];
+  unifiedLayers: import("../../../shared/types").UnifiedLayer[];
   activeLayerId?: string;
   canvasSize: Size;
   rotation: number;
   savedAt: number;
-  // Legacy fields (for backward compatibility)
-  /** @deprecated Use canvasSize instead */
-  imageSize?: Size;
-  /** @deprecated No longer used */
-  imageSrc?: string;
-  editLayerData?: string;
-  layers?: import("../../../shared/types").ImageLayer[];
-  compositionLayers?: import("../../../shared/types").CompositionLayer[];
+  thumbnailUrl?: string; // For list view
 }
 
 // Aspect ratio configuration

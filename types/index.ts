@@ -69,54 +69,18 @@ export interface UnifiedLayer {
 }
 
 // ============================================
-// Image Editor Types (Legacy - kept for backward compatibility)
-// ============================================
-
-/** @deprecated Use UnifiedLayer instead */
-export interface ImageLayer {
-  id: string;
-  name: string;
-  visible: boolean;
-  opacity: number;
-  data: string;
-}
-
-/** @deprecated Use UnifiedLayer instead */
-export interface CompositionLayer {
-  id: string;
-  name: string;
-  imageSrc: string;
-  visible: boolean;
-  locked: boolean;
-  opacity: number;
-  position: Point;
-  scale: number;
-  rotation: number;
-  zIndex: number;
-  originalSize: Size;
-}
-
-// ============================================
 // Saved Image Project
 // ============================================
 
 export interface SavedImageProject {
   id: string;
   name: string;
-  // New unified layer system
-  unifiedLayers?: UnifiedLayer[];
+  unifiedLayers: UnifiedLayer[];
   activeLayerId?: string;
   canvasSize: Size;
   rotation: number;
   savedAt: number;
-  // Legacy fields (for backward compatibility)
-  /** @deprecated Use canvasSize instead */
-  imageSize?: Size;
-  /** @deprecated No longer used */
-  imageSrc?: string;
-  editLayerData?: string;
-  layers?: ImageLayer[];
-  compositionLayers?: CompositionLayer[];
+  thumbnailUrl?: string; // For list view
 }
 
 // ============================================

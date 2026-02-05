@@ -1312,19 +1312,20 @@ function ImageEditorContent() {
       return { ...layer };
     });
 
-    // Legacy editLayerData for backward compatibility (first paint layer)
-    const editCanvas = editCanvasRef.current;
-    const editLayerData = editCanvas ? editCanvas.toDataURL("image/png") : "";
+    // Generate thumbnail from first visible layer
+    const firstVisibleLayer = layers.find(l => l.visible);
+    const thumbnailCanvas = firstVisibleLayer ? layerCanvasesRef.current.get(firstVisibleLayer.id) : null;
+    const thumbnailUrl = thumbnailCanvas ? thumbnailCanvas.toDataURL("image/png") : undefined;
 
     return {
       id: forceNewId ? crypto.randomUUID() : (currentProjectId || crypto.randomUUID()),
       name: projectName,
-      editLayerData,
       unifiedLayers: savedLayers,
       activeLayerId: activeLayerId || undefined,
       canvasSize,
       rotation,
       savedAt: Date.now(),
+      thumbnailUrl,
     };
   }, [layers, projectName, canvasSize, rotation, currentProjectId, activeLayerId]);
 
@@ -1404,9 +1405,7 @@ function ImageEditorContent() {
         setProjectName(project.name);
         setCurrentProjectId(project.id);
         setRotation(project.rotation);
-        // Support legacy imageSize field
-        const size = project.canvasSize || project.imageSize || { width: 0, height: 0 };
-        setCanvasSize(size);
+        setCanvasSize(project.canvasSize);
         setCropArea(null);
         setSelection(null);
         setZoom(1);
@@ -1416,47 +1415,15 @@ function ImageEditorContent() {
         // Initialize edit canvas with layers
         const { width, height } =
           project.rotation % 180 === 0
-            ? size
-            : { width: size.height, height: size.width };
+            ? project.canvasSize
+            : { width: project.canvasSize.height, height: project.canvasSize.width };
 
-        // Check if project has new unified layer system
-        if (project.unifiedLayers && project.unifiedLayers.length > 0) {
-          await initLayers(width, height, project.unifiedLayers);
-          if (project.activeLayerId) {
-            setActiveLayerId(project.activeLayerId);
-            const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
-            if (activeLayer?.type === "paint") {
-              editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
-            }
-          }
-        } else if (project.layers && project.layers.length > 0) {
-          // Legacy project with old ImageLayer format - convert to UnifiedLayer
-          const convertedLayers: UnifiedLayer[] = project.layers.map((layer, index) => ({
-            ...layer,
-            type: "paint" as const,
-            locked: false,
-            zIndex: project.layers!.length - 1 - index,
-            paintData: layer.data,
-          }));
-          await initLayers(width, height, convertedLayers);
-          if (project.activeLayerId) {
-            setActiveLayerId(project.activeLayerId);
+        await initLayers(width, height, project.unifiedLayers);
+        if (project.activeLayerId) {
+          setActiveLayerId(project.activeLayerId);
+          const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
+          if (activeLayer?.type === "paint") {
             editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
-          }
-        } else {
-          // Legacy project with single edit layer
-          await initLayers(width, height);
-
-          // Load edit layer data if exists
-          if (project.editLayerData && editCanvasRef.current) {
-            const editImg = new Image();
-            editImg.onload = () => {
-              const ctx = editCanvasRef.current?.getContext("2d");
-              if (ctx) {
-                ctx.drawImage(editImg, 0, 0);
-              }
-            };
-            editImg.src = project.editLayerData;
           }
         }
 

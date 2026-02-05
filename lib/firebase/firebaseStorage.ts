@@ -298,7 +298,7 @@ export async function getAllProjectsFromFirebase(
       name: data.name,
       canvasSize: data.canvasSize,
       rotation: data.rotation,
-      imageSrc: data.thumbnailUrl, // Use thumbnail for list view
+      thumbnailUrl: data.thumbnailUrl,
       unifiedLayers: data.layers.map((l) => ({
         id: l.id,
         name: l.name,

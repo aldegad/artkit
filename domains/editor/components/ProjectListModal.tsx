@@ -111,18 +111,20 @@ export default function ProjectListModal({
                 >
                   {/* Thumbnail */}
                   <div className="w-12 h-12 bg-surface-tertiary rounded overflow-hidden shrink-0">
-                    <img
-                      src={project.imageSrc}
-                      alt={project.name}
-                      className="w-full h-full object-contain"
-                    />
+                    {project.thumbnailUrl && (
+                      <img
+                        src={project.thumbnailUrl}
+                        alt={project.name}
+                        className="w-full h-full object-contain"
+                      />
+                    )}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{project.name}</div>
                     <div className="text-xs text-text-tertiary">
-                      {(project.canvasSize || project.imageSize)?.width ?? 0} × {(project.canvasSize || project.imageSize)?.height ?? 0}
+                      {project.canvasSize.width} × {project.canvasSize.height}
                       {project.rotation !== 0 && ` • ${project.rotation}°`}
                     </div>
                     <div className="text-xs text-text-quaternary">
