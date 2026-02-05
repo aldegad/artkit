@@ -1,6 +1,9 @@
 "use client";
 
 import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS } from "../../types";
+import { BrushPreset } from "../../types/brush";
+import { BrushPresetSelector } from "./BrushPresetSelector";
+import { Select } from "../../../../shared/components";
 
 // ============================================
 // Types
@@ -16,6 +19,13 @@ interface EditorToolOptionsProps {
   brushColor: string;
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   stampSource: Point | null;
+  // Preset props
+  activePreset: BrushPreset;
+  presets: BrushPreset[];
+  onSelectPreset: (preset: BrushPreset) => void;
+  onDeletePreset: (presetId: string) => void;
+  pressureEnabled: boolean;
+  onPressureToggle: (enabled: boolean) => void;
   // Crop props
   aspectRatio: AspectRatio;
   setAspectRatio: React.Dispatch<React.SetStateAction<AspectRatio>>;
@@ -31,6 +41,9 @@ interface EditorToolOptionsProps {
     color: string;
     source: string;
     altClickToSetSource: string;
+    presets: string;
+    pressure: string;
+    builtIn: string;
   };
 }
 
@@ -47,6 +60,12 @@ export function EditorToolOptions({
   brushColor,
   setBrushColor,
   stampSource,
+  activePreset,
+  presets,
+  onSelectPreset,
+  onDeletePreset,
+  pressureEnabled,
+  onPressureToggle,
   aspectRatio,
   setAspectRatio,
   cropArea,
@@ -57,34 +76,54 @@ export function EditorToolOptions({
 }: EditorToolOptionsProps) {
   return (
     <div className="flex items-center gap-2 px-2 md:px-4 py-1 bg-surface-secondary border-b border-border-default shrink-0 overflow-x-auto min-h-[32px]">
-      {/* Brush controls */}
-      {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp") && (
+      {/* Brush and fill controls */}
+      {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp" || toolMode === "fill") && (
         <>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-text-secondary">{t.size}:</span>
-            <button
-              onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
-              className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-            >
-              -
-            </button>
-            <input
-              type="number"
-              value={brushSize}
-              onChange={(e) =>
-                setBrushSize(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))
-              }
-              className="w-10 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-              min={1}
-              max={200}
+          {/* Preset selector for brush/eraser */}
+          {(toolMode === "brush" || toolMode === "eraser") && (
+            <BrushPresetSelector
+              presets={presets}
+              activePreset={activePreset}
+              onSelectPreset={onSelectPreset}
+              onDeletePreset={onDeletePreset}
+              pressureEnabled={pressureEnabled}
+              onPressureToggle={onPressureToggle}
+              translations={{
+                presets: t.presets,
+                pressure: t.pressure,
+                builtIn: t.builtIn,
+              }}
             />
-            <button
-              onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
-              className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-            >
-              +
-            </button>
-          </div>
+          )}
+
+          {/* Size control - not for fill tool */}
+          {toolMode !== "fill" && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-text-secondary">{t.size}:</span>
+              <button
+                onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
+                className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
+              >
+                -
+              </button>
+              <input
+                type="number"
+                value={brushSize}
+                onChange={(e) =>
+                  setBrushSize(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))
+                }
+                className="w-10 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
+                min={1}
+                max={200}
+              />
+              <button
+                onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
+                className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
+              >
+                +
+              </button>
+            </div>
+          )}
 
           {(toolMode === "brush" || toolMode === "eraser") && (
             <div className="flex items-center gap-1">
@@ -101,7 +140,7 @@ export function EditorToolOptions({
             </div>
           )}
 
-          {toolMode === "brush" && (
+          {(toolMode === "brush" || toolMode === "fill") && (
             <div className="flex items-center gap-1">
               <span className="text-xs text-text-secondary">{t.color}:</span>
               <input
@@ -128,17 +167,12 @@ export function EditorToolOptions({
       {toolMode === "crop" && (
         <div className="flex items-center gap-1">
           <span className="text-xs text-text-secondary">Ratio:</span>
-          <select
+          <Select
             value={aspectRatio}
-            onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-            className="px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
-          >
-            {ASPECT_RATIOS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setAspectRatio(value as AspectRatio)}
+            options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
+            size="sm"
+          />
           <button
             onClick={selectAll}
             className="px-1 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
@@ -157,7 +191,7 @@ export function EditorToolOptions({
       )}
 
       {/* Default message when no tool-specific controls */}
-      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && (
+      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && (
         <span className="text-xs text-text-tertiary">{currentToolName}</span>
       )}
     </div>

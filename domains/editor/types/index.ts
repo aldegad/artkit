@@ -4,6 +4,14 @@
 
 import { Size } from "../../../shared/types";
 
+// Brush preset types
+export type {
+  PressureSettings,
+  BrushPresetType,
+  BrushPreset,
+  DrawingParameters,
+} from "./brush";
+
 // Re-export shared types for convenience
 export type {
   Point,

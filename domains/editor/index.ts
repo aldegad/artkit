@@ -21,6 +21,7 @@ export { ProjectListModal } from "./components";
 export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
+export { BrushPresetSelector } from "./components/toolbars/BrushPresetSelector";
 
 // Types
 export type {
@@ -38,6 +39,11 @@ export type {
   CompositionLayer,
   ImageLayer,
   BoundingBox,
+  // Brush preset types
+  PressureSettings,
+  BrushPresetType,
+  BrushPreset,
+  DrawingParameters,
 } from "./types";
 
 export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "./types";
@@ -74,6 +80,15 @@ export {
   matchesShortcut,
   matchesToolShortcut,
   matchesAnyCodes,
+  // Brush presets
+  DEFAULT_BRUSH_PRESETS,
+  calculateDrawingParameters,
+  loadCustomPresets,
+  saveCustomPresets,
+  loadActivePresetId,
+  saveActivePresetId,
+  BRUSH_PRESETS_STORAGE_KEY,
+  ACTIVE_PRESET_STORAGE_KEY,
 } from "./constants";
 
 export type { ShortcutDefinition } from "./constants";
