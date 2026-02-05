@@ -27,19 +27,21 @@ export default function Header() {
         className="md:hidden w-14 h-10 flex items-center justify-center shrink-0 fixed left-0 top-0 z-60 bg-surface-primary border-b border-border-default"
         aria-label="Toggle menu"
       >
-        <div className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-          isOpen
-            ? "bg-white text-accent-primary"
-            : "bg-accent-primary text-white"
-        }`}>
-          <ArtkitLogo size={22} />
-        </div>
+        {isOpen ? (
+          /* Open: no box, just orange icon (like desktop) */
+          <ArtkitLogo size={28} className="text-accent-primary" />
+        ) : (
+          /* Closed: orange box with white icon */
+          <div className="w-7 h-7 bg-accent-primary rounded-md flex items-center justify-center text-white">
+            <ArtkitLogo size={22} />
+          </div>
+        )}
       </button>
       {/* Spacer for fixed logo button on mobile */}
       <div className="md:hidden w-14 shrink-0" />
 
       {/* Slot area - Page-specific content */}
-      <div className="flex-1 min-w-0 flex items-center gap-2 pl-2 pr-4 md:px-4 overflow-x-auto">
+      <div className="flex-1 min-w-0 flex items-center gap-2 px-4 overflow-x-auto">
         {slot}
       </div>
 
