@@ -28,15 +28,22 @@ export default function Header() {
         className="md:hidden w-14 h-10 flex items-center justify-center shrink-0 fixed left-0 top-0 z-60 bg-surface-primary border-b border-border-default"
         aria-label="Toggle menu"
       >
-        {isOpen ? (
-          /* Open: no box, just orange icon (like desktop) */
-          <ArtkitLogo size={28} className="text-accent-primary" />
-        ) : (
-          /* Closed: orange box with white icon */
-          <div className="w-7 h-7 bg-accent-primary rounded-md flex items-center justify-center text-white">
-            <ArtkitLogo size={22} />
-          </div>
-        )}
+        {/* Animated logo container */}
+        <div className="relative w-7 h-7 flex items-center justify-center">
+          {/* Background box - shrinks to 0 when open */}
+          <div
+            className={`absolute inset-0 bg-accent-primary rounded-md transition-transform duration-300 ease-out ${
+              isOpen ? "scale-0" : "scale-100"
+            }`}
+          />
+          {/* Logo icon - color and size transition */}
+          <ArtkitLogo
+            size={isOpen ? 28 : 22}
+            className={`relative z-10 transition-all duration-300 ease-out ${
+              isOpen ? "text-accent-primary scale-[1.27]" : "text-white scale-100"
+            }`}
+          />
+        </div>
       </button>
       {/* Spacer for fixed logo button on mobile */}
       <div className="md:hidden w-14 shrink-0" />
