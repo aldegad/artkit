@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth } from "../../shared/contexts";
 import { Tooltip, ImageDropZone, Select } from "../../shared/components";
 import {
@@ -29,6 +29,7 @@ import {
   EditorToolOptions,
   EditorStatusBar,
   PanModeToggle,
+  EditorMenuBar,
 } from "../../domains/editor";
 // IndexedDB storage functions are now used through storageProvider
 import {
@@ -54,6 +55,62 @@ import {
   registerEditorPanelComponent,
   clearEditorPanelComponents,
 } from "../../domains/editor/components/layout";
+
+// ============================================
+// Layer Thumbnail Component (memoized to prevent re-render during resize)
+// ============================================
+interface LayerThumbnailProps {
+  layerId: string;
+  layerName: string;
+  visible: boolean;
+  layerCanvasesRef: React.RefObject<Map<string, HTMLCanvasElement>>;
+}
+
+const LayerThumbnail = React.memo(function LayerThumbnail({
+  layerId,
+  layerName,
+  visible,
+  layerCanvasesRef,
+}: LayerThumbnailProps) {
+  const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
+
+  // Update thumbnail periodically or when layer changes
+  useEffect(() => {
+    const updateThumbnail = () => {
+      const canvas = layerCanvasesRef.current.get(layerId);
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        setThumbnailSrc(canvas.toDataURL("image/png"));
+      }
+    };
+
+    // Initial update
+    updateThumbnail();
+
+    // Update every 500ms for real-time feedback (only when visible)
+    const interval = setInterval(updateThumbnail, 500);
+
+    return () => clearInterval(interval);
+  }, [layerId, layerCanvasesRef]);
+
+  return (
+    <div className="w-10 h-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0">
+      {thumbnailSrc ? (
+        <img
+          src={thumbnailSrc}
+          alt={layerName}
+          className="w-full h-full object-contain"
+          style={{ opacity: visible ? 1 : 0.5 }}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <svg className="w-5 h-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+      )}
+    </div>
+  );
+});
 
 // Inner component that accesses the layout context
 function EditorDockableArea() {
@@ -91,6 +148,9 @@ function ImageEditorContent() {
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [localProjectCount, setLocalProjectCount] = useState(0);
   const [cloudProjectCount, setCloudProjectCount] = useState(0);
+
+  // Loading state for async operations
+  const [isLoading, setIsLoading] = useState(false);
 
   // Get state and setters from context
   const {
@@ -598,11 +658,12 @@ function ImageEditorContent() {
                   </button>
 
                   {/* Layer thumbnail */}
-                  <div className="w-10 h-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
+                  <LayerThumbnail
+                    layerId={layer.id}
+                    layerName={layer.name}
+                    visible={layer.visible}
+                    layerCanvasesRef={layerCanvasesRef}
+                  />
 
                   {/* Layer name */}
                   <div className="flex-1 min-w-0">
@@ -1168,9 +1229,9 @@ function ImageEditorContent() {
     imageRef.current = null;
   }, []);
 
-  // Save current project
-  const handleSaveProject = useCallback(async () => {
-    if (layers.length === 0) return;
+  // Helper to prepare project data
+  const prepareProjectData = useCallback((forceNewId: boolean = false): SavedImageProject | null => {
+    if (layers.length === 0) return null;
 
     // Save all unified layer data
     const savedLayers: UnifiedLayer[] = layers.map((layer) => {
@@ -1188,8 +1249,8 @@ function ImageEditorContent() {
     const editCanvas = editCanvasRef.current;
     const editLayerData = editCanvas ? editCanvas.toDataURL("image/png") : "";
 
-    const project: SavedImageProject = {
-      id: currentProjectId || crypto.randomUUID(),
+    return {
+      id: forceNewId ? crypto.randomUUID() : (currentProjectId || crypto.randomUUID()),
       name: projectName,
       editLayerData,
       unifiedLayers: savedLayers,
@@ -1198,7 +1259,14 @@ function ImageEditorContent() {
       rotation,
       savedAt: Date.now(),
     };
+  }, [layers, projectName, canvasSize, rotation, currentProjectId, activeLayerId]);
 
+  // Save current project (overwrites if exists, creates new if not)
+  const handleSaveProject = useCallback(async () => {
+    const project = prepareProjectData(false);
+    if (!project) return;
+
+    setIsLoading(true);
     try {
       await storageProvider.saveProject(project);
       setCurrentProjectId(project.id);
@@ -1208,13 +1276,36 @@ function ImageEditorContent() {
       setSavedProjects(projects);
       const info = await storageProvider.getStorageInfo();
       setStorageInfo(info);
-
-      alert(`${t.saved}!`);
     } catch (error) {
       console.error("Failed to save project:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
+    } finally {
+      setIsLoading(false);
     }
-  }, [projectName, canvasSize, rotation, currentProjectId, layers, activeLayerId, storageProvider, user]);
+  }, [prepareProjectData, storageProvider, t.saveFailed]);
+
+  // Save As - always creates new project
+  const handleSaveAsProject = useCallback(async () => {
+    const project = prepareProjectData(true);
+    if (!project) return;
+
+    setIsLoading(true);
+    try {
+      await storageProvider.saveProject(project);
+      setCurrentProjectId(project.id);
+
+      // Refresh project list
+      const projects = await storageProvider.getAllProjects();
+      setSavedProjects(projects);
+      const info = await storageProvider.getStorageInfo();
+      setStorageInfo(info);
+    } catch (error) {
+      console.error("Failed to save project:", error);
+      alert(`${t.saveFailed}: ${(error as Error).message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [prepareProjectData, storageProvider, t.saveFailed]);
 
   // Cmd+S keyboard shortcut for save
   useEffect(() => {
@@ -1234,73 +1325,78 @@ function ImageEditorContent() {
   // Load a saved project
   const handleLoadProject = useCallback(
     async (projectMeta: SavedImageProject) => {
-      // Fetch full project data (including layer images) from storage
-      const project = await storageProvider.getProject(projectMeta.id);
-      if (!project) {
-        alert("Failed to load project");
-        return;
-      }
+      setIsLoading(true);
+      try {
+        // Fetch full project data (including layer images) from storage
+        const project = await storageProvider.getProject(projectMeta.id);
+        if (!project) {
+          alert("Failed to load project");
+          return;
+        }
 
-      setProjectName(project.name);
-      setCurrentProjectId(project.id);
-      setRotation(project.rotation);
-      // Support legacy imageSize field
-      const size = project.canvasSize || project.imageSize || { width: 0, height: 0 };
-      setCanvasSize(size);
-      setCropArea(null);
-      setSelection(null);
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
-      setStampSource(null);
+        setProjectName(project.name);
+        setCurrentProjectId(project.id);
+        setRotation(project.rotation);
+        // Support legacy imageSize field
+        const size = project.canvasSize || project.imageSize || { width: 0, height: 0 };
+        setCanvasSize(size);
+        setCropArea(null);
+        setSelection(null);
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
+        setStampSource(null);
 
-      // Initialize edit canvas with layers
-      const { width, height } =
-        project.rotation % 180 === 0
-          ? size
-          : { width: size.height, height: size.width };
+        // Initialize edit canvas with layers
+        const { width, height } =
+          project.rotation % 180 === 0
+            ? size
+            : { width: size.height, height: size.width };
 
-      // Check if project has new unified layer system
-      if (project.unifiedLayers && project.unifiedLayers.length > 0) {
-        await initEditCanvas(width, height, project.unifiedLayers);
-        if (project.activeLayerId) {
-          setActiveLayerId(project.activeLayerId);
-          const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
-          if (activeLayer?.type === "paint") {
+        // Check if project has new unified layer system
+        if (project.unifiedLayers && project.unifiedLayers.length > 0) {
+          await initEditCanvas(width, height, project.unifiedLayers);
+          if (project.activeLayerId) {
+            setActiveLayerId(project.activeLayerId);
+            const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
+            if (activeLayer?.type === "paint") {
+              editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
+            }
+          }
+        } else if (project.layers && project.layers.length > 0) {
+          // Legacy project with old ImageLayer format - convert to UnifiedLayer
+          const convertedLayers: UnifiedLayer[] = project.layers.map((layer, index) => ({
+            ...layer,
+            type: "paint" as const,
+            locked: false,
+            zIndex: project.layers!.length - 1 - index,
+            paintData: layer.data,
+          }));
+          await initEditCanvas(width, height, convertedLayers);
+          if (project.activeLayerId) {
+            setActiveLayerId(project.activeLayerId);
             editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
           }
-        }
-      } else if (project.layers && project.layers.length > 0) {
-        // Legacy project with old ImageLayer format - convert to UnifiedLayer
-        const convertedLayers: UnifiedLayer[] = project.layers.map((layer, index) => ({
-          ...layer,
-          type: "paint" as const,
-          locked: false,
-          zIndex: project.layers!.length - 1 - index,
-          paintData: layer.data,
-        }));
-        await initEditCanvas(width, height, convertedLayers);
-        if (project.activeLayerId) {
-          setActiveLayerId(project.activeLayerId);
-          editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
-        }
-      } else {
-        // Legacy project with single edit layer
-        await initEditCanvas(width, height);
+        } else {
+          // Legacy project with single edit layer
+          await initEditCanvas(width, height);
 
-        // Load edit layer data if exists
-        if (project.editLayerData && editCanvasRef.current) {
-          const editImg = new Image();
-          editImg.onload = () => {
-            const ctx = editCanvasRef.current?.getContext("2d");
-            if (ctx) {
-              ctx.drawImage(editImg, 0, 0);
-            }
-          };
-          editImg.src = project.editLayerData;
+          // Load edit layer data if exists
+          if (project.editLayerData && editCanvasRef.current) {
+            const editImg = new Image();
+            editImg.onload = () => {
+              const ctx = editCanvasRef.current?.getContext("2d");
+              if (ctx) {
+                ctx.drawImage(editImg, 0, 0);
+              }
+            };
+            editImg.src = project.editLayerData;
+          }
         }
+
+        setIsProjectListOpen(false);
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsProjectListOpen(false);
     },
     [initEditCanvas, storageProvider],
   );
@@ -1543,42 +1639,34 @@ function ImageEditorContent() {
   ];
 
   return (
+    <EditorLayoutProvider>
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
-      {/* Top Toolbar - Row 1: File operations & Project name */}
-      <div className="flex items-center gap-2 px-2 md:px-4 h-11 bg-surface-primary border-b border-border-default shrink-0">
-        <h1 className="text-xs md:text-sm font-semibold hidden md:block">{t.imageEditor}</h1>
+      {/* Row 1: Menu Bar (always visible) */}
+      <div className="flex items-center gap-2 px-2 md:px-4 h-10 bg-surface-primary border-b border-border-default shrink-0">
+        {/* Logo/Title - Desktop only */}
+        <h1 className="text-sm font-semibold hidden md:block">{t.imageEditor}</h1>
         <div className="h-4 w-px bg-border-default hidden md:block" />
 
-        {/* New / Open / Save buttons */}
-        <button
-          onClick={handleNewCanvas}
-          className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary border border-border-default rounded text-xs transition-colors"
-          title={t.newCanvas}
-        >
-          {t.new}
-        </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-xs transition-colors"
-        >
-          {t.open}
-        </button>
-        <button
-          onClick={() => setIsProjectListOpen(true)}
-          className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary border border-border-default rounded text-xs transition-colors"
-          title={t.savedProjects}
-        >
-          {t.load}
-        </button>
-        {layers.length > 0 && (
-          <button
-            onClick={handleSaveProject}
-            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors"
-            title={`${t.save} (⌘S)`}
-          >
-            {t.save}
-          </button>
-        )}
+        {/* Menu Bar */}
+        <EditorMenuBarInner
+          onNew={handleNewCanvas}
+          onLoad={() => setIsProjectListOpen(true)}
+          onSave={handleSaveProject}
+          onSaveAs={handleSaveAsProject}
+          onImportImage={() => fileInputRef.current?.click()}
+          canSave={layers.length > 0}
+          isLoading={isLoading}
+          translations={{
+            file: t.file,
+            window: t.window,
+            new: t.new,
+            load: t.load,
+            save: t.save,
+            saveAs: t.saveAs,
+            importImage: t.importImage,
+            layers: t.layers,
+          }}
+        />
 
         {layers.length > 0 && (
           <>
@@ -1588,7 +1676,7 @@ function ImageEditorContent() {
               type="text"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-20 md:w-24 focus:outline-none focus:border-accent-primary"
+              className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-16 md:w-24 focus:outline-none focus:border-accent-primary"
               placeholder={t.projectName}
             />
           </>
@@ -1610,7 +1698,7 @@ function ImageEditorContent() {
           </div>
         )}
 
-        {/* Auth UI - Desktop only (mobile uses MobileHeader) */}
+        {/* Auth UI - Desktop only */}
         <div className="hidden md:flex items-center gap-2 ml-2">
           {user ? (
             <>
@@ -1625,7 +1713,7 @@ function ImageEditorContent() {
         </div>
       </div>
 
-      {/* Top Toolbar - Row 2: Tools */}
+      {/* Row 2: Tools (only when layers exist) */}
       {layers.length > 0 && (
         <div className="flex items-center gap-1 px-2 md:px-4 py-1 bg-surface-primary border-b border-border-default shrink-0 overflow-x-auto">
           {/* Tool buttons */}
@@ -1869,17 +1957,15 @@ function ImageEditorContent() {
       )}
 
       {/* Main Content Area with Docking System */}
-      <EditorLayoutProvider>
-        <div className="h-full w-full flex overflow-hidden relative">
-          <EditorDockableArea />
-          {/* Mobile Pan Mode Toggle - floating button */}
-          {layers.length > 0 && (
-            <div className="absolute bottom-4 right-4 z-50 md:hidden">
-              <PanModeToggle />
-            </div>
-          )}
-        </div>
-      </EditorLayoutProvider>
+      <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
+        <EditorDockableArea />
+        {/* Mobile Pan Mode Toggle - floating button */}
+        {layers.length > 0 && (
+          <div className="absolute bottom-4 right-4 z-50 md:hidden">
+            <PanModeToggle />
+          </div>
+        )}
+      </div>
 
       {/* Background Removal Modals */}
       <BackgroundRemovalModals
@@ -1960,5 +2046,54 @@ function ImageEditorContent() {
         }}
       />
     </div>
+    </EditorLayoutProvider>
+  );
+}
+
+// ============================================
+// EditorMenuBarInner - Uses layout context for layer toggle
+// ============================================
+
+interface EditorMenuBarInnerProps {
+  onNew: () => void;
+  onLoad: () => void;
+  onSave: () => void;
+  onSaveAs: () => void;
+  onImportImage: () => void;
+  canSave: boolean;
+  isLoading?: boolean;
+  translations: {
+    file: string;
+    window: string;
+    new: string;
+    load: string;
+    save: string;
+    saveAs: string;
+    importImage: string;
+    layers: string;
+  };
+}
+
+function EditorMenuBarInner(props: EditorMenuBarInnerProps) {
+  const { isPanelOpen, openFloatingWindow, closeFloatingWindow, layoutState } = useEditorLayout();
+  const isLayersOpen = isPanelOpen("layers");
+
+  const handleToggleLayers = useCallback(() => {
+    if (isLayersOpen) {
+      const layersWindow = layoutState.floatingWindows.find(w => w.panelId === "layers");
+      if (layersWindow) {
+        closeFloatingWindow(layersWindow.id);
+      }
+    } else {
+      openFloatingWindow("layers");
+    }
+  }, [isLayersOpen, layoutState.floatingWindows, closeFloatingWindow, openFloatingWindow]);
+
+  return (
+    <EditorMenuBar
+      {...props}
+      onToggleLayers={handleToggleLayers}
+      isLayersOpen={isLayersOpen}
+    />
   );
 }

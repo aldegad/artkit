@@ -15,6 +15,24 @@ interface Tool {
 
 const tools: Tool[] = [
   {
+    id: "editor",
+    nameKey: "imageEditor",
+    path: "/editor",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Image editing icon - picture with edit pencil */}
+        <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
+        <circle cx="8.5" cy="8.5" r="1.5" strokeWidth={2} />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M21 15l-5-5L5 21"
+        />
+      </svg>
+    ),
+  },
+  {
     id: "sprite",
     nameKey: "spriteEditor",
     path: "/sprite",
@@ -30,24 +48,6 @@ const tools: Tool[] = [
         <circle cx="12" cy="17" r="1" fill="currentColor" />
         <circle cx="19" cy="7" r="1" fill="currentColor" />
         <circle cx="19" cy="17" r="1" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    id: "editor",
-    nameKey: "imageEditor",
-    path: "/editor",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Image editing icon - picture with edit pencil */}
-        <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
-        <circle cx="8.5" cy="8.5" r="1.5" strokeWidth={2} />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M21 15l-5-5L5 21"
-        />
       </svg>
     ),
   },

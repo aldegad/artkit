@@ -33,6 +33,12 @@ interface Translations {
   close: string;
   reset: string;
 
+  // Menu
+  file: string;
+  window: string;
+  importImage: string;
+  loading: string;
+
   // Sprite editor
   importSheet: string;
   pen: string;
@@ -241,6 +247,12 @@ const translations: Record<Language, Translations> = {
     close: "닫기",
     reset: "초기화",
 
+    // Menu
+    file: "파일",
+    window: "창",
+    importImage: "이미지 가져오기",
+    loading: "로딩 중...",
+
     // Sprite editor
     importSheet: "시트 가져오기",
     pen: "펜",
@@ -446,6 +458,12 @@ const translations: Record<Language, Translations> = {
     confirm: "Confirm",
     close: "Close",
     reset: "Reset",
+
+    // Menu
+    file: "File",
+    window: "Window",
+    importImage: "Import Image",
+    loading: "Loading...",
 
     // Sprite editor
     importSheet: "Import Sheet",
