@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useTimeline } from "../../contexts";
+import { useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { SUPPORTED_VIDEO_FORMATS, SUPPORTED_IMAGE_FORMATS } from "../../constants";
 
@@ -10,7 +10,8 @@ interface AssetDropZoneProps {
 }
 
 export function AssetDropZone({ className }: AssetDropZoneProps) {
-  const { tracks, addVideoClip, addImageClip } = useTimeline();
+  const { tracks, clips, addVideoClip, addImageClip } = useTimeline();
+  const { project, setProject } = useVideoState();
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -50,11 +51,21 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
 
           await new Promise<void>((resolve) => {
             video.onloadedmetadata = () => {
+              const mediaSize = { width: video.videoWidth, height: video.videoHeight };
+
+              // Set canvas size to first imported media size
+              if (clips.length === 0) {
+                setProject({
+                  ...project,
+                  canvasSize: mediaSize,
+                });
+              }
+
               addVideoClip(
                 trackId,
                 url,
                 video.duration,
-                { width: video.videoWidth, height: video.videoHeight },
+                mediaSize,
                 0
               );
               resolve();
@@ -69,10 +80,20 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
 
           await new Promise<void>((resolve) => {
             img.onload = () => {
+              const mediaSize = { width: img.naturalWidth, height: img.naturalHeight };
+
+              // Set canvas size to first imported media size
+              if (clips.length === 0) {
+                setProject({
+                  ...project,
+                  canvasSize: mediaSize,
+                });
+              }
+
               addImageClip(
                 trackId,
                 url,
-                { width: img.naturalWidth, height: img.naturalHeight },
+                mediaSize,
                 0,
                 5 // Default 5 second duration for images
               );
@@ -83,7 +104,7 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
         }
       }
     },
-    [tracks, addVideoClip, addImageClip]
+    [tracks, clips, project, setProject, addVideoClip, addImageClip]
   );
 
   const handleFileSelect = useCallback(
