@@ -20,6 +20,11 @@ export interface EditorAutosaveData extends BaseAutosaveData {
   brushColor: string;
   brushHardness: number;
   guides?: Guide[]; // Optional for backward compatibility
+  // UI state (optional for backward compatibility)
+  showRulers?: boolean;
+  showGuides?: boolean;
+  lockGuides?: boolean;
+  snapToGuides?: boolean;
 }
 
 // Create autosave storage using shared abstraction

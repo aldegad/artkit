@@ -1444,6 +1444,12 @@ function ImageEditorContent() {
           if (data.guides && data.guides.length > 0) {
             setGuides(data.guides);
           }
+
+          // Restore UI state
+          if (data.showRulers !== undefined) setShowRulers(data.showRulers);
+          if (data.showGuides !== undefined) setShowGuides(data.showGuides);
+          if (data.lockGuides !== undefined) setLockGuides(data.lockGuides);
+          if (data.snapToGuides !== undefined) setSnapToGuides(data.snapToGuides);
         } else if (data) {
           // Clear invalid/legacy autosave data
           clearEditorAutosaveData();
@@ -1493,6 +1499,11 @@ function ImageEditorContent() {
         brushColor,
         brushHardness,
         guides: guides.length > 0 ? guides : undefined,
+        // UI state
+        showRulers,
+        showGuides,
+        lockGuides,
+        snapToGuides,
       });
     }, EDITOR_AUTOSAVE_DEBOUNCE_MS);
 
@@ -1513,6 +1524,10 @@ function ImageEditorContent() {
     brushColor,
     brushHardness,
     guides,
+    showRulers,
+    showGuides,
+    lockGuides,
+    snapToGuides,
   ]);
 
   // Clear autosave when starting fresh
