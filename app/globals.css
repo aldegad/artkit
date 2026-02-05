@@ -503,18 +503,69 @@ input[type="range"]::-moz-range-thumb {
    OverlayScrollbars 커스텀 스타일
    ============================================= */
 
-/* 다크 테마 (라이트 모드용) */
-.os-theme-dark > .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle {
-  background: var(--text-tertiary);
+/* 공통 스크롤바 스타일 - 플로팅 효과 */
+.os-scrollbar {
+  --os-handle-border-radius: 100px;
+  --os-handle-bg: rgba(120, 113, 108, 0.15);
+  --os-handle-bg-hover: rgba(120, 113, 108, 0.25);
+  --os-handle-bg-active: rgba(120, 113, 108, 0.35);
+  padding: 4px !important;
 }
-.os-theme-dark > .os-scrollbar:hover > .os-scrollbar-track > .os-scrollbar-handle {
-  background: var(--text-secondary);
+
+/* 가로 스크롤바 */
+.os-scrollbar-horizontal {
+  height: 14px !important;
+}
+
+.os-scrollbar-horizontal > .os-scrollbar-track {
+  height: 6px !important;
+}
+
+.os-scrollbar-horizontal > .os-scrollbar-track > .os-scrollbar-handle {
+  height: 6px !important;
+  min-width: 40px !important;
+}
+
+/* 세로 스크롤바 */
+.os-scrollbar-vertical {
+  width: 14px !important;
+}
+
+.os-scrollbar-vertical > .os-scrollbar-track {
+  width: 6px !important;
+}
+
+.os-scrollbar-vertical > .os-scrollbar-track > .os-scrollbar-handle {
+  width: 6px !important;
+  min-height: 40px !important;
+}
+
+/* 핸들 스타일 */
+.os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle {
+  background: var(--os-handle-bg) !important;
+  border-radius: var(--os-handle-border-radius) !important;
+  backdrop-filter: blur(1px);
+  transition: background 0.2s ease, transform 0.15s ease !important;
+}
+
+.os-scrollbar:hover > .os-scrollbar-track > .os-scrollbar-handle {
+  background: var(--os-handle-bg-hover) !important;
+}
+
+.os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle:active {
+  background: var(--os-handle-bg-active) !important;
+}
+
+/* 다크 테마 (라이트 모드용) */
+.os-theme-dark {
+  --os-handle-bg: rgba(100, 100, 100, 0.12);
+  --os-handle-bg-hover: rgba(100, 100, 100, 0.22);
+  --os-handle-bg-active: rgba(100, 100, 100, 0.35);
 }
 
 /* 라이트 테마 (다크 모드용) */
-.os-theme-light > .os-scrollbar > .os-scrollbar-track > .os-scrollbar-handle {
-  background: var(--text-tertiary);
-}
-.os-theme-light > .os-scrollbar:hover > .os-scrollbar-track > .os-scrollbar-handle {
-  background: var(--text-secondary);
+.os-theme-light {
+  --os-handle-bg: rgba(200, 200, 200, 0.12);
+  --os-handle-bg-hover: rgba(200, 200, 200, 0.22);
+  --os-handle-bg-active: rgba(200, 200, 200, 0.35);
 }

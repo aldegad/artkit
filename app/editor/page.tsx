@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
-import { Tooltip, ImageDropZone, Select } from "../../shared/components";
+import { Tooltip, ImageDropZone, Select, Scrollbar } from "../../shared/components";
 import {
   EditorToolMode,
   OutputFormat,
@@ -1753,7 +1753,11 @@ function ImageEditorContent() {
 
       {/* Row 2: Tools (only when layers exist) */}
       {layers.length > 0 && (
-        <div className="flex items-center gap-1 px-3.5 py-1 bg-surface-primary border-b border-border-default shrink-0 overflow-x-auto">
+        <Scrollbar
+          className="bg-surface-primary border-b border-border-default shrink-0"
+          overflow={{ x: "scroll", y: "hidden" }}
+        >
+          <div className="flex items-center gap-1 px-3.5 py-1 whitespace-nowrap">
           {/* Tool buttons */}
           <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
             {toolButtons.map((tool) => (
@@ -1955,7 +1959,8 @@ function ImageEditorContent() {
           >
             Export
           </button>
-        </div>
+          </div>
+        </Scrollbar>
       )}
 
       {/* Top Toolbar - Row 3: Tool-specific controls */}

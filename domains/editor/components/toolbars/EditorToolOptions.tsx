@@ -3,7 +3,7 @@
 import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS } from "../../types";
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
-import { Select } from "../../../../shared/components";
+import { Select, Scrollbar } from "../../../../shared/components";
 
 // ============================================
 // Types
@@ -75,7 +75,11 @@ export function EditorToolOptions({
   translations: t,
 }: EditorToolOptionsProps) {
   return (
-    <div className="flex items-center gap-2 px-3.5 py-1 bg-surface-secondary border-b border-border-default shrink-0 overflow-x-auto min-h-[32px]">
+    <Scrollbar
+      className="bg-surface-secondary border-b border-border-default shrink-0 min-h-[32px]"
+      overflow={{ x: "scroll", y: "hidden" }}
+    >
+      <div className="flex items-center gap-2 px-3.5 py-1 whitespace-nowrap">
       {/* Brush and fill controls */}
       {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp" || toolMode === "fill") && (
         <>
@@ -194,6 +198,7 @@ export function EditorToolOptions({
       {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && (
         <span className="text-xs text-text-tertiary">{currentToolName}</span>
       )}
-    </div>
+      </div>
+    </Scrollbar>
   );
 }

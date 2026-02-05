@@ -2,6 +2,7 @@
 
 import { useSidebar, useAuth } from "../../shared/contexts";
 import { useHeaderSlot } from "../../shared/contexts/HeaderSlotContext";
+import { Scrollbar } from "../../shared/components";
 import { LoginButton, UserMenu } from "../auth";
 import ArtkitLogo from "../icons/ArtkitLogo";
 
@@ -41,9 +42,14 @@ export default function Header() {
       <div className="md:hidden w-14 shrink-0" />
 
       {/* Slot area - Page-specific content */}
-      <div className="flex-1 min-w-0 flex items-center gap-2 px-3.5 overflow-x-auto">
-        {slot}
-      </div>
+      <Scrollbar
+        className="flex-1 min-w-0"
+        overflow={{ x: "scroll", y: "hidden" }}
+      >
+        <div className="flex items-center gap-2 px-3.5 whitespace-nowrap">
+          {slot}
+        </div>
+      </Scrollbar>
 
       {/* Auth area */}
       <div className="pr-3.5 shrink-0">
