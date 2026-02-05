@@ -11,8 +11,14 @@ export {
   AnimationPreview,
   FramePreview,
   SpriteSheetImportModal,
+  SpriteMenuBar,
+  VideoImportModal,
+  FrameBackgroundRemovalModals,
   SplitView,
 } from "./components";
+
+// Hooks
+export { useFrameBackgroundRemoval } from "./hooks";
 
 // Types
 export type {

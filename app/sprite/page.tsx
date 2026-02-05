@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import {
   EditorProvider,
   useEditor,
@@ -8,7 +8,11 @@ import {
   SplitView,
   SpriteSheetImportModal,
   SpriteFrame,
+  useFrameBackgroundRemoval,
+  FrameBackgroundRemovalModals,
 } from "../../domains/sprite";
+import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
+import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
 import { LayersPanelContent } from "../../components/panels";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { Tooltip } from "../../shared/components";
@@ -65,14 +69,42 @@ function SpriteEditorMain() {
     newProject,
     copyFrame,
     pasteFrame,
-    compositionLayers,
     addCompositionLayer,
   } = useEditor();
 
-  // Layers panel open state
+  // Panel visibility states
   const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(true);
+  const [isFrameEditOpen, setIsFrameEditOpen] = useState(true);
+
+  // Video import modal state
+  const [isVideoImportOpen, setIsVideoImportOpen] = useState(false);
+
+  // Background removal state
+  const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
+
+  // File input ref for menu-triggered image import
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { t } = useLanguage();
+
+  // Background removal hook
+  const {
+    isRemovingBackground,
+    bgRemovalProgress,
+    bgRemovalStatus,
+    handleRemoveBackground,
+  } = useFrameBackgroundRemoval({
+    frames,
+    selectedFrameId,
+    setFrames,
+    pushHistory,
+    translations: {
+      backgroundRemovalFailed: t.backgroundRemovalFailed,
+      selectFrameForBgRemoval: t.selectFrameForBgRemoval,
+      frameImageNotFound: t.frameImageNotFound,
+    },
+  });
   const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
 
   // Load saved projects from IndexedDB
@@ -196,6 +228,27 @@ function SpriteEditorMain() {
 
       setFrames((prev) => [...prev, ...newFrames]);
       setNextFrameId((prev) => prev + importedFrames.length);
+    },
+    [nextFrameId, setFrames, setNextFrameId, pushHistory],
+  );
+
+  // Import video frames
+  const handleVideoImport = useCallback(
+    (importedFrames: Omit<SpriteFrame, "id">[]) => {
+      if (importedFrames.length === 0) return;
+
+      // Save history before adding frames
+      pushHistory();
+
+      // Add frames with new IDs
+      const newFrames = importedFrames.map((frame, idx) => ({
+        ...frame,
+        id: nextFrameId + idx,
+      }));
+
+      setFrames((prev) => [...prev, ...newFrames]);
+      setNextFrameId((prev) => prev + importedFrames.length);
+      setIsVideoImportOpen(false);
     },
     [nextFrameId, setFrames, setNextFrameId, pushHistory],
   );
@@ -545,8 +598,28 @@ function SpriteEditorMain() {
     };
   }, [setIsSpacePressed, undo, redo, canUndo, canRedo, copyFrame, pasteFrame]);
 
+  // Handle new project with confirmation
+  const handleNew = useCallback(() => {
+    if (frames.length > 0 || imageSrc) {
+      if (window.confirm(t.newProjectConfirm)) {
+        newProject();
+      }
+    } else {
+      newProject();
+    }
+  }, [frames.length, imageSrc, t.newProjectConfirm, newProject]);
+
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
+      {/* Hidden file input for menu-triggered image import */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+
       {/* Header Slot */}
       <HeaderSlot>
         <h1 className="text-sm font-semibold whitespace-nowrap">{t.spriteEditor}</h1>
@@ -558,77 +631,40 @@ function SpriteEditorMain() {
           onChange={(e) => setProjectName(e.target.value)}
           className="w-20 md:w-28 px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
         />
-        <button
-          onClick={() => {
-            if (frames.length > 0 || imageSrc) {
-              if (window.confirm(t.newProjectConfirm)) {
-                newProject();
-              }
-            } else {
-              newProject();
-            }
+        <SpriteMenuBar
+          onNew={handleNew}
+          onLoad={() => setIsProjectListOpen(true)}
+          onSave={saveProject}
+          onSaveAs={saveProjectAs}
+          onImportImage={() => imageInputRef.current?.click()}
+          onImportSheet={() => setIsSpriteSheetImportOpen(true)}
+          onImportVideo={() => setIsVideoImportOpen(true)}
+          onToggleLayers={() => setIsLayersPanelOpen(!isLayersPanelOpen)}
+          onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
+          onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
+          isLayersOpen={isLayersPanelOpen}
+          isPreviewOpen={isPreviewOpen}
+          isFrameEditOpen={isFrameEditOpen}
+          canSave={frames.length > 0 && frames.some((f) => f.imageData)}
+          translations={{
+            file: t.file,
+            window: t.window,
+            new: t.new,
+            load: t.load,
+            save: t.save,
+            saveAs: t.saveAs,
+            importImage: t.importImage,
+            importSheet: t.importSheet,
+            importVideo: t.importVideo,
+            layers: t.layers,
+            preview: t.animation,
+            frameEdit: t.frameWindow,
           }}
-          className="px-2 py-0.5 bg-interactive-default hover:bg-interactive-hover rounded text-xs transition-colors"
-          title={t.newProject}
-        >
-          {t.new}
-        </button>
-        <button
-          onClick={saveProject}
-          disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
-          className="px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
-        >
-          {t.save}
-        </button>
-        <button
-          onClick={saveProjectAs}
-          disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
-          className="hidden md:block px-2 py-0.5 bg-surface-secondary hover:bg-surface-tertiary disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-text-primary border border-border-default rounded text-xs transition-colors"
-        >
-          {t.saveAs}
-        </button>
-        <button
-          onClick={() => setIsProjectListOpen(true)}
-          className="px-2 py-0.5 bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default rounded text-xs relative transition-colors"
-          title={t.savedProjects}
-        >
-          {t.load}
-          {savedProjects.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-danger rounded-full text-[8px] flex items-center justify-center text-white">
-              {savedProjects.length}
-            </span>
-          )}
-        </button>
+        />
       </HeaderSlot>
 
       {/* Top Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-accent-primary file:text-white hover:file:bg-accent-primary-hover file:cursor-pointer file:transition-colors cursor-pointer"
-        />
-
-        <Tooltip content={t.importSheet}>
-          <button
-            onClick={() => setIsSpriteSheetImportOpen(true)}
-            className="px-3 py-1.5 bg-accent-success hover:bg-accent-success/80 text-white rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
-              />
-            </svg>
-            {t.importSheet}
-          </button>
-        </Tooltip>
-
-        <div className="h-6 w-px bg-border-default" />
-
         {/* Tool mode buttons */}
         <div className="flex gap-1 bg-surface-secondary rounded-lg p-1">
           <Tooltip
@@ -769,34 +805,28 @@ function SpriteEditorMain() {
 
         <div className="flex-1" />
 
-        {/* Layers Panel Button */}
-        <Tooltip content={t.layers}>
+        {/* Background Removal Button */}
+        <Tooltip content={t.removeBackground}>
           <button
-            onClick={() => setIsLayersPanelOpen(!isLayersPanelOpen)}
-            className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors ${
-              isLayersPanelOpen
-                ? "bg-accent-primary text-white"
-                : "bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default"
-            }`}
+            onClick={() => setShowBgRemovalConfirm(true)}
+            disabled={selectedFrameId === null || isRemovingBackground}
+            className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed text-text-primary border border-border-default rounded-lg text-sm flex items-center gap-1.5 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="7" r="3" strokeWidth={2} />
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
               />
+              <line x1="4" y1="4" x2="20" y2="20" strokeWidth={2} strokeLinecap="round" />
             </svg>
-            {t.layers}
-            {compositionLayers.length > 0 && (
-              <span className="bg-accent-success text-white text-[10px] px-1.5 rounded-full">
-                {compositionLayers.length}
-              </span>
-            )}
+            {t.removeBackground}
           </button>
         </Tooltip>
 
-        </div>
+      </div>
 
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">
@@ -940,6 +970,54 @@ function SpriteEditorMain() {
         onClose={() => setIsSpriteSheetImportOpen(false)}
         onImport={handleSpriteSheetImport}
         startFrameId={nextFrameId}
+      />
+
+      {/* Video Import Modal */}
+      <VideoImportModal
+        isOpen={isVideoImportOpen}
+        onClose={() => setIsVideoImportOpen(false)}
+        onImport={handleVideoImport}
+        startFrameId={nextFrameId}
+        translations={{
+          videoImport: t.videoImport,
+          selectVideo: t.selectVideo,
+          videoPreview: t.videoPreview,
+          extractionSettings: t.extractionSettings,
+          extractFrames: t.extractFrames,
+          everyNthFrame: t.everyNthFrame,
+          timeInterval: t.timeInterval,
+          seconds: t.seconds,
+          extracting: t.extracting,
+          maxFrames: t.maxFrames,
+          extractedFrames: t.extractedFrames,
+          noFramesExtracted: t.noFramesExtracted,
+          selectAll: t.selectAll,
+          deselectAll: t.deselectAll,
+          framesSelected: t.framesSelected,
+          importSelected: t.importSelected,
+          cancel: t.cancel,
+        }}
+      />
+
+      {/* Background Removal Modals */}
+      <FrameBackgroundRemovalModals
+        showConfirm={showBgRemovalConfirm}
+        onCloseConfirm={() => setShowBgRemovalConfirm(false)}
+        onConfirm={() => {
+          setShowBgRemovalConfirm(false);
+          handleRemoveBackground();
+        }}
+        isRemoving={isRemovingBackground}
+        progress={bgRemovalProgress}
+        status={bgRemovalStatus}
+        translations={{
+          removeBackground: t.removeBackground,
+          cancel: t.cancel,
+          confirm: t.confirm,
+          removingBackgroundDesc: t.removingBackgroundDesc,
+          frameBackgroundRemoval: t.frameBackgroundRemoval,
+          firstRunDownload: t.firstRunDownload,
+        }}
       />
 
       {/* Layers Panel (Floating) */}

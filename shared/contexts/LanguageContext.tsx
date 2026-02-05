@@ -207,6 +207,32 @@ interface Translations {
   animation: string;
   frameWindow: string;
 
+  // Video Import
+  importVideo: string;
+  videoImport: string;
+  extractFrames: string;
+  everyNthFrame: string;
+  timeInterval: string;
+  seconds: string;
+  extracting: string;
+  maxFrames: string;
+  importSelected: string;
+  selectVideo: string;
+  videoPreview: string;
+  extractionSettings: string;
+  extractedFrames: string;
+  noFramesExtracted: string;
+  selectAll: string;
+  deselectAll: string;
+  framesSelected: string;
+
+  // Frame Background Removal
+  removingBackgroundDesc: string;
+  frameBackgroundRemoval: string;
+  firstRunDownload: string;
+  selectFrameForBgRemoval: string;
+  frameImageNotFound: string;
+
   // Layout components
   floatingMode: string;
   undock: string;
@@ -423,6 +449,32 @@ const translations: Record<Language, Translations> = {
     animation: "애니메이션",
     frameWindow: "프레임",
 
+    // Video Import
+    importVideo: "비디오 가져오기",
+    videoImport: "비디오 가져오기",
+    extractFrames: "프레임 추출",
+    everyNthFrame: "N번째 프레임마다",
+    timeInterval: "시간 간격",
+    seconds: "초",
+    extracting: "추출 중...",
+    maxFrames: "최대 프레임",
+    importSelected: "선택 항목 가져오기",
+    selectVideo: "비디오를 선택하세요",
+    videoPreview: "비디오 미리보기",
+    extractionSettings: "추출 설정",
+    extractedFrames: "추출된 프레임",
+    noFramesExtracted: "추출된 프레임이 없습니다",
+    selectAll: "전체 선택",
+    deselectAll: "전체 해제",
+    framesSelected: "개 선택됨",
+
+    // Frame Background Removal
+    removingBackgroundDesc: "AI 모델을 사용해 선택된 프레임의 배경을 자동으로 제거합니다.",
+    frameBackgroundRemoval: "선택된 프레임의 배경이 제거됩니다.",
+    firstRunDownload: "첫 실행 시 AI 모델을 다운로드합니다 (~30MB)",
+    selectFrameForBgRemoval: "배경을 제거할 프레임을 선택하세요.",
+    frameImageNotFound: "프레임 이미지를 찾을 수 없습니다.",
+
     // Layout components
     floatingMode: "플로팅으로 전환",
     undock: "언도킹",
@@ -636,6 +688,32 @@ const translations: Record<Language, Translations> = {
     offset: "Offset",
     animation: "Animation",
     frameWindow: "Frame",
+
+    // Video Import
+    importVideo: "Import Video",
+    videoImport: "Import Video",
+    extractFrames: "Extract Frames",
+    everyNthFrame: "Every Nth Frame",
+    timeInterval: "Time Interval",
+    seconds: "seconds",
+    extracting: "Extracting...",
+    maxFrames: "Max Frames",
+    importSelected: "Import Selected",
+    selectVideo: "Select a video",
+    videoPreview: "Video Preview",
+    extractionSettings: "Extraction Settings",
+    extractedFrames: "Extracted Frames",
+    noFramesExtracted: "No frames extracted",
+    selectAll: "Select All",
+    deselectAll: "Deselect All",
+    framesSelected: "selected",
+
+    // Frame Background Removal
+    removingBackgroundDesc: "Automatically remove the background from the selected frame using AI.",
+    frameBackgroundRemoval: "The background of the selected frame will be removed.",
+    firstRunDownload: "First run will download the AI model (~30MB)",
+    selectFrameForBgRemoval: "Please select a frame to remove background.",
+    frameImageNotFound: "Frame image not found.",
 
     // Layout components
     floatingMode: "Float window",
