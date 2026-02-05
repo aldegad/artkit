@@ -43,3 +43,7 @@ export type { UseSnapSystemOptions, UseSnapSystemReturn } from "./useSnapSystem"
 // Guide tool
 export { useGuideTool } from "./useGuideTool";
 export type { UseGuideToolOptions, UseGuideToolReturn } from "./useGuideTool";
+
+// Save hook
+export { useEditorSave } from "./useEditorSave";
+export type { UseEditorSaveOptions, UseEditorSaveReturn } from "./useEditorSave";

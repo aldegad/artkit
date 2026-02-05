@@ -7,8 +7,8 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem } from "./hooks";
-export type { TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave } from "./hooks";
+export type { TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn } from "./hooks";
 export type {
   CanvasInputEvent,
   InputModifiers,

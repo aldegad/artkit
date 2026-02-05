@@ -82,6 +82,18 @@ export interface SavedImageProject {
   savedAt: number;
   thumbnailUrl?: string; // For list view
   guides?: import("../domains/editor/types/guides").Guide[]; // Guide lines (optional for backward compatibility)
+  // View state (optional for backward compatibility)
+  zoom?: number;
+  pan?: { x: number; y: number };
+  // Brush settings (optional for backward compatibility)
+  brushSize?: number;
+  brushColor?: string;
+  brushHardness?: number;
+  // UI state (optional for backward compatibility)
+  showRulers?: boolean;
+  showGuides?: boolean;
+  lockGuides?: boolean;
+  snapToGuides?: boolean;
 }
 
 // ============================================

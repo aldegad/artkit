@@ -13,9 +13,7 @@ import {
   createPaintLayer,
   ProjectListModal,
   loadEditorAutosaveData,
-  saveEditorAutosaveData,
   clearEditorAutosaveData,
-  EDITOR_AUTOSAVE_DEBOUNCE_MS,
   useHistory,
   useLayerManagement,
   useBrushTool,
@@ -28,6 +26,7 @@ import {
   useBackgroundRemoval,
   useTransformTool,
   useGuideTool,
+  useEditorSave,
   BackgroundRemovalModals,
   TransformDiscardConfirmModal,
   EditorToolOptions,
@@ -1416,7 +1415,6 @@ function ImageEditorContent() {
   // Auto-save/load functionality
   // ============================================
   const isInitializedRef = useRef(false);
-  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load autosave data on mount
   useEffect(() => {
@@ -1450,6 +1448,11 @@ function ImageEditorContent() {
           if (data.showGuides !== undefined) setShowGuides(data.showGuides);
           if (data.lockGuides !== undefined) setLockGuides(data.lockGuides);
           if (data.snapToGuides !== undefined) setSnapToGuides(data.snapToGuides);
+
+          // Restore project identity (FIX: prevents creating new file on save after refresh)
+          if (data.currentProjectId !== undefined) {
+            setCurrentProjectId(data.currentProjectId);
+          }
         } else if (data) {
           // Clear invalid/legacy autosave data
           clearEditorAutosaveData();
@@ -1463,72 +1466,7 @@ function ImageEditorContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-save on state change (debounced)
-  useEffect(() => {
-    if (!isInitializedRef.current) return;
-    if (layers.length === 0) return;
-
-    // Clear existing timeout
-    if (autosaveTimeoutRef.current) {
-      clearTimeout(autosaveTimeoutRef.current);
-    }
-
-    // Debounced save
-    autosaveTimeoutRef.current = setTimeout(() => {
-      // Prepare layers with paint data
-      const savedLayers: UnifiedLayer[] = layers.map((layer) => {
-        if (layer.type === "paint") {
-          const canvas = layerCanvasesRef.current.get(layer.id);
-          return {
-            ...layer,
-            paintData: canvas ? canvas.toDataURL("image/png") : layer.paintData || "",
-          };
-        }
-        return { ...layer };
-      });
-
-      saveEditorAutosaveData({
-        canvasSize,
-        rotation,
-        zoom,
-        pan,
-        projectName,
-        layers: savedLayers,
-        activeLayerId,
-        brushSize,
-        brushColor,
-        brushHardness,
-        guides: guides.length > 0 ? guides : undefined,
-        // UI state
-        showRulers,
-        showGuides,
-        lockGuides,
-        snapToGuides,
-      });
-    }, EDITOR_AUTOSAVE_DEBOUNCE_MS);
-
-    return () => {
-      if (autosaveTimeoutRef.current) {
-        clearTimeout(autosaveTimeoutRef.current);
-      }
-    };
-  }, [
-    layers,
-    canvasSize,
-    rotation,
-    zoom,
-    pan,
-    projectName,
-    activeLayerId,
-    brushSize,
-    brushColor,
-    brushHardness,
-    guides,
-    showRulers,
-    showGuides,
-    lockGuides,
-    snapToGuides,
-  ]);
+  // Auto-save is now handled by useEditorSave hook
 
   // Clear autosave when starting fresh
   const handleNewProject = useCallback(() => {
@@ -1551,100 +1489,54 @@ function ImageEditorContent() {
     imageRef.current = null;
   }, []);
 
-  // Helper to prepare project data
-  const prepareProjectData = useCallback((forceNewId: boolean = false): SavedImageProject | null => {
-    if (layers.length === 0) return null;
-
-    // Save all unified layer data
-    const savedLayers: UnifiedLayer[] = layers.map((layer) => {
-      if (layer.type === "paint") {
-        const canvas = layerCanvasesRef.current.get(layer.id);
-        return {
-          ...layer,
-          paintData: canvas ? canvas.toDataURL("image/png") : layer.paintData || "",
-        };
-      }
-      return { ...layer };
-    });
-
-    // Generate thumbnail from first visible layer
-    const firstVisibleLayer = layers.find(l => l.visible);
-    const thumbnailCanvas = firstVisibleLayer ? layerCanvasesRef.current.get(firstVisibleLayer.id) : null;
-    const thumbnailUrl = thumbnailCanvas ? thumbnailCanvas.toDataURL("image/png") : undefined;
-
-    return {
-      id: forceNewId ? crypto.randomUUID() : (currentProjectId || crypto.randomUUID()),
-      name: projectName,
-      unifiedLayers: savedLayers,
-      activeLayerId: activeLayerId || undefined,
-      canvasSize,
-      rotation,
-      savedAt: Date.now(),
-      thumbnailUrl,
-      guides: guides.length > 0 ? guides : undefined,
-    };
-  }, [layers, projectName, canvasSize, rotation, currentProjectId, activeLayerId, guides]);
-
-  // Save current project (overwrites if exists, creates new if not)
-  const handleSaveProject = useCallback(async () => {
-    const project = prepareProjectData(false);
-    if (!project) return;
-
-    setIsLoading(true);
-    try {
-      await storageProvider.saveProject(project);
-      setCurrentProjectId(project.id);
-
-      // Refresh project list
-      const projects = await storageProvider.getAllProjects();
-      setSavedProjects(projects);
-      const info = await storageProvider.getStorageInfo();
-      setStorageInfo(info);
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      alert(`${t.saveFailed}: ${(error as Error).message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [prepareProjectData, storageProvider, t.saveFailed]);
-
-  // Save As - always creates new project
-  const handleSaveAsProject = useCallback(async () => {
-    const project = prepareProjectData(true);
-    if (!project) return;
-
-    setIsLoading(true);
-    try {
-      await storageProvider.saveProject(project);
-      setCurrentProjectId(project.id);
-
-      // Refresh project list
-      const projects = await storageProvider.getAllProjects();
-      setSavedProjects(projects);
-      const info = await storageProvider.getStorageInfo();
-      setStorageInfo(info);
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      alert(`${t.saveFailed}: ${(error as Error).message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [prepareProjectData, storageProvider, t.saveFailed]);
+  // Save hook - handles autosave and manual save
+  const {
+    saveProject: handleSaveProject,
+    saveAsProject: handleSaveAsProject,
+    isSaving,
+  } = useEditorSave({
+    storageProvider,
+    layers,
+    layerCanvasesRef,
+    canvasSize,
+    rotation,
+    zoom,
+    pan,
+    projectName,
+    currentProjectId,
+    activeLayerId,
+    guides,
+    brushSize,
+    brushColor,
+    brushHardness,
+    showRulers,
+    showGuides,
+    lockGuides,
+    snapToGuides,
+    setCurrentProjectId,
+    setSavedProjects,
+    setStorageInfo,
+    isInitialized: isInitializedRef.current,
+  });
 
   // Cmd+S keyboard shortcut for save
   useEffect(() => {
-    const handleSave = (e: KeyboardEvent) => {
+    const handleSave = async (e: KeyboardEvent) => {
       if (e.code === "KeyS" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         if (layers.length > 0) {
-          handleSaveProject();
+          try {
+            await handleSaveProject();
+          } catch (error) {
+            alert(`${t.saveFailed}: ${(error as Error).message}`);
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleSave);
     return () => window.removeEventListener("keydown", handleSave);
-  }, [layers.length, handleSaveProject]);
+  }, [layers.length, handleSaveProject, t.saveFailed]);
 
   // Load a saved project
   const handleLoadProject = useCallback(
