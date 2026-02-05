@@ -77,6 +77,7 @@ export interface ResizeState {
   handleIndex: number;
   startPosition: number;
   direction: SplitDirection;
+  originalSizes?: number[]; // Stored at drag start for absolute delta calculation
 }
 
 // ============================================

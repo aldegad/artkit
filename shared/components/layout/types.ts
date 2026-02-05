@@ -64,6 +64,7 @@ export interface LayoutContextValue {
   endDragging: () => void;
   startResize: (state: ResizeState) => void;
   updateResize: (delta: number) => void;
+  updateResizeAbsolute: (totalDelta: number) => void;
   endResize: () => void;
   resizeState: ResizeState | null;
   getNode: (nodeId: string) => SplitNode | PanelNode | null;

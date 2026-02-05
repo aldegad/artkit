@@ -19,8 +19,9 @@ interface ResizeHandleProps {
 // ============================================
 
 export default function ResizeHandle({ direction, splitId, handleIndex }: ResizeHandleProps) {
-  const { startResize, updateResize, endResize, resizeState } = useLayout();
-  const startPositionRef = useRef<number>(0);
+  const { startResize, updateResizeAbsolute, endResize, resizeState } = useLayout();
+  // Store the original start position at drag start (not updated during drag)
+  const originalStartPositionRef = useRef<number>(0);
   const isActiveHandle = resizeState?.splitId === splitId && resizeState?.handleIndex === handleIndex;
 
   // Mouse handlers
@@ -30,7 +31,7 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
       e.stopPropagation();
 
       const startPos = direction === "horizontal" ? e.clientX : e.clientY;
-      startPositionRef.current = startPos;
+      originalStartPositionRef.current = startPos;
 
       startResize({
         splitId,
@@ -50,7 +51,7 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
 
       const touch = e.touches[0];
       const startPos = direction === "horizontal" ? touch.clientX : touch.clientY;
-      startPositionRef.current = startPos;
+      originalStartPositionRef.current = startPos;
 
       startResize({
         splitId,
@@ -68,17 +69,17 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
 
     const handleMouseMove = (e: MouseEvent) => {
       const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
-      const delta = currentPos - startPositionRef.current;
-      startPositionRef.current = currentPos;
-      updateResize(delta);
+      // Calculate total delta from original start position (not incremental)
+      const totalDelta = currentPos - originalStartPositionRef.current;
+      updateResizeAbsolute(totalDelta);
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       const touch = e.touches[0];
       const currentPos = direction === "horizontal" ? touch.clientX : touch.clientY;
-      const delta = currentPos - startPositionRef.current;
-      startPositionRef.current = currentPos;
-      updateResize(delta);
+      // Calculate total delta from original start position (not incremental)
+      const totalDelta = currentPos - originalStartPositionRef.current;
+      updateResizeAbsolute(totalDelta);
     };
 
     const handleEnd = () => {
@@ -98,7 +99,7 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
       document.removeEventListener("touchend", handleEnd);
       document.removeEventListener("touchcancel", handleEnd);
     };
-  }, [isActiveHandle, direction, updateResize, endResize]);
+  }, [isActiveHandle, direction, updateResizeAbsolute, endResize]);
 
   const isHorizontal = direction === "horizontal";
 

@@ -268,9 +268,20 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
 
     // Resize Operations
     const startResize = useCallback((state: ResizeState) => {
-      setResizeState(state);
-    }, []);
+      // Store original sizes at drag start for absolute delta calculation
+      const node = findNode(layoutState.root, state.splitId);
+      if (node && isSplitNode(node)) {
+        const splitNode = node as SplitNode;
+        setResizeState({
+          ...state,
+          originalSizes: [...splitNode.sizes],
+        });
+      } else {
+        setResizeState(state);
+      }
+    }, [layoutState.root]);
 
+    // Legacy incremental delta update (kept for backward compatibility)
     const updateResize = useCallback(
       (delta: number) => {
         if (!resizeState) return;
@@ -309,6 +320,44 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
         updateSizes(splitId, sizes);
       },
       [resizeState, layoutState.root, updateSizes]
+    );
+
+    // Absolute delta update (uses total delta from drag start, more stable)
+    const updateResizeAbsolute = useCallback(
+      (totalDelta: number) => {
+        if (!resizeState || !resizeState.originalSizes) return;
+
+        const { splitId, handleIndex, direction, originalSizes } = resizeState;
+        const total = originalSizes.reduce((a, b) => a + b, 0);
+
+        const containerSize =
+          direction === "horizontal"
+            ? containerRef.current?.clientWidth || 1000
+            : containerRef.current?.clientHeight || 600;
+
+        const deltaRatio = (totalDelta / containerSize) * total;
+
+        const minRatio = (10 / total) * 100;
+        // Use original sizes, not current sizes
+        let newSizeA = originalSizes[handleIndex] + deltaRatio;
+        let newSizeB = originalSizes[handleIndex + 1] - deltaRatio;
+
+        if (newSizeA < minRatio) {
+          newSizeA = minRatio;
+          newSizeB = originalSizes[handleIndex] + originalSizes[handleIndex + 1] - minRatio;
+        }
+        if (newSizeB < minRatio) {
+          newSizeB = minRatio;
+          newSizeA = originalSizes[handleIndex] + originalSizes[handleIndex + 1] - minRatio;
+        }
+
+        const sizes = [...originalSizes];
+        sizes[handleIndex] = newSizeA;
+        sizes[handleIndex + 1] = newSizeB;
+
+        updateSizes(splitId, sizes);
+      },
+      [resizeState, updateSizes]
     );
 
     const endResize = useCallback(() => {
@@ -415,6 +464,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       endDragging,
       startResize,
       updateResize,
+      updateResizeAbsolute,
       endResize,
       resizeState,
       getNode,
