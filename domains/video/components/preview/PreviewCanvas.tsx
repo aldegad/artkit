@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
+import { useVideoElements } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { PREVIEW } from "../../constants";
@@ -15,6 +16,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, videoElementsRef } = useVideoRefs();
   const { playback, project } = useVideoState();
   const { tracks, clips, getClipAtTime } = useTimeline();
+
+  // Initialize video elements pool - preloads videos when clips change
+  useVideoElements();
 
   // Draw checkerboard pattern for transparency
   const drawCheckerboard = useCallback(

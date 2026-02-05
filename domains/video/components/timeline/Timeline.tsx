@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useState } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
-import { useVideoCoordinates } from "../../hooks";
+import { useVideoCoordinates, useTimelineInput } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
 import { Playhead } from "./Playhead";
@@ -18,65 +18,64 @@ export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
   const { tracks, getClipsInTrack, viewState, setScrollX } = useTimeline();
-  const { selectClip, deselectAll, seek, project } = useVideoState();
-  const { pixelToTime } = useVideoCoordinates();
+  const { project } = useVideoState();
+  useVideoCoordinates();
 
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragType, setDragType] = useState<"seek" | "scroll" | null>(null);
+  // Timeline input handling (clip drag, trim, seek)
+  const {
+    handleMouseDown: handleTimelineMouseDown,
+    handleMouseMove: handleTimelineMouseMove,
+    handleMouseUp: handleTimelineMouseUp,
+  } = useTimelineInput();
+
+  // Middle-mouse scroll state
+  const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
 
   // Calculate total tracks height
   const totalTracksHeight = tracks.reduce((sum, t) => sum + t.height, 0);
 
-  // Handle timeline background click (seek)
-  const handleTimelineClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      // Only handle direct clicks on the timeline background
-      if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains("timeline-bg")) {
-        return;
-      }
-
-      const rect = tracksContainerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const x = e.clientX - rect.left;
-      const time = Math.max(0, Math.min(pixelToTime(x), project.duration));
-      seek(time);
-      deselectAll();
-    },
-    [pixelToTime, seek, deselectAll, project.duration]
-  );
-
-  // Handle mouse down for dragging
+  // Handle mouse down - combine timeline input with middle-mouse scroll
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       // Middle mouse button for scrolling
       if (e.button === 1) {
         e.preventDefault();
-        setIsDragging(true);
-        setDragType("scroll");
+        setIsMiddleScrolling(true);
         return;
       }
+
+      // Left click - use timeline input handler
+      const rect = tracksContainerRef.current?.getBoundingClientRect();
+      if (rect) {
+        handleTimelineMouseDown(e, rect);
+      }
     },
-    []
+    [handleTimelineMouseDown]
   );
 
   // Handle mouse move
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!isDragging) return;
-
-      if (dragType === "scroll") {
+      // Middle-mouse scroll
+      if (isMiddleScrolling) {
         setScrollX(viewState.scrollX - e.movementX / viewState.zoom);
+        return;
+      }
+
+      // Timeline input (clip drag, trim, seek)
+      const rect = tracksContainerRef.current?.getBoundingClientRect();
+      if (rect) {
+        handleTimelineMouseMove(e, rect);
       }
     },
-    [isDragging, dragType, viewState.scrollX, viewState.zoom, setScrollX]
+    [isMiddleScrolling, viewState.scrollX, viewState.zoom, setScrollX, handleTimelineMouseMove]
   );
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    setDragType(null);
-  }, []);
+    setIsMiddleScrolling(false);
+    handleTimelineMouseUp();
+  }, [handleTimelineMouseUp]);
 
   // Handle wheel for horizontal scroll/zoom
   const handleWheel = useCallback(
@@ -160,7 +159,6 @@ export function Timeline({ className }: TimelineProps) {
           <div
             ref={tracksContainerRef}
             className="flex-1 overflow-auto relative"
-            onClick={handleTimelineClick}
           >
             {/* Background for click handling */}
             <div
@@ -175,7 +173,6 @@ export function Timeline({ className }: TimelineProps) {
                   key={track.id}
                   track={track}
                   clips={getClipsInTrack(track.id)}
-                  onSelectClip={selectClip}
                 />
               ))}
 

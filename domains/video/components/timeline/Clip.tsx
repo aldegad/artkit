@@ -9,10 +9,9 @@ import { UI } from "../../constants";
 
 interface ClipProps {
   clip: ClipType;
-  onSelect?: (clipId: string, addToSelection: boolean) => void;
 }
 
-export function Clip({ clip, onSelect }: ClipProps) {
+export function Clip({ clip }: ClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
   const { selectedClipIds } = useVideoState();
 
@@ -30,10 +29,7 @@ export function Clip({ clip, onSelect }: ClipProps) {
     return "bg-green-600/80";
   }, [clip.type]);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onSelect?.(clip.id, e.shiftKey || e.metaKey);
-  };
+  // Note: Click/drag events are handled by useTimelineInput in Timeline component
 
   return (
     <div
@@ -47,7 +43,6 @@ export function Clip({ clip, onSelect }: ClipProps) {
         left: x,
         width: minWidth,
       }}
-      onClick={handleClick}
     >
       {/* Clip name */}
       <div className="px-2 py-1 text-xs text-white truncate">
