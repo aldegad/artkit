@@ -32,25 +32,25 @@
   --interactive-active: #cbd5e1;
 
   /* Accent (Primary Orange) */
-  --accent-primary: #f97316;
-  --accent-primary-hover: #ea580c;
-  --accent-primary-active: #c2410c;
-  --accent-primary-surface: #fff7ed;
+  --accent-primary: #FF6B00;
+  --accent-primary-hover: #E65C00;
+  --accent-primary-active: #CC5200;
+  --accent-primary-surface: #FFF4EB;
 
-  /* Success (Green) */
-  --accent-success: #10b981;
-  --accent-success-hover: #059669;
-  --accent-success-surface: #ecfdf5;
+  /* Success (Orange based - bright) */
+  --accent-success: #FF6B00;
+  --accent-success-hover: #E65C00;
+  --accent-success-surface: #FFF4EB;
 
-  /* Danger (Red) */
-  --accent-danger: #ef4444;
-  --accent-danger-hover: #dc2626;
-  --accent-danger-surface: #fef2f2;
+  /* Danger (Orange based - dark) */
+  --accent-danger: #CC4400;
+  --accent-danger-hover: #AA3300;
+  --accent-danger-surface: #FFF0E6;
 
-  /* Warning (Yellow/Orange) */
-  --accent-warning: #f59e0b;
-  --accent-warning-hover: #d97706;
-  --accent-warning-surface: #fffbeb;
+  /* Warning (Same as primary orange) */
+  --accent-warning: #FF6B00;
+  --accent-warning-hover: #E65C00;
+  --accent-warning-surface: #FFF4EB;
 
   /* Special UI */
   --toolbar-bg: #ffffff;
@@ -89,70 +89,78 @@
   --canvas-grid-alt: rgba(0, 255, 255, 0.9);
   --canvas-text-on-color: #ffffff;
 
+  /* Guides & Rulers */
+  --canvas-guide: rgba(0, 188, 212, 0.8);
+  --canvas-guide-active: rgba(0, 230, 255, 1.0);
+  --ruler-bg: var(--surface-tertiary);
+  --ruler-tick: var(--text-tertiary);
+  --ruler-tick-major: var(--text-secondary);
+  --ruler-text: var(--text-secondary);
+
   /* Waveform */
   --waveform-bg: #1a1a2e;
   --waveform-line: #3b82f6;
   --waveform-handle: #60a5fa;
-  --waveform-playhead: #ef4444;
+  --waveform-playhead: #FF6B00;
   --waveform-trim-fill: rgba(59, 130, 246, 0.1);
 }
 
 /* =============================================
-   Dark Theme (Warm tone with orange accent)
+   Dark Theme (Pure dark with orange accent)
    ============================================= */
 .dark {
-  /* Base - Warm dark grays */
-  --background: #1c1a18;
-  --foreground: #f5f5f4;
+  /* Base - Pure dark grays */
+  --background: #0F0F0F;
+  --foreground: #FAFAFA;
 
-  /* Surface - Warm grays */
-  --surface-primary: #242220;
-  --surface-secondary: #2c2a28;
-  --surface-tertiary: #363432;
-  --surface-elevated: #3a3836;
+  /* Surface - Neutral dark grays */
+  --surface-primary: #1A1A1A;
+  --surface-secondary: #242424;
+  --surface-tertiary: #2E2E2E;
+  --surface-elevated: #333333;
 
-  /* Border - Warm tones */
-  --border-default: #3d3b39;
-  --border-subtle: #332f2d;
-  --border-strong: #4a4744;
+  /* Border - Neutral grays */
+  --border-default: #333333;
+  --border-subtle: #2A2A2A;
+  --border-strong: #404040;
 
   /* Text */
-  --text-primary: #f5f5f4;
-  --text-secondary: #a8a29e;
-  --text-tertiary: #78716c;
-  --text-muted: #57534e;
+  --text-primary: #FAFAFA;
+  --text-secondary: #A0A0A0;
+  --text-tertiary: #666666;
+  --text-muted: #4A4A4A;
 
   /* Interactive */
-  --interactive-default: #363432;
-  --interactive-hover: #44403c;
-  --interactive-active: #57534e;
+  --interactive-default: #2E2E2E;
+  --interactive-hover: #3A3A3A;
+  --interactive-active: #4A4A4A;
 
   /* Accent Colors - Orange Primary */
-  --accent-primary: #fb923c;
-  --accent-primary-hover: #fdba74;
-  --accent-primary-active: #f97316;
-  --accent-primary-surface: #431407;
+  --accent-primary: #FF6B00;
+  --accent-primary-hover: #FF7A1A;
+  --accent-primary-active: #E65C00;
+  --accent-primary-surface: #1A1400;
 
-  /* Success - Keep green but warmer */
-  --accent-success: #84cc16;
-  --accent-success-hover: #a3e635;
-  --accent-success-surface: #1a2e0a;
+  /* Success - Orange based (bright) */
+  --accent-success: #FF8533;
+  --accent-success-hover: #FF9F4D;
+  --accent-success-surface: #1A1400;
 
-  /* Danger - Warm red */
-  --accent-danger: #f87171;
-  --accent-danger-hover: #fca5a5;
-  --accent-danger-surface: #3d1515;
+  /* Danger - Orange based (dark) */
+  --accent-danger: #CC4400;
+  --accent-danger-hover: #DD5500;
+  --accent-danger-surface: #1A1000;
 
-  /* Warning - Warm orange */
-  --accent-warning: #fb923c;
-  --accent-warning-hover: #fdba74;
-  --accent-warning-surface: #3d2010;
+  /* Warning - Same as primary orange */
+  --accent-warning: #FF6B00;
+  --accent-warning-hover: #FF7A1A;
+  --accent-warning-surface: #1A1400;
 
   /* Special UI */
-  --toolbar-bg: #242220;
-  --toolbar-border: #3d3b39;
-  --panel-header-bg: #2c2a28;
-  --divider: #3d3b39;
+  --toolbar-bg: #1A1A1A;
+  --toolbar-border: #333333;
+  --panel-header-bg: #242424;
+  --divider: #333333;
 
   /* Shadows (다크 모드에서는 더 강하게) */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
@@ -160,9 +168,9 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.6);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.6);
 
-  /* Checkerboard - Warm tones */
-  --checkerboard-light: #2c2a28;
-  --checkerboard-dark: #242220;
+  /* Checkerboard - Neutral tones */
+  --checkerboard-light: #242424;
+  --checkerboard-dark: #1A1A1A;
 
   /* Canvas Selection - 다크 모드에서 약간 밝게 */
   --canvas-selection: #60a5fa;
@@ -185,11 +193,19 @@
   --canvas-grid-alt: rgba(0, 255, 255, 0.9);
   --canvas-text-on-color: #ffffff;
 
+  /* Guides & Rulers */
+  --canvas-guide: rgba(0, 230, 255, 0.8);
+  --canvas-guide-active: rgba(100, 255, 255, 1.0);
+  --ruler-bg: var(--surface-tertiary);
+  --ruler-tick: var(--text-tertiary);
+  --ruler-tick-major: var(--text-secondary);
+  --ruler-text: var(--text-secondary);
+
   /* Waveform */
-  --waveform-bg: #0f0f1e;
+  --waveform-bg: #0F0F0F;
   --waveform-line: #60a5fa;
   --waveform-handle: #93c5fd;
-  --waveform-playhead: #f87171;
+  --waveform-playhead: #FF6B00;
   --waveform-trim-fill: rgba(96, 165, 250, 0.1);
 }
 
@@ -403,7 +419,7 @@ body {
 
 .input:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+  box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.15);
 }
 
 .input::placeholder {
@@ -493,7 +509,7 @@ input[type="range"]::-moz-range-thumb {
 .frame-thumb.selected {
   border-color: var(--accent-primary);
   box-shadow:
-    0 0 0 3px rgba(249, 115, 22, 0.2),
+    0 0 0 3px rgba(255, 107, 0, 0.2),
     var(--shadow-md);
 }
 

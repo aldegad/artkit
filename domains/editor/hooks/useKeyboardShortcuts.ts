@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, RefObject } from "react";
-import { CropArea } from "../types";
+import { CropArea, EditorToolMode } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import {
   BRUSH_SIZE_SHORTCUTS,
@@ -50,6 +50,9 @@ interface UseKeyboardShortcutsOptions {
   // Dimensions helper
   getDisplayDimensions: () => { width: number; height: number };
 
+  // Tool mode change handler (optional, uses context setToolMode if not provided)
+  onToolModeChange?: (mode: EditorToolMode) => void;
+
   // Whether shortcuts are enabled
   enabled?: boolean;
 }
@@ -86,8 +89,12 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     cancelTransform,
     getDisplayDimensions,
     saveToHistory,
+    onToolModeChange,
     enabled = true,
   } = options;
+
+  // Use custom handler if provided, otherwise use context's setToolMode
+  const handleToolModeChange = onToolModeChange || setToolMode;
 
   // Note: setIsProjectListOpen comes from context now, not from options
 
@@ -117,7 +124,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       // Tool shortcuts (single keys without modifiers)
       const toolMode = matchesToolShortcut(e);
       if (toolMode) {
-        setToolMode(toolMode);
+        handleToolModeChange(toolMode);
       }
 
       // Brush size shortcuts (without Cmd/Ctrl)
@@ -274,7 +281,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     };
   }, [
     enabled,
-    setToolMode,
+    handleToolModeChange,
     setIsSpacePressed,
     setIsAltPressed,
     setBrushSize,

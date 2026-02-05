@@ -7,8 +7,8 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool } from "./hooks";
-export type { TransformState, TransformHandle } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem } from "./hooks";
+export type { TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn } from "./hooks";
 export type {
   CanvasInputEvent,
   InputModifiers,
@@ -22,6 +22,7 @@ export { ProjectListModal } from "./components";
 export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
+export { TransformDiscardConfirmModal } from "./components";
 export { EditorMenuBar } from "./components";
 export { LayersPanelContent } from "./components";
 export { CanvasPanelContent } from "./components";
@@ -52,6 +53,11 @@ export type {
   BrushPresetType,
   BrushPreset,
   DrawingParameters,
+  // Guide & Snap types
+  Guide,
+  GuideOrientation,
+  SnapSource,
+  SnapConfig,
 } from "./types";
 
 export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "./types";

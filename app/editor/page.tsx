@@ -9,6 +9,7 @@ import {
   SavedImageProject,
   UnifiedLayer,
   Point,
+  GuideOrientation,
   createPaintLayer,
   ProjectListModal,
   loadEditorAutosaveData,
@@ -26,7 +27,9 @@ import {
   useCanvasRendering,
   useBackgroundRemoval,
   useTransformTool,
+  useGuideTool,
   BackgroundRemovalModals,
+  TransformDiscardConfirmModal,
   EditorToolOptions,
   EditorStatusBar,
   PanModeToggle,
@@ -163,6 +166,10 @@ function ImageEditorContent() {
   // Loading state for async operations
   const [isLoading, setIsLoading] = useState(false);
 
+  // Transform discard confirmation state
+  const [showTransformDiscardConfirm, setShowTransformDiscardConfirm] = useState(false);
+  const pendingToolModeRef = useRef<EditorToolMode | null>(null);
+
   // Get state and setters from context
   const {
     state: {
@@ -181,6 +188,10 @@ function ImageEditorContent() {
       isProjectListOpen,
       storageInfo,
       showBgRemovalConfirm,
+      showRulers,
+      showGuides,
+      lockGuides,
+      snapToGuides,
     },
     setCanvasSize,
     setRotation,
@@ -196,6 +207,10 @@ function ImageEditorContent() {
     setIsProjectListOpen,
     setStorageInfo,
     setShowBgRemovalConfirm,
+    setShowRulers,
+    setShowGuides,
+    setLockGuides,
+    setSnapToGuides,
   } = useEditorState();
 
   // Get refs from context (shared canvas refs only)
@@ -420,11 +435,25 @@ function ImageEditorContent() {
     saveToHistory,
   });
 
+  // Guide tool - using extracted hook (before transform tool for snap integration)
+  const {
+    guides,
+    setGuides,
+    addGuide,
+    moveGuide,
+    removeGuide,
+    clearAllGuides,
+    getGuideAtPosition,
+  } = useGuideTool({
+    getDisplayDimensions,
+  });
+
   // Transform tool - using extracted hook
   const {
     transformState,
     aspectRatio: transformAspectRatio,
     setAspectRatio: setTransformAspectRatio,
+    activeSnapSources: transformSnapSources,
     startTransform,
     cancelTransform,
     applyTransform,
@@ -438,7 +467,46 @@ function ImageEditorContent() {
     layers,
     activeLayerId,
     saveToHistory,
+    // Snap options
+    guides,
+    canvasSize,
+    snapEnabled: snapToGuides,
   });
+
+  // Wrapper to intercept tool mode changes when transform is active
+  const handleToolModeChange = useCallback((mode: EditorToolMode) => {
+    // If transform is active and trying to switch to another tool, show confirmation
+    if (transformState.isActive && mode !== "transform") {
+      pendingToolModeRef.current = mode;
+      setShowTransformDiscardConfirm(true);
+      return;
+    }
+    setToolMode(mode);
+  }, [transformState.isActive, setToolMode]);
+
+  // Handle transform discard confirmation actions
+  const handleTransformDiscardConfirm = useCallback(() => {
+    cancelTransform();
+    if (pendingToolModeRef.current) {
+      setToolMode(pendingToolModeRef.current);
+      pendingToolModeRef.current = null;
+    }
+    setShowTransformDiscardConfirm(false);
+  }, [cancelTransform, setToolMode]);
+
+  const handleTransformApplyAndSwitch = useCallback(() => {
+    applyTransform();
+    if (pendingToolModeRef.current) {
+      setToolMode(pendingToolModeRef.current);
+      pendingToolModeRef.current = null;
+    }
+    setShowTransformDiscardConfirm(false);
+  }, [applyTransform, setToolMode]);
+
+  const handleTransformDiscardCancel = useCallback(() => {
+    pendingToolModeRef.current = null;
+    setShowTransformDiscardConfirm(false);
+  }, []);
 
   // Keyboard shortcuts - using extracted hook (gets state, setters, and refs from context)
   useKeyboardShortcuts({
@@ -454,6 +522,7 @@ function ImageEditorContent() {
     cancelTransform,
     getDisplayDimensions,
     saveToHistory,
+    onToolModeChange: handleToolModeChange,
   });
 
   // ============================================
@@ -500,6 +569,7 @@ function ImageEditorContent() {
   const {
     isDragging,
     mousePos,
+    hoveredGuide,
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
@@ -536,7 +606,25 @@ function ImageEditorContent() {
     handleTransformMouseDown,
     handleTransformMouseMove,
     handleTransformMouseUp,
+    // Guide functions
+    guides,
+    showGuides,
+    lockGuides,
+    moveGuide,
+    removeGuide,
+    getGuideAtPosition,
   });
+
+  // Guide drag preview state for showing preview line on main canvas
+  const [guideDragPreview, setGuideDragPreview] = useState<{ orientation: GuideOrientation; position: number } | null>(null);
+
+  // Handler for guide drag state changes from Ruler
+  const handleGuideDragStateChange = useCallback(
+    (dragState: { orientation: GuideOrientation; position: number } | null) => {
+      setGuideDragPreview(dragState);
+    },
+    []
+  );
 
   // Canvas rendering - using extracted hook (gets zoom, pan, rotation, canvasSize, toolMode, refs from context)
   const { requestRender } = useCanvasRendering({
@@ -557,8 +645,22 @@ function ImageEditorContent() {
     isTransformActive: transformState.isActive,
     transformLayerId: transformState.layerId,
     transformOriginalImageData: transformState.originalImageData,
+    guides,
+    showGuides,
+    lockGuides,
+    activeSnapSources: transformSnapSources,
+    guideDragPreview,
     getDisplayDimensions,
   });
+
+  // Re-render canvas when showRulers changes (container size changes due to ruler visibility)
+  useEffect(() => {
+    // Use setTimeout to ensure DOM has updated after ruler container change
+    const timeoutId = setTimeout(() => {
+      requestRender();
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, [showRulers, requestRender]);
 
   // Background removal - using extracted hook
   const {
@@ -1165,6 +1267,11 @@ function ImageEditorContent() {
 
   // Get cursor based on tool mode
   const getCursor = () => {
+    // Guide hover cursor (when guides visible and not locked)
+    if (hoveredGuide && showGuides && !lockGuides) {
+      return hoveredGuide.orientation === "horizontal" ? "ns-resize" : "ew-resize";
+    }
+
     const activeMode = getActiveToolMode();
     if (activeMode === "hand") return isDragging ? "grabbing" : "grab";
     if (activeMode === "zoom") return "zoom-in";
@@ -1194,7 +1301,8 @@ function ImageEditorContent() {
     return "crosshair";
   };
 
-  const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+  const displaySize = getDisplayDimensions();
+  const { width: displayWidth, height: displayHeight } = displaySize;
 
   // Create canvas context value for EditorCanvasProvider
   const canvasContextValue = useMemo(
@@ -1210,6 +1318,9 @@ function ImageEditorContent() {
       handleMouseLeave,
       getCursor,
       loadImageFile,
+      displaySize,
+      onGuideCreate: addGuide,
+      onGuideDragStateChange: handleGuideDragStateChange,
     }),
     [
       containerRef,
@@ -1222,6 +1333,9 @@ function ImageEditorContent() {
       handleMouseUp,
       handleMouseLeave,
       loadImageFile,
+      displaySize,
+      addGuide,
+      handleGuideDragStateChange,
     ]
   );
 
@@ -1300,6 +1414,11 @@ function ImageEditorContent() {
           // Restore layers
           const { width, height } = data.canvasSize;
           await initLayers(width, height, data.layers);
+
+          // Restore guides
+          if (data.guides && data.guides.length > 0) {
+            setGuides(data.guides);
+          }
         } else if (data) {
           // Clear invalid/legacy autosave data
           clearEditorAutosaveData();
@@ -1348,6 +1467,7 @@ function ImageEditorContent() {
         brushSize,
         brushColor,
         brushHardness,
+        guides: guides.length > 0 ? guides : undefined,
       });
     }, EDITOR_AUTOSAVE_DEBOUNCE_MS);
 
@@ -1367,6 +1487,7 @@ function ImageEditorContent() {
     brushSize,
     brushColor,
     brushHardness,
+    guides,
   ]);
 
   // Clear autosave when starting fresh
@@ -1420,8 +1541,9 @@ function ImageEditorContent() {
       rotation,
       savedAt: Date.now(),
       thumbnailUrl,
+      guides: guides.length > 0 ? guides : undefined,
     };
-  }, [layers, projectName, canvasSize, rotation, currentProjectId, activeLayerId]);
+  }, [layers, projectName, canvasSize, rotation, currentProjectId, activeLayerId, guides]);
 
   // Save current project (overwrites if exists, creates new if not)
   const handleSaveProject = useCallback(async () => {
@@ -1521,12 +1643,15 @@ function ImageEditorContent() {
           }
         }
 
+        // Load guides
+        setGuides(project.guides || []);
+
         setIsProjectListOpen(false);
       } finally {
         setIsLoading(false);
       }
     },
-    [initLayers, storageProvider],
+    [initLayers, storageProvider, setGuides],
   );
 
   // Delete a project
@@ -1801,8 +1926,18 @@ function ImageEditorContent() {
           onImportImage={() => fileInputRef.current?.click()}
           canSave={layers.length > 0}
           isLoading={isLoading}
+          showRulers={showRulers}
+          showGuides={showGuides}
+          lockGuides={lockGuides}
+          snapToGuides={snapToGuides}
+          onToggleRulers={() => setShowRulers(!showRulers)}
+          onToggleGuides={() => setShowGuides(!showGuides)}
+          onToggleLockGuides={() => setLockGuides(!lockGuides)}
+          onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+          onClearGuides={clearAllGuides}
           translations={{
             file: t.file,
+            view: t.view,
             window: t.window,
             new: t.new,
             load: t.load,
@@ -1810,6 +1945,11 @@ function ImageEditorContent() {
             saveAs: t.saveAs,
             importImage: t.importImage,
             layers: t.layers,
+            showRulers: t.showRulers,
+            showGuides: t.showGuides,
+            lockGuides: t.lockGuides,
+            snapToGuides: t.snapToGuides,
+            clearGuides: t.clearGuides,
           }}
         />
         {layers.length > 0 && (
@@ -1869,7 +2009,7 @@ function ImageEditorContent() {
                 shortcut={tool.shortcut}
               >
                 <button
-                  onClick={() => setToolMode(tool.mode)}
+                  onClick={() => handleToolModeChange(tool.mode)}
                   className={`p-1.5 rounded transition-colors ${
                     toolMode === tool.mode
                       ? "bg-accent-primary text-white"
@@ -2184,6 +2324,21 @@ function ImageEditorContent() {
         }}
       />
 
+      {/* Transform Discard Confirmation Modal */}
+      <TransformDiscardConfirmModal
+        show={showTransformDiscardConfirm}
+        onClose={handleTransformDiscardCancel}
+        onDiscard={handleTransformDiscardConfirm}
+        onApply={handleTransformApplyAndSwitch}
+        translations={{
+          title: "변환 취소",
+          message: "적용하지 않은 변환이 있습니다. 변환을 취소하면 원래 상태로 되돌아갑니다.",
+          discard: "취소하고 전환",
+          apply: "적용하고 전환",
+          cancel: "돌아가기",
+        }}
+      />
+
       {/* Bottom status bar */}
       {layers.length > 0 && (
         <EditorStatusBar
@@ -2262,8 +2417,19 @@ interface EditorMenuBarInnerProps {
   onImportImage: () => void;
   canSave: boolean;
   isLoading?: boolean;
+  // View menu props
+  showRulers: boolean;
+  showGuides: boolean;
+  lockGuides: boolean;
+  snapToGuides: boolean;
+  onToggleRulers: () => void;
+  onToggleGuides: () => void;
+  onToggleLockGuides: () => void;
+  onToggleSnapToGuides: () => void;
+  onClearGuides: () => void;
   translations: {
     file: string;
+    view: string;
     window: string;
     new: string;
     load: string;
@@ -2271,6 +2437,11 @@ interface EditorMenuBarInnerProps {
     saveAs: string;
     importImage: string;
     layers: string;
+    showRulers: string;
+    showGuides: string;
+    lockGuides: string;
+    snapToGuides: string;
+    clearGuides: string;
   };
 }
 

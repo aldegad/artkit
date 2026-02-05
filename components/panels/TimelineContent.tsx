@@ -814,8 +814,8 @@ export default function TimelineContent() {
             </svg>
             클릭: 배경 제거
           </span>
-          <span className="text-yellow-300 flex items-center gap-1">
-            <span className="w-4 h-4 bg-yellow-600 rounded-full flex items-center justify-center text-[10px]">
+          <span className="text-accent-warning flex items-center gap-1">
+            <span className="w-4 h-4 bg-accent-warning rounded-full flex items-center justify-center text-[10px] text-white">
               ↻
             </span>
             원본 복원

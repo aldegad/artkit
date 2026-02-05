@@ -72,7 +72,7 @@ export function UserMenu() {
           <div className="p-1">
             <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
               <svg
-                className="w-3 h-3 text-green-500"
+                className="w-3 h-3 text-accent-success"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >

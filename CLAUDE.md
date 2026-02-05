@@ -11,6 +11,23 @@ npm run lint     # Run ESLint
 npm run deploy   # Build and deploy to Firebase Hosting
 ```
 
+## Git Worktrees
+
+병렬 작업을 위한 worktree 구성:
+
+| Worktree | Branch | Path |
+|----------|--------|------|
+| main | `main` | `artkit/` |
+| agent1 | `agent1` | `artkit-agent1/` |
+| agent2 | `agent2` | `artkit-agent2/` |
+| agent3 | `agent3` | `artkit-agent3/` |
+
+```bash
+git worktree list              # 현재 worktree 목록 확인
+git worktree add ../artkit-agentN -b agentN  # 새 worktree 추가
+git worktree remove ../artkit-agentN         # worktree 제거
+```
+
 ## Architecture
 
 **Artkit** is a web-based graphics editor (sprites, pixel art, images, audio) built with Next.js 16, React 19, TypeScript 5, and Tailwind CSS 4.
