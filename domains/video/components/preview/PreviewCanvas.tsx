@@ -18,9 +18,41 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { playback, project } = useVideoState();
   const { tracks, clips, getClipAtTime } = useTimeline();
   const [videoReadyCount, setVideoReadyCount] = useState(0);
+  const wasPlayingRef = useRef(false);
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
+
+  // Handle playback state changes - sync video elements
+  useEffect(() => {
+    const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
+
+    if (playback.isPlaying && !wasPlayingRef.current) {
+      // Playback started - sync and play all video elements
+      for (const clip of videoClips) {
+        const video = videoElementsRef.current?.get(clip.sourceUrl);
+        if (video && video.readyState >= 2) {
+          const clipTime = playback.currentTime - clip.startTime;
+          if (clipTime >= 0 && clipTime < clip.duration) {
+            const sourceTime = clip.trimIn + clipTime;
+            video.currentTime = sourceTime;
+            video.playbackRate = playback.playbackRate;
+            video.play().catch(() => {});
+          }
+        }
+      }
+    } else if (!playback.isPlaying && wasPlayingRef.current) {
+      // Playback stopped - pause all video elements
+      for (const clip of videoClips) {
+        const video = videoElementsRef.current?.get(clip.sourceUrl);
+        if (video) {
+          video.pause();
+        }
+      }
+    }
+
+    wasPlayingRef.current = playback.isPlaying;
+  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, videoElementsRef]);
 
   // Setup video ready listeners
   useEffect(() => {
@@ -146,12 +178,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const clipTime = playback.currentTime - clip.startTime;
         const sourceTime = clip.trimIn + clipTime;
 
-        // Seek video to correct time
-        if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
-          videoElement.currentTime = sourceTime;
-          // Will re-render when seeked event fires
-          continue;
+        // During playback, let the video play naturally (don't seek every frame)
+        // Only seek when paused (scrubbing) or when severely out of sync
+        if (!playback.isPlaying) {
+          // Paused - seek to exact position
+          if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
+            videoElement.currentTime = sourceTime;
+            // Will re-render when seeked event fires
+            continue;
+          }
         }
+        // During playback, just draw whatever frame the video is at
+        // The video.play() handles syncing
 
         // Draw video frame
         ctx.globalAlpha = clip.opacity / 100;
@@ -188,6 +226,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [
     previewCanvasRef,
     playback.currentTime,
+    playback.isPlaying,
     project.canvasSize,
     tracks,
     clips,
