@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "../../shared/contexts";
 import SettingsMenu from "../SettingsMenu";
+import ArtkitLogo from "../icons/ArtkitLogo";
 
 interface Tool {
   id: string;
@@ -90,15 +91,23 @@ interface SidebarProps {
 export default function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
+  const isMobile = !!onNavigate;
 
   return (
-    <div className="w-14 bg-surface-primary border-r border-border-default flex flex-col items-center py-3 gap-2">
-      {/* Logo */}
-      <div className="w-9 h-9 bg-accent-primary rounded-lg flex items-center justify-center text-white font-bold text-sm mb-2">
-        AK
-      </div>
-
-      <div className="w-8 h-px bg-border-default" />
+    <div className={`w-14 h-full bg-surface-primary flex flex-col items-center gap-2 ${
+      isMobile ? "pt-2" : "border-r border-border-default"
+    }`}>
+      {/* Logo - only shown on desktop, height matches first header row (h-11 = 44px) */}
+      {!isMobile && (
+        <>
+          <div className="h-11 w-full flex items-center justify-center">
+            <div className="w-8 h-8 bg-accent-primary rounded-md flex items-center justify-center text-white">
+              <ArtkitLogo size={24} />
+            </div>
+          </div>
+          <div className="w-8 h-px bg-border-default mb-2" />
+        </>
+      )}
 
       {/* Tool buttons */}
       {tools.map((tool) => {
