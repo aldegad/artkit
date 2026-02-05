@@ -1,6 +1,7 @@
 "use client";
 
 import { SpriteFrame, TimelineMode } from "../../types";
+import { Scrollbar } from "../../shared/components";
 import TimelineControls from "./TimelineControls";
 import TimelineFrame from "./TimelineFrame";
 
@@ -108,7 +109,7 @@ export default function Timeline({
       />
 
       {/* 프레임 타임라인 */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto p-3">
+      <Scrollbar className="flex-1 p-3">
         <div className="flex items-start gap-3 min-h-full">
           {frames.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-text-tertiary text-sm h-32">
@@ -138,7 +139,7 @@ export default function Timeline({
             ))
           )}
         </div>
-      </div>
+      </Scrollbar>
     </div>
   );
 }

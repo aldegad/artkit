@@ -1,6 +1,7 @@
 "use client";
 
 import { SavedImageProject } from "../types";
+import { Scrollbar } from "../../../shared/components";
 import { formatBytes } from "../../../utils/storage";
 
 // ============================================
@@ -91,7 +92,7 @@ export default function ProjectListModal({
         </div>
 
         {/* Project list */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <Scrollbar className="flex-1 p-4" overflow={{ x: "hidden", y: "scroll" }}>
           {projects.length === 0 ? (
             <div className="text-center text-text-tertiary py-8">
               {t.noSavedProjects}
@@ -144,7 +145,7 @@ export default function ProjectListModal({
               ))}
             </div>
           )}
-        </div>
+        </Scrollbar>
       </div>
     </div>
   );

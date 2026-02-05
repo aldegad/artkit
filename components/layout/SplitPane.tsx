@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, ReactNode } from "react";
 import { useDocking } from "../../contexts/DockingContext";
 import { useLanguage } from "../../shared/contexts";
+import { Scrollbar } from "../../shared/components";
 import { DockPosition } from "../../types";
 
 // ============================================
@@ -136,7 +137,7 @@ export default function SplitPane({ position, children, onClose }: SplitPaneProp
       </div>
 
       {/* 패널 컨텐츠 */}
-      <div className="flex-1 overflow-auto">{children}</div>
+      <Scrollbar className="flex-1">{children}</Scrollbar>
 
       {/* 리사이즈 핸들 */}
       <div

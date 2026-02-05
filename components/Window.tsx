@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, ReactNode, useCallback } from "react";
 import { useLanguage } from "../shared/contexts";
+import { Scrollbar } from "../shared/components";
 
 // ============================================
 // Docking Detection
@@ -254,7 +255,7 @@ export default function Window({
         </div>
 
         {/* 컨텐츠 */}
-        <div className="flex-1 overflow-auto">{children}</div>
+        <Scrollbar className="flex-1">{children}</Scrollbar>
 
         {/* 리사이즈 핸들 */}
         <div
@@ -350,7 +351,7 @@ export default function Window({
         </div>
 
         {/* 컨텐츠 */}
-        {!isMinimized && <div className="flex-1 overflow-auto">{children}</div>}
+        {!isMinimized && <Scrollbar className="flex-1">{children}</Scrollbar>}
 
         {/* 리사이즈 핸들 */}
         {!isMinimized && resizable && (

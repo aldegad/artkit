@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState } from "react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { useLayout } from "../../domains/sprite/contexts/LayoutContext";
 import { useLanguage } from "../../shared/contexts";
+import { Scrollbar } from "../../shared/components";
 import { ExportDropdown } from "../timeline";
 import { getBoundingBox } from "../../utils/canvasUtils";
 
@@ -823,15 +824,16 @@ export default function TimelineContent() {
       )}
 
       {/* Frame timeline */}
-      <div
-        className={`flex-1 overflow-y-auto overflow-x-auto p-3 transition-colors ${
-          isFileDragOver ? "bg-accent-primary/10 ring-2 ring-accent-primary ring-inset" : ""
-        }`}
-        onDragOver={handleFileDragOver}
-        onDragLeave={handleFileDragLeave}
-        onDrop={handleFileDrop}
-      >
-        <div className="flex items-start gap-3 min-h-full">
+      <Scrollbar className="flex-1">
+        <div
+          className={`p-3 min-h-full transition-colors ${
+            isFileDragOver ? "bg-accent-primary/10 ring-2 ring-accent-primary ring-inset" : ""
+          }`}
+          onDragOver={handleFileDragOver}
+          onDragLeave={handleFileDragLeave}
+          onDrop={handleFileDrop}
+        >
+          <div className="flex items-start gap-3 min-h-full">
           {frames.length === 0 ? (
             <div
               className={`flex-1 flex flex-col items-center justify-center text-sm h-32 ${
@@ -999,8 +1001,9 @@ export default function TimelineContent() {
               </div>
             ))
           )}
+          </div>
         </div>
-      </div>
+      </Scrollbar>
     </div>
   );
 }

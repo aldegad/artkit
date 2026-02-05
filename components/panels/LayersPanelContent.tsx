@@ -3,6 +3,7 @@
 import { useRef, useCallback } from "react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { useLanguage } from "../../shared/contexts";
+import { Scrollbar } from "../../shared/components";
 import { CompositionLayer } from "../../types";
 
 // ============================================
@@ -334,7 +335,7 @@ export default function LayersPanelContent() {
       </div>
 
       {/* Layers list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <Scrollbar className="flex-1 p-3 space-y-2" overflow={{ x: "hidden", y: "scroll" }}>
         {sortedLayers.length === 0 ? (
           <div className="text-center py-8 text-text-tertiary text-sm">
             <p>{t.noLayersYet}</p>
@@ -382,7 +383,7 @@ export default function LayersPanelContent() {
             );
           })
         )}
-      </div>
+      </Scrollbar>
 
       {/* Footer info */}
       {compositionLayers.length > 0 && (
