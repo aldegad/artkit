@@ -10,6 +10,7 @@ interface Translations {
   imageEditor: string;
   imageConverter: string;
   soundEditor: string;
+  videoEditor: string;
 
   // Settings menu
   settings: string;
@@ -260,6 +261,7 @@ const translations: Record<Language, Translations> = {
     imageEditor: "이미지 에디터",
     imageConverter: "이미지 컨버터",
     soundEditor: "사운드 에디터",
+    videoEditor: "비디오 에디터",
 
     // Settings menu
     settings: "설정",
@@ -508,6 +510,7 @@ const translations: Record<Language, Translations> = {
     imageEditor: "Image Editor",
     imageConverter: "Image Converter",
     soundEditor: "Sound Editor",
+    videoEditor: "Video Editor",
 
     // Settings menu
     settings: "Settings",
