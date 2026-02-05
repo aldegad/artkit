@@ -66,8 +66,7 @@ export function useBrushTool(): UseBrushToolReturn {
     (x: number, y: number, isStart: boolean = false) => {
       const editCanvas = editCanvasRef.current;
       const ctx = editCanvas?.getContext("2d");
-      const img = imageRef.current;
-      if (!editCanvas || !ctx || !img) return;
+      if (!editCanvas || !ctx) return;
 
       const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
@@ -159,6 +158,9 @@ export function useBrushTool(): UseBrushToolReturn {
         ctx.globalCompositeOperation = "source-over";
       } else if (toolMode === "stamp" && stampSource) {
         // Clone stamp - copy from source to destination
+        const img = imageRef.current;
+        if (!img) return;
+
         const offsetX = x - stampSource.x;
         const offsetY = y - stampSource.y;
 
