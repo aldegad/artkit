@@ -291,13 +291,6 @@ export default function LayersPanelContent() {
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Debug: log render
-  console.log('[LayersPanelContent] render', {
-    layerCount: compositionLayers.length,
-    activeLayerId,
-    layers: compositionLayers.map(l => ({ id: l.id, name: l.name }))
-  });
-
   // Handle image upload
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

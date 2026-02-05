@@ -22,8 +22,13 @@ export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
 export { EditorMenuBar } from "./components";
+export { LayersPanelContent } from "./components";
 export { BrushPresetSelector } from "./components/toolbars/BrushPresetSelector";
 export { PanModeToggle } from "./components/toolbars/PanModeToggle";
+
+// Contexts
+export { EditorLayersProvider, useEditorLayers } from "./contexts";
+export type { EditorLayersContextValue } from "./contexts";
 
 // Types
 export type {

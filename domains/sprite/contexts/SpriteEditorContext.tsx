@@ -258,7 +258,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // Wrapper for setActiveLayerId to ensure it's always valid
   const setActiveLayerId = useCallback((id: string | null) => {
-    console.log('[Context] setActiveLayerId called:', id);
     setActiveLayerIdInternal(id);
   }, []);
 

@@ -19,3 +19,9 @@ export {
   EditorLayoutProvider,
   useEditorLayout,
 } from "./EditorLayoutContext";
+
+export {
+  EditorLayersProvider,
+  useEditorLayers,
+  type EditorLayersContextValue,
+} from "./EditorLayersContext";

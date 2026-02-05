@@ -5,6 +5,7 @@
 export { default as ProjectListModal } from "./ProjectListModal";
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 export { default as EditorMenuBar } from "./EditorMenuBar";
+export { default as LayersPanelContent } from "./LayersPanelContent";
 
 // Re-export layout components
 export * from "./layout";
