@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, RefObject } from "react";
+import { useState, useCallback, useRef, RefObject } from "react";
 import { EditorToolMode, CropArea, Point, DragType } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 
@@ -31,7 +31,7 @@ interface UseMouseHandlersOptions {
   getDisplayDimensions: () => { width: number; height: number };
 
   // Brush functions (from useBrushTool)
-  drawOnEditCanvas: (x: number, y: number, isStart?: boolean) => void;
+  drawOnEditCanvas: (x: number, y: number, isStart?: boolean, pressure?: number) => void;
   pickColor: (x: number, y: number, canvasRef: RefObject<HTMLCanvasElement | null>, zoom: number, pan: Point) => void;
   resetLastDrawPoint: () => void;
   stampSource: { x: number; y: number } | null;
@@ -64,14 +64,12 @@ interface UseMouseHandlersReturn {
   // Drag state
   isDragging: boolean;
   dragType: DragType;
-  dragStart: Point;
   resizeHandle: string | null;
   mousePos: Point | null;
 
   // State setters (for external use if needed)
   setIsDragging: (value: boolean) => void;
   setDragType: (type: DragType) => void;
-  setDragStart: (point: Point) => void;
   setResizeHandle: (handle: string | null) => void;
 
   // Handlers
@@ -134,7 +132,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
+  const dragStartRef = useRef<Point>({ x: 0, y: 0 }); // Use ref for synchronous updates during fast drag
   const [dragType, setDragType] = useState<DragType>(null);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point | null>(null);
@@ -167,7 +165,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // Hand tool (pan)
       if (activeMode === "hand") {
         setDragType("pan");
-        setDragStart(screenPos);
+        dragStartRef.current = screenPos;
         setIsDragging(true);
         return;
       }
@@ -208,7 +206,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           saveToHistory();
           setDragType("draw");
           resetLastDrawPoint();
-          drawOnEditCanvas(imagePos.x, imagePos.y, true);
+          const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
+          drawOnEditCanvas(imagePos.x, imagePos.y, true, pressure);
           setIsDragging(true);
         }
         return;
@@ -219,7 +218,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         saveToHistory();
         setDragType("draw");
         resetLastDrawPoint();
-        drawOnEditCanvas(imagePos.x, imagePos.y, true);
+        // Extract pressure from pointer event (React.PointerEvent has pressure property)
+        const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
+        drawOnEditCanvas(imagePos.x, imagePos.y, true, pressure);
         setIsDragging(true);
         return;
       }
@@ -279,7 +280,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
               setIsMovingSelection(true);
               setIsDuplicating(true);
               setDragType("move");
-              setDragStart(imagePos);
+              dragStartRef.current = imagePos;
               (dragStartOriginRef as { current: Point | null }).current = { x: imagePos.x, y: imagePos.y };
               setIsDragging(true);
               return;
@@ -288,7 +289,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
             // Regular click inside selection - move existing floating layer
             if (floatingLayerRef.current) {
               setDragType("move");
-              setDragStart(imagePos);
+              dragStartRef.current = imagePos;
               (dragStartOriginRef as { current: Point | null }).current = { x: imagePos.x, y: imagePos.y };
               setIsDragging(true);
               setIsMovingSelection(true);
@@ -304,7 +305,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           (floatingLayerRef as { current: FloatingLayer | null }).current = null;
           setIsDuplicating(false);
           setDragType("create");
-          setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
+          dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
           setSelection({ x: Math.round(imagePos.x), y: Math.round(imagePos.y), width: 0, height: 0 });
           setIsDragging(true);
         }
@@ -367,7 +368,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
             }
 
             setDragType("move");
-            setDragStart(imagePos);
+            dragStartRef.current = imagePos;
             (dragStartOriginRef as { current: Point | null }).current = { x: imagePos.x, y: imagePos.y };
             setIsDragging(true);
             setIsMovingSelection(true);
@@ -396,7 +397,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
             if (isInHandle(imagePos, handle)) {
               setDragType("resize");
               setResizeHandle(handle.name);
-              setDragStart(imagePos);
+              dragStartRef.current = imagePos;
               setIsDragging(true);
               return;
             }
@@ -409,7 +410,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
             imagePos.y <= cropArea.y + cropArea.height
           ) {
             setDragType("move");
-            setDragStart(imagePos);
+            dragStartRef.current = imagePos;
             setIsDragging(true);
             return;
           }
@@ -417,7 +418,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
         if (inBounds) {
           setDragType("create");
-          setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
+          dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
           setCropArea({ x: Math.round(imagePos.x), y: Math.round(imagePos.y), width: 0, height: 0 });
           setIsDragging(true);
         }
@@ -477,10 +478,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       // Pan
       if (dragType === "pan") {
-        const dx = screenPos.x - dragStart.x;
-        const dy = screenPos.y - dragStart.y;
+        const dx = screenPos.x - dragStartRef.current.x;
+        const dy = screenPos.y - dragStartRef.current.y;
         setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
-        setDragStart(screenPos);
+        dragStartRef.current = screenPos;
         return;
       }
 
@@ -488,7 +489,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       if (dragType === "draw") {
         const clampedX = Math.max(0, Math.min(imagePos.x, displayWidth));
         const clampedY = Math.max(0, Math.min(imagePos.y, displayHeight));
-        drawOnEditCanvas(clampedX, clampedY);
+        // Extract pressure from pointer event
+        const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
+        drawOnEditCanvas(clampedX, clampedY, false, pressure);
         return;
       }
 
@@ -496,11 +499,11 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       const activeMode = getActiveToolMode();
       if (activeMode === "marquee" || activeMode === "move") {
         if (dragType === "create" && selection && activeMode === "marquee") {
-          let width = Math.round(imagePos.x) - dragStart.x;
-          let height = Math.round(imagePos.y) - dragStart.y;
+          let width = Math.round(imagePos.x) - dragStartRef.current.x;
+          let height = Math.round(imagePos.y) - dragStartRef.current.y;
 
-          const newX = width < 0 ? dragStart.x + width : dragStart.x;
-          const newY = height < 0 ? dragStart.y + height : dragStart.y;
+          const newX = width < 0 ? dragStartRef.current.x + width : dragStartRef.current.x;
+          const newY = height < 0 ? dragStartRef.current.y + height : dragStartRef.current.y;
 
           setSelection({
             x: Math.max(0, newX),
@@ -552,15 +555,15 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       // Crop create
       if (dragType === "create") {
-        let width = Math.round(imagePos.x) - dragStart.x;
-        let height = Math.round(imagePos.y) - dragStart.y;
+        let width = Math.round(imagePos.x) - dragStartRef.current.x;
+        let height = Math.round(imagePos.y) - dragStartRef.current.y;
 
         if (ratioValue) {
           height = Math.round(width / ratioValue);
         }
 
-        const newX = width < 0 ? dragStart.x + width : dragStart.x;
-        const newY = height < 0 ? dragStart.y + height : dragStart.y;
+        const newX = width < 0 ? dragStartRef.current.x + width : dragStartRef.current.x;
+        const newY = height < 0 ? dragStartRef.current.y + height : dragStartRef.current.y;
 
         setCropArea({
           x: Math.max(0, newX),
@@ -570,17 +573,17 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         });
       } else if (dragType === "move") {
         // Crop move
-        const dx = Math.round(imagePos.x) - dragStart.x;
-        const dy = Math.round(imagePos.y) - dragStart.y;
+        const dx = Math.round(imagePos.x) - dragStartRef.current.x;
+        const dy = Math.round(imagePos.y) - dragStartRef.current.y;
         const newX = Math.max(0, Math.min(cropArea.x + dx, displayWidth - cropArea.width));
         const newY = Math.max(0, Math.min(cropArea.y + dy, displayHeight - cropArea.height));
         setCropArea({ ...cropArea, x: newX, y: newY });
-        setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
+        dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
       } else if (dragType === "resize" && resizeHandle) {
         // Crop resize
         const newArea = { ...cropArea };
-        const dx = Math.round(imagePos.x) - dragStart.x;
-        const dy = Math.round(imagePos.y) - dragStart.y;
+        const dx = Math.round(imagePos.x) - dragStartRef.current.x;
+        const dy = Math.round(imagePos.y) - dragStartRef.current.y;
 
         if (resizeHandle.includes("e")) {
           newArea.width = Math.max(20, cropArea.width + dx);
@@ -611,7 +614,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         newArea.height = Math.min(newArea.height, displayHeight - newArea.y);
 
         setCropArea(newArea);
-        setDragStart({ x: Math.round(imagePos.x), y: Math.round(imagePos.y) });
+        dragStartRef.current = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
       }
     },
     [
@@ -621,7 +624,6 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       isInBounds,
       isDragging,
       dragType,
-      dragStart,
       resizeHandle,
       aspectRatio,
       getAspectRatioValue,
@@ -711,12 +713,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   return {
     isDragging,
     dragType,
-    dragStart,
     resizeHandle,
     mousePos,
     setIsDragging,
     setDragType,
-    setDragStart,
     setResizeHandle,
     handleMouseDown,
     handleMouseMove,
