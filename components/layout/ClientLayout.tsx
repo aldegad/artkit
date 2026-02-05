@@ -1,12 +1,14 @@
 "use client";
 
 import { ReactNode } from "react";
-import { SidebarProvider, useSidebar } from "../../shared/contexts";
+import { SidebarProvider, useSidebar, useAuth } from "../../shared/contexts";
 import Sidebar from "./Sidebar";
 import Footer from "./Footer";
+import { LoginButton, UserMenu } from "../auth";
 
 function MobileHeader() {
   const { toggle } = useSidebar();
+  const { user, isLoading } = useAuth();
 
   return (
     <div className="md:hidden flex items-center h-10 px-3 bg-surface-primary border-b border-border-default shrink-0">
@@ -17,6 +19,8 @@ function MobileHeader() {
       >
         AK
       </button>
+      <div className="flex-1" />
+      {!isLoading && (user ? <UserMenu /> : <LoginButton />)}
     </div>
   );
 }

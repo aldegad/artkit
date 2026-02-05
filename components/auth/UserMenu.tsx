@@ -49,6 +49,7 @@ export function UserMenu() {
             src={user.photoURL}
             alt={user.displayName || "User"}
             className="w-7 h-7 rounded-full"
+            referrerPolicy="no-referrer"
           />
         ) : (
           <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-medium">
