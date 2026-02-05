@@ -2,10 +2,24 @@
 // Sprite Domain Layout Components - Public API
 // ============================================
 
-export { default as SplitView } from "./SplitView";
-export { default as SplitContainer } from "./SplitContainer";
-export { default as ResizeHandle } from "./ResizeHandle";
-export { default as Panel } from "./Panel";
-export { default as DockZoneOverlay } from "./DockZoneOverlay";
-export { default as FloatingWindows } from "./FloatingWindows";
-export * from "./PanelRegistry";
+// Re-export shared layout components
+export {
+  SplitView,
+  SplitContainer,
+  ResizeHandle,
+  Panel,
+  FloatingWindows,
+} from "@/shared/components/layout";
+
+// Sprite-specific panel registry
+export {
+  registerPanelComponent,
+  getPanelContent,
+  getPanelTitle,
+  isPanelHeaderVisible,
+  getPanelDefaultSize,
+  getPanelMinSize,
+  getRegisteredPanelIds,
+  usePanelUpdate,
+  subscribeToPanelUpdates,
+} from "./PanelRegistry";

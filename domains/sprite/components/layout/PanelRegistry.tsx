@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import SpriteCanvas from "../SpriteCanvas";
 import TimelineContent from "../../../../components/panels/TimelineContent";
 import AnimationPreview from "../AnimationPreview";
@@ -64,9 +64,35 @@ let panelComponents: Record<string, () => ReactNode> = {
   layers: () => <CompositionLayerPanel />,
 };
 
+// Listeners for panel updates
+const updateListeners: Set<() => void> = new Set();
+
+// Subscribe to panel updates
+export function subscribeToPanelUpdates(listener: () => void): () => void {
+  updateListeners.add(listener);
+  return () => {
+    updateListeners.delete(listener);
+  };
+}
+
+// Notify all listeners of panel update
+function notifyPanelUpdate() {
+  updateListeners.forEach((listener) => listener());
+}
+
+// Hook to force re-render when panels update
+export function usePanelUpdate() {
+  const [, setVersion] = useState(0);
+
+  useEffect(() => {
+    return subscribeToPanelUpdates(() => setVersion((v) => v + 1));
+  }, []);
+}
+
 // Register a panel component
 export function registerPanelComponent(panelId: string, component: () => ReactNode) {
   panelComponents[panelId] = component;
+  notifyPanelUpdate();
 }
 
 // Get panel content
