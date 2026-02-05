@@ -75,7 +75,7 @@ export function EditorToolOptions({
   translations: t,
 }: EditorToolOptionsProps) {
   return (
-    <div className="flex items-center gap-2 px-4 py-1 bg-surface-secondary border-b border-border-default shrink-0 overflow-x-auto min-h-[32px]">
+    <div className="flex items-center gap-2 px-3.5 py-1 bg-surface-secondary border-b border-border-default shrink-0 overflow-x-auto min-h-[32px]">
       {/* Brush and fill controls */}
       {(toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp" || toolMode === "fill") && (
         <>

@@ -41,12 +41,12 @@ export default function Header() {
       <div className="md:hidden w-14 shrink-0" />
 
       {/* Slot area - Page-specific content */}
-      <div className="flex-1 min-w-0 flex items-center gap-2 px-4 overflow-x-auto">
+      <div className="flex-1 min-w-0 flex items-center gap-2 px-3.5 overflow-x-auto">
         {slot}
       </div>
 
       {/* Auth area */}
-      <div className="pr-4 shrink-0">
+      <div className="pr-3.5 shrink-0">
         {!isLoading && (user ? <UserMenu /> : <LoginButton />)}
       </div>
     </div>
