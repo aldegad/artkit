@@ -135,7 +135,7 @@ function FloatingWindowComponent({
   ]);
 
   if (window.isMinimized) {
-    return null; // TODO: Render minimized state
+    return null;
   }
 
   return (

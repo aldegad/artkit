@@ -183,14 +183,7 @@ export interface EditorState {
 }
 
 // ============================================
-// Bounding Box
+// Re-exports from shared types
 // ============================================
 
-export interface BoundingBox {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-  width: number;
-  height: number;
-}
+export type { BoundingBox } from "../shared/types/common";

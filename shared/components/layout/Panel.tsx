@@ -24,9 +24,19 @@ export default function Panel({ node }: PanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<DockPosition>(null);
 
-  const content = config.getPanelContent(node.panelId);
   const showHeader = config.isPanelHeaderVisible(node.panelId);
   const title = config.getPanelTitle(node.panelId);
+
+  // Subscribe to panel updates for re-rendering when panel content changes
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (config.subscribeToPanelUpdates) {
+      return config.subscribeToPanelUpdates(() => forceUpdate((v) => v + 1));
+    }
+  }, [config.subscribeToPanelUpdates]);
+
+  // Get content after subscription setup so it re-renders on updates
+  const content = config.getPanelContent(node.panelId);
 
   // Register panel ref for snap functionality
   useEffect(() => {

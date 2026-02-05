@@ -3,7 +3,7 @@
 import { useRef, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
-import { CompositionLayer } from "../types";
+import { UnifiedLayer } from "../types";
 
 // ============================================
 // Icon Components
@@ -104,7 +104,7 @@ const ChevronDownIcon = () => (
 // ============================================
 
 interface LayerItemProps {
-  layer: CompositionLayer;
+  layer: UnifiedLayer;
   isActive: boolean;
   onSelect: () => void;
   onToggleVisibility: () => void;
@@ -149,12 +149,14 @@ function LayerItem({
       <div className="flex items-center gap-2">
         {/* Thumbnail */}
         <div className="w-10 h-10 rounded bg-surface-tertiary overflow-hidden flex-shrink-0 checkerboard">
-          <img
-            src={layer.imageSrc}
-            alt={layer.name}
-            className="w-full h-full object-contain"
-            style={{ opacity: layer.opacity / 100 }}
-          />
+          {layer.paintData && (
+            <img
+              src={layer.paintData}
+              alt={layer.name}
+              className="w-full h-full object-contain"
+              style={{ opacity: layer.opacity / 100 }}
+            />
+          )}
         </div>
 
         {/* Name (editable) */}

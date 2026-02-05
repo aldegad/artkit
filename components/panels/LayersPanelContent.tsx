@@ -4,7 +4,7 @@ import { useRef, useCallback } from "react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { useLanguage } from "../../shared/contexts";
 import { Scrollbar } from "../../shared/components";
-import { CompositionLayer } from "../../types";
+import { UnifiedLayer } from "../../types";
 
 // ============================================
 // Icon Components
@@ -105,7 +105,7 @@ const ChevronDownIcon = () => (
 // ============================================
 
 interface LayerItemProps {
-  layer: CompositionLayer;
+  layer: UnifiedLayer;
   isActive: boolean;
   onSelect: () => void;
   onToggleVisibility: () => void;
@@ -150,12 +150,14 @@ function LayerItem({
       <div className="flex items-center gap-2">
         {/* Thumbnail */}
         <div className="w-10 h-10 rounded bg-surface-tertiary overflow-hidden flex-shrink-0 checkerboard">
-          <img
-            src={layer.imageSrc}
-            alt={layer.name}
-            className="w-full h-full object-contain"
-            style={{ opacity: layer.opacity / 100 }}
-          />
+          {layer.paintData && (
+            <img
+              src={layer.paintData}
+              alt={layer.name}
+              className="w-full h-full object-contain"
+              style={{ opacity: layer.opacity / 100 }}
+            />
+          )}
         </div>
 
         {/* Name (editable) */}
@@ -289,6 +291,13 @@ export default function LayersPanelContent() {
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Debug: log render
+  console.log('[LayersPanelContent] render', {
+    layerCount: compositionLayers.length,
+    activeLayerId,
+    layers: compositionLayers.map(l => ({ id: l.id, name: l.name }))
+  });
+
   // Handle image upload
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -347,7 +356,7 @@ export default function LayersPanelContent() {
             const actualIndex = compositionLayers.findIndex((l) => l.id === layer.id);
             return (
               <LayerItem
-                key={layer.id}
+                key={`${layer.id}-${layer.visible}-${layer.locked}-${layer.opacity}`}
                 layer={layer}
                 isActive={activeLayerId === layer.id}
                 onSelect={() => setActiveLayerId(layer.id)}

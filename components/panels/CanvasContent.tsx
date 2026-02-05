@@ -3,38 +3,9 @@
 import { useEffect, useCallback, useState, DragEvent } from "react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { useTheme } from "../../shared/contexts";
-import { Point, SpriteFrame, CompositionLayer } from "../../types";
+import { Point, SpriteFrame, UnifiedLayer } from "../../types";
+import { getBoundingBox, isPointInPolygon } from "../../utils/geometry";
 import ImageDropZone from "../ImageDropZone";
-
-// ============================================
-// Helper Functions
-// ============================================
-
-function getBoundingBox(points: Point[]) {
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  return {
-    minX: Math.min(...xs),
-    minY: Math.min(...ys),
-    maxX: Math.max(...xs),
-    maxY: Math.max(...ys),
-  };
-}
-
-function isPointInPolygon(point: Point, polygon: Point[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x,
-      yi = polygon[i].y;
-    const xj = polygon[j].x,
-      yj = polygon[j].y;
-
-    if (yi > point.y !== yj > point.y && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
 
 // ============================================
 // Component
@@ -212,9 +183,17 @@ export default function CanvasContent() {
     }
 
     compositionLayers.forEach((layer) => {
+      if (!layer.paintData) {
+        loadedCount++;
+        if (loadedCount === totalLayers) {
+          setLayerImages(newLayerImages);
+        }
+        return;
+      }
+
       // Check if we already have this image cached
       const existingImg = layerImages.get(layer.id);
-      if (existingImg && existingImg.src === layer.imageSrc) {
+      if (existingImg && existingImg.src === layer.paintData) {
         newLayerImages.set(layer.id, existingImg);
         loadedCount++;
         if (loadedCount === totalLayers) {
@@ -237,7 +216,7 @@ export default function CanvasContent() {
           setLayerImages(newLayerImages);
         }
       };
-      img.src = layer.imageSrc;
+      img.src = layer.paintData;
     });
   }, [compositionLayers]);
 
@@ -278,7 +257,7 @@ export default function CanvasContent() {
 
   // Check if point is inside a composition layer (for layer selection/dragging)
   const getLayerAtPoint = useCallback(
-    (screenX: number, screenY: number): CompositionLayer | null => {
+    (screenX: number, screenY: number): UnifiedLayer | null => {
       const canvas = canvasRef.current;
       if (!canvas) return null;
 
@@ -289,10 +268,11 @@ export default function CanvasContent() {
       // Check layers in reverse order (top to bottom visually)
       const sortedLayers = [...compositionLayers].sort((a, b) => b.zIndex - a.zIndex);
       for (const layer of sortedLayers) {
-        if (!layer.visible) continue;
+        if (!layer.visible || !layer.originalSize || !layer.position) continue;
 
-        const layerWidth = layer.originalSize.width * layer.scale * scale * zoom;
-        const layerHeight = layer.originalSize.height * layer.scale * scale * zoom;
+        const layerScale = layer.scale ?? 1;
+        const layerWidth = layer.originalSize.width * layerScale * scale * zoom;
+        const layerHeight = layer.originalSize.height * layerScale * scale * zoom;
         const layerX = pan.x + layer.position.x * scale * zoom;
         const layerY = pan.y + layer.position.y * scale * zoom;
 
@@ -395,12 +375,14 @@ export default function CanvasContent() {
     // Draw composition layers (sorted by zIndex, lower first)
     const sortedLayers = [...compositionLayers].sort((a, b) => a.zIndex - b.zIndex);
     sortedLayers.forEach((layer) => {
-      if (!layer.visible) return;
+      if (!layer.visible || !layer.originalSize || !layer.position) return;
       const layerImg = layerImages.get(layer.id);
       if (!layerImg) return;
 
-      const layerWidth = layer.originalSize.width * layer.scale * scale * zoom;
-      const layerHeight = layer.originalSize.height * layer.scale * scale * zoom;
+      const layerScale = layer.scale ?? 1;
+      const layerRotation = layer.rotation ?? 0;
+      const layerWidth = layer.originalSize.width * layerScale * scale * zoom;
+      const layerHeight = layer.originalSize.height * layerScale * scale * zoom;
       const layerX = pan.x + layer.position.x * scale * zoom;
       const layerY = pan.y + layer.position.y * scale * zoom;
 
@@ -408,11 +390,11 @@ export default function CanvasContent() {
       ctx.globalAlpha = layer.opacity / 100;
 
       // Apply rotation if needed
-      if (layer.rotation !== 0) {
+      if (layerRotation !== 0) {
         const centerX = layerX + layerWidth / 2;
         const centerY = layerY + layerHeight / 2;
         ctx.translate(centerX, centerY);
-        ctx.rotate((layer.rotation * Math.PI) / 180);
+        ctx.rotate((layerRotation * Math.PI) / 180);
         ctx.translate(-centerX, -centerY);
       }
 
@@ -430,8 +412,11 @@ export default function CanvasContent() {
       ctx.restore();
     });
 
-    // Draw main sprite image
-    ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
+    // Draw main sprite image only if no composition layers exist
+    // (when composition layers exist, they replace the main image)
+    if (compositionLayers.length === 0) {
+      ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
+    }
 
     // Draw saved frame polygons
     frames.forEach((frame, idx) => {
@@ -696,12 +681,15 @@ export default function CanvasContent() {
         const dx = (e.clientX - layerDragStart.x) / (scale * zoom);
         const dy = (e.clientY - layerDragStart.y) / (scale * zoom);
 
-        updateCompositionLayer(activeLayerId, {
-          position: {
-            x: compositionLayers.find((l) => l.id === activeLayerId)!.position.x + dx,
-            y: compositionLayers.find((l) => l.id === activeLayerId)!.position.y + dy,
-          },
-        });
+        const activeLayer = compositionLayers.find((l) => l.id === activeLayerId);
+        if (activeLayer?.position) {
+          updateCompositionLayer(activeLayerId, {
+            position: {
+              x: activeLayer.position.x + dx,
+              y: activeLayer.position.y + dy,
+            },
+          });
+        }
         setLayerDragStart({ x: e.clientX, y: e.clientY });
         return;
       }

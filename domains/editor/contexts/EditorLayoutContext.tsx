@@ -7,6 +7,7 @@ import {
   getEditorPanelTitle,
   isEditorPanelHeaderVisible,
   getEditorPanelDefaultSize,
+  subscribeToPanelUpdates,
 } from "../components/layout/EditorPanelRegistry";
 
 // ============================================
@@ -37,6 +38,7 @@ const { Provider, useLayoutContext } = createLayoutContext({
   getPanelDefaultSize: getEditorPanelDefaultSize,
   defaultFloatingWindowSize: { width: 300, height: 400 },
   containerClassName: "contents", // Use 'contents' to not affect layout
+  subscribeToPanelUpdates: subscribeToPanelUpdates,
 });
 
 // ============================================

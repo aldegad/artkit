@@ -2,7 +2,7 @@
 // Sprite Editor Autosave Utilities
 // ============================================
 
-import { Point, Size, SpriteFrame, CompositionLayer } from "../types";
+import { Point, Size, SpriteFrame, UnifiedLayer } from "../types";
 
 export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -19,7 +19,7 @@ export interface AutosaveData {
   scale: number;
   projectName: string;
   savedAt: number;
-  compositionLayers?: CompositionLayer[];
+  compositionLayers?: UnifiedLayer[];
   activeLayerId?: string | null;
 }
 
@@ -33,11 +33,10 @@ export function loadAutosaveData(): AutosaveData | null {
     const saved = localStorage.getItem(AUTOSAVE_KEY);
     if (saved) {
       const data: AutosaveData = JSON.parse(saved);
-      console.log("[Autosave] Loaded saved data from", new Date(data.savedAt).toLocaleString());
       return data;
     }
-  } catch (error) {
-    console.error("[Autosave] Failed to load saved data:", error);
+  } catch {
+    // Failed to load saved data
   }
   return null;
 }
@@ -55,9 +54,8 @@ export function saveAutosaveData(data: Omit<AutosaveData, "savedAt">): void {
     };
 
     localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(dataWithTimestamp));
-    console.log("[Autosave] Saved at", new Date().toLocaleTimeString());
-  } catch (error) {
-    console.error("[Autosave] Failed to save:", error);
+  } catch {
+    // Failed to save
   }
 }
 
@@ -68,5 +66,4 @@ export function clearAutosaveData(): void {
   if (typeof window === "undefined") return;
 
   localStorage.removeItem(AUTOSAVE_KEY);
-  console.log("[Autosave] Cleared autosave data");
 }

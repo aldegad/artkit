@@ -134,9 +134,8 @@ async function deleteProjectLayers(
     await Promise.all(
       listResult.items.map((itemRef) => deleteObject(itemRef))
     );
-  } catch (error) {
+  } catch {
     // Folder might not exist, ignore
-    console.warn("Failed to delete project layers:", error);
   }
 }
 

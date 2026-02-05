@@ -45,6 +45,8 @@ interface Translations {
   select: string;
   hand: string;
   undo: string;
+  redo: string;
+  rotate: string;
   complete: string;
   points: string;
   frame: string;
@@ -259,6 +261,8 @@ const translations: Record<Language, Translations> = {
     select: "선택",
     hand: "손",
     undo: "실행취소",
+    redo: "다시실행",
+    rotate: "회전",
     complete: "완성",
     points: "점",
     frame: "프레임",
@@ -471,6 +475,8 @@ const translations: Record<Language, Translations> = {
     select: "Select",
     hand: "Hand",
     undo: "Undo",
+    redo: "Redo",
+    rotate: "Rotate",
     complete: "Complete",
     points: "points",
     frame: "Frame",

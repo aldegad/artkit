@@ -6,7 +6,7 @@ import { useLayout } from "../../domains/sprite/contexts/LayoutContext";
 import { useLanguage } from "../../shared/contexts";
 import { Scrollbar } from "../../shared/components";
 import { ExportDropdown } from "../timeline";
-import { getBoundingBox } from "../../utils/canvasUtils";
+import { getBoundingBox } from "../../utils/geometry";
 
 // ============================================
 // Component

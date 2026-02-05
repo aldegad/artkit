@@ -24,7 +24,7 @@ export type {
   SpriteEditorState,
   Point,
   Size,
-  CompositionLayer,
+  UnifiedLayer,
   BoundingBox,
   LayoutState,
   SplitNode,

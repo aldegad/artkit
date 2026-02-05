@@ -43,7 +43,6 @@ function openAutosaveDB(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
-      console.error("[Editor Autosave] Failed to open DB:", request.error);
       reject(request.error);
     };
 
@@ -57,7 +56,6 @@ function openAutosaveDB(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: "id" });
-        console.log("[Editor Autosave] Created autosave store");
       }
     };
   });
@@ -79,21 +77,14 @@ export async function loadEditorAutosaveData(): Promise<EditorAutosaveData | nul
 
       request.onsuccess = () => {
         const data = request.result as EditorAutosaveData | undefined;
-        if (data) {
-          console.log("[Editor Autosave] Loaded saved data from", new Date(data.savedAt).toLocaleString());
-          resolve(data);
-        } else {
-          resolve(null);
-        }
+        resolve(data ?? null);
       };
 
       request.onerror = () => {
-        console.error("[Editor Autosave] Failed to load:", request.error);
         reject(request.error);
       };
     });
-  } catch (error) {
-    console.error("[Editor Autosave] Failed to load saved data:", error);
+  } catch {
     return null;
   }
 }
@@ -119,17 +110,15 @@ export async function saveEditorAutosaveData(data: Omit<EditorAutosaveData, "sav
       const request = store.put(dataWithMeta);
 
       request.onsuccess = () => {
-        console.log("[Editor Autosave] Saved at", new Date().toLocaleTimeString());
         resolve();
       };
 
       request.onerror = () => {
-        console.error("[Editor Autosave] Failed to save:", request.error);
         reject(request.error);
       };
     });
-  } catch (error) {
-    console.error("[Editor Autosave] Failed to save:", error);
+  } catch {
+    // Failed to save
   }
 }
 
@@ -148,16 +137,14 @@ export async function clearEditorAutosaveData(): Promise<void> {
       const request = store.delete(EDITOR_AUTOSAVE_KEY);
 
       request.onsuccess = () => {
-        console.log("[Editor Autosave] Cleared autosave data");
         resolve();
       };
 
       request.onerror = () => {
-        console.error("[Editor Autosave] Failed to clear:", request.error);
         reject(request.error);
       };
     });
-  } catch (error) {
-    console.error("[Editor Autosave] Failed to clear:", error);
+  } catch {
+    // Failed to clear
   }
 }

@@ -16,7 +16,7 @@ import {
   SpriteToolMode,
   TimelineMode,
   SavedSpriteProject,
-  CompositionLayer,
+  UnifiedLayer,
 } from "../types";
 import {
   AUTOSAVE_DEBOUNCE_MS,
@@ -25,10 +25,6 @@ import {
   clearAutosaveData,
 } from "../utils/autosave";
 import { deepCopyFrames, deepCopyFrame, generateLayerId } from "../utils/frameUtils";
-
-// Type alias for backward compatibility during migration
-type ToolMode = SpriteToolMode;
-type SavedProject = SavedSpriteProject;
 
 // ============================================
 // Context Interface
@@ -54,8 +50,8 @@ interface EditorContextValue {
   setSelectedPointIndex: (index: number | null) => void;
 
   // Tools
-  toolMode: ToolMode;
-  setToolMode: (mode: ToolMode) => void;
+  toolMode: SpriteToolMode;
+  setSpriteToolMode: (mode: SpriteToolMode) => void;
   currentPoints: Point[];
   setCurrentPoints: React.Dispatch<React.SetStateAction<Point[]>>;
   isSpacePressed: boolean;
@@ -137,8 +133,8 @@ interface EditorContextValue {
   // Project
   projectName: string;
   setProjectName: (name: string) => void;
-  savedProjects: SavedProject[];
-  setSavedProjects: React.Dispatch<React.SetStateAction<SavedProject[]>>;
+  savedProjects: SavedSpriteProject[];
+  setSavedSpriteProjects: React.Dispatch<React.SetStateAction<SavedSpriteProject[]>>;
   currentProjectId: string | null;
   setCurrentProjectId: (id: string | null) => void;
   newProject: () => void;
@@ -148,14 +144,14 @@ interface EditorContextValue {
   pasteFrame: () => void;
   clipboardFrame: SpriteFrame | null;
 
-  // Composition Layers
-  compositionLayers: CompositionLayer[];
-  setCompositionLayers: React.Dispatch<React.SetStateAction<CompositionLayer[]>>;
+  // Composition Layers (using UnifiedLayer)
+  compositionLayers: UnifiedLayer[];
+  setCompositionLayers: React.Dispatch<React.SetStateAction<UnifiedLayer[]>>;
   activeLayerId: string | null;
   setActiveLayerId: (id: string | null) => void;
-  addCompositionLayer: (imageSrc: string, name?: string) => void;
+  addCompositionLayer: (paintData: string, name?: string) => void;
   removeCompositionLayer: (id: string) => void;
-  updateCompositionLayer: (id: string, updates: Partial<CompositionLayer>) => void;
+  updateCompositionLayer: (id: string, updates: Partial<UnifiedLayer>) => void;
   reorderCompositionLayers: (fromIndex: number, toIndex: number) => void;
   duplicateCompositionLayer: (id: string) => void;
 
@@ -199,7 +195,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
 
   // Tool State
-  const [toolMode, setToolMode] = useState<ToolMode>("pen");
+  const [toolMode, setSpriteToolMode] = useState<SpriteToolMode>("pen");
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
 
@@ -250,15 +246,32 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // Project State
   const [projectName, setProjectName] = useState("");
-  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [savedProjects, setSavedSpriteProjects] = useState<SavedSpriteProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
 
   // Clipboard State
   const [clipboardFrame, setClipboardFrame] = useState<SpriteFrame | null>(null);
 
   // Composition Layers State
-  const [compositionLayers, setCompositionLayers] = useState<CompositionLayer[]>([]);
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [compositionLayers, setCompositionLayers] = useState<UnifiedLayer[]>([]);
+  const [activeLayerId, setActiveLayerIdInternal] = useState<string | null>(null);
+
+  // Wrapper for setActiveLayerId to ensure it's always valid
+  const setActiveLayerId = useCallback((id: string | null) => {
+    console.log('[Context] setActiveLayerId called:', id);
+    setActiveLayerIdInternal(id);
+  }, []);
+
+  // Ensure activeLayerId is valid whenever compositionLayers changes
+  useEffect(() => {
+    if (activeLayerId === null && compositionLayers.length > 0) {
+      // If no active layer but layers exist, select the first one
+      setActiveLayerIdInternal(compositionLayers[0].id);
+    } else if (activeLayerId !== null && !compositionLayers.some((l) => l.id === activeLayerId)) {
+      // If active layer was deleted, select another one
+      setActiveLayerIdInternal(compositionLayers.length > 0 ? compositionLayers[0].id : null);
+    }
+  }, [compositionLayers, activeLayerId]);
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -429,7 +442,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     setScale(1);
 
     // Reset tool
-    setToolMode("pen");
+    setSpriteToolMode("pen");
 
     // Reset animation
     setIsPlaying(false);
@@ -503,15 +516,16 @@ export function EditorProvider({ children }: EditorProviderProps) {
   ]);
 
   // Composition Layer Functions
-  const addCompositionLayer = useCallback((imageSrc: string, name?: string) => {
+  const addCompositionLayer = useCallback((paintData: string, name?: string) => {
     const img = new Image();
     img.onload = () => {
       const newLayerId = generateLayerId();
       setCompositionLayers((prev) => {
-        const newLayer: CompositionLayer = {
+        const newLayer: UnifiedLayer = {
           id: newLayerId,
           name: name || `Layer ${prev.length + 1}`,
-          imageSrc,
+          type: "paint",
+          paintData,
           visible: true,
           locked: false,
           opacity: 100,
@@ -525,7 +539,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
       });
       setActiveLayerId(newLayerId);
     };
-    img.src = imageSrc;
+    img.src = paintData;
   }, []);
 
   const removeCompositionLayer = useCallback((id: string) => {
@@ -534,13 +548,10 @@ export function EditorProvider({ children }: EditorProviderProps) {
       // Update zIndex for remaining layers
       return newLayers.map((layer, index) => ({ ...layer, zIndex: index }));
     });
-    // If the removed layer was active, select another one
-    if (activeLayerId === id) {
-      setActiveLayerId(compositionLayers.length > 1 ? compositionLayers[0]?.id || null : null);
-    }
-  }, [activeLayerId, compositionLayers]);
+    // The useEffect will handle selecting another layer if needed
+  }, []);
 
-  const updateCompositionLayer = useCallback((id: string, updates: Partial<CompositionLayer>) => {
+  const updateCompositionLayer = useCallback((id: string, updates: Partial<UnifiedLayer>) => {
     setCompositionLayers((prev) =>
       prev.map((layer) => (layer.id === id ? { ...layer, ...updates } : layer))
     );
@@ -557,19 +568,26 @@ export function EditorProvider({ children }: EditorProviderProps) {
   }, []);
 
   const duplicateCompositionLayer = useCallback((id: string) => {
-    const layer = compositionLayers.find((l) => l.id === id);
-    if (!layer) return;
+    setCompositionLayers((prev) => {
+      const layer = prev.find((l) => l.id === id);
+      if (!layer) return prev;
 
-    const newLayer: CompositionLayer = {
-      ...layer,
-      id: generateLayerId(),
-      name: `${layer.name} (copy)`,
-      position: { x: layer.position.x + 20, y: layer.position.y + 20 },
-      zIndex: compositionLayers.length,
-    };
-    setCompositionLayers((prev) => [...prev, newLayer]);
-    setActiveLayerId(newLayer.id);
-  }, [compositionLayers]);
+      const newLayerId = generateLayerId();
+      const pos = layer.position ?? { x: 0, y: 0 };
+      const newLayer: UnifiedLayer = {
+        ...layer,
+        id: newLayerId,
+        name: `${layer.name} (copy)`,
+        position: { x: pos.x + 20, y: pos.y + 20 },
+        zIndex: prev.length,
+      };
+
+      // Set active layer after state update
+      setTimeout(() => setActiveLayerId(newLayerId), 0);
+
+      return [...prev, newLayer];
+    });
+  }, []);
 
   const value: EditorContextValue = {
     // Image
@@ -592,7 +610,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
     // Tools
     toolMode,
-    setToolMode,
+    setSpriteToolMode,
     currentPoints,
     setCurrentPoints,
     isSpacePressed,
@@ -675,7 +693,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     projectName,
     setProjectName,
     savedProjects,
-    setSavedProjects,
+    setSavedSpriteProjects,
     currentProjectId,
     setCurrentProjectId,
     newProject,
@@ -763,7 +781,7 @@ export function useEditorFrames() {
 export function useEditorTools() {
   const {
     toolMode,
-    setToolMode,
+    setSpriteToolMode,
     currentPoints,
     setCurrentPoints,
     isSpacePressed,
@@ -771,7 +789,7 @@ export function useEditorTools() {
   } = useEditor();
   return {
     toolMode,
-    setToolMode,
+    setSpriteToolMode,
     currentPoints,
     setCurrentPoints,
     isSpacePressed,
@@ -915,7 +933,7 @@ export function useEditorProject() {
     projectName,
     setProjectName,
     savedProjects,
-    setSavedProjects,
+    setSavedSpriteProjects,
     currentProjectId,
     setCurrentProjectId,
     newProject,
@@ -924,7 +942,7 @@ export function useEditorProject() {
     projectName,
     setProjectName,
     savedProjects,
-    setSavedProjects,
+    setSavedSpriteProjects,
     currentProjectId,
     setCurrentProjectId,
     newProject,
@@ -941,7 +959,7 @@ export function useEditorRefs() {
   return { canvasRef, canvasContainerRef, previewCanvasRef, imageRef };
 }
 
-export function useEditorCompositionLayers() {
+export function useEditorUnifiedLayers() {
   const {
     compositionLayers,
     setCompositionLayers,

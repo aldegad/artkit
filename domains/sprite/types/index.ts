@@ -5,7 +5,7 @@
 import { Point, Size } from "../../../shared/types";
 
 // Re-export shared types for convenience
-export type { Point, Size, CompositionLayer, BoundingBox } from "../../../shared/types";
+export type { Point, Size, UnifiedLayer, BoundingBox } from "../../../shared/types";
 
 // Re-export layout types
 export * from "./layout";

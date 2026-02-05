@@ -30,6 +30,9 @@ export interface LayoutConfiguration {
   // Optional customizations
   defaultFloatingWindowSize?: { width: number; height: number };
   containerClassName?: string;
+
+  // Panel update subscription (for re-rendering when panel content changes)
+  subscribeToPanelUpdates?: (listener: () => void) => () => void;
 }
 
 // ============================================

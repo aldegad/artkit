@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLanguage } from "../../shared/contexts";
+import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { Point } from "../../types";
 import {
   downloadFramesAsZip,
@@ -72,8 +73,7 @@ export default function ExportDropdown({ frames, fps, onExportSpriteSheet }: Exp
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const { t } = useLanguage();
-
-  const projectName = "sprite-project"; // TODO: Get from context
+  const { projectName } = useEditor();
 
   const handleExport = async (type: string) => {
     setIsExporting(true);

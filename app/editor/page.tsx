@@ -208,6 +208,9 @@ function ImageEditorContent() {
   const [localProjectCount, setLocalProjectCount] = useState(0);
   const [cloudProjectCount, setCloudProjectCount] = useState(0);
 
+  // Rotate menu state (for mobile)
+  const [showRotateMenu, setShowRotateMenu] = useState(false);
+
   // Loading state for async operations
   const [isLoading, setIsLoading] = useState(false);
 
@@ -321,9 +324,6 @@ function ImageEditorContent() {
       minOneLayerRequired: t.minOneLayerRequired,
     },
   });
-
-  // Alias initLayers as initEditCanvas for backward compatibility
-  const initEditCanvas = initLayers;
 
   // Brush tool - using extracted hook
   const {
@@ -467,7 +467,7 @@ function ImageEditorContent() {
   });
 
   // Canvas rendering - using extracted hook (gets zoom, pan, rotation, canvasSize, toolMode, refs from context)
-  useCanvasRendering({
+  const { requestRender } = useCanvasRendering({
     layerCanvasesRef,
     floatingLayerRef,
     layers,
@@ -579,6 +579,14 @@ function ImageEditorContent() {
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
   }, []);
+
+  // Close rotate menu on outside click
+  useEffect(() => {
+    if (!showRotateMenu) return;
+    const handleClickOutside = () => setShowRotateMenu(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showRotateMenu]);
 
   // Register panel components for the docking system
   useEffect(() => {
@@ -1006,7 +1014,7 @@ function ImageEditorContent() {
   const clearEdits = () => {
     if (confirm(t.clearEditConfirm)) {
       const { width, height } = getDisplayDimensions();
-      initEditCanvas(width, height);
+      initLayers(width, height);
     }
   };
 
@@ -1197,7 +1205,7 @@ function ImageEditorContent() {
 
           // Restore layers
           const { width, height } = data.canvasSize;
-          await initEditCanvas(width, height, data.layers);
+          await initLayers(width, height, data.layers);
         } else if (data) {
           // Clear invalid/legacy autosave data
           clearEditorAutosaveData();
@@ -1413,7 +1421,7 @@ function ImageEditorContent() {
 
         // Check if project has new unified layer system
         if (project.unifiedLayers && project.unifiedLayers.length > 0) {
-          await initEditCanvas(width, height, project.unifiedLayers);
+          await initLayers(width, height, project.unifiedLayers);
           if (project.activeLayerId) {
             setActiveLayerId(project.activeLayerId);
             const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
@@ -1430,14 +1438,14 @@ function ImageEditorContent() {
             zIndex: project.layers!.length - 1 - index,
             paintData: layer.data,
           }));
-          await initEditCanvas(width, height, convertedLayers);
+          await initLayers(width, height, convertedLayers);
           if (project.activeLayerId) {
             setActiveLayerId(project.activeLayerId);
             editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
           }
         } else {
           // Legacy project with single edit layer
-          await initEditCanvas(width, height);
+          await initLayers(width, height);
 
           // Load edit layer data if exists
           if (project.editLayerData && editCanvasRef.current) {
@@ -1457,7 +1465,7 @@ function ImageEditorContent() {
         setIsLoading(false);
       }
     },
-    [initEditCanvas, storageProvider],
+    [initLayers, storageProvider],
   );
 
   // Delete a project
@@ -1840,12 +1848,12 @@ function ImageEditorContent() {
 
           <div className="h-4 w-px bg-border-default mx-1" />
 
-          {/* Rotation */}
+          {/* Undo/Redo */}
           <div className="flex items-center gap-0.5">
-            <Tooltip content={t.rotateLeft}>
+            <Tooltip content={`${t.undo} (Ctrl+Z)`}>
               <button
-                onClick={() => rotate(-90)}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors relative"
+                onClick={() => { undo(); requestRender(); }}
+                className="p-1 hover:bg-interactive-hover rounded transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1855,13 +1863,12 @@ function ImageEditorContent() {
                     d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
                   />
                 </svg>
-                <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-bold leading-none">90°</span>
               </button>
             </Tooltip>
-            <Tooltip content={t.rotateRight}>
+            <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
               <button
-                onClick={() => rotate(90)}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors relative"
+                onClick={() => { redo(); requestRender(); }}
+                className="p-1 hover:bg-interactive-hover rounded transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1871,9 +1878,61 @@ function ImageEditorContent() {
                     d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
                   />
                 </svg>
-                <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-bold leading-none">90°</span>
               </button>
             </Tooltip>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Rotation dropdown */}
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <Tooltip content={t.rotate}>
+              <button
+                onClick={() => setShowRotateMenu(!showRotateMenu)}
+                className={`p-1 hover:bg-interactive-hover rounded transition-colors ${showRotateMenu ? 'bg-interactive-hover' : ''}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            </Tooltip>
+            {showRotateMenu && (
+              <div className="absolute top-full left-0 mt-1 bg-surface-primary border border-border-default rounded-lg shadow-lg z-50 p-1 min-w-max">
+                <button
+                  onClick={() => { rotate(-90); setShowRotateMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                    />
+                  </svg>
+                  {t.rotateLeft} 90°
+                </button>
+                <button
+                  onClick={() => { rotate(90); setShowRotateMenu(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
+                    />
+                  </svg>
+                  {t.rotateRight} 90°
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="h-4 w-px bg-border-default mx-1" />

@@ -37,7 +37,7 @@ function SpriteEditorMain() {
     setZoom,
     setPan,
     toolMode,
-    setToolMode,
+    setSpriteToolMode,
     currentPoints,
     setCurrentPoints,
     frames,
@@ -50,7 +50,7 @@ function SpriteEditorMain() {
     projectName,
     setProjectName,
     savedProjects,
-    setSavedProjects,
+    setSavedSpriteProjects,
     currentProjectId,
     setCurrentProjectId,
     isProjectListOpen,
@@ -84,7 +84,7 @@ function SpriteEditorMain() {
 
         // Load all projects from IndexedDB
         const projects = await getAllProjects();
-        setSavedProjects(projects);
+        setSavedSpriteProjects(projects);
 
         // Get storage info
         const info = await getStorageInfo();
@@ -95,7 +95,7 @@ function SpriteEditorMain() {
     };
 
     loadProjects();
-  }, [setSavedProjects]);
+  }, [setSavedSpriteProjects]);
 
   // Image upload handler - adds image as a composition layer
   const handleImageUpload = useCallback(
@@ -265,7 +265,7 @@ function SpriteEditorMain() {
 
       try {
         await saveProjectToDB(updatedProject);
-        setSavedProjects((prev) =>
+        setSavedSpriteProjects((prev) =>
           prev.map((p) => (p.id === currentProjectId ? updatedProject : p)),
         );
 
@@ -292,7 +292,7 @@ function SpriteEditorMain() {
 
       try {
         await saveProjectToDB(newProject);
-        setSavedProjects((prev) => [newProject, ...prev]);
+        setSavedSpriteProjects((prev) => [newProject, ...prev]);
         setCurrentProjectId(newId);
 
         const info = await getStorageInfo();
@@ -311,7 +311,7 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     currentProjectId,
-    setSavedProjects,
+    setSavedSpriteProjects,
     setCurrentProjectId,
     imageRef,
   ]);
@@ -346,7 +346,7 @@ function SpriteEditorMain() {
 
     try {
       await saveProjectToDB(newProject);
-      setSavedProjects((prev) => [newProject, ...prev]);
+      setSavedSpriteProjects((prev) => [newProject, ...prev]);
       setCurrentProjectId(newId);
       setProjectName(name);
 
@@ -363,7 +363,7 @@ function SpriteEditorMain() {
     frames,
     projectName,
     nextFrameId,
-    setSavedProjects,
+    setSavedSpriteProjects,
     setCurrentProjectId,
     setProjectName,
     imageRef,
@@ -413,7 +413,7 @@ function SpriteEditorMain() {
 
       try {
         await deleteProjectFromDB(projectId);
-        setSavedProjects((prev) => prev.filter((p) => p.id !== projectId));
+        setSavedSpriteProjects((prev) => prev.filter((p) => p.id !== projectId));
 
         // Update storage info
         const info = await getStorageInfo();
@@ -423,7 +423,7 @@ function SpriteEditorMain() {
         alert(`${t.deleteFailed}: ${(error as Error).message}`);
       }
     },
-    [setSavedProjects, t],
+    [setSavedSpriteProjects, t],
   );
 
   // Export all projects to JSON file
@@ -448,7 +448,7 @@ function SpriteEditorMain() {
 
         // Refresh project list
         const projects = await getAllProjects();
-        setSavedProjects(projects);
+        setSavedSpriteProjects(projects);
 
         // Update storage info
         const info = await getStorageInfo();
@@ -463,7 +463,7 @@ function SpriteEditorMain() {
       // Reset input
       e.target.value = "";
     },
-    [setSavedProjects, t],
+    [setSavedSpriteProjects, t],
   );
 
   // Spacebar handler for temporary hand mode + Undo/Redo
@@ -493,9 +493,9 @@ function SpriteEditorMain() {
 
       // Tool shortcuts (skip if modifier keys are pressed)
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.key === "p") setToolMode("pen");
-        if (e.key === "v") setToolMode("select");
-        if (e.key === "h") setToolMode("hand");
+        if (e.key === "p") setSpriteToolMode("pen");
+        if (e.key === "v") setSpriteToolMode("select");
+        if (e.key === "h") setSpriteToolMode("hand");
       }
 
       // Ctrl+Z / Cmd+Z = Undo
@@ -645,7 +645,7 @@ function SpriteEditorMain() {
             shortcut="P"
           >
             <button
-              onClick={() => setToolMode("pen")}
+              onClick={() => setSpriteToolMode("pen")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
                 toolMode === "pen"
                   ? "bg-accent-primary text-white"
@@ -677,7 +677,7 @@ function SpriteEditorMain() {
             shortcut="V"
           >
             <button
-              onClick={() => setToolMode("select")}
+              onClick={() => setSpriteToolMode("select")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
                 toolMode === "select"
                   ? "bg-accent-primary text-white"
@@ -710,7 +710,7 @@ function SpriteEditorMain() {
             shortcut="H"
           >
             <button
-              onClick={() => setToolMode("hand")}
+              onClick={() => setSpriteToolMode("hand")}
               className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
                 toolMode === "hand"
                   ? "bg-accent-primary text-white"

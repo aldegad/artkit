@@ -71,8 +71,18 @@ function FloatingWindowComponent({
   const dragOffsetRef = useRef({ x: 0, y: 0 });
 
   const title = config.getPanelTitle(window.panelId);
-  const content = config.getPanelContent(window.panelId);
   const defaultSize = config.getPanelDefaultSize(window.panelId);
+
+  // Subscribe to panel updates for re-rendering when panel content changes
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (config.subscribeToPanelUpdates) {
+      return config.subscribeToPanelUpdates(() => forceUpdate((v) => v + 1));
+    }
+  }, [config.subscribeToPanelUpdates]);
+
+  // Get content after subscription setup so it re-renders on updates
+  const content = config.getPanelContent(window.panelId);
 
   // ============================================
   // Drag Handlers (Mouse + Touch)
