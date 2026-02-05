@@ -45,6 +45,8 @@ interface EditorToolOptionsProps {
   currentToolName?: string;
   // Transform props
   isTransformActive?: boolean;
+  transformAspectRatio?: AspectRatio;
+  setTransformAspectRatio?: React.Dispatch<React.SetStateAction<AspectRatio>>;
   onApplyTransform?: () => void;
   onCancelTransform?: () => void;
   // Translations
@@ -94,6 +96,8 @@ export function EditorToolOptions({
   onApplyCrop,
   currentToolName,
   isTransformActive,
+  transformAspectRatio,
+  setTransformAspectRatio,
   onApplyTransform,
   onCancelTransform,
   translations: t,
@@ -349,6 +353,21 @@ export function EditorToolOptions({
       {/* Transform controls */}
       {toolMode === "transform" && (
         <div className="flex items-center gap-2">
+          {/* Aspect ratio selector for transform */}
+          {isTransformActive && setTransformAspectRatio && (
+            <>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-secondary">Ratio:</span>
+                <Select
+                  value={transformAspectRatio || "free"}
+                  onChange={(value) => setTransformAspectRatio(value as AspectRatio)}
+                  options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
+                  size="sm"
+                />
+              </div>
+              <div className="w-px h-4 bg-border-default" />
+            </>
+          )}
           <span className="text-xs text-text-secondary">
             {isTransformActive
               ? "Drag handles to resize. Shift: keep ratio, Alt: from center"

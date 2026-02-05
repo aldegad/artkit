@@ -73,12 +73,20 @@ export default function Tooltip({
 
   // Mouse handlers (desktop)
   const handleMouseEnter = useCallback(() => {
+    console.log("[Tooltip] mouseEnter", {
+      lastTouch: lastTouchRef.current,
+      timeSinceTouch: Date.now() - lastTouchRef.current,
+      delay,
+    });
     // Ignore mouse events shortly after touch (mobile browsers emit both)
     if (Date.now() - lastTouchRef.current < 500) {
+      console.log("[Tooltip] ignored - too soon after touch");
       return;
     }
     timeoutRef.current = setTimeout(() => {
+      console.log("[Tooltip] showing tooltip");
       updatePosition();
+      console.log("[Tooltip] position after update:", position, "triggerRef:", triggerRef.current?.getBoundingClientRect());
       setMode("hover");
       setIsVisible(true);
     }, delay);

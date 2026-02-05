@@ -423,6 +423,8 @@ function ImageEditorContent() {
   // Transform tool - using extracted hook
   const {
     transformState,
+    aspectRatio: transformAspectRatio,
+    setAspectRatio: setTransformAspectRatio,
     startTransform,
     cancelTransform,
     applyTransform,
@@ -2104,6 +2106,8 @@ function ImageEditorContent() {
           onApplyCrop={handleApplyCrop}
           currentToolName={toolButtons.find(tb => tb.mode === toolMode)?.name}
           isTransformActive={transformState.isActive}
+          transformAspectRatio={transformAspectRatio}
+          setTransformAspectRatio={setTransformAspectRatio}
           onApplyTransform={applyTransform}
           onCancelTransform={() => {
             cancelTransform();

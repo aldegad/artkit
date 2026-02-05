@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { Point, UnifiedLayer } from "../types";
+import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES } from "../types";
 
 // ============================================
 // Types
@@ -10,14 +10,16 @@ import { Point, UnifiedLayer } from "../types";
 export interface TransformState {
   isActive: boolean;
   layerId: string | null;
-  // Original bounds before transform
+  // Layer position offset (for converting between screen and canvas coords)
+  layerPosition: { x: number; y: number } | null;
+  // Original bounds before transform (in screen coordinates)
   originalBounds: {
     x: number;
     y: number;
     width: number;
     height: number;
   } | null;
-  // Current transform values
+  // Current transform values (in screen coordinates)
   bounds: {
     x: number;
     y: number;
@@ -52,6 +54,8 @@ interface UseTransformToolReturn {
   // State
   transformState: TransformState;
   activeHandle: TransformHandle;
+  aspectRatio: AspectRatio;
+  setAspectRatio: React.Dispatch<React.SetStateAction<AspectRatio>>;
   // Actions
   startTransform: () => void;
   cancelTransform: () => void;
@@ -92,12 +96,14 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   const [transformState, setTransformState] = useState<TransformState>({
     isActive: false,
     layerId: null,
+    layerPosition: null,
     originalBounds: null,
     bounds: null,
     originalImageData: null,
   });
 
   const [activeHandle, setActiveHandle] = useState<TransformHandle>(null);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
 
   // Drag state refs for real-time updates
   const isDraggingRef = useRef(false);
@@ -189,17 +195,21 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       return;
     }
 
+    // Include layer position offset
+    const layerPosX = layer.position?.x || 0;
+    const layerPosY = layer.position?.y || 0;
+
     const bounds = {
-      x: minX,
-      y: minY,
+      x: minX + layerPosX,
+      y: minY + layerPosY,
       width: maxX - minX + 1,
       height: maxY - minY + 1,
     };
 
-    // Extract the content as ImageData
+    // Extract the content as ImageData (use canvas-local coordinates, not screen)
     const contentImageData = ctx.getImageData(
-      bounds.x,
-      bounds.y,
+      minX,
+      minY,
       bounds.width,
       bounds.height
     );
@@ -209,6 +219,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     setTransformState({
       isActive: true,
       layerId: activeLayerId,
+      layerPosition: { x: layerPosX, y: layerPosY },
       originalBounds: { ...bounds },
       bounds: { ...bounds },
       originalImageData: contentImageData,
@@ -221,6 +232,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       setTransformState({
         isActive: false,
         layerId: null,
+        layerPosition: null,
         originalBounds: null,
         bounds: null,
         originalImageData: null,
@@ -233,13 +245,17 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     if (layerCanvas && transformState.originalBounds) {
       const ctx = layerCanvas.getContext("2d");
       if (ctx) {
+        // Convert screen coords to canvas coords
+        const layerPosX = transformState.layerPosition?.x || 0;
+        const layerPosY = transformState.layerPosition?.y || 0;
+
         // Clear the current area
         ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-        // Restore original
+        // Restore original (use canvas-local coordinates)
         ctx.putImageData(
           transformState.originalImageData,
-          transformState.originalBounds.x,
-          transformState.originalBounds.y
+          transformState.originalBounds.x - layerPosX,
+          transformState.originalBounds.y - layerPosY
         );
       }
     }
@@ -247,6 +263,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     setTransformState({
       isActive: false,
       layerId: null,
+      layerPosition: null,
       originalBounds: null,
       bounds: null,
       originalImageData: null,
@@ -259,6 +276,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       setTransformState({
         isActive: false,
         layerId: null,
+        layerPosition: null,
         originalBounds: null,
         bounds: null,
         originalImageData: null,
@@ -272,8 +290,12 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     const ctx = layerCanvas.getContext("2d");
     if (!ctx) return;
 
-    const { bounds, originalImageData, originalBounds } = transformState;
+    const { bounds, originalImageData, originalBounds, layerPosition } = transformState;
     if (!originalBounds) return;
+
+    // Convert screen coords to canvas coords
+    const layerPosX = layerPosition?.x || 0;
+    const layerPosY = layerPosition?.y || 0;
 
     // Clear the canvas
     ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
@@ -286,13 +308,13 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     if (!tempCtx) return;
     tempCtx.putImageData(originalImageData, 0, 0);
 
-    // Draw scaled image to the new bounds
+    // Draw scaled image to the new bounds (use canvas-local coordinates)
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(
       tempCanvas,
-      bounds.x,
-      bounds.y,
+      bounds.x - layerPosX,
+      bounds.y - layerPosY,
       bounds.width,
       bounds.height
     );
@@ -305,6 +327,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     setTransformState({
       isActive: false,
       layerId: null,
+      layerPosition: null,
       originalBounds: null,
       bounds: null,
       originalImageData: null,
@@ -346,9 +369,24 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         newBounds.y = orig.y + dy;
       } else {
         // Resize based on handle
-        const keepAspect = modifiers.shift;
         const fromCenter = modifiers.alt;
-        const aspectRatio = orig.width / orig.height;
+        const originalAspect = orig.width / orig.height;
+
+        // Determine if we should keep aspect ratio
+        // - Shift key always forces aspect ratio
+        // - aspectRatio !== "free" also forces it
+        const keepAspect = modifiers.shift || aspectRatio !== "free";
+
+        // Calculate the target aspect ratio
+        let targetAspect = originalAspect;
+        if (aspectRatio === "fixed" || modifiers.shift) {
+          targetAspect = originalAspect;
+        } else if (aspectRatio !== "free") {
+          const ratioValue = ASPECT_RATIO_VALUES[aspectRatio];
+          if (ratioValue !== null) {
+            targetAspect = ratioValue;
+          }
+        }
 
         switch (activeHandle) {
           case "se":
@@ -359,9 +397,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
               const scaleX = newBounds.width / orig.width;
               const scaleY = newBounds.height / orig.height;
               if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / aspectRatio;
+                newBounds.height = newBounds.width / targetAspect;
               } else {
-                newBounds.width = newBounds.height * aspectRatio;
+                newBounds.width = newBounds.height * targetAspect;
               }
             }
             if (fromCenter) {
@@ -383,10 +421,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
               const scaleX = newBounds.width / orig.width;
               const scaleY = newBounds.height / orig.height;
               if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / aspectRatio;
+                newBounds.height = newBounds.width / targetAspect;
                 newBounds.y = orig.y + orig.height - newBounds.height;
               } else {
-                newBounds.width = newBounds.height * aspectRatio;
+                newBounds.width = newBounds.height * targetAspect;
                 newBounds.x = orig.x + orig.width - newBounds.width;
               }
             }
@@ -408,10 +446,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
               const scaleX = newBounds.width / orig.width;
               const scaleY = newBounds.height / orig.height;
               if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / aspectRatio;
+                newBounds.height = newBounds.width / targetAspect;
                 newBounds.y = orig.y + orig.height - newBounds.height;
               } else {
-                newBounds.width = newBounds.height * aspectRatio;
+                newBounds.width = newBounds.height * targetAspect;
               }
             }
             if (fromCenter) {
@@ -432,9 +470,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
               const scaleX = newBounds.width / orig.width;
               const scaleY = newBounds.height / orig.height;
               if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / aspectRatio;
+                newBounds.height = newBounds.width / targetAspect;
               } else {
-                newBounds.width = newBounds.height * aspectRatio;
+                newBounds.width = newBounds.height * targetAspect;
                 newBounds.x = orig.x + orig.width - newBounds.width;
               }
             }
@@ -452,7 +490,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             newBounds.y = orig.y + dy;
             newBounds.height = Math.max(10, orig.height - dy);
             if (keepAspect) {
-              newBounds.width = newBounds.height * aspectRatio;
+              newBounds.width = newBounds.height * targetAspect;
               newBounds.x = orig.x + (orig.width - newBounds.width) / 2;
             }
             if (fromCenter) {
@@ -465,7 +503,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
           case "s":
             newBounds.height = Math.max(10, orig.height + dy);
             if (keepAspect) {
-              newBounds.width = newBounds.height * aspectRatio;
+              newBounds.width = newBounds.height * targetAspect;
               newBounds.x = orig.x + (orig.width - newBounds.width) / 2;
             }
             if (fromCenter) {
@@ -478,7 +516,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
           case "e":
             newBounds.width = Math.max(10, orig.width + dx);
             if (keepAspect) {
-              newBounds.height = newBounds.width / aspectRatio;
+              newBounds.height = newBounds.width / targetAspect;
               newBounds.y = orig.y + (orig.height - newBounds.height) / 2;
             }
             if (fromCenter) {
@@ -492,7 +530,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             newBounds.x = orig.x + dx;
             newBounds.width = Math.max(10, orig.width - dx);
             if (keepAspect) {
-              newBounds.height = newBounds.width / aspectRatio;
+              newBounds.height = newBounds.width / targetAspect;
               newBounds.y = orig.y + (orig.height - newBounds.height) / 2;
             }
             if (fromCenter) {
@@ -515,6 +553,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         if (layerCanvas) {
           const ctx = layerCanvas.getContext("2d");
           if (ctx) {
+            // Convert screen coords to canvas coords
+            const layerPosX = transformState.layerPosition?.x || 0;
+            const layerPosY = transformState.layerPosition?.y || 0;
+
             ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
 
             // Create temp canvas with original image data
@@ -525,13 +567,13 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             if (tempCtx) {
               tempCtx.putImageData(transformState.originalImageData, 0, 0);
 
-              // Draw scaled image
+              // Draw scaled image (use canvas-local coordinates)
               ctx.imageSmoothingEnabled = true;
               ctx.imageSmoothingQuality = "high";
               ctx.drawImage(
                 tempCanvas,
-                newBounds.x,
-                newBounds.y,
+                newBounds.x - layerPosX,
+                newBounds.y - layerPosY,
                 newBounds.width,
                 newBounds.height
               );
@@ -540,7 +582,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         }
       }
     },
-    [activeHandle, transformState.layerId, transformState.originalImageData, layerCanvasesRef]
+    [activeHandle, aspectRatio, transformState.layerId, transformState.originalImageData, transformState.layerPosition, layerCanvasesRef]
   );
 
   // Handle mouse up for transform
@@ -553,6 +595,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   return {
     transformState,
     activeHandle,
+    aspectRatio,
+    setAspectRatio,
     startTransform,
     cancelTransform,
     applyTransform,
