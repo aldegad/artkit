@@ -1326,7 +1326,6 @@ function ImageEditorContent() {
   };
 
   const displaySize = getDisplayDimensions();
-  const { width: displayWidth, height: displayHeight } = displaySize;
 
   // Create canvas context value for EditorCanvasProvider
   const canvasContextValue = useMemo(
@@ -1896,17 +1895,6 @@ function ImageEditorContent() {
               placeholder={t.projectName}
             />
             <div className="flex-1" />
-            {/* Image info - desktop only */}
-            <div className="text-xs text-text-tertiary hidden md:flex items-center gap-2 whitespace-nowrap">
-              <span>
-                {displayWidth} × {displayHeight}
-              </span>
-              {cropArea && (
-                <span className="text-accent-primary">
-                  → {Math.round(cropArea.width)} × {Math.round(cropArea.height)}
-                </span>
-              )}
-            </div>
           </>
         )}
       </HeaderSlot>
