@@ -5,7 +5,7 @@ import SpriteCanvas from "../SpriteCanvas";
 import TimelineContent from "../../../../components/panels/TimelineContent";
 import AnimationPreview from "../AnimationPreview";
 import FramePreview from "../FramePreview";
-import CompositionLayerPanel from "../CompositionLayerPanel";
+import LayersPanelContent from "../../../../components/panels/LayersPanelContent";
 
 // ============================================
 // Panel Metadata
@@ -61,7 +61,7 @@ let panelComponents: Record<string, () => ReactNode> = {
   timeline: () => <TimelineContent />,
   preview: () => <AnimationPreview />,
   "frame-edit": () => <FramePreview />,
-  layers: () => <CompositionLayerPanel />,
+  layers: () => <LayersPanelContent />,
 };
 
 // Listeners for panel updates

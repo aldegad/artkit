@@ -10,7 +10,6 @@ export {
   SpriteCanvas,
   AnimationPreview,
   FramePreview,
-  CompositionLayerPanel,
   SpriteSheetImportModal,
   SplitView,
 } from "./components";

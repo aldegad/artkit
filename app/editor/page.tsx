@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
-import { Tooltip, ImageDropZone, Select, Scrollbar } from "../../shared/components";
+import { Tooltip, Select, Scrollbar } from "../../shared/components";
 import {
   EditorToolMode,
   OutputFormat,
@@ -611,32 +611,8 @@ function ImageEditorContent() {
 
   // Register panel components for the docking system
   useEffect(() => {
-    // Register canvas panel
-    registerEditorPanelComponent("canvas", () => (
-      <div
-        ref={containerRef}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        className="w-full h-full overflow-hidden bg-surface-secondary relative"
-      >
-        {layers.length === 0 ? (
-          <ImageDropZone
-            variant="editor"
-            onFileSelect={(files) => files[0] && loadImageFile(files[0])}
-          />
-        ) : (
-          <canvas
-            ref={canvasRefCallback}
-            onPointerDown={handleMouseDown}
-            onPointerMove={handleMouseMove}
-            onPointerUp={handleMouseUp}
-            onPointerLeave={handleMouseLeave}
-            className="w-full h-full"
-            style={{ cursor: getCursor(), imageRendering: "pixelated", touchAction: "none" }}
-          />
-        )}
-      </div>
-    ));
+    // Register canvas panel - uses CanvasPanelContent which gets state from EditorCanvasContext
+    registerEditorPanelComponent("canvas", () => <CanvasPanelContent />);
 
     // Register layers panel - uses LayersPanelContent which gets state from EditorLayersContext
     registerEditorPanelComponent("layers", () => <LayersPanelContent />);
@@ -1088,6 +1064,35 @@ function ImageEditorContent() {
   };
 
   const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+
+  // Create canvas context value for EditorCanvasProvider
+  const canvasContextValue = useMemo(
+    () => ({
+      containerRef,
+      canvasRefCallback,
+      layers,
+      handleDrop,
+      handleDragOver,
+      handleMouseDown,
+      handleMouseMove,
+      handleMouseUp,
+      handleMouseLeave,
+      getCursor,
+      loadImageFile,
+    }),
+    [
+      containerRef,
+      canvasRefCallback,
+      layers,
+      handleDrop,
+      handleDragOver,
+      handleMouseDown,
+      handleMouseMove,
+      handleMouseUp,
+      handleMouseLeave,
+      loadImageFile,
+    ]
+  );
 
   // Load saved projects when storage provider changes (login/logout)
   useEffect(() => {
@@ -1633,6 +1638,7 @@ function ImageEditorContent() {
   return (
     <EditorLayoutProvider>
     <EditorLayersProvider value={layerContextValue}>
+    <EditorCanvasProvider value={canvasContextValue}>
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Header Slot Content */}
       <HeaderSlot>
@@ -2082,6 +2088,7 @@ function ImageEditorContent() {
         }}
       />
     </div>
+    </EditorCanvasProvider>
     </EditorLayersProvider>
     </EditorLayoutProvider>
   );

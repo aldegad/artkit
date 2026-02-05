@@ -6,10 +6,10 @@ import {
   useEditor,
   LayoutProvider,
   SplitView,
-  CompositionLayerPanel,
   SpriteSheetImportModal,
   SpriteFrame,
 } from "../../domains/sprite";
+import { LayersPanelContent } from "../../components/panels";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { Tooltip } from "../../shared/components";
 import {
@@ -957,7 +957,7 @@ function SpriteEditorMain() {
           </div>
           {/* Panel Content */}
           <div className="flex-1 min-h-0 overflow-hidden">
-            <CompositionLayerPanel />
+            <LayersPanelContent />
           </div>
         </div>
       )}

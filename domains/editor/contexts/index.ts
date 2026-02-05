@@ -25,3 +25,9 @@ export {
   useEditorLayers,
   type EditorLayersContextValue,
 } from "./EditorLayersContext";
+
+export {
+  EditorCanvasProvider,
+  useEditorCanvas,
+  type EditorCanvasContextValue,
+} from "./EditorCanvasContext";
