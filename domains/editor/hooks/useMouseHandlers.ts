@@ -77,6 +77,10 @@ interface UseMouseHandlersOptions {
   moveGuide?: (id: string, newPosition: number) => void;
   removeGuide?: (id: string) => void;
   getGuideAtPosition?: (pos: Point, tolerance: number) => Guide | null;
+
+  // Layer movement functions
+  activeLayerId?: string | null;
+  updateLayerPosition?: (layerId: string, position: { x: number; y: number }) => void;
 }
 
 interface UseMouseHandlersReturn {
@@ -164,10 +168,15 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     moveGuide,
     removeGuide,
     getGuideAtPosition,
+    // Layer movement options
+    activeLayerId,
+    updateLayerPosition,
   } = options;
 
   // Drag state
   const [isDragging, setIsDragging] = useState(false);
+  const [isMovingLayer, setIsMovingLayer] = useState(false);
+  const layerDragStartRef = useRef<{ layerPos: Point; mousePos: Point } | null>(null);
   const dragStartRef = useRef<Point>({ x: 0, y: 0 }); // Use ref for synchronous updates during fast drag
   const [dragType, setDragType] = useState<DragType>(null);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
@@ -385,8 +394,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         return;
       }
 
-      // Move tool - only moves existing selections
+      // Move tool - moves selections or entire layer
       if (activeMode === "move") {
+        // First check if clicking inside a selection
         if (selection) {
           if (
             imagePos.x >= selection.x &&
@@ -448,6 +458,20 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
             setIsDuplicating(false);
             return;
           }
+        }
+
+        // No selection - move entire layer
+        if (activeLayerId && updateLayerPosition) {
+          const currentLayerPos = activeLayerPosition || { x: 0, y: 0 };
+          layerDragStartRef.current = {
+            layerPos: { ...currentLayerPos },
+            mousePos: { ...imagePos },
+          };
+          saveToHistory();
+          setDragType("move");
+          setIsDragging(true);
+          setIsMovingLayer(true);
+          return;
         }
         return;
       }
@@ -675,6 +699,31 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           }
           return;
         }
+
+        // Handle layer movement (no selection)
+        if (dragType === "move" && isMovingLayer && layerDragStartRef.current && updateLayerPosition && activeLayerId) {
+          const { layerPos, mousePos } = layerDragStartRef.current;
+
+          // Calculate delta from drag start
+          let dx = imagePos.x - mousePos.x;
+          let dy = imagePos.y - mousePos.y;
+
+          // Shift key constrains to horizontal or vertical movement
+          if (e.shiftKey) {
+            if (Math.abs(dx) > Math.abs(dy)) {
+              dy = 0;
+            } else {
+              dx = 0;
+            }
+          }
+
+          // Update layer position
+          updateLayerPosition(activeLayerId, {
+            x: layerPos.x + dx,
+            y: layerPos.y + dy,
+          });
+          return;
+        }
       }
 
       if (!cropArea) return;
@@ -898,6 +947,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setResizeHandle(null);
     setIsMovingSelection(false);
     setIsDuplicating(false);
+    setIsMovingLayer(false);
+    layerDragStartRef.current = null;
     resetLastDrawPoint();
     (dragStartOriginRef as { current: Point | null }).current = null;
     originalCropAreaRef.current = null;

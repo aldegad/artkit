@@ -46,6 +46,7 @@ interface UseLayerManagementReturn {
   toggleLayerVisibility: (layerId: string) => void;
   updateLayer: (layerId: string, updates: Partial<UnifiedLayer>) => void;
   updateLayerOpacity: (layerId: string, opacity: number) => void;
+  updateLayerPosition: (layerId: string, position: { x: number; y: number }) => void;
   renameLayer: (layerId: string, name: string) => void;
   toggleLayerLock: (layerId: string) => void;
   moveLayer: (layerId: string, direction: "up" | "down") => void;
@@ -265,6 +266,11 @@ export function useLayerManagement(
   // Update layer opacity
   const updateLayerOpacity = useCallback((layerId: string, opacity: number) => {
     updateLayer(layerId, { opacity });
+  }, [updateLayer]);
+
+  // Update layer position
+  const updateLayerPosition = useCallback((layerId: string, position: { x: number; y: number }) => {
+    updateLayer(layerId, { position });
   }, [updateLayer]);
 
   // Rename layer
@@ -614,6 +620,7 @@ export function useLayerManagement(
     toggleLayerVisibility,
     updateLayer,
     updateLayerOpacity,
+    updateLayerPosition,
     renameLayer,
     toggleLayerLock,
     moveLayer,
