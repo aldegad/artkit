@@ -297,6 +297,34 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     const layerPosX = layerPosition?.x || 0;
     const layerPosY = layerPosition?.y || 0;
 
+    // Calculate the canvas-local position
+    const canvasX = bounds.x - layerPosX;
+    const canvasY = bounds.y - layerPosY;
+
+    // Calculate required canvas size to fit the transformed content
+    const requiredWidth = Math.max(layerCanvas.width, canvasX + bounds.width, bounds.width);
+    const requiredHeight = Math.max(layerCanvas.height, canvasY + bounds.height, bounds.height);
+
+    // Calculate offset if content starts at negative coordinates
+    const offsetX = canvasX < 0 ? -canvasX : 0;
+    const offsetY = canvasY < 0 ? -canvasY : 0;
+
+    // Expand canvas if needed
+    if (requiredWidth + offsetX > layerCanvas.width || requiredHeight + offsetY > layerCanvas.height || offsetX > 0 || offsetY > 0) {
+      const newWidth = Math.max(layerCanvas.width, requiredWidth + offsetX);
+      const newHeight = Math.max(layerCanvas.height, requiredHeight + offsetY);
+
+      // Save current content if any (shouldn't be any since we're in transform)
+      const oldData = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
+
+      // Resize canvas
+      layerCanvas.width = newWidth;
+      layerCanvas.height = newHeight;
+
+      // Restore old content at offset position (in case there's other content)
+      ctx.putImageData(oldData, offsetX, offsetY);
+    }
+
     // Clear the canvas
     ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
 
@@ -308,13 +336,13 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     if (!tempCtx) return;
     tempCtx.putImageData(originalImageData, 0, 0);
 
-    // Draw scaled image to the new bounds (use canvas-local coordinates)
+    // Draw scaled image to the new bounds (use canvas-local coordinates with offset)
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(
       tempCanvas,
-      bounds.x - layerPosX,
-      bounds.y - layerPosY,
+      canvasX + offsetX,
+      canvasY + offsetY,
       bounds.width,
       bounds.height
     );
@@ -557,7 +585,29 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             const layerPosX = transformState.layerPosition?.x || 0;
             const layerPosY = transformState.layerPosition?.y || 0;
 
-            ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+            // Calculate the canvas-local position
+            const canvasX = newBounds.x - layerPosX;
+            const canvasY = newBounds.y - layerPosY;
+
+            // Calculate required canvas size to fit the transformed content
+            const requiredWidth = Math.max(layerCanvas.width, canvasX + newBounds.width, newBounds.width);
+            const requiredHeight = Math.max(layerCanvas.height, canvasY + newBounds.height, newBounds.height);
+
+            // Calculate offset if content starts at negative coordinates
+            const offsetX = canvasX < 0 ? -canvasX : 0;
+            const offsetY = canvasY < 0 ? -canvasY : 0;
+
+            // Expand canvas if needed
+            if (requiredWidth + offsetX > layerCanvas.width || requiredHeight + offsetY > layerCanvas.height || offsetX > 0 || offsetY > 0) {
+              const newWidth = Math.max(layerCanvas.width, requiredWidth + offsetX);
+              const newHeight = Math.max(layerCanvas.height, requiredHeight + offsetY);
+
+              // Resize canvas (this clears it)
+              layerCanvas.width = newWidth;
+              layerCanvas.height = newHeight;
+            } else {
+              ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+            }
 
             // Create temp canvas with original image data
             const tempCanvas = document.createElement("canvas");
@@ -567,13 +617,13 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             if (tempCtx) {
               tempCtx.putImageData(transformState.originalImageData, 0, 0);
 
-              // Draw scaled image (use canvas-local coordinates)
+              // Draw scaled image (use canvas-local coordinates with offset)
               ctx.imageSmoothingEnabled = true;
               ctx.imageSmoothingQuality = "high";
               ctx.drawImage(
                 tempCanvas,
-                newBounds.x - layerPosX,
-                newBounds.y - layerPosY,
+                canvasX + offsetX,
+                canvasY + offsetY,
                 newBounds.width,
                 newBounds.height
               );
