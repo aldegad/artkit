@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, SetStateAction } from "react";
 import { CropArea, Point } from "../../types";
 import { useEditorState, useEditorRefs } from "../../contexts";
 
@@ -58,7 +58,8 @@ interface UseSelectionToolReturn {
 export function useSelectionTool(options: UseSelectionToolOptions): UseSelectionToolReturn {
   // Get state from EditorStateContext
   const {
-    state: { rotation, canvasSize },
+    state: { rotation, canvasSize, selection },
+    setSelection: setContextSelection,
   } = useEditorState();
 
   // Get refs from EditorRefsContext
@@ -67,8 +68,13 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   // Props from other hooks (still required as options)
   const { getDisplayDimensions, saveToHistory } = options;
 
-  // State
-  const [selection, setSelection] = useState<CropArea | null>(null);
+  // Local selection state wrapper that syncs with context
+  const setSelection = useCallback((newSelection: SetStateAction<CropArea | null>) => {
+    const value = typeof newSelection === 'function'
+      ? newSelection(selection)
+      : newSelection;
+    setContextSelection(value);
+  }, [selection, setContextSelection]);
   const [isMovingSelection, setIsMovingSelection] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);

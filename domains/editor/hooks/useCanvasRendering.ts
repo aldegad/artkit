@@ -208,7 +208,10 @@ export function useCanvasRendering(
         ctx.imageSmoothingEnabled = false;
         ctx.translate(offsetX, offsetY);
         ctx.scale(zoom, zoom);
-        ctx.drawImage(layerCanvas, 0, 0);
+        // Use layer position for alignment/positioning
+        const posX = layer.position?.x || 0;
+        const posY = layer.position?.y || 0;
+        ctx.drawImage(layerCanvas, posX, posY);
       }
 
       ctx.restore();

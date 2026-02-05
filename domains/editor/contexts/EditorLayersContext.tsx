@@ -18,6 +18,9 @@ export interface EditorLayersContextValue {
   setLayers: React.Dispatch<React.SetStateAction<UnifiedLayer[]>>;
   activeLayerId: string | null;
   setActiveLayerId: React.Dispatch<React.SetStateAction<string | null>>;
+  // Multi-select state
+  selectedLayerIds: string[];
+  setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   layerImages: Map<string, HTMLImageElement>;
   setLayerImages: React.Dispatch<React.SetStateAction<Map<string, HTMLImageElement>>>;
   // Drag state for layer panel reordering
@@ -45,6 +48,20 @@ export interface EditorLayersContextValue {
   mergeLayerDown: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
   rotateAllLayerCanvases: (degrees: number) => void;
+
+  // Multi-select actions
+  selectLayerWithModifier: (layerId: string, shiftKey: boolean) => void;
+  clearLayerSelection: () => void;
+
+  // Alignment actions
+  alignLayers: (
+    alignment: "left" | "center" | "right" | "top" | "middle" | "bottom",
+    bounds?: { x: number; y: number; width: number; height: number }
+  ) => void;
+  distributeLayers: (
+    direction: "horizontal" | "vertical",
+    bounds?: { x: number; y: number; width: number; height: number }
+  ) => void;
 
   // Initialization
   initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => Promise<void>;

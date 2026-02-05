@@ -1,8 +1,76 @@
 "use client";
 
 import React, { useState, useEffect, RefObject } from "react";
-import { useEditorLayers } from "../contexts";
+import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
+
+// ============================================
+// Alignment Icons
+// ============================================
+
+const AlignLeftIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="4" y1="4" x2="4" y2="20" />
+    <rect x="7" y="6" width="10" height="4" rx="1" />
+    <rect x="7" y="14" width="6" height="4" rx="1" />
+  </svg>
+);
+
+const AlignCenterHIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="12" y1="4" x2="12" y2="20" strokeDasharray="2 2" />
+    <rect x="5" y="6" width="14" height="4" rx="1" />
+    <rect x="7" y="14" width="10" height="4" rx="1" />
+  </svg>
+);
+
+const AlignRightIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="20" y1="4" x2="20" y2="20" />
+    <rect x="7" y="6" width="10" height="4" rx="1" />
+    <rect x="11" y="14" width="6" height="4" rx="1" />
+  </svg>
+);
+
+const AlignTopIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="4" y1="4" x2="20" y2="4" />
+    <rect x="6" y="7" width="4" height="10" rx="1" />
+    <rect x="14" y="7" width="4" height="6" rx="1" />
+  </svg>
+);
+
+const AlignMiddleVIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="4" y1="12" x2="20" y2="12" strokeDasharray="2 2" />
+    <rect x="6" y="5" width="4" height="14" rx="1" />
+    <rect x="14" y="7" width="4" height="10" rx="1" />
+  </svg>
+);
+
+const AlignBottomIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <line x1="4" y1="20" x2="20" y2="20" />
+    <rect x="6" y="7" width="4" height="10" rx="1" />
+    <rect x="14" y="11" width="4" height="6" rx="1" />
+  </svg>
+);
+
+const DistributeHIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <rect x="4" y="8" width="4" height="8" rx="1" />
+    <rect x="10" y="8" width="4" height="8" rx="1" />
+    <rect x="16" y="8" width="4" height="8" rx="1" />
+  </svg>
+);
+
+const DistributeVIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <rect x="8" y="4" width="8" height="4" rx="1" />
+    <rect x="8" y="10" width="8" height="4" rx="1" />
+    <rect x="8" y="16" width="8" height="4" rx="1" />
+  </svg>
+);
 
 // ============================================
 // Layer Thumbnail Component (memoized)
@@ -58,6 +126,103 @@ const LayerThumbnail = React.memo(function LayerThumbnail({
 });
 
 // ============================================
+// Alignment Toolbar Props
+// ============================================
+
+interface AlignmentToolbarProps {
+  onAlign: (alignment: "left" | "center" | "right" | "top" | "middle" | "bottom") => void;
+  onDistribute: (direction: "horizontal" | "vertical") => void;
+  selectedCount: number;
+}
+
+const AlignmentToolbar = React.memo(function AlignmentToolbar({
+  onAlign,
+  onDistribute,
+  selectedCount,
+}: AlignmentToolbarProps) {
+  const hasSelection = selectedCount > 0;
+  const canDistribute = selectedCount >= 2;
+
+  return (
+    <div className="flex items-center gap-0.5 border-l border-border-default pl-2 ml-1">
+      {/* Horizontal alignment */}
+      <button
+        onClick={() => onAlign("left")}
+        disabled={!hasSelection}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Align Left"
+      >
+        <AlignLeftIcon />
+      </button>
+      <button
+        onClick={() => onAlign("center")}
+        disabled={!hasSelection}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Align Center"
+      >
+        <AlignCenterHIcon />
+      </button>
+      <button
+        onClick={() => onAlign("right")}
+        disabled={!hasSelection}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Align Right"
+      >
+        <AlignRightIcon />
+      </button>
+
+      <div className="w-px h-4 bg-border-default mx-0.5" />
+
+      {/* Vertical alignment */}
+      <button
+        onClick={() => onAlign("top")}
+        disabled={!hasSelection}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Align Top"
+      >
+        <AlignTopIcon />
+      </button>
+      <button
+        onClick={() => onAlign("middle")}
+        disabled={!hasSelection}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Align Middle"
+      >
+        <AlignMiddleVIcon />
+      </button>
+      <button
+        onClick={() => onAlign("bottom")}
+        disabled={!hasSelection}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Align Bottom"
+      >
+        <AlignBottomIcon />
+      </button>
+
+      <div className="w-px h-4 bg-border-default mx-0.5" />
+
+      {/* Distribute */}
+      <button
+        onClick={() => onDistribute("horizontal")}
+        disabled={!canDistribute}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Distribute Horizontally (2+ layers)"
+      >
+        <DistributeHIcon />
+      </button>
+      <button
+        onClick={() => onDistribute("vertical")}
+        disabled={!canDistribute}
+        className="w-5 h-5 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Distribute Vertically (2+ layers)"
+      >
+        <DistributeVIcon />
+      </button>
+    </div>
+  );
+});
+
+// ============================================
 // Layers Panel Content Component
 // ============================================
 
@@ -65,6 +230,7 @@ export default function LayersPanelContent() {
   const {
     layers,
     activeLayerId,
+    selectedLayerIds,
     layerCanvasesRef,
     draggedLayerId,
     setDraggedLayerId,
@@ -72,7 +238,7 @@ export default function LayersPanelContent() {
     setDragOverLayerId,
     addPaintLayer,
     addImageLayer,
-    selectLayer,
+    selectLayerWithModifier,
     toggleLayerVisibility,
     toggleLayerLock,
     duplicateLayer,
@@ -80,8 +246,11 @@ export default function LayersPanelContent() {
     renameLayer,
     updateLayerOpacity,
     reorderLayers,
+    alignLayers,
+    distributeLayers,
   } = useEditorLayers();
 
+  const { state: { selection } } = useEditorState();
   const { t } = useLanguage();
 
   // Handle image file upload
@@ -98,6 +267,19 @@ export default function LayersPanelContent() {
     }
     e.target.value = "";
   };
+
+  // Handle layer click with shift modifier
+  const handleLayerClick = (e: React.MouseEvent, layerId: string) => {
+    selectLayerWithModifier(layerId, e.shiftKey);
+  };
+
+  // Check if layer is selected (either active or in multi-selection)
+  const isLayerSelected = (layerId: string) => {
+    return selectedLayerIds.includes(layerId) || (selectedLayerIds.length === 0 && activeLayerId === layerId);
+  };
+
+  // Get effective selected count
+  const effectiveSelectedCount = selectedLayerIds.length > 0 ? selectedLayerIds.length : (activeLayerId ? 1 : 0);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -131,6 +313,13 @@ export default function LayersPanelContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </button>
+
+          {/* Alignment Toolbar */}
+          <AlignmentToolbar
+            onAlign={(alignment) => alignLayers(alignment, selection || undefined)}
+            onDistribute={(direction) => distributeLayers(direction, selection || undefined)}
+            selectedCount={effectiveSelectedCount}
+          />
         </div>
       </div>
 
@@ -144,132 +333,146 @@ export default function LayersPanelContent() {
         ) : (
           [...layers]
             .sort((a, b) => b.zIndex - a.zIndex)
-            .map((layer) => (
-              <div
-                key={layer.id}
-                draggable
-                onDragStart={(e) => {
-                  setDraggedLayerId(layer.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (draggedLayerId && draggedLayerId !== layer.id) {
-                    setDragOverLayerId(layer.id);
-                  }
-                }}
-                onDragLeave={() => {
-                  setDragOverLayerId(null);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (draggedLayerId && draggedLayerId !== layer.id) {
-                    reorderLayers(draggedLayerId, layer.id);
-                  }
-                  setDraggedLayerId(null);
-                  setDragOverLayerId(null);
-                }}
-                onDragEnd={() => {
-                  setDraggedLayerId(null);
-                  setDragOverLayerId(null);
-                }}
-                onClick={() => selectLayer(layer.id)}
-                className={`flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
-                  activeLayerId === layer.id
-                    ? "bg-accent-primary/20 border border-accent-primary/50"
-                    : "hover:bg-interactive-hover border border-transparent"
-                } ${
-                  draggedLayerId === layer.id ? "opacity-50 scale-95" : ""
-                } ${
-                  dragOverLayerId === layer.id ? "border-accent-primary! bg-accent-primary/10 scale-105" : ""
-                }`}
-              >
-                {/* Visibility toggle */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleLayerVisibility(layer.id);
+            .map((layer) => {
+              const isSelected = isLayerSelected(layer.id);
+              const isActive = activeLayerId === layer.id;
+
+              return (
+                <div
+                  key={layer.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedLayerId(layer.id);
+                    e.dataTransfer.effectAllowed = "move";
                   }}
-                  className={`p-1 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
-                  title={layer.visible ? t.hideLayer : t.showLayer}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedLayerId && draggedLayerId !== layer.id) {
+                      setDragOverLayerId(layer.id);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    setDragOverLayerId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedLayerId && draggedLayerId !== layer.id) {
+                      reorderLayers(draggedLayerId, layer.id);
+                    }
+                    setDraggedLayerId(null);
+                    setDragOverLayerId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedLayerId(null);
+                    setDragOverLayerId(null);
+                  }}
+                  onClick={(e) => handleLayerClick(e, layer.id)}
+                  className={`flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
+                    isActive
+                      ? "bg-accent-primary/20 border border-accent-primary/50"
+                      : isSelected
+                      ? "bg-accent-primary/10 border border-accent-primary/30"
+                      : "hover:bg-interactive-hover border border-transparent"
+                  } ${
+                    draggedLayerId === layer.id ? "opacity-50 scale-95" : ""
+                  } ${
+                    dragOverLayerId === layer.id ? "border-accent-primary! bg-accent-primary/10 scale-105" : ""
+                  }`}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {layer.visible ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    )}
-                  </svg>
-                </button>
-
-                {/* Layer thumbnail */}
-                <LayerThumbnail
-                  layerId={layer.id}
-                  layerName={layer.name}
-                  visible={layer.visible}
-                  layerCanvasesRef={layerCanvasesRef}
-                />
-
-                {/* Layer name */}
-                <div className="flex-1 min-w-0">
-                  <input
-                    type="text"
-                    value={layer.name}
-                    onChange={(e) => renameLayer(layer.id, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-full text-xs bg-transparent border-none focus:outline-none focus:bg-surface-secondary px-1 rounded truncate"
-                  />
-                  <span className="text-[10px] text-text-quaternary px-1">
-                    Layer
-                  </span>
-                </div>
-
-                {/* Layer actions */}
-                <div className="flex items-center gap-0.5 shrink-0">
+                  {/* Visibility toggle */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleLayerLock(layer.id);
+                      toggleLayerVisibility(layer.id);
                     }}
-                    className={`p-1 rounded ${layer.locked ? "text-accent-warning" : "text-text-quaternary hover:text-text-primary"}`}
-                    title={layer.locked ? t.unlockLayer : t.lockLayer}
+                    className={`p-1 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
+                    title={layer.visible ? t.hideLayer : t.showLayer}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {layer.locked ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {layer.visible ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                       ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                       )}
                     </svg>
                   </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      duplicateLayer(layer.id);
-                    }}
-                    className="p-1 rounded text-text-quaternary hover:text-text-primary"
-                    title={t.duplicateLayer}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteLayer(layer.id);
-                    }}
-                    className="p-1 rounded text-text-quaternary hover:text-accent-danger"
-                    title={t.deleteLayer}
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+
+                  {/* Layer thumbnail */}
+                  <LayerThumbnail
+                    layerId={layer.id}
+                    layerName={layer.name}
+                    visible={layer.visible}
+                    layerCanvasesRef={layerCanvasesRef}
+                  />
+
+                  {/* Layer name */}
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={layer.name}
+                      onChange={(e) => renameLayer(layer.id, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full text-xs bg-transparent border-none focus:outline-none focus:bg-surface-secondary px-1 rounded truncate"
+                    />
+                    <span className="text-[10px] text-text-quaternary px-1">
+                      Layer
+                    </span>
+                  </div>
+
+                  {/* Layer actions */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLayerLock(layer.id);
+                      }}
+                      className={`p-1 rounded ${layer.locked ? "text-accent-warning" : "text-text-quaternary hover:text-text-primary"}`}
+                      title={layer.locked ? t.unlockLayer : t.lockLayer}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {layer.locked ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        ) : (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        )}
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        duplicateLayer(layer.id);
+                      }}
+                      className="p-1 rounded text-text-quaternary hover:text-text-primary"
+                      title={t.duplicateLayer}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteLayer(layer.id);
+                      }}
+                      className="p-1 rounded text-text-quaternary hover:text-accent-danger"
+                      title={t.deleteLayer}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
         )}
+      </div>
+
+      {/* Shift hint */}
+      <div className="px-3 py-1.5 border-t border-border-default bg-surface-tertiary/50 shrink-0">
+        <p className="text-[10px] text-text-quaternary text-center">
+          Shift+Click to multi-select
+        </p>
       </div>
 
       {/* Panel Footer - Opacity control */}

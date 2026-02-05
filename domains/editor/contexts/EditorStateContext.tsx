@@ -7,7 +7,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { EditorToolMode, OutputFormat, SavedImageProject, Point } from "../types";
+import { EditorToolMode, OutputFormat, SavedImageProject, Point, CropArea } from "../types";
 
 // ============================================
 // State Types
@@ -26,6 +26,9 @@ export interface EditorState {
   toolMode: EditorToolMode;
   outputFormat: OutputFormat;
   quality: number;
+
+  // Selection (marquee)
+  selection: CropArea | null;
 
   // Project Management
   projectName: string;
@@ -58,6 +61,9 @@ export interface EditorStateContextValue {
   setOutputFormat: (format: OutputFormat) => void;
   setQuality: (quality: number) => void;
 
+  // Selection setters
+  setSelection: (selection: CropArea | null) => void;
+
   // Project Management setters
   setProjectName: (name: string) => void;
   setCurrentProjectId: (id: string | null) => void;
@@ -89,6 +95,9 @@ const initialState: EditorState = {
   toolMode: "brush",
   outputFormat: "png",
   quality: 0.9,
+
+  // Selection (marquee)
+  selection: null,
 
   // Project Management
   projectName: "Untitled",
@@ -165,6 +174,11 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setState((prev) => ({ ...prev, quality }));
   }, []);
 
+  // Selection setter
+  const setSelection = useCallback((selection: CropArea | null) => {
+    setState((prev) => ({ ...prev, selection }));
+  }, []);
+
   // Project Management setters
   const setProjectName = useCallback((name: string) => {
     setState((prev) => ({ ...prev, projectName: name }));
@@ -210,6 +224,7 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setToolMode,
     setOutputFormat,
     setQuality,
+    setSelection,
     setProjectName,
     setCurrentProjectId,
     setSavedProjects,

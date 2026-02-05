@@ -23,6 +23,9 @@ interface UseLayerManagementReturn {
   setLayers: React.Dispatch<React.SetStateAction<UnifiedLayer[]>>;
   activeLayerId: string | null;
   setActiveLayerId: React.Dispatch<React.SetStateAction<string | null>>;
+  // Multi-select state
+  selectedLayerIds: string[];
+  setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
   layerImages: Map<string, HTMLImageElement>;
   setLayerImages: React.Dispatch<React.SetStateAction<Map<string, HTMLImageElement>>>;
   // Drag state for layer panel reordering
@@ -51,6 +54,20 @@ interface UseLayerManagementReturn {
   duplicateLayer: (layerId: string) => void;
   rotateAllLayerCanvases: (degrees: number) => void;
 
+  // Multi-select actions
+  selectLayerWithModifier: (layerId: string, shiftKey: boolean) => void;
+  clearLayerSelection: () => void;
+
+  // Alignment actions
+  alignLayers: (
+    alignment: "left" | "center" | "right" | "top" | "middle" | "bottom",
+    bounds?: { x: number; y: number; width: number; height: number }
+  ) => void;
+  distributeLayers: (
+    direction: "horizontal" | "vertical",
+    bounds?: { x: number; y: number; width: number; height: number }
+  ) => void;
+
   // Initialization
   initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => Promise<void>;
 
@@ -70,6 +87,7 @@ export function useLayerManagement(
   // State
   const [layers, setLayers] = useState<UnifiedLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
   // Drag state for layer panel reordering
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
@@ -403,7 +421,170 @@ export function useLayerManagement(
 
     setLayers(prev => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
+    setSelectedLayerIds([newLayer.id]);
   }, [layers, getDisplayDimensions]);
+
+  // Select layer with modifier (shift for range multi-select)
+  const selectLayerWithModifier = useCallback((layerId: string, shiftKey: boolean) => {
+    if (shiftKey && activeLayerId) {
+      // Shift-click: range selection from activeLayerId to clicked layer
+      // Sort layers by zIndex (descending, as displayed in panel)
+      const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex);
+      const activeIndex = sortedLayers.findIndex(l => l.id === activeLayerId);
+      const clickedIndex = sortedLayers.findIndex(l => l.id === layerId);
+
+      if (activeIndex !== -1 && clickedIndex !== -1) {
+        // Get range of layers between active and clicked
+        const startIndex = Math.min(activeIndex, clickedIndex);
+        const endIndex = Math.max(activeIndex, clickedIndex);
+        const rangeIds = sortedLayers
+          .slice(startIndex, endIndex + 1)
+          .map(l => l.id);
+
+        setSelectedLayerIds(rangeIds);
+      }
+      // Keep activeLayerId as the anchor (don't change it)
+    } else {
+      // Normal click: single select
+      setSelectedLayerIds([layerId]);
+      setActiveLayerId(layerId);
+      const layer = layers.find(l => l.id === layerId);
+      if (layer?.type === "paint") {
+        editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
+      }
+    }
+  }, [layers, activeLayerId]);
+
+  // Clear layer selection
+  const clearLayerSelection = useCallback(() => {
+    setSelectedLayerIds([]);
+  }, []);
+
+  // Get layer bounds (position + size)
+  const getLayerBounds = useCallback((layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return null;
+
+    const canvas = layerCanvasesRef.current.get(layerId);
+    const width = layer.originalSize?.width || canvas?.width || 0;
+    const height = layer.originalSize?.height || canvas?.height || 0;
+    const x = layer.position?.x || 0;
+    const y = layer.position?.y || 0;
+
+    return { x, y, width, height };
+  }, [layers]);
+
+  // Align layers
+  const alignLayers = useCallback((
+    alignment: "left" | "center" | "right" | "top" | "middle" | "bottom",
+    bounds?: { x: number; y: number; width: number; height: number }
+  ) => {
+    const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
+    if (targetIds.length === 0) return;
+
+    // Get alignment bounds (selection or canvas)
+    const alignBounds = bounds || { x: 0, y: 0, ...getDisplayDimensions() };
+
+    setLayers(prev => prev.map(layer => {
+      if (!targetIds.includes(layer.id)) return layer;
+
+      const layerBounds = getLayerBounds(layer.id);
+      if (!layerBounds) return layer;
+
+      let newX = layer.position?.x || 0;
+      let newY = layer.position?.y || 0;
+
+      switch (alignment) {
+        case "left":
+          newX = alignBounds.x;
+          break;
+        case "center":
+          newX = alignBounds.x + (alignBounds.width - layerBounds.width) / 2;
+          break;
+        case "right":
+          newX = alignBounds.x + alignBounds.width - layerBounds.width;
+          break;
+        case "top":
+          newY = alignBounds.y;
+          break;
+        case "middle":
+          newY = alignBounds.y + (alignBounds.height - layerBounds.height) / 2;
+          break;
+        case "bottom":
+          newY = alignBounds.y + alignBounds.height - layerBounds.height;
+          break;
+      }
+
+      return {
+        ...layer,
+        position: { x: newX, y: newY },
+      };
+    }));
+  }, [selectedLayerIds, activeLayerId, getDisplayDimensions, getLayerBounds]);
+
+  // Distribute layers evenly
+  const distributeLayers = useCallback((
+    direction: "horizontal" | "vertical",
+    bounds?: { x: number; y: number; width: number; height: number }
+  ) => {
+    const targetIds = selectedLayerIds.length > 1 ? selectedLayerIds : [];
+    if (targetIds.length < 2) return; // Need at least 2 layers to distribute
+
+    // Get alignment bounds (selection or canvas)
+    const alignBounds = bounds || { x: 0, y: 0, ...getDisplayDimensions() };
+
+    // Get all layer bounds and sort by position
+    const layerBoundsList = targetIds
+      .map(id => ({ id, bounds: getLayerBounds(id) }))
+      .filter((item): item is { id: string; bounds: NonNullable<ReturnType<typeof getLayerBounds>> } =>
+        item.bounds !== null
+      )
+      .sort((a, b) =>
+        direction === "horizontal"
+          ? a.bounds.x - b.bounds.x
+          : a.bounds.y - b.bounds.y
+      );
+
+    if (layerBoundsList.length < 2) return;
+
+    if (direction === "horizontal") {
+      const totalWidth = layerBoundsList.reduce((sum, item) => sum + item.bounds.width, 0);
+      const availableSpace = alignBounds.width - totalWidth;
+      const gap = availableSpace / (layerBoundsList.length - 1);
+
+      let currentX = alignBounds.x;
+      setLayers(prev => prev.map(layer => {
+        const idx = layerBoundsList.findIndex(item => item.id === layer.id);
+        if (idx === -1) return layer;
+
+        const newX = currentX;
+        currentX += layerBoundsList[idx].bounds.width + gap;
+
+        return {
+          ...layer,
+          position: { x: newX, y: layer.position?.y || 0 },
+        };
+      }));
+    } else {
+      const totalHeight = layerBoundsList.reduce((sum, item) => sum + item.bounds.height, 0);
+      const availableSpace = alignBounds.height - totalHeight;
+      const gap = availableSpace / (layerBoundsList.length - 1);
+
+      let currentY = alignBounds.y;
+      setLayers(prev => prev.map(layer => {
+        const idx = layerBoundsList.findIndex(item => item.id === layer.id);
+        if (idx === -1) return layer;
+
+        const newY = currentY;
+        currentY += layerBoundsList[idx].bounds.height + gap;
+
+        return {
+          ...layer,
+          position: { x: layer.position?.x || 0, y: newY },
+        };
+      }));
+    }
+  }, [selectedLayerIds, getDisplayDimensions, getLayerBounds]);
 
   return {
     // State
@@ -411,6 +592,8 @@ export function useLayerManagement(
     setLayers,
     activeLayerId,
     setActiveLayerId,
+    selectedLayerIds,
+    setSelectedLayerIds,
     layerImages,
     setLayerImages,
     // Drag state
@@ -438,6 +621,14 @@ export function useLayerManagement(
     mergeLayerDown,
     duplicateLayer,
     rotateAllLayerCanvases,
+
+    // Multi-select actions
+    selectLayerWithModifier,
+    clearLayerSelection,
+
+    // Alignment actions
+    alignLayers,
+    distributeLayers,
 
     // Initialization
     initLayers,
