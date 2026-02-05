@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { useLanguage } from "../../shared/contexts";
+import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { ImageDropZone, Select } from "../../shared/components";
 import { OutputFormat, ImageFile, formatBytes } from "../../domains/converter";
 
@@ -146,11 +146,21 @@ export default function ImageConverter() {
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
-      {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
-        <h1 className="text-sm font-semibold">{t.imageConverter}</h1>
+      {/* Header Slot */}
+      <HeaderSlot>
+        <h1 className="text-sm font-semibold whitespace-nowrap">{t.imageConverter}</h1>
+        {images.length > 0 && (
+          <>
+            <div className="h-4 w-px bg-border-default" />
+            <span className="text-xs text-text-secondary whitespace-nowrap">
+              {images.length} {t.files}
+            </span>
+          </>
+        )}
+      </HeaderSlot>
 
-        <div className="h-6 w-px bg-border-default" />
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm">
 
         {/* Format selector */}
         <div className="flex items-center gap-2">

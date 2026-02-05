@@ -6,3 +6,4 @@ export { ThemeProvider, useTheme } from "./ThemeContext";
 export { LanguageProvider, useLanguage } from "./LanguageContext";
 export { SidebarProvider, useSidebar } from "./SidebarContext";
 export { AuthProvider, useAuth } from "./AuthContext";
+export { HeaderSlotProvider, useHeaderSlot, HeaderSlot } from "./HeaderSlotContext";

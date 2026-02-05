@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
+import { Popover } from "../../../shared/components";
 
 // ============================================
 // Types
@@ -72,7 +73,7 @@ const CheckIcon = () => (
 );
 
 // ============================================
-// Menu Dropdown Component
+// Menu Dropdown Component (Popover-based)
 // ============================================
 
 interface MenuDropdownProps {
@@ -80,97 +81,60 @@ interface MenuDropdownProps {
   items: MenuItem[];
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onClose: () => void;
 }
 
-function MenuDropdown({ label, items, isOpen, onOpenChange, onClose }: MenuDropdownProps) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        triggerRef.current &&
-        !triggerRef.current.contains(e.target as Node) &&
-        menuRef.current &&
-        !menuRef.current.contains(e.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-
-    // Delay to avoid immediate close
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("keydown", handleKeyDown);
-    }, 0);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose]);
-
+function MenuDropdown({ label, items, isOpen, onOpenChange }: MenuDropdownProps) {
   return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        onClick={() => onOpenChange(!isOpen)}
-        className={`px-3 py-1 text-sm transition-colors rounded ${
-          isOpen
-            ? "bg-interactive-hover text-text-primary"
-            : "text-text-secondary hover:text-text-primary hover:bg-interactive-hover"
-        }`}
-      >
-        {label}
-      </button>
-      {isOpen && (
-        <div
-          ref={menuRef}
-          className="absolute top-full left-0 mt-1 min-w-[180px] bg-surface-primary border border-border-default rounded-lg shadow-lg py-1 z-50"
+    <Popover
+      trigger={
+        <button
+          className={`px-3 py-1 text-sm transition-colors rounded ${
+            isOpen
+              ? "bg-interactive-hover text-text-primary"
+              : "text-text-secondary hover:text-text-primary hover:bg-interactive-hover"
+          }`}
         >
-          {items.map((item, index) =>
-            item.divider ? (
-              <div key={index} className="my-1 border-t border-border-default" />
-            ) : (
-              <button
-                key={index}
-                onClick={() => {
-                  if (!item.disabled && item.onClick) {
-                    item.onClick();
-                    onClose();
-                  }
-                }}
-                disabled={item.disabled}
-                className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 transition-colors ${
-                  item.disabled
-                    ? "text-text-quaternary cursor-not-allowed"
-                    : "text-text-primary hover:bg-interactive-hover"
-                }`}
-              >
-                <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                  {item.checked && <CheckIcon />}
-                </span>
-                <span className="flex-1">{item.label}</span>
-                {item.shortcut && (
-                  <span className="text-text-quaternary text-xs">{item.shortcut}</span>
-                )}
-              </button>
-            )
-          )}
-        </div>
-      )}
-    </div>
+          {label}
+        </button>
+      }
+      open={isOpen}
+      onOpenChange={onOpenChange}
+      align="start"
+      sideOffset={4}
+      closeOnScroll={false}
+    >
+      <div className="min-w-[180px] py-1">
+        {items.map((item, index) =>
+          item.divider ? (
+            <div key={index} className="my-1 border-t border-border-default" />
+          ) : (
+            <button
+              key={index}
+              onClick={() => {
+                if (!item.disabled && item.onClick) {
+                  item.onClick();
+                  onOpenChange(false);
+                }
+              }}
+              disabled={item.disabled}
+              className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 transition-colors ${
+                item.disabled
+                  ? "text-text-quaternary cursor-not-allowed"
+                  : "text-text-primary hover:bg-interactive-hover"
+              }`}
+            >
+              <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                {item.checked && <CheckIcon />}
+              </span>
+              <span className="flex-1">{item.label}</span>
+              {item.shortcut && (
+                <span className="text-text-quaternary text-xs">{item.shortcut}</span>
+              )}
+            </button>
+          )
+        )}
+      </div>
+    </Popover>
   );
 }
 
@@ -218,14 +182,12 @@ export default function EditorMenuBar({
         items={fileMenuItems}
         isOpen={openMenu === "file"}
         onOpenChange={(open) => setOpenMenu(open ? "file" : null)}
-        onClose={() => setOpenMenu(null)}
       />
       <MenuDropdown
         label={t.window}
         items={windowMenuItems}
         isOpen={openMenu === "window"}
         onOpenChange={(open) => setOpenMenu(open ? "window" : null)}
-        onClose={() => setOpenMenu(null)}
       />
     </div>
   );

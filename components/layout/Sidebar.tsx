@@ -97,16 +97,17 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
     <div className={`w-14 h-full bg-surface-primary flex flex-col items-center gap-2 ${
       isMobile ? "pt-2" : "border-r border-border-default"
     }`}>
-      {/* Logo - only shown on desktop, height matches first header row (h-11 = 44px) */}
+      {/* Logo area - Desktop only: link to home */}
       {!isMobile && (
-        <>
-          <div className="h-11 w-full flex items-center justify-center">
-            <div className="w-8 h-8 bg-accent-primary rounded-md flex items-center justify-center text-white">
-              <ArtkitLogo size={24} />
-            </div>
+        <Link
+          href="/"
+          className="h-10 w-full flex items-center justify-center shrink-0"
+          aria-label="Home"
+        >
+          <div className="w-7 h-7 bg-accent-primary rounded-md flex items-center justify-center text-white">
+            <ArtkitLogo size={22} />
           </div>
-          <div className="w-8 h-px bg-border-default mb-2" />
-        </>
+        </Link>
       )}
 
       {/* Tool buttons */}

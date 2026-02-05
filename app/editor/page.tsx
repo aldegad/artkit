@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useLanguage, useAuth } from "../../shared/contexts";
+import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
 import { Tooltip, ImageDropZone, Select } from "../../shared/components";
 import {
   EditorToolMode,
@@ -40,7 +40,7 @@ import {
   clearLocalProjects,
   clearCloudProjects,
 } from "../../services/projectStorage";
-import { LoginButton, UserMenu, SyncDialog } from "../../components/auth";
+import { SyncDialog } from "../../components/auth";
 import {
   EditorLayoutProvider,
   useEditorLayout,
@@ -49,6 +49,7 @@ import {
   useEditorState,
   useEditorRefs,
 } from "../../domains/editor/contexts";
+import { useEditorLayoutStore } from "../../domains/editor/stores/editorLayoutStore";
 import {
   EditorSplitContainer,
   EditorFloatingWindows,
@@ -112,11 +113,69 @@ const LayerThumbnail = React.memo(function LayerThumbnail({
   );
 });
 
+// Component that syncs zustand store with context (bidirectional)
+function EditorLayoutSync() {
+  const { openFloatingWindow, closeFloatingWindow, layoutState } = useEditorLayout();
+  const zustandStore = useEditorLayoutStore();
+  const isSyncingRef = useRef(false);
+
+  // Sync zustand → context
+  useEffect(() => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+
+    const zustandPanelIds = zustandStore.floatingWindows.map((w) => w.panelId);
+    const contextPanelIds = layoutState.floatingWindows.map((w) => w.panelId);
+
+    // Open windows in context that exist in zustand but not in context
+    zustandPanelIds.forEach((panelId) => {
+      if (!contextPanelIds.includes(panelId)) {
+        openFloatingWindow(panelId);
+      }
+    });
+
+    // Close windows in context that don't exist in zustand
+    layoutState.floatingWindows.forEach((cw) => {
+      if (!zustandPanelIds.includes(cw.panelId)) {
+        closeFloatingWindow(cw.id);
+      }
+    });
+
+    // Use setTimeout to break the sync cycle
+    setTimeout(() => {
+      isSyncingRef.current = false;
+    }, 0);
+  }, [zustandStore.floatingWindows]);
+
+  // Sync context → zustand (when user closes window via X button)
+  useEffect(() => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+
+    const contextPanelIds = layoutState.floatingWindows.map((w) => w.panelId);
+    const zustandPanelIds = zustandStore.floatingWindows.map((w) => w.panelId);
+
+    // If context has fewer windows, sync back to zustand
+    zustandPanelIds.forEach((panelId) => {
+      if (!contextPanelIds.includes(panelId)) {
+        zustandStore.closeFloatingWindowByPanelId(panelId);
+      }
+    });
+
+    setTimeout(() => {
+      isSyncingRef.current = false;
+    }, 0);
+  }, [layoutState.floatingWindows]);
+
+  return null;
+}
+
 // Inner component that accesses the layout context
 function EditorDockableArea() {
   const { layoutState } = useEditorLayout();
   return (
     <>
+      <EditorLayoutSync />
       <EditorSplitContainer node={layoutState.root} />
       <EditorFloatingWindows />
     </>
@@ -1641,13 +1700,11 @@ function ImageEditorContent() {
   return (
     <EditorLayoutProvider>
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
-      {/* Row 1: Menu Bar (always visible) */}
-      <div className="flex items-center gap-2 px-2 md:px-4 h-10 bg-surface-primary border-b border-border-default shrink-0">
-        {/* Logo/Title - Desktop only */}
-        <h1 className="text-sm font-semibold hidden md:block">{t.imageEditor}</h1>
-        <div className="h-4 w-px bg-border-default hidden md:block" />
-
-        {/* Menu Bar */}
+      {/* Header Slot Content */}
+      <HeaderSlot>
+        {/* Title - Desktop only */}
+        <h1 className="text-sm font-semibold hidden md:block whitespace-nowrap">{t.imageEditor}</h1>
+        {/* Menu Bar - now in header */}
         <EditorMenuBarInner
           onNew={handleNewCanvas}
           onLoad={() => setIsProjectListOpen(true)}
@@ -1667,7 +1724,6 @@ function ImageEditorContent() {
             layers: t.layers,
           }}
         />
-
         {layers.length > 0 && (
           <>
             <div className="h-4 w-px bg-border-default" />
@@ -1679,39 +1735,21 @@ function ImageEditorContent() {
               className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-16 md:w-24 focus:outline-none focus:border-accent-primary"
               placeholder={t.projectName}
             />
+            <div className="flex-1" />
+            {/* Image info - desktop only */}
+            <div className="text-xs text-text-tertiary hidden md:flex items-center gap-2 whitespace-nowrap">
+              <span>
+                {displayWidth} × {displayHeight}
+              </span>
+              {cropArea && (
+                <span className="text-accent-primary">
+                  → {Math.round(cropArea.width)} × {Math.round(cropArea.height)}
+                </span>
+              )}
+            </div>
           </>
         )}
-
-        <div className="flex-1" />
-
-        {/* Image info - desktop only */}
-        {layers.length > 0 && (
-          <div className="text-xs text-text-tertiary hidden md:flex items-center gap-2">
-            <span>
-              {displayWidth} × {displayHeight}
-            </span>
-            {cropArea && (
-              <span className="text-accent-primary">
-                → {Math.round(cropArea.width)} × {Math.round(cropArea.height)}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Auth UI - Desktop only */}
-        <div className="hidden md:flex items-center gap-2 ml-2">
-          {user ? (
-            <>
-              {storageProvider.type === "cloud" && (
-                <span className="text-xs text-green-500">Cloud</span>
-              )}
-              <UserMenu />
-            </>
-          ) : (
-            <LoginButton />
-          )}
-        </div>
-      </div>
+      </HeaderSlot>
 
       {/* Row 2: Tools (only when layers exist) */}
       {layers.length > 0 && (
@@ -2051,7 +2089,7 @@ function ImageEditorContent() {
 }
 
 // ============================================
-// EditorMenuBarInner - Uses layout context for layer toggle
+// EditorMenuBarInner - Uses zustand store for layer toggle (works outside Provider)
 // ============================================
 
 interface EditorMenuBarInnerProps {
@@ -2075,19 +2113,17 @@ interface EditorMenuBarInnerProps {
 }
 
 function EditorMenuBarInner(props: EditorMenuBarInnerProps) {
-  const { isPanelOpen, openFloatingWindow, closeFloatingWindow, layoutState } = useEditorLayout();
+  // Use zustand store instead of context - works outside EditorLayoutProvider
+  const { isPanelOpen, openFloatingWindow, closeFloatingWindowByPanelId } = useEditorLayoutStore();
   const isLayersOpen = isPanelOpen("layers");
 
   const handleToggleLayers = useCallback(() => {
     if (isLayersOpen) {
-      const layersWindow = layoutState.floatingWindows.find(w => w.panelId === "layers");
-      if (layersWindow) {
-        closeFloatingWindow(layersWindow.id);
-      }
+      closeFloatingWindowByPanelId("layers");
     } else {
       openFloatingWindow("layers");
     }
-  }, [isLayersOpen, layoutState.floatingWindows, closeFloatingWindow, openFloatingWindow]);
+  }, [isLayersOpen, closeFloatingWindowByPanelId, openFloatingWindow]);
 
   return (
     <EditorMenuBar

@@ -10,7 +10,7 @@ import {
   SpriteSheetImportModal,
   SpriteFrame,
 } from "../../domains/sprite";
-import { useLanguage } from "../../shared/contexts";
+import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { Tooltip } from "../../shared/components";
 import {
   saveProject as saveProjectToDB,
@@ -547,8 +547,62 @@ function SpriteEditorMain() {
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
+      {/* Header Slot */}
+      <HeaderSlot>
+        <h1 className="text-sm font-semibold whitespace-nowrap">{t.spriteEditor}</h1>
+        <div className="h-4 w-px bg-border-default" />
+        <input
+          type="text"
+          placeholder={t.projectName}
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          className="w-20 md:w-28 px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
+        />
+        <button
+          onClick={() => {
+            if (frames.length > 0 || imageSrc) {
+              if (window.confirm(t.newProjectConfirm)) {
+                newProject();
+              }
+            } else {
+              newProject();
+            }
+          }}
+          className="px-2 py-0.5 bg-interactive-default hover:bg-interactive-hover rounded text-xs transition-colors"
+          title={t.newProject}
+        >
+          {t.new}
+        </button>
+        <button
+          onClick={saveProject}
+          disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
+          className="px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
+        >
+          {t.save}
+        </button>
+        <button
+          onClick={saveProjectAs}
+          disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
+          className="hidden md:block px-2 py-0.5 bg-surface-secondary hover:bg-surface-tertiary disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-text-primary border border-border-default rounded text-xs transition-colors"
+        >
+          {t.saveAs}
+        </button>
+        <button
+          onClick={() => setIsProjectListOpen(true)}
+          className="px-2 py-0.5 bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default rounded text-xs relative transition-colors"
+          title={t.savedProjects}
+        >
+          {t.load}
+          {savedProjects.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-accent-danger rounded-full text-[8px] flex items-center justify-center text-white">
+              {savedProjects.length}
+            </span>
+          )}
+        </button>
+      </HeaderSlot>
+
       {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
+      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm">
         <input
           type="file"
           accept="image/*"
@@ -714,61 +768,6 @@ function SpriteEditorMain() {
         )}
 
         <div className="flex-1" />
-
-        {/* Project management buttons */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => {
-              if (frames.length > 0 || imageSrc) {
-                if (window.confirm(t.newProjectConfirm)) {
-                  newProject();
-                }
-              } else {
-                newProject();
-              }
-            }}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-xs transition-colors"
-            title={t.newProject}
-          >
-            {t.new}
-          </button>
-          <div className="h-4 w-px bg-border-default" />
-          <input
-            type="text"
-            placeholder={t.projectName}
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            className="w-28 px-2 py-1.5 bg-surface-secondary border border-border-default rounded-lg text-xs focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary/20 transition-colors"
-          />
-          <button
-            onClick={saveProject}
-            disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
-            className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-xs transition-colors"
-          >
-            {t.save}
-          </button>
-          <button
-            onClick={saveProjectAs}
-            disabled={frames.length === 0 || !frames.some((f) => f.imageData)}
-            className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-text-primary border border-border-default rounded-lg text-xs transition-colors"
-          >
-            {t.saveAs}
-          </button>
-          <button
-            onClick={() => setIsProjectListOpen(true)}
-            className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default rounded-lg text-xs relative transition-colors"
-            title={t.savedProjects}
-          >
-            {t.load}
-            {savedProjects.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-accent-danger rounded-full text-[10px] flex items-center justify-center text-white">
-                {savedProjects.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        <div className="h-6 w-px bg-border-default" />
 
         {/* Layers Panel Button */}
         <Tooltip content={t.layers}>

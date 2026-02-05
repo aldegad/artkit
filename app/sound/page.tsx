@@ -1,6 +1,6 @@
 "use client";
 
-import { useLanguage } from "../../shared/contexts";
+import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import {
   SoundEditorProvider,
   useSoundEditor,
@@ -18,25 +18,21 @@ function SoundEditorContent() {
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
-      {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm h-12">
-        <h1 className="text-sm font-semibold">{t.soundEditor}</h1>
-
+      {/* Header Slot */}
+      <HeaderSlot>
+        <h1 className="text-sm font-semibold whitespace-nowrap">{t.soundEditor}</h1>
         {audioBuffer && (
           <>
-            <div className="h-6 w-px bg-border-default" />
-
-            <span className="text-sm text-text-secondary truncate max-w-[200px]" title={fileName || ""}>
+            <div className="h-4 w-px bg-border-default" />
+            <span className="text-sm text-text-secondary truncate max-w-[150px]" title={fileName || ""}>
               {fileName}
             </span>
-
-            <span className="text-xs text-text-tertiary">
+            <span className="text-xs text-text-tertiary whitespace-nowrap">
               ({formatDuration(duration)})
             </span>
           </>
         )}
-
-        </div>
+      </HeaderSlot>
 
       {/* Main Content */}
       {!audioBuffer ? (
