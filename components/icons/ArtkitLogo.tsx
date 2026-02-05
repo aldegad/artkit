@@ -10,14 +10,14 @@ export default function ArtkitLogo({ size = 24, className = "" }: ArtkitLogoProp
     <svg
       width={size}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="-1 0 36 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
       {/* A - left stroke as brush (with brush tip curve at bottom) */}
       <path
-        d="M13 5L6.5 23Q5 27 2.5 28Q1 28.5 1 27"
+        d="M13 5L6.5 22C5 25 3 27.5 1 28C-0.5 28.3 -0.5 27 0.5 25"
         stroke="currentColor"
         strokeWidth="3.5"
         strokeLinecap="round"
@@ -50,20 +50,15 @@ export default function ArtkitLogo({ size = 24, className = "" }: ArtkitLogoProp
       />
       {/* K - upper diagonal (note stem) */}
       <path
-        d="M20 15L27 6"
+        d="M20 15L30 5"
         stroke="currentColor"
         strokeWidth="2.5"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
-      {/* Music note head at K's upper diagonal end */}
-      <ellipse
-        cx="29.5"
-        cy="4.5"
-        rx="3"
-        ry="2.2"
+      {/* Music note head (tilted ellipse shape) */}
+      <path
+        d="M27.5 5 C29 3, 32 3, 33 5 C34 7, 32 8.5, 29.5 8 C27 7.5, 26 7, 27.5 5 Z"
         fill="currentColor"
-        transform="rotate(-35 29.5 4.5)"
       />
       {/* K - lower diagonal */}
       <path
