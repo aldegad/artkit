@@ -17,7 +17,7 @@ export default function ArtkitLogo({ size = 24, className = "" }: ArtkitLogoProp
     >
       {/* A - left stroke as brush (with brush tip curve at bottom) */}
       <path
-        d="M13 5L6 24Q4 28 3 27"
+        d="M13 5L6.5 23Q5 27 2.5 28Q1 28.5 1 27"
         stroke="currentColor"
         strokeWidth="3.5"
         strokeLinecap="round"
@@ -31,7 +31,7 @@ export default function ArtkitLogo({ size = 24, className = "" }: ArtkitLogoProp
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.8"
+        opacity="0.6"
       />
       {/* A crossbar */}
       <path
@@ -48,22 +48,22 @@ export default function ArtkitLogo({ size = 24, className = "" }: ArtkitLogoProp
         strokeWidth="3.5"
         strokeLinecap="round"
       />
-      {/* K - upper diagonal ending with music note head */}
+      {/* K - upper diagonal (note stem) */}
       <path
-        d="M20 15L26 7"
+        d="M20 15L27 6"
         stroke="currentColor"
-        strokeWidth="3"
+        strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       {/* Music note head at K's upper diagonal end */}
       <ellipse
-        cx="27.5"
-        cy="5"
+        cx="29.5"
+        cy="4.5"
         rx="3"
         ry="2.2"
         fill="currentColor"
-        transform="rotate(-30 27.5 5)"
+        transform="rotate(-35 29.5 4.5)"
       />
       {/* K - lower diagonal */}
       <path
@@ -72,7 +72,7 @@ export default function ArtkitLogo({ size = 24, className = "" }: ArtkitLogoProp
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.8"
+        opacity="0.6"
       />
     </svg>
   );
