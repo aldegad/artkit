@@ -19,7 +19,7 @@ type DockPosition = "left" | "right" | "top" | "bottom" | null;
 // ============================================
 
 export default function Panel({ node }: PanelProps) {
-  const { undockPanel, layoutState, updateDropTarget } = useLayout();
+  const { undockPanel, layoutState, updateDropTarget, registerPanelRef, unregisterPanelRef } = useLayout();
   const config = useLayoutConfig();
   const panelRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<DockPosition>(null);
@@ -27,6 +27,14 @@ export default function Panel({ node }: PanelProps) {
   const content = config.getPanelContent(node.panelId);
   const showHeader = config.isPanelHeaderVisible(node.panelId);
   const title = config.getPanelTitle(node.panelId);
+
+  // Register panel ref for snap functionality
+  useEffect(() => {
+    registerPanelRef(node.id, panelRef);
+    return () => {
+      unregisterPanelRef(node.id);
+    };
+  }, [node.id, registerPanelRef, unregisterPanelRef]);
 
   // Calculate which edge the mouse/touch is closest to (10% threshold, max 60px)
   const calculateEdgePosition = useCallback(
@@ -85,9 +93,13 @@ export default function Panel({ node }: PanelProps) {
         // Update drop target based on position
         if (position) {
           updateDropTarget({ panelId: node.id, position });
+        } else {
+          // Clear drop target when inside panel but not near edge
+          updateDropTarget(null);
         }
       } else {
         setHoverPosition(null);
+        // Don't clear dropTarget here - let the panel the pointer is actually in handle it
       }
     };
 

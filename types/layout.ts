@@ -25,6 +25,23 @@ export interface PanelNode extends LayoutNode {
   minSize?: number; // minimum size in pixels
 }
 
+// Snap edge type (includes corners)
+export type SnapEdge =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+// Snap info for minimized floating window
+export interface SnapInfo {
+  panelId: string;
+  edge: SnapEdge;
+}
+
 // Floating window (not docked)
 export interface FloatingWindow {
   id: string;
@@ -32,6 +49,10 @@ export interface FloatingWindow {
   position: { x: number; y: number };
   size: { width: number; height: number };
   isMinimized: boolean;
+  // Snap info for minimized windows
+  snappedTo?: SnapInfo;
+  // Position before expanding (to restore when minimizing again)
+  minimizedPosition?: { x: number; y: number };
 }
 
 // Complete layout state

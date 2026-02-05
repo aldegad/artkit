@@ -1,5 +1,5 @@
-import { ReactNode } from "react";
-import { SplitNode, LayoutState, DropTarget, ResizeState, PanelNode } from "@/types/layout";
+import { ReactNode, RefObject } from "react";
+import { SplitNode, LayoutState, DropTarget, ResizeState, PanelNode, SnapInfo } from "@/types/layout";
 
 // ============================================
 // Panel Metadata
@@ -65,4 +65,12 @@ export interface LayoutContextValue {
   resizeState: ResizeState | null;
   getNode: (nodeId: string) => SplitNode | PanelNode | null;
   isPanelOpen: (panelId: string) => boolean;
+  // Panel ref registry for snap functionality
+  registerPanelRef: (panelId: string, ref: RefObject<HTMLDivElement | null>) => void;
+  unregisterPanelRef: (panelId: string) => void;
+  getPanelRect: (panelId: string) => DOMRect | null;
+  getAllPanelRects: () => Map<string, DOMRect>;
+  // Snap info update
+  updateFloatingWindowSnap: (windowId: string, snapInfo: SnapInfo | undefined) => void;
+  updateFloatingWindowMinimizedPosition: (windowId: string, position: { x: number; y: number } | undefined) => void;
 }

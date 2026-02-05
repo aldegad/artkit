@@ -8,6 +8,7 @@ import {
   useEffect,
   ReactNode,
   useRef,
+  RefObject,
 } from "react";
 import {
   LayoutState,
@@ -16,6 +17,7 @@ import {
   FloatingWindow,
   DropTarget,
   ResizeState,
+  SnapInfo,
   findNode,
   updateNodeSizes,
   addPanelToLayout,
@@ -66,6 +68,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
 
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const panelRefsRef = useRef<Map<string, RefObject<HTMLDivElement | null>>>(new Map());
 
     // Load layout from localStorage on mount
     useEffect(() => {
@@ -340,6 +343,61 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       [layoutState]
     );
 
+    // Panel Ref Registry
+    const registerPanelRef = useCallback(
+      (panelId: string, ref: RefObject<HTMLDivElement | null>) => {
+        panelRefsRef.current.set(panelId, ref);
+      },
+      []
+    );
+
+    const unregisterPanelRef = useCallback((panelId: string) => {
+      panelRefsRef.current.delete(panelId);
+    }, []);
+
+    const getPanelRect = useCallback((panelId: string): DOMRect | null => {
+      const ref = panelRefsRef.current.get(panelId);
+      if (ref?.current) {
+        return ref.current.getBoundingClientRect();
+      }
+      return null;
+    }, []);
+
+    const getAllPanelRects = useCallback((): Map<string, DOMRect> => {
+      const rects = new Map<string, DOMRect>();
+      panelRefsRef.current.forEach((ref, panelId) => {
+        if (ref.current) {
+          rects.set(panelId, ref.current.getBoundingClientRect());
+        }
+      });
+      return rects;
+    }, []);
+
+    // Snap Info Updates
+    const updateFloatingWindowSnap = useCallback(
+      (windowId: string, snapInfo: SnapInfo | undefined) => {
+        setLayoutState((prev) => ({
+          ...prev,
+          floatingWindows: prev.floatingWindows.map((w) =>
+            w.id === windowId ? { ...w, snappedTo: snapInfo } : w
+          ),
+        }));
+      },
+      []
+    );
+
+    const updateFloatingWindowMinimizedPosition = useCallback(
+      (windowId: string, position: { x: number; y: number } | undefined) => {
+        setLayoutState((prev) => ({
+          ...prev,
+          floatingWindows: prev.floatingWindows.map((w) =>
+            w.id === windowId ? { ...w, minimizedPosition: position } : w
+          ),
+        }));
+      },
+      []
+    );
+
     const value: LayoutContextValue = {
       layoutState,
       updateSizes,
@@ -361,6 +419,12 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       resizeState,
       getNode,
       isPanelOpen,
+      registerPanelRef,
+      unregisterPanelRef,
+      getPanelRect,
+      getAllPanelRects,
+      updateFloatingWindowSnap,
+      updateFloatingWindowMinimizedPosition,
     };
 
     return (
