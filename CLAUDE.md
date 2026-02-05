@@ -48,8 +48,11 @@ Each domain has: `hooks/`, `components/`, `contexts/`, `types/`, `utils/`, and a
 
 **shared/** contains cross-domain code:
 - `components/layout/` - Layout system (split panes, floating windows)
-- `components/icons/` - Shared icon components (SpinnerIcon, CheckIcon, etc.)
+- `components/icons/` - Shared icon components (SpinnerIcon, CheckIcon, ChevronDownIcon, etc.)
+- `components/MenuBar/` - Reusable menu bar with dropdown (MenuDropdown)
+- `components/BackgroundRemovalModals.tsx` - ML background removal UI
 - `components/` - UI components (Popover, Select, Tooltip, etc.)
+- `utils/autosave/` - Storage abstraction (IndexedDB/localStorage)
 - `utils/` - Common utilities (generateId, download helpers, cn)
 - `contexts/` - Global contexts (Theme, Language, Auth, Sidebar)
 - `types/` - Common types (Point, Size, BoundingBox, UnifiedLayer)
@@ -113,12 +116,24 @@ Heavy canvas-based rendering with custom hooks:
 - `useBrushTool`, `useTransformTool`, `useCropTool`, `useSelectionTool` - Tool implementations
 - `useHistory` - Undo/redo with canvas state snapshots
 
-### Storage
+### Storage & Autosave
 
 Multi-tier storage:
-1. **IndexedDB** - Primary storage for projects (`utils/storage.ts`)
-2. **LocalStorage** - Autosave state, user preferences
+1. **IndexedDB** - Primary storage for projects and editor autosave
+2. **LocalStorage** - Sprite editor autosave, user preferences
 3. **Firebase** - Optional cloud sync
+
+Autosave uses a shared abstraction (`shared/utils/autosave/`):
+```typescript
+import { createAutosave } from "@/shared/utils";
+
+const autosave = createAutosave<MyData>({
+  backend: "indexedDB",  // or "localStorage"
+  key: "my-autosave-key",
+});
+await autosave.save(data);
+const loaded = await autosave.load();
+```
 
 ### AI Background Removal
 
@@ -130,6 +145,17 @@ Always import from domain barrel exports:
 ```typescript
 import { useLayerManagement, useHistory } from "@/domains/editor";
 import { SplitView, Panel } from "@/shared";
+```
+
+For shared UI components:
+```typescript
+import {
+  MenuDropdown,
+  SpinnerIcon,
+  CheckIcon,
+  BackgroundRemovalModals,
+  type MenuItem,
+} from "@/shared/components";
 ```
 
 ### Styling

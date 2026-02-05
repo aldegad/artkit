@@ -17,3 +17,10 @@ export * from "./layout";
 
 // Icons
 export * from "./icons";
+
+// MenuBar
+export { MenuDropdown } from "./MenuBar";
+export type { MenuItem, MenuDropdownProps } from "./MenuBar";
+
+// Modals
+export { BackgroundRemovalModals } from "./BackgroundRemovalModals";

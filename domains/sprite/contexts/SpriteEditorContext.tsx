@@ -285,24 +285,27 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // Autosave: Load saved data on mount
   useEffect(() => {
-    const data = loadAutosaveData();
-    if (data) {
-      // Restore state
-      if (data.imageSrc) setImageSrc(data.imageSrc);
-      if (data.imageSize) setImageSize(data.imageSize);
-      if (data.frames && data.frames.length > 0) setFrames(data.frames);
-      if (data.nextFrameId) setNextFrameId(data.nextFrameId);
-      if (data.fps) setFps(data.fps);
-      if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
-      if (data.zoom) setZoom(data.zoom);
-      if (data.pan) setPan(data.pan);
-      if (data.scale) setScale(data.scale);
-      if (data.projectName) setProjectName(data.projectName);
-      // Restore composition layers
-      if (data.compositionLayers) setCompositionLayers(data.compositionLayers);
-      if (data.activeLayerId !== undefined) setActiveLayerId(data.activeLayerId);
-    }
-    isInitializedRef.current = true;
+    const loadData = async () => {
+      const data = await loadAutosaveData();
+      if (data) {
+        // Restore state
+        if (data.imageSrc) setImageSrc(data.imageSrc);
+        if (data.imageSize) setImageSize(data.imageSize);
+        if (data.frames && data.frames.length > 0) setFrames(data.frames);
+        if (data.nextFrameId) setNextFrameId(data.nextFrameId);
+        if (data.fps) setFps(data.fps);
+        if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
+        if (data.zoom) setZoom(data.zoom);
+        if (data.pan) setPan(data.pan);
+        if (data.scale) setScale(data.scale);
+        if (data.projectName) setProjectName(data.projectName);
+        // Restore composition layers
+        if (data.compositionLayers) setCompositionLayers(data.compositionLayers);
+        if (data.activeLayerId !== undefined) setActiveLayerId(data.activeLayerId);
+      }
+      isInitializedRef.current = true;
+    };
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -318,7 +321,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
     // Debounce the save
     autosaveTimeoutRef.current = setTimeout(() => {
-      saveAutosaveData({
+      void saveAutosaveData({
         imageSrc,
         imageSize,
         frames,
@@ -461,7 +464,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     setHistoryVersion((v) => v + 1);
 
     // Clear autosave
-    clearAutosaveData();
+    void clearAutosaveData();
   }, []);
 
   // Copy current frame to clipboard
