@@ -69,6 +69,8 @@ export {
   TimelineToolbar,
   AssetDropZone,
   MaskControls,
+  VideoMenuBar,
+  VideoToolbar,
 } from "./components";
 
 // Utils

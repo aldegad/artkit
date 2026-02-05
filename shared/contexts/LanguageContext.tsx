@@ -250,6 +250,28 @@ interface Translations {
   dockTop: string;
   dockBottom: string;
 
+  // Video Editor
+  edit: string;
+  openProject: string;
+  importMedia: string;
+  exportVideo: string;
+  cut: string;
+  copy: string;
+  paste: string;
+  timeline: string;
+  trim: string;
+  trimDesc: string;
+  razor: string;
+  razorDesc: string;
+  mask: string;
+  maskDesc: string;
+  selectDesc: string;
+  stop: string;
+  previousFrame: string;
+  nextFrame: string;
+  dropMediaHere: string;
+  dropMediaDesc: string;
+
   // Copyright
   copyright: string;
 }
@@ -501,6 +523,28 @@ const translations: Record<Language, Translations> = {
     dockTop: "▲ 위",
     dockBottom: "▼ 아래",
 
+    // Video Editor
+    edit: "편집",
+    openProject: "프로젝트 열기",
+    importMedia: "미디어 가져오기",
+    exportVideo: "비디오 내보내기",
+    cut: "잘라내기",
+    copy: "복사",
+    paste: "붙여넣기",
+    timeline: "타임라인",
+    trim: "트림",
+    trimDesc: "클립 시작/끝점 조정",
+    razor: "자르기",
+    razorDesc: "커서 위치에서 클립 분할",
+    mask: "마스크",
+    maskDesc: "클립에 마스크 그리기",
+    selectDesc: "클립 선택 및 이동",
+    stop: "정지",
+    previousFrame: "이전 프레임",
+    nextFrame: "다음 프레임",
+    dropMediaHere: "미디어 파일을 여기에 드롭",
+    dropMediaDesc: "비디오 또는 이미지 파일을 드래그하여 추가",
+
     // Copyright
     copyright: "© 2026 Soo Hong Kim. All rights reserved.",
   },
@@ -749,6 +793,28 @@ const translations: Record<Language, Translations> = {
     dockRight: "Right ▶",
     dockTop: "▲ Top",
     dockBottom: "▼ Bottom",
+
+    // Video Editor
+    edit: "Edit",
+    openProject: "Open Project",
+    importMedia: "Import Media",
+    exportVideo: "Export Video",
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    timeline: "Timeline",
+    trim: "Trim",
+    trimDesc: "Adjust clip in/out points",
+    razor: "Razor",
+    razorDesc: "Split clip at cursor position",
+    mask: "Mask",
+    maskDesc: "Draw mask on clip",
+    selectDesc: "Select and move clips",
+    stop: "Stop",
+    previousFrame: "Previous Frame",
+    nextFrame: "Next Frame",
+    dropMediaHere: "Drop media files here",
+    dropMediaDesc: "Drag video or image files to add",
 
     // Copyright
     copyright: "© 2026 Soo Hong Kim. All rights reserved.",
