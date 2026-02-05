@@ -5,6 +5,8 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import {
@@ -15,10 +17,17 @@ import {
   createVideoTrack,
   createVideoClip,
   createImageClip,
+  MaskData,
 } from "../types";
 import { TIMELINE } from "../constants";
 import { useVideoState } from "./VideoStateContext";
 import { Size } from "@/shared/types";
+import {
+  loadVideoAutosave,
+  saveVideoAutosave,
+  VIDEO_AUTOSAVE_DEBOUNCE_MS,
+} from "../utils/videoAutosave";
+import { loadMediaBlob } from "../utils/mediaStorage";
 
 interface TimelineContextValue {
   // View state
@@ -27,6 +36,7 @@ interface TimelineContextValue {
   setScrollX: (scrollX: number) => void;
   setScrollY: (scrollY: number) => void;
   toggleSnap: () => void;
+  setViewState: (viewState: TimelineViewState) => void;
 
   // Track management
   tracks: VideoTrack[];
@@ -34,6 +44,7 @@ interface TimelineContextValue {
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<VideoTrack>) => void;
   reorderTracks: (fromIndex: number, toIndex: number) => void;
+  restoreTracks: (tracks: VideoTrack[]) => void;
 
   // Clip management
   clips: Clip[];
@@ -56,41 +67,181 @@ interface TimelineContextValue {
   moveClip: (clipId: string, trackId: string, startTime: number) => void;
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
+  restoreClips: (clips: Clip[]) => void;
 
   // Queries
   getClipAtTime: (trackId: string, time: number) => Clip | null;
   getClipsInTrack: (trackId: string) => Clip[];
   getTrackById: (trackId: string) => VideoTrack | null;
+
+  // Autosave state
+  isAutosaveInitialized: boolean;
 }
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
-  const { updateProjectDuration } = useVideoState();
+  const {
+    updateProjectDuration,
+    project,
+    projectName,
+    toolMode,
+    selectedClipIds,
+    playback,
+    setProject,
+    setProjectName,
+    selectClips,
+    setToolMode,
+  } = useVideoState();
 
-  const [viewState, setViewState] = useState<TimelineViewState>(INITIAL_TIMELINE_VIEW);
+  const [viewState, setViewStateInternal] = useState<TimelineViewState>(INITIAL_TIMELINE_VIEW);
   const [tracks, setTracks] = useState<VideoTrack[]>(() => {
     // Start with one default track
     return [createVideoTrack("Video 1", 0)];
   });
   const [clips, setClips] = useState<Clip[]>([]);
+  const [masks, setMasks] = useState<MaskData[]>([]);
+  const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
+
+  // Refs for autosave
+  const isInitializedRef = useRef(false);
+  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Set view state
+  const setViewState = useCallback((newViewState: TimelineViewState) => {
+    setViewStateInternal(newViewState);
+  }, []);
+
+  // Restore functions for autosave
+  const restoreTracks = useCallback((savedTracks: VideoTrack[]) => {
+    setTracks(savedTracks);
+  }, []);
+
+  const restoreClips = useCallback((savedClips: Clip[]) => {
+    setClips(savedClips);
+    updateProjectDuration();
+  }, [updateProjectDuration]);
+
+  // Load autosave on mount
+  useEffect(() => {
+    const loadAutosave = async () => {
+      try {
+        const data = await loadVideoAutosave();
+        if (data) {
+          // Restore timeline data
+          if (data.tracks && data.tracks.length > 0) {
+            setTracks(data.tracks);
+          }
+          if (data.clips && data.clips.length > 0) {
+            // Restore clips with blobs from IndexedDB
+            const restoredClips: Clip[] = [];
+
+            for (const clip of data.clips) {
+              // Try to load blob from IndexedDB using clipId
+              const blob = await loadMediaBlob(clip.id);
+
+              if (blob) {
+                // Create new blob URL from stored blob
+                const newUrl = URL.createObjectURL(blob);
+                restoredClips.push({ ...clip, sourceUrl: newUrl });
+              } else if (!clip.sourceUrl.startsWith("blob:")) {
+                // Non-blob URL (e.g., remote URL), keep as is
+                restoredClips.push(clip);
+              }
+              // If blob URL but no stored blob, skip (invalid)
+            }
+
+            setClips(restoredClips);
+          }
+          if (data.timelineView) {
+            setViewStateInternal(data.timelineView);
+          }
+          if (data.masks) {
+            setMasks(data.masks);
+          }
+          // Restore VideoState data
+          if (data.project) {
+            setProject(data.project);
+          }
+          if (data.projectName) {
+            setProjectName(data.projectName);
+          }
+          if (data.toolMode) {
+            setToolMode(data.toolMode);
+          }
+          if (data.selectedClipIds) {
+            selectClips(data.selectedClipIds);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load autosave:", error);
+      } finally {
+        isInitializedRef.current = true;
+        setIsAutosaveInitialized(true);
+      }
+    };
+
+    loadAutosave();
+  }, [setProject, setProjectName, setToolMode, selectClips]);
+
+  // Debounced autosave on state change
+  useEffect(() => {
+    if (!isInitializedRef.current) return;
+
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+    }
+
+    autosaveTimeoutRef.current = setTimeout(() => {
+      // Save all clips - blobs are stored separately in IndexedDB
+      saveVideoAutosave({
+        project,
+        projectName,
+        tracks,
+        clips,
+        masks,
+        timelineView: viewState,
+        currentTime: playback.currentTime,
+        toolMode,
+        selectedClipIds,
+      }).catch((error) => {
+        console.error("Failed to autosave:", error);
+      });
+    }, VIDEO_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, [
+    project,
+    projectName,
+    tracks,
+    clips,
+    masks,
+    viewState,
+    playback.currentTime,
+    toolMode,
+    selectedClipIds,
+  ]);
 
   // View state actions
   const setZoom = useCallback((zoom: number) => {
     const clampedZoom = Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, zoom));
-    setViewState((prev) => ({ ...prev, zoom: clampedZoom }));
+    setViewStateInternal((prev) => ({ ...prev, zoom: clampedZoom }));
   }, []);
 
   const setScrollX = useCallback((scrollX: number) => {
-    setViewState((prev) => ({ ...prev, scrollX: Math.max(0, scrollX) }));
+    setViewStateInternal((prev) => ({ ...prev, scrollX: Math.max(0, scrollX) }));
   }, []);
 
   const setScrollY = useCallback((scrollY: number) => {
-    setViewState((prev) => ({ ...prev, scrollY: Math.max(0, scrollY) }));
+    setViewStateInternal((prev) => ({ ...prev, scrollY: Math.max(0, scrollY) }));
   }, []);
 
   const toggleSnap = useCallback(() => {
-    setViewState((prev) => ({ ...prev, snapEnabled: !prev.snapEnabled }));
+    setViewStateInternal((prev) => ({ ...prev, snapEnabled: !prev.snapEnabled }));
   }, []);
 
   // Track management
@@ -279,11 +430,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setScrollX,
     setScrollY,
     toggleSnap,
+    setViewState,
     tracks,
     addTrack,
     removeTrack,
     updateTrack,
     reorderTracks,
+    restoreTracks,
     clips,
     addVideoClip,
     addImageClip,
@@ -292,9 +445,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     moveClip,
     trimClipStart,
     trimClipEnd,
+    restoreClips,
     getClipAtTime,
     getClipsInTrack,
     getTrackById,
+    isAutosaveInitialized,
   };
 
   return (

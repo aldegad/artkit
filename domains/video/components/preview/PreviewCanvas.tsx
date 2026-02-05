@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import { useVideoElements } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { PREVIEW } from "../../constants";
+import { VideoClip } from "../../types";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -16,9 +17,47 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, videoElementsRef } = useVideoRefs();
   const { playback, project } = useVideoState();
   const { tracks, clips, getClipAtTime } = useTimeline();
+  const [videoReadyCount, setVideoReadyCount] = useState(0);
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
+
+  // Setup video ready listeners
+  useEffect(() => {
+    const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
+    const cleanupFns: (() => void)[] = [];
+
+    for (const clip of videoClips) {
+      const video = videoElementsRef.current?.get(clip.sourceUrl);
+      if (video) {
+        const handleCanPlay = () => {
+          setVideoReadyCount((c) => c + 1);
+        };
+        const handleSeeked = () => {
+          setVideoReadyCount((c) => c + 1);
+        };
+
+        video.addEventListener("canplay", handleCanPlay);
+        video.addEventListener("seeked", handleSeeked);
+        video.addEventListener("loadeddata", handleCanPlay);
+
+        cleanupFns.push(() => {
+          video.removeEventListener("canplay", handleCanPlay);
+          video.removeEventListener("seeked", handleSeeked);
+          video.removeEventListener("loadeddata", handleCanPlay);
+        });
+
+        // If video is already ready, trigger re-render
+        if (video.readyState >= 2) {
+          setVideoReadyCount((c) => c + 1);
+        }
+      }
+    }
+
+    return () => {
+      cleanupFns.forEach((fn) => fn());
+    };
+  }, [clips, videoElementsRef]);
 
   // Draw checkerboard pattern for transparency
   const drawCheckerboard = useCallback(
@@ -97,6 +136,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const videoElement = videoElementsRef.current.get(clip.sourceUrl);
 
       if (clip.type === "video" && videoElement) {
+        // Check if video has enough data to display
+        if (videoElement.readyState < 2) {
+          // Video not ready yet, skip for now (will re-render when ready)
+          continue;
+        }
+
         // Calculate source time
         const clipTime = playback.currentTime - clip.startTime;
         const sourceTime = clip.trimIn + clipTime;
@@ -104,6 +149,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         // Seek video to correct time
         if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
           videoElement.currentTime = sourceTime;
+          // Will re-render when seeked event fires
+          continue;
         }
 
         // Draw video frame
@@ -147,6 +194,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     getClipAtTime,
     videoElementsRef,
     drawCheckerboard,
+    videoReadyCount,
   ]);
 
   // Render on playback time change

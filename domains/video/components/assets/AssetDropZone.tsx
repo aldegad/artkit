@@ -1,16 +1,18 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useTimeline } from "../../contexts";
+import { useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { SUPPORTED_VIDEO_FORMATS, SUPPORTED_IMAGE_FORMATS } from "../../constants";
+import { saveMediaBlob } from "../../utils/mediaStorage";
 
 interface AssetDropZoneProps {
   className?: string;
 }
 
 export function AssetDropZone({ className }: AssetDropZoneProps) {
-  const { tracks, addVideoClip, addImageClip } = useTimeline();
+  const { tracks, clips, addVideoClip, addImageClip } = useTimeline();
+  const { project, setProject } = useVideoState();
   const [isDragOver, setIsDragOver] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -49,14 +51,32 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
           video.src = url;
 
           await new Promise<void>((resolve) => {
-            video.onloadedmetadata = () => {
-              addVideoClip(
+            video.onloadedmetadata = async () => {
+              const mediaSize = { width: video.videoWidth, height: video.videoHeight };
+
+              // Set canvas size to first imported media size
+              if (clips.length === 0) {
+                setProject({
+                  ...project,
+                  canvasSize: mediaSize,
+                });
+              }
+
+              const clipId = addVideoClip(
                 trackId,
                 url,
                 video.duration,
-                { width: video.videoWidth, height: video.videoHeight },
+                mediaSize,
                 0
               );
+
+              // Save blob to IndexedDB for persistence
+              try {
+                await saveMediaBlob(clipId, file);
+              } catch (error) {
+                console.error("Failed to save media blob:", error);
+              }
+
               resolve();
             };
             video.onerror = () => resolve();
@@ -68,14 +88,32 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
           img.src = url;
 
           await new Promise<void>((resolve) => {
-            img.onload = () => {
-              addImageClip(
+            img.onload = async () => {
+              const mediaSize = { width: img.naturalWidth, height: img.naturalHeight };
+
+              // Set canvas size to first imported media size
+              if (clips.length === 0) {
+                setProject({
+                  ...project,
+                  canvasSize: mediaSize,
+                });
+              }
+
+              const clipId = addImageClip(
                 trackId,
                 url,
-                { width: img.naturalWidth, height: img.naturalHeight },
+                mediaSize,
                 0,
                 5 // Default 5 second duration for images
               );
+
+              // Save blob to IndexedDB for persistence
+              try {
+                await saveMediaBlob(clipId, file);
+              } catch (error) {
+                console.error("Failed to save media blob:", error);
+              }
+
               resolve();
             };
             img.onerror = () => resolve();
@@ -83,7 +121,7 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
         }
       }
     },
-    [tracks, addVideoClip, addImageClip]
+    [tracks, clips, project, setProject, addVideoClip, addImageClip]
   );
 
   const handleFileSelect = useCallback(
