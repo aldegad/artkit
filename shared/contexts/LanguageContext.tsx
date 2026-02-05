@@ -266,6 +266,8 @@ interface Translations {
   mask: string;
   maskDesc: string;
   selectDesc: string;
+  duplicate: string;
+  duplicateDesc: string;
   stop: string;
   previousFrame: string;
   nextFrame: string;
@@ -539,6 +541,8 @@ const translations: Record<Language, Translations> = {
     mask: "마스크",
     maskDesc: "클립에 마스크 그리기",
     selectDesc: "클립 선택 및 이동",
+    duplicate: "복제",
+    duplicateDesc: "선택한 클립을 새 트랙에 복제",
     stop: "정지",
     previousFrame: "이전 프레임",
     nextFrame: "다음 프레임",
@@ -810,6 +814,8 @@ const translations: Record<Language, Translations> = {
     mask: "Mask",
     maskDesc: "Draw mask on clip",
     selectDesc: "Select and move clips",
+    duplicate: "Duplicate",
+    duplicateDesc: "Duplicate selected clip to new track",
     stop: "Stop",
     previousFrame: "Previous Frame",
     nextFrame: "Next Frame",

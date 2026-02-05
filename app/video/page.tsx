@@ -34,7 +34,7 @@ function VideoEditorContent() {
     stepForward,
     stepBackward,
   } = useVideoState();
-  const { clips } = useTimeline();
+  const { clips, duplicateClip } = useTimeline();
   const { isEditingMask, startMaskEdit } = useMask();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +103,15 @@ function VideoEditorContent() {
     console.log("Delete");
   }, []);
 
+  const handleDuplicate = useCallback(() => {
+    if (selectedClipIds.length > 0) {
+      // Duplicate each selected clip to a new track
+      selectedClipIds.forEach((clipId) => {
+        duplicateClip(clipId);
+      });
+    }
+  }, [selectedClipIds, duplicateClip]);
+
   // View menu handlers
   const handleZoomIn = useCallback(() => {
     // TODO: implement zoom in
@@ -164,8 +173,14 @@ function VideoEditorContent() {
       case "arrowright":
         stepForward();
         break;
+      case "d":
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleDuplicate();
+        }
+        break;
     }
-  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward]);
+  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward, handleDuplicate]);
 
   const menuTranslations = {
     file: t.file,
@@ -293,6 +308,34 @@ function VideoEditorContent() {
               <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 3L10 8L2 13V3Z" />
                 <rect x="12" y="3" width="2" height="10" />
+              </svg>
+            </button>
+          </Tooltip>
+        </div>
+
+        {/* Clip Actions */}
+        <div className="flex items-center gap-1 ml-auto">
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.duplicate}</span>
+                <span className="text-text-tertiary text-[11px]">{t.duplicateDesc}</span>
+              </div>
+            }
+            shortcut="Shift+D"
+          >
+            <button
+              onClick={handleDuplicate}
+              disabled={selectedClipIds.length === 0}
+              className={`p-1.5 rounded transition-colors ${
+                selectedClipIds.length > 0
+                  ? "hover:bg-interactive-hover text-text-secondary hover:text-text-primary"
+                  : "text-text-tertiary cursor-not-allowed"
+              }`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="5" y="5" width="8" height="8" rx="1" />
+                <path d="M3 11V3a1 1 0 011-1h8" />
               </svg>
             </button>
           </Tooltip>
