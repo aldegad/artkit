@@ -3,6 +3,17 @@
 import { useEffect, RefObject } from "react";
 import { CropArea } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
+import {
+  BRUSH_SIZE_SHORTCUTS,
+  ZOOM_SHORTCUTS,
+  HISTORY_SHORTCUTS,
+  CLIPBOARD_SHORTCUTS,
+  SPECIAL_SHORTCUTS,
+  matchesToolShortcut,
+  matchesAnyCodes,
+  hasCmdOrCtrl,
+  matchesShortcut,
+} from "../constants";
 
 // ============================================
 // Types
@@ -89,7 +100,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       }
 
       // Space for temporary hand tool
-      if (e.code === "Space" && !e.repeat) {
+      if (e.code === SPECIAL_SHORTCUTS.temporaryHand && !e.repeat) {
         e.preventDefault();
         setIsSpacePressed(true);
       }
@@ -98,81 +109,52 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       if (e.altKey) setIsAltPressed(true);
 
       // Tool shortcuts (single keys without modifiers)
-      if (!e.metaKey && !e.ctrlKey) {
-        switch (e.key) {
-          case "c":
-            setToolMode("crop");
-            break;
-          case "h":
-            setToolMode("hand");
-            break;
-          case "z":
-            setToolMode("zoom");
-            break;
-          case "b":
-            setToolMode("brush");
-            break;
-          case "e":
-            setToolMode("eraser");
-            break;
-          case "g":
-            setToolMode("fill");
-            break;
-          case "i":
-            setToolMode("eyedropper");
-            break;
-          case "s":
-            setToolMode("stamp");
-            break;
-          case "m":
-            setToolMode("marquee");
-            break;
-          case "v":
-            setToolMode("move");
-            break;
+      const toolMode = matchesToolShortcut(e);
+      if (toolMode) {
+        setToolMode(toolMode);
+      }
+
+      // Brush size shortcuts (without Cmd/Ctrl)
+      if (!hasCmdOrCtrl(e)) {
+        if (matchesAnyCodes(e, BRUSH_SIZE_SHORTCUTS.decrease)) {
+          setBrushSize((s) => Math.max(1, s - (e.shiftKey ? 10 : 1)));
+        }
+        if (matchesAnyCodes(e, BRUSH_SIZE_SHORTCUTS.increase)) {
+          setBrushSize((s) => Math.min(200, s + (e.shiftKey ? 10 : 1)));
         }
       }
 
-      // Brush size shortcuts
-      if (e.key === "[" || (e.key === "-" && !e.metaKey && !e.ctrlKey)) {
-        setBrushSize((s) => Math.max(1, s - (e.shiftKey ? 10 : 1)));
-      }
-      if (e.key === "]" || (e.key === "=" && !e.metaKey && !e.ctrlKey)) {
-        setBrushSize((s) => Math.min(200, s + (e.shiftKey ? 10 : 1)));
-      }
-
       // Zoom shortcuts (with Cmd/Ctrl)
-      if ((e.key === "=" || e.key === "+") && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setZoom((z) => Math.min(10, z * 1.25));
-      }
-      if (e.key === "-" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setZoom((z) => Math.max(0.1, z * 0.8));
-      }
-      if (e.key === "0" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setZoom(() => 1);
-        setPan({ x: 0, y: 0 });
+      if (hasCmdOrCtrl(e)) {
+        if (matchesAnyCodes(e, ZOOM_SHORTCUTS.zoomIn)) {
+          e.preventDefault();
+          setZoom((z) => Math.min(10, z * 1.25));
+        }
+        if (matchesAnyCodes(e, ZOOM_SHORTCUTS.zoomOut)) {
+          e.preventDefault();
+          setZoom((z) => Math.max(0.1, z * 0.8));
+        }
+        if (matchesAnyCodes(e, ZOOM_SHORTCUTS.resetZoom)) {
+          e.preventDefault();
+          setZoom(() => 1);
+          setPan({ x: 0, y: 0 });
+        }
       }
 
       // Undo (Cmd+Z)
-      if (e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+      if (matchesShortcut(e, HISTORY_SHORTCUTS.undo) && !e.shiftKey) {
         e.preventDefault();
         undo();
       }
 
       // Redo (Cmd+Shift+Z or Cmd+Y)
-      if (
-        (e.key === "z" && (e.metaKey || e.ctrlKey) && e.shiftKey) ||
-        (e.key === "y" && (e.metaKey || e.ctrlKey))
-      ) {
+      if (HISTORY_SHORTCUTS.redo.some((shortcut) => matchesShortcut(e, shortcut))) {
         e.preventDefault();
         redo();
       }
 
       // Copy (Cmd+C)
-      if (e.key === "c" && (e.metaKey || e.ctrlKey) && selection) {
+      if (matchesShortcut(e, CLIPBOARD_SHORTCUTS.copy) && selection) {
         e.preventDefault();
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext("2d");
@@ -211,7 +193,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       }
 
       // Paste (Cmd+V)
-      if (e.key === "v" && (e.metaKey || e.ctrlKey) && clipboardRef.current) {
+      if (matchesShortcut(e, CLIPBOARD_SHORTCUTS.paste) && clipboardRef.current) {
         e.preventDefault();
         const editCanvas = editCanvasRef.current;
         const ctx = editCanvas?.getContext("2d");
@@ -255,7 +237,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       }
 
       // Escape to clear selection or close modal
-      if (e.key === "Escape") {
+      if (e.code === SPECIAL_SHORTCUTS.cancel) {
         if (isProjectListOpen) {
           setIsProjectListOpen(false);
         } else {
@@ -266,7 +248,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
+      if (e.code === SPECIAL_SHORTCUTS.temporaryHand) {
         setIsSpacePressed(false);
       }
       if (!e.altKey) setIsAltPressed(false);

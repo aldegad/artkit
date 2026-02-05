@@ -60,3 +60,20 @@ export {
 } from "./utils";
 
 export type { EditorAutosaveData } from "./utils";
+
+// Constants
+export {
+  TOOL_SHORTCUTS,
+  BRUSH_SIZE_SHORTCUTS,
+  ZOOM_SHORTCUTS,
+  HISTORY_SHORTCUTS,
+  CLIPBOARD_SHORTCUTS,
+  FILE_SHORTCUTS,
+  SPECIAL_SHORTCUTS,
+  hasCmdOrCtrl,
+  matchesShortcut,
+  matchesToolShortcut,
+  matchesAnyCodes,
+} from "./constants";
+
+export type { ShortcutDefinition } from "./constants";
