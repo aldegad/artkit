@@ -1416,6 +1416,58 @@ function ImageEditorContent() {
     );
   }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
 
+  // Export each selected layer individually at canvas size
+  const exportSelectedLayers = useCallback(() => {
+    const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
+    if (targetIds.length === 0) return;
+
+    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+    const mimeType =
+      outputFormat === "webp" ? "image/webp" : outputFormat === "jpeg" ? "image/jpeg" : "image/png";
+    const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+
+    targetIds.forEach((layerId) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+
+      const layerCanvas = layerCanvasesRef.current.get(layerId);
+      if (!layerCanvas) return;
+
+      // Create export canvas at full canvas size
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = displayWidth;
+      exportCanvas.height = displayHeight;
+      const ctx = exportCanvas.getContext("2d");
+      if (!ctx) return;
+
+      // Fill with white background for JPEG
+      if (outputFormat === "jpeg") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, displayWidth, displayHeight);
+      }
+
+      // Draw layer at its position within the canvas
+      const posX = layer.position?.x || 0;
+      const posY = layer.position?.y || 0;
+      ctx.globalAlpha = layer.opacity;
+      ctx.drawImage(layerCanvas, posX, posY);
+
+      exportCanvas.toBlob(
+        (blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${layer.name || "layer"}.${ext}`;
+          link.click();
+          URL.revokeObjectURL(url);
+        },
+        mimeType,
+        quality,
+      );
+    });
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, outputFormat, quality, getDisplayDimensions]);
+
   // Get cursor based on tool mode
   const getCursor = () => {
     // Guide hover cursor (when guides visible and not locked)
@@ -1877,7 +1929,10 @@ function ImageEditorContent() {
           onSave={handleSaveProject}
           onSaveAs={handleSaveAsProject}
           onImportImage={() => fileInputRef.current?.click()}
+          onExport={exportImage}
+          onExportLayers={exportSelectedLayers}
           canSave={layers.length > 0}
+          hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
           isLoading={isLoading || isSaving}
           showRulers={showRulers}
           showGuides={showGuides}
@@ -1897,6 +1952,8 @@ function ImageEditorContent() {
             save: t.save,
             saveAs: t.saveAs,
             importImage: t.importImage,
+            export: t.export,
+            exportLayers: t.exportLayers,
             layers: t.layers,
             showRulers: t.showRulers,
             showGuides: t.showGuides,
@@ -2107,21 +2164,6 @@ function ImageEditorContent() {
           </div>
 
           <div className="flex-1 min-w-0" />
-
-          <button
-            onClick={clearEdits}
-            className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
-            title={t.resetEdit}
-          >
-            {t.reset}
-          </button>
-
-          <button
-            onClick={exportImage}
-            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
-          >
-            Export
-          </button>
           </div>
         </Scrollbar>
       )}
@@ -2295,7 +2337,10 @@ interface EditorMenuBarInnerProps {
   onSave: () => void;
   onSaveAs: () => void;
   onImportImage: () => void;
+  onExport: () => void;
+  onExportLayers: () => void;
   canSave: boolean;
+  hasSelectedLayers: boolean;
   isLoading?: boolean;
   // View menu props
   showRulers: boolean;
@@ -2316,6 +2361,8 @@ interface EditorMenuBarInnerProps {
     save: string;
     saveAs: string;
     importImage: string;
+    export: string;
+    exportLayers: string;
     layers: string;
     showRulers: string;
     showGuides: string;
