@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
+import { NumberScrubber } from "../../../shared/components";
 
 // ============================================
 // Icon Components
@@ -616,20 +617,16 @@ export default function FramePreviewContent() {
         </div>
 
         {/* Zoom control */}
-        <div className="flex items-center justify-center gap-1 text-sm">
-          <button
-            onClick={() => setFrameEditZoom((z) => Math.max(0.1, z * 0.8))}
-            className="p-1 hover:bg-interactive-hover rounded transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
-          </button>
-          <span className="text-xs w-10 text-center text-text-primary">{Math.round(frameEditZoom * 100)}%</span>
-          <button
-            onClick={() => setFrameEditZoom((z) => Math.min(20, z * 1.25))}
-            className="p-1 hover:bg-interactive-hover rounded transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
-          </button>
+        <div className="flex items-center justify-center">
+          <NumberScrubber
+            value={frameEditZoom}
+            onChange={setFrameEditZoom}
+            min={0.1}
+            max={20}
+            step={{ multiply: 1.25 }}
+            format={(v) => `${Math.round(v * 100)}%`}
+            size="sm"
+          />
         </div>
 
         {/* Frame name */}
