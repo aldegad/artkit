@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Select } from "./Select";
 
 // ============================================
@@ -12,7 +13,7 @@ type OutputFormat = "png" | "webp" | "jpeg";
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (fileName: string, format: OutputFormat, quality: number) => void;
+  onExport: (fileName: string, format: OutputFormat, quality: number, backgroundColor: string | null) => void;
   defaultFileName: string;
   /** "single" for merged image, "layers" for per-layer ZIP */
   mode: "single" | "layers";
@@ -22,6 +23,8 @@ interface ExportModalProps {
     fileName: string;
     format: string;
     quality: string;
+    backgroundColor: string;
+    transparent: string;
   };
 }
 
@@ -40,6 +43,8 @@ export function ExportModal({
   const [fileName, setFileName] = useState(defaultFileName);
   const [format, setFormat] = useState<OutputFormat>("png");
   const [quality, setQuality] = useState(0.9);
+  const [useBgColor, setUseBgColor] = useState(false);
+  const [bgColor, setBgColor] = useState("#ffffff");
 
   // Reset state when modal opens
   useEffect(() => {
@@ -50,9 +55,9 @@ export function ExportModal({
 
   const handleExport = useCallback(() => {
     if (!fileName.trim()) return;
-    onExport(fileName.trim(), format, quality);
+    onExport(fileName.trim(), format, quality, useBgColor ? bgColor : null);
     onClose();
-  }, [fileName, format, quality, onExport, onClose]);
+  }, [fileName, format, quality, useBgColor, bgColor, onExport, onClose]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -72,7 +77,7 @@ export function ExportModal({
   const ext = format === "jpeg" ? "jpg" : format;
   const fileSuffix = mode === "layers" ? ".zip" : `.${ext}`;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onKeyDown={handleKeyDown}>
       <div
         className="bg-surface-primary border border-border-default rounded-lg shadow-xl w-[360px]"
@@ -142,6 +147,42 @@ export function ExportModal({
               />
             </div>
           )}
+
+          {/* Background color */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">{t.backgroundColor}</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="bgMode"
+                  checked={!useBgColor}
+                  onChange={() => setUseBgColor(false)}
+                  className="accent-accent-primary"
+                />
+                <span className="text-sm text-text-primary">{t.transparent}</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="bgMode"
+                  checked={useBgColor}
+                  onChange={() => setUseBgColor(true)}
+                  className="accent-accent-primary"
+                />
+                <input
+                  type="color"
+                  value={bgColor}
+                  onChange={(e) => {
+                    setBgColor(e.target.value);
+                    setUseBgColor(true);
+                  }}
+                  className="w-6 h-6 rounded border border-border-default cursor-pointer bg-transparent"
+                />
+                <span className="text-xs text-text-tertiary font-mono">{bgColor}</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -161,6 +202,7 @@ export function ExportModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

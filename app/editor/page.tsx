@@ -1386,7 +1386,7 @@ function ImageEditorContent() {
   }, [layers, layerCanvasesRef, cropArea, getDisplayDimensions]);
 
   // Export each selected layer individually at canvas size, bundled as ZIP
-  const exportSelectedLayers = useCallback(async (fileName: string, fmt: OutputFormat, q: number) => {
+  const exportSelectedLayers = useCallback(async (fileName: string, fmt: OutputFormat, q: number, backgroundColor: string | null) => {
     const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
     if (targetIds.length === 0) return;
 
@@ -1410,7 +1410,10 @@ function ImageEditorContent() {
       const ctx = exportCanvas.getContext("2d");
       if (!ctx) return null;
 
-      if (fmt === "jpeg") {
+      if (backgroundColor) {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, displayWidth, displayHeight);
+      } else if (fmt === "jpeg") {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, displayWidth, displayHeight);
       }
@@ -1446,11 +1449,11 @@ function ImageEditorContent() {
   }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
 
   // Handle export from modal
-  const handleExportFromModal = useCallback((fileName: string, fmt: OutputFormat, q: number) => {
+  const handleExportFromModal = useCallback((fileName: string, fmt: OutputFormat, q: number, backgroundColor: string | null) => {
     if (exportMode === "single") {
       exportImage(fileName, fmt, q);
     } else {
-      exportSelectedLayers(fileName, fmt, q);
+      exportSelectedLayers(fileName, fmt, q, backgroundColor);
     }
   }, [exportMode, exportImage, exportSelectedLayers]);
 
@@ -2196,6 +2199,8 @@ function ImageEditorContent() {
           fileName: t.projectName,
           format: t.format,
           quality: t.quality,
+          backgroundColor: t.background,
+          transparent: t.transparent,
         }}
       />
 
