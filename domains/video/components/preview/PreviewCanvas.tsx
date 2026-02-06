@@ -56,7 +56,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
-  // enableWheel/Pinch are off for now; flip to true for manual zoom later
   const viewport = useCanvasViewport({
     containerRef: previewContainerRef,
     canvasRef: previewCanvasRef,
@@ -64,9 +63,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     config: { origin: "center", minZoom: 0.1, maxZoom: 10 },
     fitOnMount: true,
     fitPadding: 40,
-    enableWheel: false,
-    enablePinch: false,
+    enableWheel: true,
+    enablePinch: true,
   });
+  const isPanningRef = useRef(false);
+  const { zoom: viewportZoom } = viewport.useReactSync(200);
+  const zoomPercent = Math.round(viewportZoom * 100);
+
+  // Merge container ref with viewport wheel/pinch refs
+  const containerRefCallback = useCallback((el: HTMLDivElement | null) => {
+    previewContainerRef.current = el;
+    viewport.wheelRef(el);
+    viewport.pinchRef(el);
+  }, [previewContainerRef, viewport]);
 
   const previewGeometryRef = useRef({
     offsetX: 0,
@@ -627,6 +636,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [tracks, getClipAtTime, currentTimeRef]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Middle mouse button drag for pan
+    if (e.button === 1) {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      viewport.startPanDrag({ x: e.clientX, y: e.clientY });
+      isPanningRef.current = true;
+      return;
+    }
+
     if (isEditingMask && activeTrackId) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (!maskCoords) return;
@@ -696,9 +714,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
+  }, [viewport, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Middle mouse button pan
+    if (isPanningRef.current) {
+      viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
     // Update brush cursor position when editing mask
     if (isEditingMask) {
       const container = previewContainerRef.current;
@@ -773,9 +797,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
+  }, [viewport, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isPanningRef.current) {
+      viewport.endPanDrag();
+      isPanningRef.current = false;
+    }
+
     if (isMaskDrawingRef.current) {
       endDraw();
       isMaskDrawingRef.current = false;
@@ -808,7 +837,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       cropStart: null,
     };
     setIsDraggingCrop(false);
-  }, [endDraw, setBrushMode, saveMaskData]);
+  }, [viewport, endDraw, setBrushMode, saveMaskData]);
+
+  // Double-click to fit/reset zoom
+  const handleDoubleClick = useCallback(() => {
+    viewport.fitToContainer(40);
+  }, [viewport]);
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick(() => {
@@ -826,34 +860,63 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     renderRef.current();
   }, [invalidateCssCache]);
 
+  // Re-render when viewport changes (zoom/pan)
+  useEffect(() => {
+    return viewport.onViewportChange(() => {
+      cancelAnimationFrame(renderRequestRef.current);
+      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    });
+  }, [viewport]);
+
   // Handle resize — recalculate fit scale via viewport, then re-render
   useEffect(() => {
     const container = previewContainerRef.current;
     if (!container) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      viewport.fitToContainer(40);
+      const { zoom, pan } = viewport.getTransform();
+      if (zoom === 1 && pan.x === 0 && pan.y === 0) {
+        // Default view — fit to container
+        viewport.fitToContainer(40);
+      } else {
+        // User has zoomed/panned — only update baseScale
+        const rect = container.getBoundingClientRect();
+        const padding = 40;
+        const maxW = rect.width - padding * 2;
+        const maxH = rect.height - padding * 2;
+        const pw = project.canvasSize.width;
+        const ph = project.canvasSize.height;
+        if (maxW > 0 && maxH > 0 && pw > 0 && ph > 0) {
+          viewport.setBaseScale(Math.min(maxW / pw, maxH / ph));
+        }
+      }
       requestAnimationFrame(() => renderRef.current());
     });
 
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
-  }, [previewContainerRef, viewport]);
+  }, [previewContainerRef, viewport, project.canvasSize.width, project.canvasSize.height]);
+
+  const handleFitToScreen = useCallback(() => {
+    viewport.fitToContainer(40);
+  }, [viewport]);
 
   return (
     <div
-      ref={previewContainerRef}
+      ref={containerRefCallback}
       className={cn("relative w-full h-full overflow-hidden", className)}
     >
       <canvas
         ref={previewCanvasRef}
         className="absolute inset-0"
         style={{
-          cursor: isEditingMask
-            ? "none"
-            : toolMode === "crop"
-              ? (isDraggingCrop ? "grabbing" : "crosshair")
-              : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+          cursor: isPanningRef.current
+            ? "grabbing"
+            : isEditingMask
+              ? "none"
+              : toolMode === "crop"
+                ? (isDraggingCrop ? "grabbing" : "crosshair")
+                : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
@@ -864,6 +927,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           handlePointerUp(e);
           setBrushCursor(null);
         }}
+        onDoubleClick={handleDoubleClick}
       />
       {/* Brush cursor preview */}
       {isEditingMask && brushCursor && (() => {
@@ -884,6 +948,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           />
         );
       })()}
+      {/* Zoom indicator — shown when zoomed in/out */}
+      {zoomPercent !== 100 && (
+        <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-surface-primary/80 backdrop-blur-sm rounded px-2 py-1 text-[11px] text-text-secondary pointer-events-auto">
+          <span>{zoomPercent}%</span>
+          <button
+            onClick={handleFitToScreen}
+            className="hover:text-text-primary transition-colors text-[10px] underline"
+          >
+            Fit
+          </button>
+        </div>
+      )}
     </div>
   );
 }
