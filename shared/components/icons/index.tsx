@@ -15,6 +15,8 @@ export {
   MenuIcon,
   PlusIcon,
   MinusIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
   CheckIcon,
   SpinnerIcon,
   WarningIcon,

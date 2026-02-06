@@ -82,6 +82,7 @@ export function SoundToolbar() {
           step={{ multiply: 1.5 }}
           format={(v) => `${Math.round(v * 100)}%`}
           size="sm"
+          variant="zoom"
         />
         <button
           onClick={() => setZoom(1)}

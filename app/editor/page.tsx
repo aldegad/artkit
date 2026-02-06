@@ -2097,6 +2097,7 @@ function ImageEditorContent() {
               step={{ multiply: 1.25 }}
               format={(v) => `${Math.round(v * 100)}%`}
               size="sm"
+              variant="zoom"
             />
             <button
               onClick={fitToScreen}
