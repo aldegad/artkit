@@ -138,6 +138,7 @@ function VideoEditorContent() {
 
   const [isTimelineVisible, setIsTimelineVisible] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
   const audioHistorySavedRef = useRef(false);
 
   useEffect(() => {
@@ -409,7 +410,7 @@ function VideoEditorContent() {
       ...Array.from(audioElementsRef.current.values()),
     ];
 
-    if (typeof AudioContext !== "undefined" && mediaElements.length > 0) {
+    if (includeAudioOnExport && typeof AudioContext !== "undefined" && mediaElements.length > 0) {
       let audioContext = exportAudioContextRef.current;
       if (!audioContext || audioContext.state === "closed") {
         audioContext = new AudioContext();
@@ -520,7 +521,7 @@ function VideoEditorContent() {
       canvasStream.getTracks().forEach((track) => track.stop());
       setIsExporting(false);
     }
-  }, [isExporting, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
+  }, [isExporting, includeAudioOnExport, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
@@ -943,6 +944,19 @@ function VideoEditorContent() {
             </button>
           </Tooltip>
         </div>
+
+        <div className="h-4 w-px bg-border-default mx-1" />
+        <button
+          onClick={() => setIncludeAudioOnExport((prev) => !prev)}
+          className={`px-2 py-1 text-xs rounded transition-colors ${
+            includeAudioOnExport
+              ? "bg-accent/20 text-accent hover:bg-accent/30"
+              : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+          }`}
+          title={includeAudioOnExport ? "Export includes audio" : "Export without audio"}
+        >
+          Export Audio {includeAudioOnExport ? "On" : "Off"}
+        </button>
 
         {selectedAudioClip && (
           <>
