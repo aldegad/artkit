@@ -138,4 +138,5 @@ export {
   SidebarSoundIcon,
   SidebarVideoIcon,
   SidebarIconsIcon,
+  ArtkitIcon,
 } from "./sidebar";
