@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth } from "../../shared/contexts";
 import { HeaderContent } from "../../shared/components";
-import { Tooltip, Scrollbar, ExportModal } from "../../shared/components";
+import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "../../shared/components";
 import {
   MarqueeIcon,
   MoveIcon,
@@ -20,8 +20,6 @@ import {
   UndoIcon,
   RedoIcon,
   RotateIcon,
-  MinusIcon,
-  PlusIcon,
 } from "../../shared/components/icons";
 import {
   EditorToolMode,
@@ -2091,21 +2089,15 @@ function ImageEditorContent() {
 
           {/* Zoom controls */}
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
-              className="p-1 hover:bg-interactive-hover rounded transition-colors"
-              title={t.zoomOut}
-            >
-              <MinusIcon className="w-4 h-4" />
-            </button>
-            <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
-            <button
-              onClick={() => setZoom((z) => Math.min(10, z * 1.25))}
-              className="p-1 hover:bg-interactive-hover rounded transition-colors"
-              title={t.zoomIn}
-            >
-              <PlusIcon className="w-4 h-4" />
-            </button>
+            <NumberScrubber
+              value={zoom}
+              onChange={setZoom}
+              min={0.1}
+              max={10}
+              step={{ multiply: 1.25 }}
+              format={(v) => `${Math.round(v * 100)}%`}
+              size="sm"
+            />
             <button
               onClick={fitToScreen}
               className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"

@@ -496,18 +496,15 @@ export default function FramePreviewContent() {
         <div className="h-6 w-px bg-border-default" />
 
         {/* Brush size */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-text-secondary">{t.size}:</label>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            className="w-16 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-          />
-          <span className="text-xs text-text-secondary w-4">{brushSize}</span>
-        </div>
+        <NumberScrubber
+          value={brushSize}
+          onChange={(v) => setBrushSize(Math.round(v))}
+          min={1}
+          max={10}
+          step={1}
+          label={`${t.size}:`}
+          size="sm"
+        />
       </div>
 
       {/* Preview area */}
