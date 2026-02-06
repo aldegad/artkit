@@ -2,7 +2,7 @@
 
 import { useTimeline } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
-import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, TimelineZoomOutIcon, TimelineZoomInIcon } from "@/shared/components/icons";
+import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, SnapOffIcon, TimelineZoomOutIcon, TimelineZoomInIcon } from "@/shared/components/icons";
 import Tooltip from "@/shared/components/Tooltip";
 import { TIMELINE } from "../../constants";
 
@@ -60,7 +60,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               : "hover:bg-surface-tertiary text-text-secondary"
           )}
         >
-          <SnapIcon />
+          {viewState.snapEnabled ? <SnapIcon /> : <SnapOffIcon />}
         </button>
       </Tooltip>
 

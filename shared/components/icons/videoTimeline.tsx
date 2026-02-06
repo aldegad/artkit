@@ -48,6 +48,14 @@ export const SnapIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+export const SnapOffIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17V9a5 5 0 0110 0v8" />
+    <path strokeLinecap="round" strokeWidth={2} d="M5 13h2m10 0h2M5 17h2m10 0h2" />
+    <path strokeLinecap="round" strokeWidth={2} d="M3 21L21 3" />
+  </svg>
+);
+
 export const TimelineZoomInIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />

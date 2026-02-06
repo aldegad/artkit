@@ -8,6 +8,7 @@ import { Track } from "./Track";
 import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { cn } from "@/shared/utils/cn";
+import { TrackVisibleIcon, TrackHiddenIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon } from "@/shared/components/icons";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE } from "../../constants";
 
@@ -222,13 +223,11 @@ export function Timeline({ className }: TimelineProps) {
                     )}
                     title={track.visible ? "Hide track" : "Show track"}
                   >
-                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                      {track.visible ? (
-                        <path d="M8 3C4.5 3 1.5 6 0 8c1.5 2 4.5 5 8 5s6.5-3 8-5c-1.5-2-4.5-5-8-5zm0 8a3 3 0 110-6 3 3 0 010 6z" />
-                      ) : (
-                        <path d="M2 2l12 12M8 4c2 0 4 1 5.5 2.5L12 8c-.5-1-1.5-2-4-2-1 0-2 .3-2.5.8L4 5.3C5 4.5 6.5 4 8 4zM3.5 6.5L5 8c.5 1 1.5 2 3 2 .5 0 1-.1 1.5-.3l1.5 1.5c-1 .5-2 .8-3 .8-3.5 0-6.5-3-8-5 .5-.7 1.2-1.5 2-2.2l1.5 1.7z" />
-                      )}
-                    </svg>
+                    {track.visible ? (
+                      <TrackVisibleIcon className="w-3 h-3" />
+                    ) : (
+                      <TrackHiddenIcon className="w-3 h-3" />
+                    )}
                   </button>
 
                   {/* Audio mute toggle */}
@@ -240,13 +239,11 @@ export function Timeline({ className }: TimelineProps) {
                     )}
                     title={track.muted ? "Unmute track" : "Mute track"}
                   >
-                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                      {track.muted ? (
-                        <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
-                      ) : (
-                        <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
-                      )}
-                    </svg>
+                    {track.muted ? (
+                      <TrackMutedIcon className="w-3 h-3" />
+                    ) : (
+                      <TrackUnmutedIcon className="w-3 h-3" />
+                    )}
                   </button>
 
                   {/* Track name */}
@@ -262,9 +259,7 @@ export function Timeline({ className }: TimelineProps) {
                     className="p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
                     title="Delete track"
                   >
-                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M3 4h10v1H3V4zm1 2h8v7H4V6zm2-3h4l1 1H5l1-1z" />
-                    </svg>
+                    <DeleteIcon className="w-3 h-3" />
                   </button>
                 </div>
               </div>

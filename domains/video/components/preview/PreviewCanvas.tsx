@@ -246,7 +246,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const height = rect.height;
 
     // Clear with background color
-    ctx.fillStyle = "#1a1a1a";
+    const colors = getCanvasColorsSync();
+    const rootStyle = getComputedStyle(document.documentElement);
+    const surfacePrimary = rootStyle.getPropertyValue("--surface-primary").trim() || "#1a1a1a";
+    const borderDefault = rootStyle.getPropertyValue("--border-default").trim() || "#333333";
+    ctx.fillStyle = surfacePrimary;
     ctx.fillRect(0, 0, width, height);
 
     // Calculate preview area (fit project canvas to container)
@@ -351,7 +355,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           ctx.rotate((clip.rotation * Math.PI) / 180);
           ctx.translate(-centerX, -centerY);
         }
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.strokeStyle = colors.selection;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(boxX, boxY, boxW, boxH);
@@ -373,13 +377,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
       // Dim everything outside crop.
       ctx.save();
-      ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.fillStyle = colors.overlay;
       ctx.fillRect(0, 0, width, height);
       ctx.clearRect(cropX, cropY, cropW, cropH);
       ctx.restore();
 
       ctx.save();
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = colors.textOnColor;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([8, 4]);
       ctx.strokeRect(cropX, cropY, cropW, cropH);
@@ -396,7 +400,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         { x: cropX, y: cropY + cropH },
         { x: cropX, y: cropY + cropH / 2 },
       ];
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = colors.textOnColor;
       for (const handle of handles) {
         ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
       }
@@ -404,7 +408,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     // Draw frame border
-    ctx.strokeStyle = "#333";
+    ctx.strokeStyle = borderDefault;
     ctx.lineWidth = 1;
     ctx.strokeRect(offsetX, offsetY, previewWidth, previewHeight);
   };
