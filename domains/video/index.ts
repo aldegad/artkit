@@ -76,6 +76,7 @@ export {
   MaskControls,
   VideoMenuBar,
   VideoToolbar,
+  VideoExportModal,
   VideoSplitContainer,
   VideoFloatingWindows,
   registerVideoPanelComponent,

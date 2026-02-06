@@ -5,7 +5,7 @@ import { createPanelRegistry } from "@/shared/components/layout";
 const PANEL_META = {
   preview: {
     title: "Preview",
-    showHeader: true,
+    showHeader: false,
     defaultSize: { width: 900, height: 600 },
     minSize: 240,
   },

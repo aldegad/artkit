@@ -17,6 +17,7 @@ import {
   useVideoSave,
   VideoMenuBar,
   VideoToolbar,
+  VideoExportModal,
   VideoSplitContainer,
   VideoFloatingWindows,
   VideoProjectListModal,
@@ -41,7 +42,6 @@ import {
   type VideoStorageInfo,
 } from "../../services/videoProjectStorage";
 import { type SaveLoadProgress } from "../../lib/firebase/firebaseVideoStorage";
-import Tooltip from "../../shared/components/Tooltip";
 import { LayoutNode, isSplitNode, isPanelNode } from "../../types/layout";
 
 interface VideoProjectFile extends Partial<SavedVideoProject> {
@@ -188,7 +188,7 @@ function VideoEditorContent() {
   const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
 
   const [isExporting, setIsExporting] = useState(false);
-  const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
+  const [showExportModal, setShowExportModal] = useState(false);
   const audioHistorySavedRef = useRef(false);
   const visualHistorySavedRef = useRef(false);
 
@@ -522,7 +522,7 @@ function VideoEditorContent() {
     mediaFileInputRef.current?.click();
   }, []);
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(async (exportFileName?: string, includeAudio?: boolean) => {
     if (isExporting) return;
 
     const canvas = previewCanvasRef.current;
@@ -556,7 +556,7 @@ function VideoEditorContent() {
       ...Array.from(audioElementsRef.current.values()),
     ];
 
-    if (includeAudioOnExport && typeof AudioContext !== "undefined" && mediaElements.length > 0) {
+    if ((includeAudio ?? true) && typeof AudioContext !== "undefined" && mediaElements.length > 0) {
       let audioContext = exportAudioContextRef.current;
       if (!audioContext || audioContext.state === "closed") {
         audioContext = new AudioContext();
@@ -648,7 +648,7 @@ function VideoEditorContent() {
       recorder.stop();
 
       const blob = await blobPromise;
-      downloadBlob(blob, `${sanitizeFileName(projectName)}.webm`);
+      downloadBlob(blob, `${sanitizeFileName(exportFileName || projectName)}.webm`);
 
       seek(previousTime);
       if (wasPlaying) {
@@ -666,8 +666,9 @@ function VideoEditorContent() {
       }
       canvasStream.getTracks().forEach((track) => track.stop());
       setIsExporting(false);
+      setShowExportModal(false);
     }
-  }, [isExporting, includeAudioOnExport, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
+  }, [isExporting, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
@@ -1117,7 +1118,7 @@ function VideoEditorContent() {
           onSave={handleSave}
           onSaveAs={handleSaveAs}
           onImportMedia={handleImportMedia}
-          onExport={handleExport}
+          onExport={() => setShowExportModal(true)}
           canSave={hasContent}
           isSaving={isSaving}
           isLoading={isExporting}
@@ -1155,56 +1156,6 @@ function VideoEditorContent() {
           translations={toolbarTranslations}
         />
 
-        {/* Playback controls in toolbar */}
-        <div className="flex items-center gap-1">
-          <Tooltip content={t.stop} shortcut="Home">
-            <button
-              onClick={stop}
-              className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="3" y="3" width="10" height="10" />
-              </svg>
-            </button>
-          </Tooltip>
-
-          <Tooltip content={t.previousFrame} shortcut="←">
-            <button
-              onClick={stepBackward}
-              className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="2" y="3" width="2" height="10" />
-                <path d="M14 3L6 8L14 13V3Z" />
-              </svg>
-            </button>
-          </Tooltip>
-
-          <Tooltip content={t.play} shortcut="Space">
-            <button
-              onClick={togglePlay}
-              className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M4 2L14 8L4 14V2Z" />
-              </svg>
-            </button>
-          </Tooltip>
-
-          <Tooltip content={t.nextFrame} shortcut="→">
-            <button
-              onClick={stepForward}
-              className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M2 3L10 8L2 13V3Z" />
-                <rect x="12" y="3" width="2" height="10" />
-              </svg>
-            </button>
-          </Tooltip>
-        </div>
-
-        <div className="h-4 w-px bg-border-default mx-1" />
         {toolMode === "crop" && (
           <>
             <div className="flex items-center gap-2 min-w-[380px]">
@@ -1250,18 +1201,6 @@ function VideoEditorContent() {
             <div className="h-4 w-px bg-border-default mx-1" />
           </>
         )}
-
-        <button
-          onClick={() => setIncludeAudioOnExport((prev) => !prev)}
-          className={`px-2 py-1 text-xs rounded transition-colors ${
-            includeAudioOnExport
-              ? "bg-accent/20 text-accent hover:bg-accent/30"
-              : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
-          }`}
-          title={includeAudioOnExport ? "Export includes audio" : "Export without audio"}
-        >
-          Export Audio {includeAudioOnExport ? "On" : "Off"}
-        </button>
 
         {selectedVisualClip && toolMode !== "crop" && (
           <>
@@ -1468,6 +1407,21 @@ function VideoEditorContent() {
           } finally {
             e.target.value = "";
           }
+        }}
+      />
+
+      {/* Export modal */}
+      <VideoExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+        defaultFileName={sanitizeFileName(projectName)}
+        isExporting={isExporting}
+        translations={{
+          export: t.exportVideo,
+          cancel: t.cancel,
+          fileName: t.projectName,
+          includeAudio: t.includeAudio,
         }}
       />
     </div>
