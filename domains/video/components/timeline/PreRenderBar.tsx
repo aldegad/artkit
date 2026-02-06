@@ -11,7 +11,13 @@ export function PreRenderBar() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { viewState } = useTimeline();
-  const { project, playback } = useVideoState();
+  const { project } = useVideoState();
+
+  // Use refs so draw() has a stable identity — subscription never re-registers
+  const viewStateRef = useRef(viewState);
+  viewStateRef.current = viewState;
+  const projectDurationRef = useRef(project.duration);
+  projectDurationRef.current = project.duration;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -46,8 +52,8 @@ export function PreRenderBar() {
     const { cachedSet, totalFrames } = getCacheStatus();
     if (totalFrames <= 0) return;
 
-    const { zoom, scrollX } = viewState;
-    const duration = project.duration || 1;
+    const { zoom, scrollX } = viewStateRef.current;
+    const duration = projectDurationRef.current || 1;
     // Draw uncached background for the visible duration range
     const visibleStartTime = scrollX;
     const visibleEndTime = scrollX + w / zoom;
@@ -92,22 +98,18 @@ export function PreRenderBar() {
       const endFramePx = Math.min((endFrameTime - scrollX) * zoom, endPx);
       ctx.fillRect(batchStartPx, 0, endFramePx - batchStartPx, h);
     }
+  }, []); // Stable — reads everything from refs
 
-    // DEBUG: draw yellow marker at playhead position
-    const playheadPx = (playback.currentTime - scrollX) * zoom;
-    if (playheadPx >= 0 && playheadPx <= w) {
-      ctx.fillStyle = "#FFD700";
-      ctx.fillRect(playheadPx - 2, 0, 4, h);
-    }
-
-    console.warn(`[PreRenderBar] draw w=${w.toFixed(0)} cached=${cachedSet.size}/${totalFrames} firstVis=${firstVisibleFrame} lastVis=${lastVisibleFrame} zoom=${zoom.toFixed(1)} scrollX=${scrollX.toFixed(3)} playheadPx=${playheadPx.toFixed(1)}`);
-  }, [viewState, project.duration, playback.currentTime]);
-
-  // Subscribe to cache status updates
+  // Subscribe to cache status updates — subscription never re-registers
   useEffect(() => {
     draw();
     return subscribeCacheStatus(draw);
   }, [draw]);
+
+  // Redraw when view or duration changes
+  useEffect(() => {
+    draw();
+  }, [viewState, project.duration, draw]);
 
   // Redraw on resize
   useEffect(() => {
