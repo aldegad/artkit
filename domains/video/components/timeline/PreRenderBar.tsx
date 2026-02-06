@@ -11,7 +11,7 @@ export function PreRenderBar() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { viewState } = useTimeline();
-  const { project } = useVideoState();
+  const { project, playback } = useVideoState();
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -92,7 +92,16 @@ export function PreRenderBar() {
       const endFramePx = Math.min((endFrameTime - scrollX) * zoom, endPx);
       ctx.fillRect(batchStartPx, 0, endFramePx - batchStartPx, h);
     }
-  }, [viewState, project.duration]);
+
+    // DEBUG: draw yellow marker at playhead position
+    const playheadPx = (playback.currentTime - scrollX) * zoom;
+    if (playheadPx >= 0 && playheadPx <= w) {
+      ctx.fillStyle = "#FFD700";
+      ctx.fillRect(playheadPx - 2, 0, 4, h);
+    }
+
+    console.warn(`[PreRenderBar] draw w=${w.toFixed(0)} cached=${cachedSet.size}/${totalFrames} firstVis=${firstVisibleFrame} lastVis=${lastVisibleFrame} zoom=${zoom.toFixed(1)} scrollX=${scrollX.toFixed(3)} playheadPx=${playheadPx.toFixed(1)}`);
+  }, [viewState, project.duration, playback.currentTime]);
 
   // Subscribe to cache status updates
   useEffect(() => {
