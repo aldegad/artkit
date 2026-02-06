@@ -164,8 +164,8 @@ export function Clip({ clip, bufferRanges }: ClipProps) {
       )}
 
       {/* Buffer bar (video clips only) */}
-      {clip.type === "video" && bufferRanges && bufferRanges.length > 0 && (
-        <ClipBufferBar bufferRanges={bufferRanges} clipDuration={clip.duration} />
+      {clip.type === "video" && (
+        <ClipBufferBar bufferRanges={bufferRanges ?? []} clipDuration={clip.duration} />
       )}
 
       {/* Trim handles */}
