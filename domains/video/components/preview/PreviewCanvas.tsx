@@ -25,8 +25,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     canvasExpandMode,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
-  const [videoReadyCount, setVideoReadyCount] = useState(0);
   const wasPlayingRef = useRef(false);
+  const renderRequestRef = useRef(0);
+  const renderRef = useRef<() => void>(() => {});
+  const imageCacheRef = useRef(new Map<string, HTMLImageElement>());
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
 
@@ -167,39 +169,37 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     wasPlayingRef.current = playback.isPlaying;
   }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
 
-  // Setup video ready listeners
+  // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
     const cleanupFns: (() => void)[] = [];
 
+    const scheduleRender = () => {
+      // During playback, the playback loop already drives rendering
+      if (wasPlayingRef.current) return;
+      cancelAnimationFrame(renderRequestRef.current);
+      renderRequestRef.current = requestAnimationFrame(() => {
+        renderRef.current();
+      });
+    };
+
     for (const clip of videoClips) {
       const video = videoElementsRef.current?.get(clip.sourceUrl);
       if (video) {
-        const handleCanPlay = () => {
-          setVideoReadyCount((c) => c + 1);
-        };
-        const handleSeeked = () => {
-          setVideoReadyCount((c) => c + 1);
-        };
-
-        video.addEventListener("canplay", handleCanPlay);
-        video.addEventListener("seeked", handleSeeked);
-        video.addEventListener("loadeddata", handleCanPlay);
+        video.addEventListener("canplay", scheduleRender);
+        video.addEventListener("seeked", scheduleRender);
+        video.addEventListener("loadeddata", scheduleRender);
 
         cleanupFns.push(() => {
-          video.removeEventListener("canplay", handleCanPlay);
-          video.removeEventListener("seeked", handleSeeked);
-          video.removeEventListener("loadeddata", handleCanPlay);
+          video.removeEventListener("canplay", scheduleRender);
+          video.removeEventListener("seeked", scheduleRender);
+          video.removeEventListener("loadeddata", scheduleRender);
         });
-
-        // If video is already ready, trigger re-render
-        if (video.readyState >= 2) {
-          setVideoReadyCount((c) => c + 1);
-        }
       }
     }
 
     return () => {
+      cancelAnimationFrame(renderRequestRef.current);
       cleanupFns.forEach((fn) => fn());
     };
   }, [clips, videoElementsRef]);
@@ -221,8 +221,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     []
   );
 
-  // Render the composited frame
-  const render = useCallback(() => {
+  // Render the composited frame - assigned to ref to avoid stale closures
+  renderRef.current = () => {
     const canvas = previewCanvasRef.current;
     const container = previewContainerRef.current;
     if (!canvas || !container) return;
@@ -291,26 +291,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       if (clip.type === "video" && videoElement) {
         // Check if video has enough data to display
         if (videoElement.readyState < 2) {
-          // Video not ready yet, skip for now (will re-render when ready)
           continue;
         }
-
-        // Calculate source time
-        const clipTime = playback.currentTime - clip.startTime;
-        const sourceTime = clip.trimIn + clipTime;
 
         // During playback, let the video play naturally (don't seek every frame)
         // Only seek when paused (scrubbing) or when severely out of sync
         if (!playback.isPlaying) {
-          // Paused - seek to exact position
+          const clipTime = playback.currentTime - clip.startTime;
+          const sourceTime = clip.trimIn + clipTime;
           if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
             videoElement.currentTime = sourceTime;
-            // Will re-render when seeked event fires
+            // Will re-render when seeked event fires via scheduleRender
             continue;
           }
         }
-        // During playback, just draw whatever frame the video is at
-        // The video.play() handles syncing
 
         // Draw video frame
         ctx.globalAlpha = clip.opacity / 100;
@@ -323,10 +317,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         );
         ctx.globalAlpha = 1;
       } else if (clip.type === "image") {
-        // Draw image
-        const img = new Image();
-        img.src = clip.sourceUrl;
-        if (img.complete) {
+        // Draw image from cache
+        let img = imageCacheRef.current.get(clip.sourceUrl);
+        if (!img) {
+          img = new Image();
+          img.src = clip.sourceUrl;
+          imageCacheRef.current.set(clip.sourceUrl, img);
+        }
+        if (img.complete && img.naturalWidth > 0) {
           ctx.globalAlpha = clip.opacity / 100;
           ctx.drawImage(
             img,
@@ -409,22 +407,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 1;
     ctx.strokeRect(offsetX, offsetY, previewWidth, previewHeight);
-  }, [
-    previewCanvasRef,
-    playback.currentTime,
-    playback.isPlaying,
-    project.canvasSize,
-    tracks,
-    clips,
-    selectedClipIds,
-    toolMode,
-    cropArea,
-    getClipAtTime,
-    videoElementsRef,
-    drawCheckerboard,
-    videoReadyCount,
-    previewContainerRef,
-  ]);
+  };
 
   const clampToCanvas = useCallback((point: { x: number; y: number }) => {
     return {
@@ -633,8 +616,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Render on playback time change
   useEffect(() => {
-    render();
-  }, [render, playback.currentTime]);
+    renderRef.current();
+  }, [playback.currentTime, playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize]);
 
   // Handle resize
   useEffect(() => {
@@ -642,12 +625,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (!container) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(render);
+      requestAnimationFrame(() => renderRef.current());
     });
 
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
-  }, [render, previewContainerRef]);
+  }, [previewContainerRef]);
 
   return (
     <div
