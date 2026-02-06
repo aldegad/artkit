@@ -124,7 +124,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const currentTimeRef = stateTimeRef;
 
   // Pre-render cache
-  const { getCachedFrame } = usePreRenderCache({
+  const { getCachedFrame, isPreRenderingRef } = usePreRenderCache({
     tracks,
     clips,
     getClipAtTime,
@@ -259,6 +259,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const scheduleRender = () => {
       // During playback, the playback loop already drives rendering
       if (wasPlayingRef.current) return;
+      // During pre-rendering, the pre-render loop seeks video elements to
+      // different times. Don't re-render in response — it would fight over
+      // video element currentTime and cause frame drops.
+      if (isPreRenderingRef.current) return;
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => {
         renderRef.current();
