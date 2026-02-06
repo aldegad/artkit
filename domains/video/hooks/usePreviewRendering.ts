@@ -81,7 +81,7 @@ export function usePreviewRendering() {
           return video;
         }
         return null;
-      } else {
+      } else if (clip.type === "image") {
         // Image clip
         const imageClip = clip as ImageClip;
         try {
@@ -90,6 +90,9 @@ export function usePreviewRendering() {
           return null;
         }
       }
+
+      // Audio clip has no visual frame.
+      return null;
     },
     [getVideoElement, seekVideo, loadImage]
   );

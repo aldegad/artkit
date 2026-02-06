@@ -45,6 +45,19 @@ export interface VideoClip extends BaseClip {
 }
 
 /**
+ * Audio-only clip
+ */
+export interface AudioClip extends BaseClip {
+  type: "audio";
+  sourceUrl: string;
+  sourceId: string;
+  sourceDuration: number;
+  sourceSize: Size;
+  audioMuted: boolean;
+  audioVolume: number; // 0-100
+}
+
+/**
  * Image clip (static frame)
  */
 export interface ImageClip extends BaseClip {
@@ -55,7 +68,7 @@ export interface ImageClip extends BaseClip {
   imageData?: string; // Base64 for persistence
 }
 
-export type Clip = VideoClip | ImageClip;
+export type Clip = VideoClip | AudioClip | ImageClip;
 
 /**
  * Clipboard data for copy/cut operations
@@ -97,6 +110,41 @@ export function createVideoClip(
     sourceDuration,
     sourceSize,
     hasAudio: true,
+    audioMuted: false,
+    audioVolume: 100,
+  };
+}
+
+/**
+ * Create a new audio clip
+ */
+export function createAudioClip(
+  trackId: string,
+  sourceUrl: string,
+  sourceDuration: number,
+  startTime: number = 0,
+  sourceSize: Size = { width: 0, height: 0 }
+): AudioClip {
+  return {
+    id: crypto.randomUUID(),
+    name: "Audio Clip",
+    type: "audio",
+    trackId,
+    startTime,
+    duration: sourceDuration,
+    trimIn: 0,
+    trimOut: sourceDuration,
+    opacity: 100,
+    visible: true,
+    locked: false,
+    maskId: null,
+    position: { x: 0, y: 0 },
+    scale: 1,
+    rotation: 0,
+    sourceUrl,
+    sourceId: crypto.randomUUID(),
+    sourceDuration,
+    sourceSize,
     audioMuted: false,
     audioVolume: 100,
   };

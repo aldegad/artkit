@@ -25,6 +25,9 @@ interface VideoRefsContextValue {
 
   // Video element pool for frame extraction
   videoElementsRef: RefObject<Map<string, HTMLVideoElement>>;
+
+  // Audio element pool for timeline audio clips
+  audioElementsRef: RefObject<Map<string, HTMLAudioElement>>;
 }
 
 const VideoRefsContext = createContext<VideoRefsContextValue | null>(null);
@@ -37,6 +40,7 @@ export function VideoRefsProvider({ children }: { children: ReactNode }) {
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const compositingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const value: VideoRefsContextValue = {
     previewCanvasRef,
@@ -46,6 +50,7 @@ export function VideoRefsProvider({ children }: { children: ReactNode }) {
     maskCanvasRef,
     compositingCanvasRef,
     videoElementsRef,
+    audioElementsRef,
   };
 
   return (

@@ -16,6 +16,7 @@ import {
   INITIAL_TIMELINE_VIEW,
   createVideoTrack,
   createVideoClip,
+  createAudioClip,
   createImageClip,
   MaskData,
 } from "../types";
@@ -40,7 +41,7 @@ interface TimelineContextValue {
 
   // Track management
   tracks: VideoTrack[];
-  addTrack: (name?: string) => string;
+  addTrack: (name?: string, type?: "video" | "audio") => string;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<VideoTrack>) => void;
   reorderTracks: (fromIndex: number, toIndex: number) => void;
@@ -54,6 +55,13 @@ interface TimelineContextValue {
     sourceDuration: number,
     sourceSize: Size,
     startTime?: number
+  ) => string;
+  addAudioClip: (
+    trackId: string,
+    sourceUrl: string,
+    sourceDuration: number,
+    startTime?: number,
+    sourceSize?: Size
   ) => string;
   addImageClip: (
     trackId: string,
@@ -105,17 +113,32 @@ function cloneClip(clip: Clip): Clip {
     position: { ...clip.position },
   };
 
-  if (clip.type === "video") {
-    return {
-      ...base,
-      sourceSize: { ...clip.sourceSize },
-    };
-  }
-
   return {
     ...base,
     sourceSize: { ...clip.sourceSize },
   };
+}
+
+function normalizeClip(clip: Clip): Clip {
+  if (clip.type === "video") {
+    return {
+      ...clip,
+      hasAudio: clip.hasAudio ?? true,
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  if (clip.type === "audio") {
+    return {
+      ...clip,
+      sourceSize: clip.sourceSize || { width: 0, height: 0 },
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  return clip;
 }
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
@@ -212,7 +235,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const restoreClips = useCallback((savedClips: Clip[]) => {
-    setClips(savedClips.map(cloneClip));
+    setClips(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
     updateProjectDuration();
   }, [updateProjectDuration]);
 
@@ -231,16 +254,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             const restoredClips: Clip[] = [];
 
             for (const clip of data.clips) {
+              const normalizedClip = normalizeClip(clip as Clip);
               // Try to load blob from IndexedDB using clipId
-              const blob = await loadMediaBlob(clip.id);
+              const blob = await loadMediaBlob(normalizedClip.id);
 
               if (blob) {
                 // Create new blob URL from stored blob
                 const newUrl = URL.createObjectURL(blob);
-                restoredClips.push({ ...clip, sourceUrl: newUrl });
-              } else if (!clip.sourceUrl.startsWith("blob:")) {
+                restoredClips.push({ ...normalizedClip, sourceUrl: newUrl });
+              } else if (!normalizedClip.sourceUrl.startsWith("blob:")) {
                 // Non-blob URL (e.g., remote URL), keep as is
-                restoredClips.push(clip);
+                restoredClips.push(normalizedClip);
               }
               // If blob URL but no stored blob, skip (invalid)
             }
@@ -357,14 +381,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Track management
-  const addTrack = useCallback((name?: string): string => {
+  const addTrack = useCallback((name?: string, type: "video" | "audio" = "video"): string => {
+    const countForType = tracks.filter((track) => track.type === type).length + 1;
+    const fallbackName = type === "audio" ? `Audio ${countForType}` : `Video ${countForType}`;
     const newTrack = createVideoTrack(
-      name || `Video ${tracks.length + 1}`,
-      tracks.length
+      name || fallbackName,
+      tracks.length,
+      type
     );
     setTracks((prev) => [...prev, newTrack]);
     return newTrack.id;
-  }, [tracks.length]);
+  }, [tracks]);
 
   const removeTrack = useCallback((trackId: string) => {
     // Don't remove the last track
@@ -409,6 +436,22 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       startTime: number = 0
     ): string => {
       const clip = createVideoClip(trackId, sourceUrl, sourceDuration, sourceSize, startTime);
+      setClips((prev) => [...prev, clip]);
+      updateProjectDuration();
+      return clip.id;
+    },
+    [updateProjectDuration]
+  );
+
+  const addAudioClip = useCallback(
+    (
+      trackId: string,
+      sourceUrl: string,
+      sourceDuration: number,
+      startTime: number = 0,
+      sourceSize: Size = { width: 0, height: 0 }
+    ): string => {
+      const clip = createAudioClip(trackId, sourceUrl, sourceDuration, startTime, sourceSize);
       setClips((prev) => [...prev, clip]);
       updateProjectDuration();
       return clip.id;
@@ -493,7 +536,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
         // Validate
         if (newDuration < TIMELINE.CLIP_MIN_DURATION) return c;
-        if (c.type === "video" && newTrimOut > c.sourceDuration) return c;
+        if ((c.type === "video" || c.type === "audio") && newTrimOut > c.sourceDuration) return c;
 
         return {
           ...c,
@@ -514,9 +557,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     let trackId = targetTrackId;
     if (!trackId) {
       // Create a new track for the duplicate
+      const duplicateTrackType = sourceClip.type === "audio" ? "audio" : "video";
+      const duplicateTrackCount = tracks.filter((track) => track.type === duplicateTrackType).length + 1;
+      const duplicateTrackName = duplicateTrackType === "audio"
+        ? `Audio ${duplicateTrackCount}`
+        : `Video ${duplicateTrackCount}`;
       const newTrack = createVideoTrack(
-        `Video ${tracks.length + 1}`,
-        tracks.length
+        duplicateTrackName,
+        tracks.length,
+        duplicateTrackType
       );
       setTracks((prev) => [...prev, newTrack]);
       trackId = newTrack.id;
@@ -587,6 +636,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     restoreTracks,
     clips,
     addVideoClip,
+    addAudioClip,
     addImageClip,
     removeClip,
     updateClip,

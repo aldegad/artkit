@@ -68,10 +68,11 @@ async function buildWaveform(sourceUrl: string, bins = 48): Promise<number[]> {
 export function Clip({ clip }: ClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
   const { selectedClipIds } = useVideoState();
-  const clipHasAudio = clip.type === "video" ? clip.hasAudio : false;
-  const clipSourceUrl = clip.type === "video" ? clip.sourceUrl : "";
+  const clipHasAudio =
+    clip.type === "audio" || (clip.type === "video" && (clip.hasAudio ?? true));
+  const clipSourceUrl = clip.type === "image" ? "" : clip.sourceUrl;
   const [waveform, setWaveform] = useState<number[] | null>(
-    clip.type === "video" ? waveformCache.get(clip.sourceUrl) || null : null
+    clip.type === "image" ? null : waveformCache.get(clip.sourceUrl) || null
   );
 
   const isSelected = selectedClipIds.includes(clip.id);
@@ -85,11 +86,14 @@ export function Clip({ clip }: ClipProps) {
     if (clip.type === "video") {
       return "bg-blue-600/80";
     }
+    if (clip.type === "audio") {
+      return "bg-amber-600/85";
+    }
     return "bg-green-600/80";
   }, [clip.type]);
 
   useEffect(() => {
-    if (clip.type !== "video" || !clipHasAudio) {
+    if (clip.type === "image" || !clipHasAudio) {
       setWaveform(null);
       return;
     }
@@ -130,7 +134,7 @@ export function Clip({ clip }: ClipProps) {
       </div>
 
       {/* Waveform preview */}
-      {clip.type === "video" && clipHasAudio && waveform && (
+      {clip.type !== "image" && clipHasAudio && waveform && (
         <div className="absolute left-1 right-1 bottom-1 h-4 flex items-end gap-[1px] opacity-70 pointer-events-none">
           {waveform.map((value, idx) => (
             <div
@@ -161,6 +165,10 @@ export function Clip({ clip }: ClipProps) {
         {clip.type === "video" ? (
           <svg className="w-3 h-3 text-white/60" viewBox="0 0 16 16" fill="currentColor">
             <path d="M2 3h8v10H2V3zm10 2l4-2v10l-4-2V5z" />
+          </svg>
+        ) : clip.type === "audio" ? (
+          <svg className="w-3 h-3 text-white/70" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
           </svg>
         ) : (
           <svg className="w-3 h-3 text-white/60" viewBox="0 0 16 16" fill="currentColor">

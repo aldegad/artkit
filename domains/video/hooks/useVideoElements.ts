@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useVideoRefs, useTimeline } from "../contexts";
-import { VideoClip } from "../types";
+import { VideoClip, AudioClip } from "../types";
 
 /**
  * Manages a pool of video elements for frame extraction
  */
 export function useVideoElements() {
-  const { videoElementsRef } = useVideoRefs();
+  const { videoElementsRef, audioElementsRef } = useVideoRefs();
   const { clips } = useTimeline();
-  const loadedSourcesRef = useRef<Set<string>>(new Set());
+  const loadedVideoSourcesRef = useRef<Set<string>>(new Set());
+  const loadedAudioSourcesRef = useRef<Set<string>>(new Set());
 
   // Create or get video element for a source URL
   const getVideoElement = useCallback(
@@ -31,20 +32,49 @@ export function useVideoElements() {
     [videoElementsRef]
   );
 
+  // Create or get audio element for a source URL
+  const getAudioElement = useCallback(
+    (sourceUrl: string): HTMLAudioElement | null => {
+      if (!audioElementsRef.current) return null;
+
+      let audio = audioElementsRef.current.get(sourceUrl);
+      if (!audio) {
+        audio = document.createElement("audio");
+        audio.src = sourceUrl;
+        audio.preload = "auto";
+        audio.muted = true;
+        audioElementsRef.current.set(sourceUrl, audio);
+      }
+      return audio;
+    },
+    [audioElementsRef]
+  );
+
   // Preload video elements for all video clips
   const preloadVideos = useCallback(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
+    const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
 
     for (const clip of videoClips) {
-      if (!loadedSourcesRef.current.has(clip.sourceUrl)) {
+      if (!loadedVideoSourcesRef.current.has(clip.sourceUrl)) {
         const video = getVideoElement(clip.sourceUrl);
         if (video) {
           video.load();
-          loadedSourcesRef.current.add(clip.sourceUrl);
+          loadedVideoSourcesRef.current.add(clip.sourceUrl);
         }
       }
     }
-  }, [clips, getVideoElement]);
+
+    for (const clip of audioClips) {
+      if (!loadedAudioSourcesRef.current.has(clip.sourceUrl)) {
+        const audio = getAudioElement(clip.sourceUrl);
+        if (audio) {
+          audio.load();
+          loadedAudioSourcesRef.current.add(clip.sourceUrl);
+        }
+      }
+    }
+  }, [clips, getVideoElement, getAudioElement]);
 
   // Seek a video element to a specific time
   const seekVideo = useCallback(
@@ -100,9 +130,18 @@ export function useVideoElements() {
         });
         videoElementsRef.current.clear();
       }
-      loadedSourcesRef.current.clear();
+      if (audioElementsRef.current) {
+        audioElementsRef.current.forEach((audio) => {
+          audio.pause();
+          audio.src = "";
+          audio.load();
+        });
+        audioElementsRef.current.clear();
+      }
+      loadedVideoSourcesRef.current.clear();
+      loadedAudioSourcesRef.current.clear();
     };
-  }, [videoElementsRef]);
+  }, [videoElementsRef, audioElementsRef]);
 
   // Preload when clips change
   useEffect(() => {
@@ -111,6 +150,7 @@ export function useVideoElements() {
 
   return {
     getVideoElement,
+    getAudioElement,
     seekVideo,
     getVideoFrame,
     preloadVideos,

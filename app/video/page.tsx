@@ -23,6 +23,7 @@ import {
   saveMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
+  SUPPORTED_AUDIO_FORMATS,
   TIMELINE,
   type Clip,
   type SavedVideoProject,
@@ -54,6 +55,28 @@ function cloneClip(clip: Clip): Clip {
     position: { ...clip.position },
     sourceSize: { ...clip.sourceSize },
   };
+}
+
+function normalizeLoadedClip(clip: Clip): Clip {
+  if (clip.type === "video") {
+    return {
+      ...clip,
+      hasAudio: clip.hasAudio ?? true,
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  if (clip.type === "audio") {
+    return {
+      ...clip,
+      sourceSize: clip.sourceSize || { width: 0, height: 0 },
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  return clip;
 }
 
 function VideoEditorContent() {
@@ -89,6 +112,7 @@ function VideoEditorContent() {
     setViewState,
     addTrack,
     addVideoClip,
+    addAudioClip,
     addImageClip,
     removeClip,
     addClips,
@@ -116,7 +140,7 @@ function VideoEditorContent() {
   const selectedClip = selectedClipIds.length > 0
     ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
     : null;
-  const selectedVideoClip = selectedClip && selectedClip.type === "video" ? selectedClip : null;
+  const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
 
   const buildSavedProject = useCallback(
     (nameOverride?: string): SavedVideoProject => {
@@ -147,9 +171,11 @@ function VideoEditorContent() {
 
       saveToHistory();
 
-      const targetTrackId = tracks[0]?.id || addTrack("Video 1");
+      let targetVideoTrackId = tracks.find((track) => track.type === "video")?.id || null;
+      let targetAudioTrackId = tracks.find((track) => track.type === "audio")?.id || null;
+      const hasExistingVisualClip = clips.some((clip) => clip.type !== "audio");
       let insertTime = playback.currentTime;
-      let importedCount = 0;
+      let visualImportedCount = 0;
 
       for (const file of files) {
         const isVideo =
@@ -158,12 +184,19 @@ function VideoEditorContent() {
         const isImage =
           file.type.startsWith("image/") ||
           SUPPORTED_IMAGE_FORMATS.some((format) => file.type === format);
+        const isAudio =
+          file.type.startsWith("audio/") ||
+          SUPPORTED_AUDIO_FORMATS.some((format) => file.type === format);
 
-        if (!isVideo && !isImage) {
+        if (!isVideo && !isImage && !isAudio) {
           continue;
         }
 
         if (isVideo) {
+          if (!targetVideoTrackId) {
+            targetVideoTrackId = addTrack("Video 1", "video");
+          }
+
           const url = URL.createObjectURL(file);
           const video = document.createElement("video");
           video.src = url;
@@ -183,14 +216,14 @@ function VideoEditorContent() {
             continue;
           }
 
-          if (clips.length === 0 && importedCount === 0) {
+          if (!hasExistingVisualClip && visualImportedCount === 0) {
             setProject({
               ...project,
               canvasSize: metadata.size,
             });
           }
 
-          const clipId = addVideoClip(targetTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime));
+          const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime));
           try {
             await saveMediaBlob(clipId, file);
           } catch (error) {
@@ -198,8 +231,53 @@ function VideoEditorContent() {
           }
 
           insertTime += metadata.duration;
-          importedCount += 1;
+          visualImportedCount += 1;
           continue;
+        }
+
+        if (isAudio) {
+          const url = URL.createObjectURL(file);
+          const audio = document.createElement("audio");
+          audio.src = url;
+
+          const metadata = await new Promise<{ duration: number } | null>((resolve) => {
+            audio.onloadedmetadata = () => {
+              resolve({
+                duration: Math.max(audio.duration || 0, 0.1),
+              });
+            };
+            audio.onerror = () => resolve(null);
+          });
+
+          if (!metadata) {
+            URL.revokeObjectURL(url);
+            continue;
+          }
+
+          if (!targetAudioTrackId) {
+            targetAudioTrackId = addTrack("Audio 1", "audio");
+          }
+
+          const clipId = addAudioClip(
+            targetAudioTrackId,
+            url,
+            metadata.duration,
+            Math.max(0, insertTime),
+            { ...project.canvasSize }
+          );
+
+          try {
+            await saveMediaBlob(clipId, file);
+          } catch (error) {
+            console.error("Failed to save media blob:", error);
+          }
+
+          insertTime += metadata.duration;
+          continue;
+        }
+
+        if (!targetVideoTrackId) {
+          targetVideoTrackId = addTrack("Video 1", "video");
         }
 
         const url = URL.createObjectURL(file);
@@ -216,14 +294,14 @@ function VideoEditorContent() {
           continue;
         }
 
-        if (clips.length === 0 && importedCount === 0) {
+        if (!hasExistingVisualClip && visualImportedCount === 0) {
           setProject({
             ...project,
             canvasSize: size,
           });
         }
 
-        const clipId = addImageClip(targetTrackId, url, size, Math.max(0, insertTime), 5);
+        const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5);
         try {
           await saveMediaBlob(clipId, file);
         } catch (error) {
@@ -231,7 +309,7 @@ function VideoEditorContent() {
         }
 
         insertTime += 5;
-        importedCount += 1;
+        visualImportedCount += 1;
       }
     },
     [
@@ -243,6 +321,7 @@ function VideoEditorContent() {
       project,
       setProject,
       addVideoClip,
+      addAudioClip,
       addImageClip,
     ]
   );
@@ -466,21 +545,21 @@ function VideoEditorContent() {
   }, []);
 
   const handleToggleSelectedClipMute = useCallback(() => {
-    if (!selectedVideoClip) return;
+    if (!selectedAudioClip) return;
     saveToHistory();
-    updateClip(selectedVideoClip.id, {
-      audioMuted: !selectedVideoClip.audioMuted,
+    updateClip(selectedAudioClip.id, {
+      audioMuted: !(selectedAudioClip.audioMuted ?? false),
     });
-  }, [selectedVideoClip, saveToHistory, updateClip]);
+  }, [selectedAudioClip, saveToHistory, updateClip]);
 
   const handleSelectedClipVolumeChange = useCallback(
     (volume: number) => {
-      if (!selectedVideoClip) return;
-      updateClip(selectedVideoClip.id, {
+      if (!selectedAudioClip) return;
+      updateClip(selectedAudioClip.id, {
         audioVolume: Math.max(0, Math.min(100, volume)),
       });
     },
-    [selectedVideoClip, updateClip]
+    [selectedAudioClip, updateClip]
   );
 
   // View menu handlers
@@ -784,17 +863,17 @@ function VideoEditorContent() {
           </Tooltip>
         </div>
 
-        {selectedVideoClip && (
+        {selectedAudioClip && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
             <div className="flex items-center gap-2 min-w-[220px]">
               <button
                 onClick={handleToggleSelectedClipMute}
                 className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-                title={selectedVideoClip.audioMuted ? "Unmute clip audio" : "Mute clip audio"}
+                title={(selectedAudioClip.audioMuted ?? false) ? "Unmute clip audio" : "Mute clip audio"}
               >
                 <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                  {selectedVideoClip.audioMuted ? (
+                  {(selectedAudioClip.audioMuted ?? false) ? (
                     <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
                   ) : (
                     <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
@@ -805,7 +884,7 @@ function VideoEditorContent() {
                 type="range"
                 min={0}
                 max={100}
-                value={selectedVideoClip.audioVolume}
+                value={selectedAudioClip.audioVolume ?? 100}
                 onMouseDown={beginAudioAdjustment}
                 onTouchStart={beginAudioAdjustment}
                 onMouseUp={endAudioAdjustment}
@@ -814,7 +893,7 @@ function VideoEditorContent() {
                 className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
               />
               <span className="text-xs text-text-secondary w-10 text-right">
-                {selectedVideoClip.audioVolume}%
+                {selectedAudioClip.audioVolume ?? 100}%
               </span>
             </div>
           </>
@@ -860,7 +939,7 @@ function VideoEditorContent() {
       <input
         ref={mediaFileInputRef}
         type="file"
-        accept={[...SUPPORTED_VIDEO_FORMATS, ...SUPPORTED_IMAGE_FORMATS].join(",")}
+        accept={[...SUPPORTED_VIDEO_FORMATS, ...SUPPORTED_IMAGE_FORMATS, ...SUPPORTED_AUDIO_FORMATS].join(",")}
         multiple
         className="hidden"
         onChange={async (e) => {
@@ -908,18 +987,19 @@ function VideoEditorContent() {
 
             const loadedName = parsed.name || parsed.project?.name || "Untitled Project";
             const loadedProject = parsed.project || project;
-            const loadedDuration = calculateProjectDuration(loadedClips);
+            const normalizedClips = loadedClips.map((clip) => normalizeLoadedClip(clip));
+            const loadedDuration = calculateProjectDuration(normalizedClips);
 
             setProjectName(loadedName);
             setProject({
               ...loadedProject,
               name: loadedName,
               tracks: loadedTracks,
-              clips: loadedClips,
+              clips: normalizedClips,
               duration: loadedDuration,
             });
             restoreTracks(loadedTracks);
-            restoreClips(loadedClips);
+            restoreClips(normalizedClips);
 
             if (parsed.timelineView) {
               setViewState(parsed.timelineView);

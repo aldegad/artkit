@@ -13,19 +13,27 @@ export interface VideoTrack {
 }
 
 /**
- * Create a new video track
+ * Create a new track
  */
-export function createVideoTrack(name: string, zIndex: number): VideoTrack {
+export function createVideoTrack(
+  name: string,
+  zIndex: number,
+  type: "video" | "audio" = "video"
+): VideoTrack {
   return {
     id: crypto.randomUUID(),
     name,
-    type: "video",
+    type,
     zIndex,
     visible: true,
     locked: false,
     muted: false,
     height: 60,
   };
+}
+
+export function createAudioTrack(name: string, zIndex: number): VideoTrack {
+  return createVideoTrack(name, zIndex, "audio");
 }
 
 /**
