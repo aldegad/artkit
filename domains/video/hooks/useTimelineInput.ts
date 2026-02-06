@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { useTimeline, useVideoState } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { TimelineDragType, Clip } from "../types";
@@ -28,7 +28,7 @@ const INITIAL_DRAG_STATE: DragState = {
   originalTrimIn: 0,
 };
 
-export function useTimelineInput() {
+export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElement | null>) {
   const {
     tracks,
     clips,
@@ -99,7 +99,9 @@ export function useTimelineInput() {
 
   // Handle mouse down
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent, containerRect: DOMRect) => {
+    (e: React.MouseEvent) => {
+      const containerRect = tracksContainerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
       const x = e.clientX - containerRect.left;
       const y = e.clientY - containerRect.top;
       const time = pixelToTime(x);
@@ -227,6 +229,7 @@ export function useTimelineInput() {
       }
     },
     [
+      tracksContainerRef,
       pixelToTime,
       findClipAtPosition,
       toolMode,
@@ -240,56 +243,66 @@ export function useTimelineInput() {
     ]
   );
 
-  // Handle mouse move
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent, containerRect: DOMRect) => {
-      if (dragState.type === "none") return;
+  // Ref to hold the latest drag-move handler (avoids stale closures in document listener)
+  const moveHandlerRef = useRef<(e: MouseEvent) => void>(() => {});
+  moveHandlerRef.current = (e: MouseEvent) => {
+    if (dragState.type === "none") return;
+    const containerRect = tracksContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+    const x = e.clientX - containerRect.left;
+    const y = e.clientY - containerRect.top;
+    const time = pixelToTime(x);
+    const deltaTime = time - dragState.startTime;
 
-      const x = e.clientX - containerRect.left;
-      const y = e.clientY - containerRect.top;
-      const time = pixelToTime(x);
-      const deltaTime = time - dragState.startTime;
+    switch (dragState.type) {
+      case "playhead":
+        seek(Math.max(0, time));
+        break;
 
-      switch (dragState.type) {
-        case "playhead":
-          seek(Math.max(0, time));
-          break;
-
-        case "clip-move":
-          if (dragState.clipId) {
-            const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
-            const clip = clips.find((c) => c.id === dragState.clipId);
-            if (clip) {
-              const targetTrackId = getTrackAtY(y) || clip.trackId;
-              moveClip(dragState.clipId, targetTrackId, newStartTime);
-            }
+      case "clip-move":
+        if (dragState.clipId) {
+          const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
+          const clip = clips.find((c) => c.id === dragState.clipId);
+          if (clip) {
+            const targetTrackId = getTrackAtY(y) || clip.trackId;
+            moveClip(dragState.clipId, targetTrackId, newStartTime);
           }
-          break;
+        }
+        break;
 
-        case "clip-trim-start":
-          if (dragState.clipId) {
-            const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
-            const maxStart = dragState.originalClipStart + dragState.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
-            trimClipStart(dragState.clipId, Math.min(newStartTime, maxStart));
-          }
-          break;
+      case "clip-trim-start":
+        if (dragState.clipId) {
+          const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
+          const maxStart = dragState.originalClipStart + dragState.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
+          trimClipStart(dragState.clipId, Math.min(newStartTime, maxStart));
+        }
+        break;
 
-        case "clip-trim-end":
-          if (dragState.clipId) {
-            const newEndTime = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
-            const minEnd = dragState.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
-            trimClipEnd(dragState.clipId, Math.max(newEndTime, minEnd));
-          }
-          break;
-      }
-    },
-    [dragState, pixelToTime, getTrackAtY, clips, moveClip, trimClipStart, trimClipEnd, seek]
-  );
+      case "clip-trim-end":
+        if (dragState.clipId) {
+          const newEndTime = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
+          const minEnd = dragState.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
+          trimClipEnd(dragState.clipId, Math.max(newEndTime, minEnd));
+        }
+        break;
+    }
+  };
 
-  // Handle mouse up
-  const handleMouseUp = useCallback(() => {
-    setDragState(INITIAL_DRAG_STATE);
-  }, []);
+  // Attach document-level listeners during drag for smooth dragging outside timeline
+  useEffect(() => {
+    if (dragState.type === "none") return;
+
+    const onMouseMove = (e: MouseEvent) => moveHandlerRef.current(e);
+    const onMouseUp = () => setDragState(INITIAL_DRAG_STATE);
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [dragState.type]);
 
   // Get cursor style based on position
   const getCursor = useCallback(
@@ -322,8 +335,6 @@ export function useTimelineInput() {
   return {
     dragState,
     handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
     getCursor,
     containerRef,
   };

@@ -33,11 +33,7 @@ export function Timeline({ className }: TimelineProps) {
   useVideoCoordinates();
 
   // Timeline input handling (clip drag, trim, seek)
-  const {
-    handleMouseDown: handleTimelineMouseDown,
-    handleMouseMove: handleTimelineMouseMove,
-    handleMouseUp: handleTimelineMouseUp,
-  } = useTimelineInput();
+  const { handleMouseDown: handleTimelineMouseDown } = useTimelineInput(tracksContainerRef);
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
@@ -110,37 +106,33 @@ export function Timeline({ className }: TimelineProps) {
       }
 
       // Left click - use timeline input handler
-      const rect = tracksContainerRef.current?.getBoundingClientRect();
-      if (rect) {
-        handleTimelineMouseDown(e, rect);
-      }
+      handleTimelineMouseDown(e);
     },
     [handleTimelineMouseDown]
   );
 
-  // Handle mouse move
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      // Middle-mouse scroll
-      if (isMiddleScrolling) {
-        setScrollX(viewState.scrollX - e.movementX / viewState.zoom);
-        return;
-      }
+  // Refs for latest values to avoid stale closures in document event handlers
+  const scrollStateRef = useRef({ scrollX: viewState.scrollX, zoom: viewState.zoom });
+  scrollStateRef.current = { scrollX: viewState.scrollX, zoom: viewState.zoom };
 
-      // Timeline input (clip drag, trim, seek)
-      const rect = tracksContainerRef.current?.getBoundingClientRect();
-      if (rect) {
-        handleTimelineMouseMove(e, rect);
-      }
-    },
-    [isMiddleScrolling, viewState.scrollX, viewState.zoom, setScrollX, handleTimelineMouseMove]
-  );
+  // Document-level events for middle-mouse scroll (smooth dragging outside timeline)
+  useEffect(() => {
+    if (!isMiddleScrolling) return;
 
-  // Handle mouse up
-  const handleMouseUp = useCallback(() => {
-    setIsMiddleScrolling(false);
-    handleTimelineMouseUp();
-  }, [handleTimelineMouseUp]);
+    const onMouseMove = (e: MouseEvent) => {
+      const { scrollX, zoom } = scrollStateRef.current;
+      setScrollX(scrollX - e.movementX / zoom);
+    };
+    const onMouseUp = () => setIsMiddleScrolling(false);
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isMiddleScrolling, setScrollX]);
 
   // Handle wheel for horizontal scroll/zoom
   const handleWheel = useCallback(
@@ -181,9 +173,6 @@ export function Timeline({ className }: TimelineProps) {
         data-video-timeline-root=""
         className="flex-1 overflow-hidden"
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
         {/* Track headers + ruler row */}
