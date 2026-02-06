@@ -114,6 +114,10 @@
   --clip-trim-handle: rgba(255, 255, 255, 0.3);
   --clip-trim-handle-hover: rgba(255, 255, 255, 0.6);
   --clip-selection-ring: var(--accent-primary);
+
+  /* Pre-render cache bar */
+  --pre-render-cached: rgba(34, 197, 94, 0.7);
+  --pre-render-uncached: rgba(55, 65, 81, 0.5);
 }
 
 /* =============================================
@@ -229,6 +233,10 @@
   --clip-trim-handle: rgba(255, 255, 255, 0.25);
   --clip-trim-handle-hover: rgba(255, 255, 255, 0.5);
   --clip-selection-ring: var(--accent-primary);
+
+  /* Pre-render cache bar */
+  --pre-render-cached: rgba(34, 197, 94, 0.8);
+  --pre-render-uncached: rgba(55, 65, 81, 0.6);
 }
 
 /* =============================================
