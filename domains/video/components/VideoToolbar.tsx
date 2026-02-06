@@ -1,7 +1,7 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
-import { CursorIcon, VideoCropToolIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon, DeleteIcon } from "@/shared/components/icons";
+import { CursorIcon, CropIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon, DeleteIcon } from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
 
 interface ToolButton {
@@ -54,7 +54,7 @@ export default function VideoToolbar({
       description: t.cropDesc,
       shortcut: "R",
       keys: ["Drag: Select crop area", "Handles: Resize", "Enter: Apply", "Esc: Cancel"],
-      icon: <VideoCropToolIcon />,
+      icon: <CropIcon />,
     },
     {
       mode: "trim",
