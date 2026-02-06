@@ -26,3 +26,22 @@ export type { ViewportConfig, ViewportTransform } from "./canvasViewport";
 // Autosave
 export { createAutosave, createIndexedDBStorage } from "./autosave";
 export type { AutosaveConfig, AutosaveStorage, BaseAutosaveData } from "./autosave";
+
+// Keyboard shortcuts
+export {
+  COMMON_SHORTCUTS,
+  hasCmdOrCtrl,
+  matchesShortcut,
+  matchesBinding,
+  matchesAnyCodes,
+  matchesToolShortcut,
+  shortcutToDisplayString,
+  bindingToDisplayString,
+  codeToDisplayLabel,
+  shouldIgnoreKeyEvent,
+} from "./keyboard";
+export type {
+  ShortcutDefinition,
+  ShortcutBinding,
+  ToolShortcutMap,
+} from "./keyboard";

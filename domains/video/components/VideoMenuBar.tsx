@@ -6,11 +6,12 @@ import {
   SpinnerIcon,
   type MenuItem,
 } from "../../../shared/components";
+import { shortcutToDisplayString, bindingToDisplayString, COMMON_SHORTCUTS } from "@/shared/utils/keyboard";
 
 interface VideoMenuBarProps {
   // File menu
   onNew: () => void;
-  onOpen: () => void;
+  onLoad: () => void;
   onImportFile?: () => void;
   onSave: () => void;
   onSaveAs: () => void;
@@ -40,8 +41,8 @@ interface VideoMenuBarProps {
     file: string;
     edit: string;
     view: string;
-    newProject: string;
-    openProject: string;
+    new: string;
+    load: string;
     save: string;
     saveAs: string;
     importMedia: string;
@@ -62,7 +63,7 @@ interface VideoMenuBarProps {
 
 export default function VideoMenuBar({
   onNew,
-  onOpen,
+  onLoad,
   onImportFile,
   onSave,
   onSaveAs,
@@ -90,32 +91,34 @@ export default function VideoMenuBar({
 }: VideoMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | null>(null);
 
+  const d = shortcutToDisplayString;
+  const db = bindingToDisplayString;
   const fileMenuItems: MenuItem[] = [
-    { label: t.newProject, onClick: onNew, shortcut: "⌘N" },
-    { label: t.openProject, onClick: onOpen, shortcut: "⌘O" },
+    { label: t.new, onClick: onNew, shortcut: d(COMMON_SHORTCUTS.newFile) },
+    { label: t.load, onClick: onLoad, shortcut: d(COMMON_SHORTCUTS.open) },
     ...(onImportFile ? [{ label: t.importFile || "Import from File", onClick: onImportFile }] : []),
     { divider: true },
-    { label: t.save, onClick: onSave, disabled: !canSave || isSaving, shortcut: "⌘S" },
-    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave || isSaving, shortcut: "⇧⌘S" },
+    { label: t.save, onClick: onSave, disabled: !canSave || isSaving, shortcut: d(COMMON_SHORTCUTS.save) },
+    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave || isSaving, shortcut: d(COMMON_SHORTCUTS.saveAs) },
     { divider: true },
     { label: t.importMedia, onClick: onImportMedia },
     { label: t.exportVideo, onClick: onExport, disabled: !canSave },
   ];
 
   const editMenuItems: MenuItem[] = [
-    { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: "⌘Z" },
-    { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: "⇧⌘Z" },
+    { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: d(COMMON_SHORTCUTS.undo) },
+    { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: db(COMMON_SHORTCUTS.redo) },
     { divider: true },
-    { label: t.cut, onClick: onCut, disabled: !hasSelection, shortcut: "⌘X" },
-    { label: t.copy, onClick: onCopy, disabled: !hasSelection, shortcut: "⌘C" },
-    { label: t.paste, onClick: onPaste, disabled: !hasClipboard, shortcut: "⌘V" },
+    { label: t.cut, onClick: onCut, disabled: !hasSelection, shortcut: d(COMMON_SHORTCUTS.cut) },
+    { label: t.copy, onClick: onCopy, disabled: !hasSelection, shortcut: d(COMMON_SHORTCUTS.copy) },
+    { label: t.paste, onClick: onPaste, disabled: !hasClipboard, shortcut: d(COMMON_SHORTCUTS.paste) },
     { label: t.delete, onClick: onDelete, disabled: !hasSelection, shortcut: "⌫" },
   ];
 
   const viewMenuItems: MenuItem[] = [
-    { label: t.zoomIn, onClick: onZoomIn, shortcut: "⌘+" },
-    { label: t.zoomOut, onClick: onZoomOut, shortcut: "⌘-" },
-    { label: t.fitToScreen, onClick: onFitToScreen, shortcut: "⌘0" },
+    { label: t.zoomIn, onClick: onZoomIn, shortcut: d(COMMON_SHORTCUTS.zoomIn) },
+    { label: t.zoomOut, onClick: onZoomOut, shortcut: d(COMMON_SHORTCUTS.zoomOut) },
+    { label: t.fitToScreen, onClick: onFitToScreen, shortcut: d(COMMON_SHORTCUTS.resetZoom) },
     { divider: true },
     { label: t.timeline, onClick: onToggleTimeline, checked: showTimeline },
   ];
