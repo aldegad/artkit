@@ -23,7 +23,6 @@ import {
   CursorIcon,
   HandIcon,
   BackgroundRemovalIcon,
-  ExportIcon,
   UndoIcon,
   RedoIcon,
   MinusIcon,
@@ -36,8 +35,6 @@ import {
   migrateFromLocalStorage,
   getStorageInfo,
   formatBytes,
-  exportAllProjectsToJSON,
-  importProjectsFromJSON,
 } from "../../utils/storage";
 
 // ============================================
@@ -499,46 +496,6 @@ function SpriteEditorMain() {
     [setSavedSpriteProjects, t],
   );
 
-  // Export all projects to JSON file
-  const handleExportDB = useCallback(async () => {
-    try {
-      await exportAllProjectsToJSON();
-    } catch (error) {
-      alert((error as Error).message);
-    }
-  }, []);
-
-  // Import projects from JSON file
-  const handleImportDB = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const overwrite = window.confirm(t.importOverwriteConfirm);
-
-      try {
-        const result = await importProjectsFromJSON(file, overwrite);
-
-        // Refresh project list
-        const projects = await getAllProjects();
-        setSavedSpriteProjects(projects);
-
-        // Update storage info
-        const info = await getStorageInfo();
-        setStorageInfo(info);
-
-        alert(`${t.importComplete}\n- ${t.added}: ${result.imported}\n- ${t.skipped}: ${result.skipped}`);
-      } catch (error) {
-        console.error("Import failed:", error);
-        alert(`${t.importFailed}: ${(error as Error).message}`);
-      }
-
-      // Reset input
-      e.target.value = "";
-    },
-    [setSavedSpriteProjects, t],
-  );
-
   // Spacebar handler for temporary hand mode + Undo/Redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -908,42 +865,12 @@ function SpriteEditorMain() {
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {/* Export/Import buttons */}
-                <button
-                  onClick={handleExportDB}
-                  disabled={savedProjects.length === 0}
-                  className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed text-text-secondary border border-border-default rounded text-xs transition-colors flex items-center gap-1"
-                  title={t.export}
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                    />
-                  </svg>
-                  {t.export}
-                </button>
-                <label className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary text-text-secondary border border-border-default rounded text-xs transition-colors flex items-center gap-1 cursor-pointer">
-                  <ExportIcon className="w-3.5 h-3.5" />
-                  {t.import}
-                  <input type="file" accept=".json" onChange={handleImportDB} className="hidden" />
-                </label>
-                <div className="h-4 w-px bg-border-default" />
-                <button
-                  onClick={() => setIsProjectListOpen(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                onClick={() => setIsProjectListOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+              >
+                ×
+              </button>
             </div>
 
             {/* Project list */}
