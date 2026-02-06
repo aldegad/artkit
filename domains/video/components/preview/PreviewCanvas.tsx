@@ -10,6 +10,11 @@ import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import {
+  getRectHandleAtPosition,
+  resizeRectByHandle,
+  type RectHandle,
+} from "@/domains/editor/utils/rectTransform";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -108,14 +113,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     clipStart: { x: 0, y: 0 },
   });
   const cropDragRef = useRef<{
-    mode: "none" | "create" | "move";
+    mode: "none" | "create" | "move" | "resize";
     pointerStart: { x: number; y: number };
     cropStart: { x: number; y: number; width: number; height: number } | null;
+    resizeHandle: RectHandle | null;
   }>({
     mode: "none",
     pointerStart: { x: 0, y: 0 },
     cropStart: null,
+    resizeHandle: null,
   });
+  const originalCropAreaRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [cropCursor, setCropCursor] = useState<string>("crosshair");
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
@@ -553,21 +562,41 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const cropW = activeCrop.width * scale;
       const cropH = activeCrop.height * scale;
 
-      // Dim everything outside crop.
+      // Dark overlay outside crop area
       ctx.save();
       ctx.fillStyle = colors.overlay;
-      ctx.fillRect(0, 0, width, height);
-      ctx.clearRect(cropX, cropY, cropW, cropH);
+      // Top
+      ctx.fillRect(offsetX, offsetY, previewWidth, cropY - offsetY);
+      // Bottom
+      ctx.fillRect(offsetX, cropY + cropH, previewWidth, (offsetY + previewHeight) - (cropY + cropH));
+      // Left
+      ctx.fillRect(offsetX, cropY, cropX - offsetX, cropH);
+      // Right
+      ctx.fillRect(cropX + cropW, cropY, (offsetX + previewWidth) - (cropX + cropW), cropH);
       ctx.restore();
 
+      // Solid border (matching editor style)
       ctx.save();
       ctx.strokeStyle = colors.selection;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([8, 4]);
+      ctx.lineWidth = 2;
       ctx.strokeRect(cropX, cropY, cropW, cropH);
-      ctx.setLineDash([]);
 
-      const handleSize = 8;
+      // Rule of thirds grid
+      ctx.strokeStyle = colors.grid || "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cropX + (cropW * i) / 3, cropY);
+        ctx.lineTo(cropX + (cropW * i) / 3, cropY + cropH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cropX, cropY + (cropH * i) / 3);
+        ctx.lineTo(cropX + cropW, cropY + (cropH * i) / 3);
+        ctx.stroke();
+      }
+
+      // 8 resize handles (corners + midpoints)
+      const handleSize = 10;
       const handles = [
         { x: cropX, y: cropY },
         { x: cropX + cropW / 2, y: cropY },
@@ -715,26 +744,51 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
 
-      if (cropArea && isInsideCropArea(point, cropArea)) {
-        cropDragRef.current = {
-          mode: "move",
-          pointerStart: point,
-          cropStart: { ...cropArea },
-        };
-      } else {
-        const nextArea = {
-          x: Math.round(point.x),
-          y: Math.round(point.y),
-          width: 0,
-          height: 0,
-        };
-        setCropArea(nextArea);
-        cropDragRef.current = {
-          mode: "create",
-          pointerStart: point,
-          cropStart: nextArea,
-        };
+      // Check handle hit first (resize)
+      if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
+        const hit = getRectHandleAtPosition(point, cropArea, {
+          handleSize: 12,
+          includeMove: true,
+        });
+
+        if (hit && hit !== "move") {
+          originalCropAreaRef.current = { ...cropArea };
+          cropDragRef.current = {
+            mode: "resize",
+            pointerStart: point,
+            cropStart: { ...cropArea },
+            resizeHandle: hit as RectHandle,
+          };
+          setIsDraggingCrop(true);
+          return;
+        }
+
+        if (hit === "move") {
+          cropDragRef.current = {
+            mode: "move",
+            pointerStart: point,
+            cropStart: { ...cropArea },
+            resizeHandle: null,
+          };
+          setIsDraggingCrop(true);
+          return;
+        }
       }
+
+      // Create new crop area
+      const nextArea = {
+        x: Math.round(point.x),
+        y: Math.round(point.y),
+        width: 0,
+        height: 0,
+      };
+      setCropArea(nextArea);
+      cropDragRef.current = {
+        mode: "create",
+        pointerStart: point,
+        cropStart: nextArea,
+        resizeHandle: null,
+      };
       setIsDraggingCrop(true);
       return;
     }
@@ -785,6 +839,32 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
+    // Update crop cursor on hover (when not dragging)
+    if (toolMode === "crop" && cropDragRef.current.mode === "none") {
+      const hoverPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
+      if (hoverPoint && cropArea && cropArea.width > 0 && cropArea.height > 0) {
+        const hit = getRectHandleAtPosition(hoverPoint, cropArea, {
+          handleSize: 12,
+          includeMove: true,
+        });
+        if (hit && hit !== "move") {
+          const cursorMap: Record<string, string> = {
+            nw: "nwse-resize", se: "nwse-resize",
+            ne: "nesw-resize", sw: "nesw-resize",
+            n: "ns-resize", s: "ns-resize",
+            e: "ew-resize", w: "ew-resize",
+          };
+          setCropCursor(cursorMap[hit] || "crosshair");
+        } else if (hit === "move") {
+          setCropCursor("move");
+        } else {
+          setCropCursor("crosshair");
+        }
+      } else {
+        setCropCursor("crosshair");
+      }
+    }
+
     if (cropDragRef.current.mode !== "none") {
       const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
       if (!rawPoint) return;
@@ -819,6 +899,36 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           y: Math.round(nextY),
           width: Math.round(start.width),
           height: Math.round(start.height),
+        });
+        return;
+      }
+
+      if (cropDragRef.current.mode === "resize" && originalCropAreaRef.current && cropDragRef.current.resizeHandle) {
+        const orig = originalCropAreaRef.current;
+        const dx = point.x - cropDragRef.current.pointerStart.x;
+        const dy = point.y - cropDragRef.current.pointerStart.y;
+
+        let newArea = resizeRectByHandle(
+          orig,
+          cropDragRef.current.resizeHandle,
+          { dx, dy },
+          { minWidth: 10, minHeight: 10 }
+        );
+
+        if (!canvasExpandMode) {
+          newArea = {
+            x: Math.max(0, newArea.x),
+            y: Math.max(0, newArea.y),
+            width: Math.min(newArea.width, project.canvasSize.width - Math.max(0, newArea.x)),
+            height: Math.min(newArea.height, project.canvasSize.height - Math.max(0, newArea.y)),
+          };
+        }
+
+        setCropArea({
+          x: Math.round(newArea.x),
+          y: Math.round(newArea.y),
+          width: Math.round(newArea.width),
+          height: Math.round(newArea.height),
         });
         return;
       }
@@ -874,13 +984,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { x: 0, y: 0 },
     };
     setIsDraggingClip(false);
+    originalCropAreaRef.current = null;
     cropDragRef.current = {
       mode: "none",
       pointerStart: { x: 0, y: 0 },
       cropStart: null,
+      resizeHandle: null,
     };
     setIsDraggingCrop(false);
-  }, [viewport, endDraw, setBrushMode, saveMaskData]);
+
+    // Remove crop if too small
+    if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
+      setCropArea(null);
+    }
+  }, [viewport, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
@@ -958,7 +1075,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             : isEditingMask
               ? "none"
               : toolMode === "crop"
-                ? (isDraggingCrop ? "grabbing" : "crosshair")
+                ? (isDraggingCrop ? (cropDragRef.current.mode === "move" ? "grabbing" : cropCursor) : cropCursor)
                 : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
           touchAction: "none",
         }}
