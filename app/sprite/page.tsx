@@ -11,9 +11,10 @@ import {
   useFrameBackgroundRemoval,
   FrameBackgroundRemovalModals,
 } from "../../domains/sprite";
+import type { SavedSpriteProject } from "../../domains/sprite";
+import { migrateFramesToTracks } from "../../domains/sprite/utils/migration";
 import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
-import { LayersPanelContent } from "../../components/panels";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { Tooltip, Scrollbar } from "../../shared/components";
 import {
@@ -47,6 +48,7 @@ function SpriteEditorMain() {
     imageSrc,
     setImageSrc,
     setImageSize,
+    imageSize,
     imageRef,
     setScale,
     setZoom,
@@ -63,6 +65,7 @@ function SpriteEditorMain() {
     selectedPointIndex,
     currentFrameIndex,
     zoom,
+    fps,
     setIsSpacePressed,
     projectName,
     setProjectName,
@@ -86,11 +89,12 @@ function SpriteEditorMain() {
     newProject,
     copyFrame,
     pasteFrame,
-    addCompositionLayer,
+    tracks,
+    addTrack,
+    restoreTracks,
   } = useEditor();
 
   // Panel visibility states
-  const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
   const [isFrameEditOpen, setIsFrameEditOpen] = useState(true);
 
@@ -146,7 +150,7 @@ function SpriteEditorMain() {
     loadProjects();
   }, [setSavedSpriteProjects]);
 
-  // Image upload handler - adds image as a composition layer
+  // Image upload handler - sets as main sprite image
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -155,40 +159,30 @@ function SpriteEditorMain() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
-        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        // Add as composition layer
-        addCompositionLayer(src, fileName);
+        setImageSrc(src);
+        setCurrentPoints([]);
+        setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
 
-        // Also set as main image if no main image exists (for sprite extraction)
-        if (!imageSrc) {
-          setImageSrc(src);
-          setCurrentPoints([]);
-          setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+        const img = new Image();
+        img.onload = () => {
+          setImageSize({ width: img.width, height: img.height });
+          imageRef.current = img;
 
-          const img = new Image();
-          img.onload = () => {
-            setImageSize({ width: img.width, height: img.height });
-            imageRef.current = img;
-
-            const maxWidth = 900;
-            const newScale = Math.min(maxWidth / img.width, 1);
-            setScale(newScale);
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
-          };
-          img.src = src;
-        }
-
-        // Open layers panel to show the new layer
-        setIsLayersPanelOpen(true);
+          const maxWidth = 900;
+          const newScale = Math.min(maxWidth / img.width, 1);
+          setScale(newScale);
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+        };
+        img.src = src;
       };
       reader.readAsDataURL(file);
 
       // Reset input so same file can be selected again
       e.target.value = "";
     },
-    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames, addCompositionLayer, imageSrc],
+    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
   );
 
   // Extract frame image helper
@@ -229,46 +223,42 @@ function SpriteEditorMain() {
     [imageRef],
   );
 
-  // Import sprite sheet frames
+  // Import sprite sheet frames → new track
   const handleSpriteSheetImport = useCallback(
     (importedFrames: Omit<SpriteFrame, "id">[]) => {
       if (importedFrames.length === 0) return;
 
-      // Save history before adding frames
       pushHistory();
 
-      // Add frames with new IDs
       const newFrames = importedFrames.map((frame, idx) => ({
         ...frame,
         id: nextFrameId + idx,
       }));
 
-      setFrames((prev) => [...prev, ...newFrames]);
+      addTrack("Sheet Import", newFrames as SpriteFrame[]);
       setNextFrameId((prev) => prev + importedFrames.length);
     },
-    [nextFrameId, setFrames, setNextFrameId, pushHistory],
+    [nextFrameId, setNextFrameId, pushHistory, addTrack],
   );
 
-  // Import video frames
+  // Import video frames → new track
   const handleVideoImport = useCallback(
     (importedFrames: Omit<SpriteFrame, "id">[]) => {
       if (importedFrames.length === 0) return;
 
-      // Save history before adding frames
       pushHistory();
 
-      // Add frames with new IDs
       const newFrames = importedFrames.map((frame, idx) => ({
         ...frame,
         id: nextFrameId + idx,
       }));
 
-      setFrames((prev) => [...prev, ...newFrames]);
+      addTrack("Video Import", newFrames as SpriteFrame[]);
       setNextFrameId((prev) => prev + importedFrames.length);
       setIsVideoImportOpen(false);
       setPendingVideoFile(null);
     },
-    [nextFrameId, setFrames, setNextFrameId, pushHistory, setIsVideoImportOpen, setPendingVideoFile],
+    [nextFrameId, setNextFrameId, pushHistory, addTrack, setIsVideoImportOpen, setPendingVideoFile],
   );
 
   // Undo last point
@@ -311,32 +301,35 @@ function SpriteEditorMain() {
     pushHistory,
   ]);
 
+  // Helper: get all frames across all tracks
+  const allFrames = tracks.flatMap((t) => t.frames);
+  const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
+
   // Save project to IndexedDB (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
-    const hasValidFrames = frames.length > 0 && frames.some((f) => f.imageData);
-    if (!hasValidFrames) {
+    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       alert(t.noFramesToSave);
       return;
     }
 
     const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
-    const saveImageSrc = imageSrc || frames.find((f) => f.imageData)?.imageData || "";
+    const saveImageSrc = imageSrc || firstFrameImage || "";
 
     if (currentProjectId) {
       const updatedProject = {
         id: currentProjectId,
         name,
         imageSrc: saveImageSrc,
-        imageSize: { width: imageRef.current?.width || 0, height: imageRef.current?.height || 0 },
-        frames,
+        imageSize: imageSize,
+        tracks,
         nextFrameId,
-        fps: 12,
+        fps,
         savedAt: Date.now(),
       };
 
       try {
         await saveProjectToDB(updatedProject);
-        setSavedSpriteProjects((prev) =>
+        setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
           prev.map((p) => (p.id === currentProjectId ? updatedProject : p)),
         );
 
@@ -350,20 +343,20 @@ function SpriteEditorMain() {
       }
     } else {
       const newId = Date.now().toString();
-      const newProject = {
+      const newProj = {
         id: newId,
         name,
         imageSrc: saveImageSrc,
-        imageSize: { width: imageRef.current?.width || 0, height: imageRef.current?.height || 0 },
-        frames,
+        imageSize: imageSize,
+        tracks,
         nextFrameId,
-        fps: 12,
+        fps,
         savedAt: Date.now(),
       };
 
       try {
-        await saveProjectToDB(newProject);
-        setSavedSpriteProjects((prev) => [newProject, ...prev]);
+        await saveProjectToDB(newProj);
+        setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
         setCurrentProjectId(newId);
 
         const info = await getStorageInfo();
@@ -378,78 +371,86 @@ function SpriteEditorMain() {
   }, [
     t,
     imageSrc,
-    frames,
+    imageSize,
+    tracks,
+    allFrames,
+    firstFrameImage,
     projectName,
     nextFrameId,
+    fps,
     currentProjectId,
     setSavedSpriteProjects,
     setCurrentProjectId,
-    imageRef,
   ]);
 
   // Save project as new (always create new project)
   const saveProjectAs = useCallback(async () => {
-    // 프레임이 있으면 저장 가능 (imageSrc가 없어도 개별 프레임 imageData로 저장)
-    const hasValidFrames = frames.length > 0 && frames.some((f) => f.imageData);
-    if (!hasValidFrames) {
+    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       alert(t.noFramesToSave);
       return;
     }
 
     const inputName = prompt(t.enterProjectName, projectName || "");
-    if (inputName === null) return; // 취소됨
+    if (inputName === null) return;
 
     const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
     const newId = Date.now().toString();
-    // imageSrc가 없으면 첫 프레임의 imageData 사용
-    const saveImageSrc = imageSrc || frames.find((f) => f.imageData)?.imageData || "";
+    const saveImageSrc = imageSrc || firstFrameImage || "";
 
-    const newProject = {
+    const newProj = {
       id: newId,
       name,
       imageSrc: saveImageSrc,
-      imageSize: { width: imageRef.current?.width || 0, height: imageRef.current?.height || 0 },
-      frames,
+      imageSize: imageSize,
+      tracks,
       nextFrameId,
-      fps: 12,
+      fps,
       savedAt: Date.now(),
     };
 
     try {
-      await saveProjectToDB(newProject);
-      setSavedSpriteProjects((prev) => [newProject, ...prev]);
+      await saveProjectToDB(newProj);
+      setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
       setCurrentProjectId(newId);
       setProjectName(name);
 
       const info = await getStorageInfo();
       setStorageInfo(info);
 
-      alert(`"${name}" ${t.saved} (${formatBytes(JSON.stringify(newProject).length)})`);
+      alert(`"${name}" ${t.saved} (${formatBytes(JSON.stringify(newProj).length)})`);
     } catch (error) {
       console.error("Save failed:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
     }
   }, [
     imageSrc,
-    frames,
+    imageSize,
+    tracks,
+    allFrames,
+    firstFrameImage,
     projectName,
     nextFrameId,
+    fps,
     setSavedSpriteProjects,
     setCurrentProjectId,
     setProjectName,
-    imageRef,
     t,
   ]);
 
-  // Load project
+  // Load project (with V1→V2 migration support)
   const loadProject = useCallback(
     (project: (typeof savedProjects)[0]) => {
       setImageSrc(project.imageSrc);
       setImageSize(project.imageSize);
-      setFrames(project.frames);
-      setNextFrameId(project.nextFrameId);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = project as any;
+      const tracks = Array.isArray(project.tracks)
+        ? project.tracks
+        : migrateFramesToTracks(raw.frames ?? []);
+      restoreTracks(tracks, project.nextFrameId);
       setProjectName(project.name);
-      setCurrentProjectId(project.id); // 현재 프로젝트 ID 설정
+      setCurrentProjectId(project.id);
       setCurrentPoints([]);
 
       const img = new Image();
@@ -466,8 +467,7 @@ function SpriteEditorMain() {
     [
       setImageSrc,
       setImageSize,
-      setFrames,
-      setNextFrameId,
+      restoreTracks,
       setProjectName,
       setCurrentProjectId,
       setCurrentPoints,
@@ -657,10 +657,8 @@ function SpriteEditorMain() {
           onImportImage={() => imageInputRef.current?.click()}
           onImportSheet={() => setIsSpriteSheetImportOpen(true)}
           onImportVideo={() => setIsVideoImportOpen(true)}
-          onToggleLayers={() => setIsLayersPanelOpen(!isLayersPanelOpen)}
           onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
           onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
-          isLayersOpen={isLayersPanelOpen}
           isPreviewOpen={isPreviewOpen}
           isFrameEditOpen={isFrameEditOpen}
           canSave={frames.length > 0 && frames.some((f) => f.imageData)}
@@ -674,7 +672,6 @@ function SpriteEditorMain() {
             importImage: t.importImage,
             importSheet: t.importSheet,
             importVideo: t.importVideo,
-            layers: t.layers,
             preview: t.animation,
             frameEdit: t.frameWindow,
           }}
@@ -960,9 +957,9 @@ function SpriteEditorMain() {
                     >
                       {/* Thumbnail */}
                       <div className="w-16 h-16 bg-surface-tertiary rounded-lg shrink-0 overflow-hidden">
-                        {project.frames[0]?.imageData && (
+                        {project.tracks[0]?.frames[0]?.imageData && (
                           <img
-                            src={project.frames[0].imageData}
+                            src={project.tracks[0].frames[0].imageData}
                             alt=""
                             className="w-full h-full object-contain"
                           />
@@ -973,7 +970,7 @@ function SpriteEditorMain() {
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate text-text-primary">{project.name}</div>
                         <div className="text-xs text-text-secondary">
-                          {project.frames.length} {t.frames} · {project.fps}fps
+                          {project.tracks.length} tracks · {project.tracks.reduce((sum, tr) => sum + tr.frames.length, 0)} {t.frames} · {project.fps}fps
                         </div>
                         <div className="text-xs text-text-tertiary">
                           {new Date(project.savedAt).toLocaleString()}
@@ -1070,25 +1067,6 @@ function SpriteEditorMain() {
         }}
       />
 
-      {/* Layers Panel (Floating) */}
-      {isLayersPanelOpen && (
-        <div className="fixed right-4 top-20 w-72 h-[500px] bg-surface-primary border border-border-default rounded-xl shadow-xl z-40 flex flex-col overflow-hidden">
-          {/* Panel Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border-default bg-surface-secondary">
-            <h3 className="text-sm font-medium text-text-primary">{t.layers}</h3>
-            <button
-              onClick={() => setIsLayersPanelOpen(false)}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-            >
-              ×
-            </button>
-          </div>
-          {/* Panel Content */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <LayersPanelContent />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

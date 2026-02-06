@@ -17,11 +17,6 @@ interface SpriteToolStore {
   brushColor: string;
   brushSize: number;
 
-  // Background Removal
-  isBackgroundRemovalMode: boolean;
-  eraserTolerance: number;
-  eraserMode: "connected" | "all";
-
   // Actions - Tool
   setSpriteToolMode: (mode: SpriteToolMode) => void;
   setIsSpacePressed: (pressed: boolean) => void;
@@ -32,11 +27,6 @@ interface SpriteToolStore {
   // Actions - Brush
   setBrushColor: (color: string) => void;
   setBrushSize: (size: number) => void;
-
-  // Actions - Background Removal
-  setIsBackgroundRemovalMode: (mode: boolean) => void;
-  setEraserTolerance: (tolerance: number) => void;
-  setEraserMode: (mode: "connected" | "all") => void;
 
   // Reset
   reset: () => void;
@@ -53,9 +43,6 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   timelineMode: "reorder",
   brushColor: "#000000",
   brushSize: 1,
-  isBackgroundRemovalMode: false,
-  eraserTolerance: 32,
-  eraserMode: "connected",
 
   // Tool Actions
   setSpriteToolMode: (mode) => set({ toolMode: mode }),
@@ -68,11 +55,6 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   setBrushColor: (color) => set({ brushColor: color }),
   setBrushSize: (size) => set({ brushSize: size }),
 
-  // Background Removal Actions
-  setIsBackgroundRemovalMode: (mode) => set({ isBackgroundRemovalMode: mode }),
-  setEraserTolerance: (tolerance) => set({ eraserTolerance: tolerance }),
-  setEraserMode: (mode) => set({ eraserMode: mode }),
-
   // Reset
   reset: () =>
     set({
@@ -81,8 +63,5 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       timelineMode: "reorder",
       brushColor: "#000000",
       brushSize: 1,
-      isBackgroundRemovalMode: false,
-      eraserTolerance: 32,
-      eraserMode: "connected",
     }),
 }));

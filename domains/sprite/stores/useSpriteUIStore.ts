@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { SavedSpriteProject, SpriteFrame } from "../types";
-import { deepCopyFrame } from "../utils/frameUtils";
+import { SavedSpriteProject, SpriteFrame, SpriteTrack } from "../types";
+import { deepCopyFrame, deepCopyFrames } from "../utils/frameUtils";
+import { generateLayerId } from "../utils/frameUtils";
 
 // ============================================
 // Types
@@ -21,6 +22,7 @@ interface SpriteUIStore {
 
   // Clipboard
   clipboardFrame: SpriteFrame | null;
+  clipboardTrack: SpriteTrack | null;
 
   // Video import
   pendingVideoFile: File | null;
@@ -40,6 +42,8 @@ interface SpriteUIStore {
   // Actions - Clipboard
   copyFrame: (frame: SpriteFrame) => void;
   getClipboardFrame: () => SpriteFrame | null;
+  copyTrack: (track: SpriteTrack) => void;
+  getClipboardTrack: () => SpriteTrack | null;
 
   // Actions - Video import
   setPendingVideoFile: (file: File | null) => void;
@@ -63,6 +67,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   savedProjects: [],
   currentProjectId: null,
   clipboardFrame: null,
+  clipboardTrack: null,
   pendingVideoFile: null,
 
   // Window Actions
@@ -88,6 +93,23 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   getClipboardFrame: () => {
     const { clipboardFrame } = get();
     return clipboardFrame ? deepCopyFrame(clipboardFrame) : null;
+  },
+  copyTrack: (track) =>
+    set({
+      clipboardTrack: {
+        ...track,
+        id: generateLayerId(),
+        frames: deepCopyFrames(track.frames),
+      },
+    }),
+  getClipboardTrack: () => {
+    const { clipboardTrack } = get();
+    if (!clipboardTrack) return null;
+    return {
+      ...clipboardTrack,
+      id: generateLayerId(),
+      frames: deepCopyFrames(clipboardTrack.frames),
+    };
   },
 
   // Reset

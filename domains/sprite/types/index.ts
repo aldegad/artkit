@@ -22,6 +22,17 @@ export interface SpriteFrame {
   offset: Point;
 }
 
+export interface SpriteTrack {
+  id: string;
+  name: string;
+  frames: SpriteFrame[];
+  visible: boolean;
+  locked: boolean;
+  opacity: number; // 0-100
+  zIndex: number; // higher = rendered on top
+  loop: boolean; // loop when shorter than longest track
+}
+
 export type SpriteToolMode = "pen" | "select" | "hand";
 
 export type TimelineMode = "reorder" | "offset";
@@ -42,54 +53,9 @@ export interface SavedSpriteProject {
   name: string;
   imageSrc: string;
   imageSize: Size;
-  frames: SpriteFrame[];
+  tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
   savedAt: number;
   viewState?: ViewState;
-}
-
-// Docking types are defined in layout.ts and re-exported above
-
-// ============================================
-// Editor State (for SpriteEditorContext)
-// ============================================
-
-export interface SpriteEditorState {
-  // Image
-  imageSrc: string | null;
-  imageSize: Size;
-
-  // Frames
-  frames: SpriteFrame[];
-  nextFrameId: number;
-  currentFrameIndex: number;
-  selectedFrameId: number | null;
-  selectedPointIndex: number | null;
-
-  // Tools
-  toolMode: SpriteToolMode;
-  currentPoints: Point[]; // Pen tool points
-
-  // View
-  zoom: number;
-  pan: Point;
-  scale: number;
-  canvasHeight: number;
-  isCanvasCollapsed: boolean;
-
-  // Animation
-  isPlaying: boolean;
-  fps: number;
-
-  // Timeline
-  timelineMode: TimelineMode;
-
-  // Background Removal
-  isBackgroundRemovalMode: boolean;
-  eraserTolerance: number;
-
-  // Project
-  projectName: string;
-  currentProjectId: string | null;
 }

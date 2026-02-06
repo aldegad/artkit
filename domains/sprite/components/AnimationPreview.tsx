@@ -3,13 +3,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
+import { compositeFrame } from "../utils/compositor";
 
 // ============================================
 // Component
 // ============================================
 
 export default function AnimationPreviewContent() {
-  const { frames, fps, setFps, toolMode } = useEditor();
+  const { tracks, fps, setFps, toolMode, getMaxFrameCount } = useEditor();
   const { t } = useLanguage();
 
   const [isPlaying, setIsPlaying] = useState(true);
@@ -21,10 +22,13 @@ export default function AnimationPreviewContent() {
   const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
+  const [compositedDataUrl, setCompositedDataUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const maxFrameCount = getMaxFrameCount();
 
   // Preset colors for quick selection
   const presetColors = [
@@ -52,8 +56,6 @@ export default function AnimationPreviewContent() {
     // Reset input so same file can be selected again
     e.target.value = "";
   }, []);
-
-  const validFrames = frames.filter((f) => f.imageData);
 
   // Wheel zoom - 마우스 커서 위치 기준 확대/축소
   const handleWheel = useCallback(
@@ -113,50 +115,61 @@ export default function AnimationPreviewContent() {
 
   // Animation playback
   useEffect(() => {
-    if (!isPlaying || validFrames.length === 0) return;
+    if (!isPlaying || maxFrameCount === 0) return;
 
     const interval = setInterval(() => {
-      setCurrentFrameIndex((prev) => (prev + 1) % validFrames.length);
+      setCurrentFrameIndex((prev) => (prev + 1) % maxFrameCount);
     }, 1000 / fps);
 
     return () => clearInterval(interval);
-  }, [isPlaying, fps, validFrames.length]);
+  }, [isPlaying, fps, maxFrameCount]);
 
-  // Draw preview canvas
+  // Composite current frame from all tracks
+  useEffect(() => {
+    if (maxFrameCount === 0) {
+      setCompositedDataUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    compositeFrame(tracks, currentFrameIndex).then((result) => {
+      if (!cancelled) {
+        setCompositedDataUrl(result?.dataUrl ?? null);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [tracks, currentFrameIndex, maxFrameCount]);
+
+  // Draw composited frame to canvas
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || validFrames.length === 0) return;
+    if (!canvas || !compositedDataUrl) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const currentFrame = validFrames[currentFrameIndex];
-    if (!currentFrame?.imageData) return;
-
     const img = new Image();
     img.onload = () => {
-      const maxWidth = img.width;
-      const maxHeight = img.height;
-
-      canvas.width = maxWidth * previewScale;
-      canvas.height = maxHeight * previewScale;
+      canvas.width = img.width * previewScale;
+      canvas.height = img.height * previewScale;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = false;
-      const drawX = currentFrame.offset.x * previewScale;
-      const drawY = currentFrame.offset.y * previewScale;
-      ctx.drawImage(img, drawX, drawY, img.width * previewScale, img.height * previewScale);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     };
-    img.src = currentFrame.imageData;
-  }, [currentFrameIndex, validFrames, previewScale]);
+    img.src = compositedDataUrl;
+  }, [compositedDataUrl, previewScale]);
 
   const handlePrev = useCallback(() => {
-    setCurrentFrameIndex((prev) => (prev - 1 + validFrames.length) % validFrames.length);
-  }, [validFrames.length]);
+    if (maxFrameCount === 0) return;
+    setCurrentFrameIndex((prev) => (prev - 1 + maxFrameCount) % maxFrameCount);
+  }, [maxFrameCount]);
 
   const handleNext = useCallback(() => {
-    setCurrentFrameIndex((prev) => (prev + 1) % validFrames.length);
-  }, [validFrames.length]);
+    if (maxFrameCount === 0) return;
+    setCurrentFrameIndex((prev) => (prev + 1) % maxFrameCount);
+  }, [maxFrameCount]);
 
   // 스페이스바 패닝 기능
   useEffect(() => {
@@ -253,7 +266,7 @@ export default function AnimationPreviewContent() {
             className="absolute inset-0 w-full h-full object-cover pointer-events-none"
           />
         )}
-        {validFrames.length > 0 ? (
+        {maxFrameCount > 0 && compositedDataUrl ? (
           <canvas
             ref={canvasRef}
             className="absolute border border-border-default"
@@ -279,7 +292,7 @@ export default function AnimationPreviewContent() {
           <button
             onClick={handlePrev}
             className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
-            disabled={validFrames.length === 0}
+            disabled={maxFrameCount === 0}
           >
             ◀
           </button>
@@ -290,14 +303,14 @@ export default function AnimationPreviewContent() {
                 ? "bg-accent-danger hover:bg-accent-danger-hover"
                 : "bg-accent-primary hover:bg-accent-primary-hover"
             }`}
-            disabled={validFrames.length === 0}
+            disabled={maxFrameCount === 0}
           >
             {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
           </button>
           <button
             onClick={handleNext}
             className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
-            disabled={validFrames.length === 0}
+            disabled={maxFrameCount === 0}
           >
             ▶
           </button>
@@ -404,8 +417,8 @@ export default function AnimationPreviewContent() {
 
         {/* Frame info */}
         <div className="text-center text-xs text-text-tertiary">
-          {validFrames.length > 0
-            ? `${t.frame} ${currentFrameIndex + 1} / ${validFrames.length}`
+          {maxFrameCount > 0
+            ? `${t.frame} ${currentFrameIndex + 1} / ${maxFrameCount}`
             : t.noFrames}
         </div>
       </div>

@@ -36,17 +36,6 @@ const EraserIcon = () => (
   </svg>
 );
 
-const MagicWandIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-    />
-  </svg>
-);
-
 // ============================================
 // Types
 // ============================================
@@ -63,11 +52,6 @@ export default function FramePreviewContent() {
     setFrames,
     currentFrameIndex,
     setCurrentFrameIndex,
-    isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode,
-    eraserTolerance,
-    setEraserTolerance,
-    eraserMode,
     pushHistory,
     toolMode,
     brushColor,
@@ -297,111 +281,9 @@ export default function FramePreviewContent() {
     [currentFrame, setBrushColor],
   );
 
-  // Remove background handler
-  const handleRemoveBackground = useCallback(
-    (clickX: number, clickY: number) => {
-      if (!currentFrame?.imageData) return;
-
-      pushHistory();
-
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-
-        const localX = Math.round(clickX);
-        const localY = Math.round(clickY);
-
-        if (localX < 0 || localX >= canvas.width || localY < 0 || localY >= canvas.height) return;
-
-        const startIdx = (localY * canvas.width + localX) * 4;
-        const targetR = data[startIdx];
-        const targetG = data[startIdx + 1];
-        const targetB = data[startIdx + 2];
-        const targetA = data[startIdx + 3];
-
-        if (targetA === 0) return;
-
-        const colorMatch = (idx: number): boolean => {
-          const r = data[idx];
-          const g = data[idx + 1];
-          const b = data[idx + 2];
-          const a = data[idx + 3];
-          if (a === 0) return false;
-          const diff = Math.abs(r - targetR) + Math.abs(g - targetG) + Math.abs(b - targetB);
-          return diff <= eraserTolerance;
-        };
-
-        if (eraserMode === "all") {
-          for (let i = 0; i < data.length; i += 4) {
-            if (colorMatch(i)) {
-              data[i + 3] = 0;
-            }
-          }
-        } else {
-          const visited = new Set<number>();
-          const queue: number[] = [localY * canvas.width + localX];
-          visited.add(queue[0]);
-
-          while (queue.length > 0) {
-            const pos = queue.shift()!;
-            const x = pos % canvas.width;
-            const y = Math.floor(pos / canvas.width);
-            const idx = pos * 4;
-
-            if (colorMatch(idx)) {
-              data[idx + 3] = 0;
-
-              const neighbors = [
-                { nx: x - 1, ny: y },
-                { nx: x + 1, ny: y },
-                { nx: x, ny: y - 1 },
-                { nx: x, ny: y + 1 },
-              ];
-
-              for (const { nx, ny } of neighbors) {
-                if (nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height) {
-                  const nPos = ny * canvas.width + nx;
-                  if (!visited.has(nPos)) {
-                    visited.add(nPos);
-                    queue.push(nPos);
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-        const newImageData = canvas.toDataURL("image/png");
-
-        setFrames((prev) =>
-          prev.map((f) => (f.id === currentFrame.id ? { ...f, imageData: newImageData } : f)),
-        );
-      };
-      img.src = currentFrame.imageData;
-    },
-    [currentFrame, eraserTolerance, eraserMode, setFrames, pushHistory],
-  );
-
   // Canvas mouse handlers for drawing
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (isBackgroundRemovalMode) {
-        const coords = getPixelCoordinates(e);
-        if (coords) {
-          handleRemoveBackground(coords.x, coords.y);
-        }
-        return;
-      }
-
       if (!currentFrame) return;
 
       const coords = getPixelCoordinates(e);
@@ -423,13 +305,11 @@ export default function FramePreviewContent() {
       }
     },
     [
-      isBackgroundRemovalMode,
       currentFrame,
       editToolMode,
       brushColor,
       hasDrawn,
       getPixelCoordinates,
-      handleRemoveBackground,
       pickColor,
       drawPixel,
       pushHistory,
@@ -554,15 +434,6 @@ export default function FramePreviewContent() {
     return "default";
   };
 
-  // Canvas cursor - hidden when custom overlay is shown
-  const getCanvasCursor = () => {
-    if (isBackgroundRemovalMode) {
-      return "crosshair";
-    }
-    // Custom cursor overlay is shown for brush/eraser/eyedropper
-    return "none";
-  };
-
   return (
     <div className="flex flex-col h-full bg-surface-primary">
       {/* Tool bar */}
@@ -570,12 +441,9 @@ export default function FramePreviewContent() {
         {/* Edit tools */}
         <div className="flex gap-1 bg-surface-tertiary rounded p-1">
           <button
-            onClick={() => {
-              setIsBackgroundRemovalMode(false);
-              setEditToolMode("brush");
-            }}
+            onClick={() => setEditToolMode("brush")}
             className={`p-1.5 rounded ${
-              !isBackgroundRemovalMode && editToolMode === "brush"
+              editToolMode === "brush"
                 ? "bg-accent-primary text-white"
                 : "hover:bg-interactive-hover"
             }`}
@@ -584,12 +452,9 @@ export default function FramePreviewContent() {
             <BrushIcon />
           </button>
           <button
-            onClick={() => {
-              setIsBackgroundRemovalMode(false);
-              setEditToolMode("eraser");
-            }}
+            onClick={() => setEditToolMode("eraser")}
             className={`p-1.5 rounded ${
-              !isBackgroundRemovalMode && editToolMode === "eraser"
+              editToolMode === "eraser"
                 ? "bg-accent-primary text-white"
                 : "hover:bg-interactive-hover"
             }`}
@@ -598,12 +463,9 @@ export default function FramePreviewContent() {
             <EraserIcon />
           </button>
           <button
-            onClick={() => {
-              setIsBackgroundRemovalMode(false);
-              setEditToolMode("eyedropper");
-            }}
+            onClick={() => setEditToolMode("eyedropper")}
             className={`p-1.5 rounded ${
-              !isBackgroundRemovalMode && editToolMode === "eyedropper"
+              editToolMode === "eyedropper"
                 ? "bg-accent-primary text-white"
                 : "hover:bg-interactive-hover"
             }`}
@@ -611,67 +473,38 @@ export default function FramePreviewContent() {
           >
             <EyedropperIcon />
           </button>
-          <button
-            onClick={() => setIsBackgroundRemovalMode(!isBackgroundRemovalMode)}
-            className={`p-1.5 rounded ${
-              isBackgroundRemovalMode ? "bg-pink-500 text-white" : "hover:bg-interactive-hover"
-            }`}
-            title={t.removeBackgroundTip}
-          >
-            <MagicWandIcon />
-          </button>
         </div>
 
         <div className="h-6 w-px bg-border-default" />
 
-        {/* Color picker - only when not in background removal mode */}
-        {!isBackgroundRemovalMode && (
-          <>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-text-secondary">{t.color}:</label>
-              <input
-                type="color"
-                value={brushColor}
-                onChange={(e) => setBrushColor(e.target.value)}
-                className="w-8 h-8 rounded cursor-pointer border border-border-default"
-                style={{ backgroundColor: brushColor }}
-              />
-              <span className="text-xs text-text-secondary font-mono">{brushColor}</span>
-            </div>
+        {/* Color picker */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-text-secondary">{t.color}:</label>
+          <input
+            type="color"
+            value={brushColor}
+            onChange={(e) => setBrushColor(e.target.value)}
+            className="w-8 h-8 rounded cursor-pointer border border-border-default"
+            style={{ backgroundColor: brushColor }}
+          />
+          <span className="text-xs text-text-secondary font-mono">{brushColor}</span>
+        </div>
 
-            <div className="h-6 w-px bg-border-default" />
+        <div className="h-6 w-px bg-border-default" />
 
-            {/* Brush size */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-text-secondary">{t.size}:</label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={brushSize}
-                onChange={(e) => setBrushSize(Number(e.target.value))}
-                className="w-16 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="text-xs text-text-secondary w-4">{brushSize}</span>
-            </div>
-          </>
-        )}
-
-        {/* Tolerance slider - only when in background removal mode */}
-        {isBackgroundRemovalMode && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-pink-400">{t.tolerance}:</label>
-            <input
-              type="range"
-              min="0"
-              max="128"
-              value={eraserTolerance}
-              onChange={(e) => setEraserTolerance(Number(e.target.value))}
-              className="w-20 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-            />
-            <span className="text-xs text-pink-400 w-6">{eraserTolerance}</span>
-          </div>
-        )}
+        {/* Brush size */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-text-secondary">{t.size}:</label>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            className="w-16 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+          />
+          <span className="text-xs text-text-secondary w-4">{brushSize}</span>
+        </div>
       </div>
 
       {/* Preview area */}
@@ -700,11 +533,8 @@ export default function FramePreviewContent() {
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseLeave}
               onMouseEnter={handleCanvasMouseEnter}
-              className={
-                isBackgroundRemovalMode ? "border border-pink-500 shadow-lg shadow-pink-500/30" : ""
-              }
               style={{
-                cursor: getCanvasCursor(),
+                cursor: "none",
                 pointerEvents: isHandMode ? "none" : "auto",
               }}
             />
@@ -712,8 +542,7 @@ export default function FramePreviewContent() {
             {isOverCanvas &&
               cursorPos &&
               !isHandMode &&
-              (editToolMode === "brush" || editToolMode === "eraser") &&
-              !isBackgroundRemovalMode && (
+              (editToolMode === "brush" || editToolMode === "eraser") && (
                 <div
                   className="pointer-events-none absolute"
                   style={{
@@ -733,8 +562,7 @@ export default function FramePreviewContent() {
             {isOverCanvas &&
               cursorPos &&
               !isHandMode &&
-              editToolMode === "eyedropper" &&
-              !isBackgroundRemovalMode && (
+              editToolMode === "eyedropper" && (
                 <div
                   className="pointer-events-none absolute"
                   style={{
@@ -785,7 +613,7 @@ export default function FramePreviewContent() {
           </button>
         </div>
 
-        {/* Scale & Tolerance controls */}
+        {/* Scale control */}
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2 flex-1">
             <span className="text-text-secondary">{t.scale}:</span>
@@ -800,21 +628,6 @@ export default function FramePreviewContent() {
             />
             <span className="w-8 text-center text-text-primary">{previewScale}x</span>
           </div>
-
-          {isBackgroundRemovalMode && (
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-text-secondary">{t.tolerance}:</span>
-              <input
-                type="range"
-                min="0"
-                max="128"
-                value={eraserTolerance}
-                onChange={(e) => setEraserTolerance(Number(e.target.value))}
-                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="w-6 text-center text-text-primary">{eraserTolerance}</span>
-            </div>
-          )}
         </div>
 
         {/* Frame name */}

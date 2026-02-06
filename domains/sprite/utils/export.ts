@@ -1,4 +1,5 @@
-import { SpriteFrame } from "../types";
+import { SpriteFrame, SpriteTrack } from "../types";
+import { compositeAllFrames } from "./compositor";
 
 // ============================================
 // Single Frame Export
@@ -268,6 +269,110 @@ export async function downloadFullProject(
   const blob = await zip.generateAsync({ type: "blob" });
   const link = document.createElement("a");
   link.download = `${projectName}.zip`;
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// ============================================
+// Multi-track Composited Export
+// ============================================
+
+/**
+ * Generate a sprite sheet from composited multi-track frames
+ */
+export async function generateCompositedSpriteSheet(
+  tracks: SpriteTrack[],
+  options: SpriteSheetOptions = {},
+): Promise<string | null> {
+  const compositedFrames = await compositeAllFrames(tracks);
+  if (compositedFrames.length === 0) return null;
+
+  const { padding = 0, backgroundColor } = options;
+
+  const maxWidth = Math.max(...compositedFrames.map((f) => f.width));
+  const maxHeight = Math.max(...compositedFrames.map((f) => f.height));
+
+  const columns = options.columns || Math.ceil(Math.sqrt(compositedFrames.length));
+  const rows = Math.ceil(compositedFrames.length / columns);
+
+  const cellWidth = maxWidth + padding * 2;
+  const cellHeight = maxHeight + padding * 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = columns * cellWidth;
+  canvas.height = rows * cellHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  if (backgroundColor) {
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // Load and draw each composited frame
+  const images = await Promise.all(
+    compositedFrames.map(
+      (cf) =>
+        new Promise<HTMLImageElement>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.src = cf.dataUrl;
+        }),
+    ),
+  );
+
+  images.forEach((img, index) => {
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const x = col * cellWidth + padding + (maxWidth - img.width) / 2;
+    const y = row * cellHeight + padding + (maxHeight - img.height) / 2;
+    ctx.drawImage(img, x, y);
+  });
+
+  return canvas.toDataURL("image/png");
+}
+
+/**
+ * Download composited sprite sheet as PNG
+ */
+export async function downloadCompositedSpriteSheet(
+  tracks: SpriteTrack[],
+  projectName: string,
+  options: SpriteSheetOptions = {},
+): Promise<void> {
+  const dataUrl = await generateCompositedSpriteSheet(tracks, options);
+  if (!dataUrl) return;
+
+  const link = document.createElement("a");
+  link.download = `${projectName}-spritesheet.png`;
+  link.href = dataUrl;
+  link.click();
+}
+
+/**
+ * Download composited frames as ZIP
+ */
+export async function downloadCompositedFramesAsZip(
+  tracks: SpriteTrack[],
+  projectName: string,
+): Promise<void> {
+  const compositedFrames = await compositeAllFrames(tracks);
+  if (compositedFrames.length === 0) return;
+
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+
+  compositedFrames.forEach((cf, index) => {
+    const base64Data = cf.dataUrl.split(",")[1];
+    const paddedIndex = String(index + 1).padStart(3, "0");
+    zip.file(`${projectName}-${paddedIndex}.png`, base64Data, { base64: true });
+  });
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const link = document.createElement("a");
+  link.download = `${projectName}-composited.zip`;
   link.href = URL.createObjectURL(blob);
   link.click();
   URL.revokeObjectURL(link.href);

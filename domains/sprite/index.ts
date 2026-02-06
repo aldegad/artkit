@@ -10,6 +10,7 @@ export {
   SpriteCanvas,
   AnimationPreview,
   FramePreview,
+  FrameStrip,
   SpriteSheetImportModal,
   SpriteMenuBar,
   VideoImportModal,
@@ -23,10 +24,10 @@ export { useFrameBackgroundRemoval } from "./hooks";
 // Types
 export type {
   SpriteFrame,
+  SpriteTrack,
   SpriteToolMode,
   TimelineMode,
   SavedSpriteProject,
-  SpriteEditorState,
   Point,
   Size,
   UnifiedLayer,

@@ -6,8 +6,6 @@ export { useHandTool } from "./tools/useHandTool";
 // Feature Hooks
 export { useBackgroundRemoval } from "./useBackgroundRemoval";
 export { useFrames } from "./useFrames";
-export { useProject } from "./useProject";
-
 // Canvas Hooks
 export { useCanvasColors, getCanvasColorsSync } from "./useCanvasColors";
 export type { CanvasColors } from "./useCanvasColors";

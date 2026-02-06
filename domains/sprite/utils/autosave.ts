@@ -3,7 +3,8 @@
 // ============================================
 
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
-import { Point, Size, SpriteFrame, UnifiedLayer } from "../types";
+import { Point, Size, SpriteTrack } from "../types";
+import { migrateAutosaveV1ToV2 } from "./migration";
 
 export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -11,7 +12,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 1000;
 export interface AutosaveData extends BaseAutosaveData {
   imageSrc: string | null;
   imageSize: Size;
-  frames: SpriteFrame[];
+  tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
   currentFrameIndex: number;
@@ -19,8 +20,6 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
-  compositionLayers?: UnifiedLayer[];
-  activeLayerId?: string | null;
 }
 
 // Create autosave storage using shared abstraction
@@ -28,14 +27,35 @@ const spriteAutosave = createAutosave<AutosaveData>({
   key: AUTOSAVE_KEY,
   dbName: "sprite-autosave-db",
   storeName: "autosave",
-  dbVersion: 1,
+  dbVersion: 2, // Bump version to force fresh DB
 });
 
 /**
  * Load autosave data from IndexedDB
  */
 export async function loadAutosaveData(): Promise<AutosaveData | null> {
-  return spriteAutosave.load();
+  try {
+    const data = await spriteAutosave.load();
+    if (!data) return null;
+
+    // V1 format (flat frames) → migrate to V2 (tracks)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migratedTracks = migrateAutosaveV1ToV2(data as any);
+    if (migratedTracks) {
+      data.tracks = migratedTracks;
+    }
+
+    // Still no tracks → corrupted data
+    if (!Array.isArray(data.tracks)) {
+      await spriteAutosave.clear();
+      return null;
+    }
+    return data;
+  } catch {
+    // Corrupted data — clear and return null
+    await spriteAutosave.clear();
+    return null;
+  }
 }
 
 /**

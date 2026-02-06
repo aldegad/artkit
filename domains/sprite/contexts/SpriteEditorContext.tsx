@@ -5,12 +5,11 @@ import { SpriteFrame } from "../types";
 import { AUTOSAVE_DEBOUNCE_MS, loadAutosaveData, saveAutosaveData, clearAutosaveData } from "../utils/autosave";
 import { deepCopyFrame } from "../utils/frameUtils";
 import {
-  useSpriteFrameStore,
+  useSpriteTrackStore,
   useSpriteViewportStore,
   useSpriteToolStore,
   useSpriteDragStore,
   useSpriteUIStore,
-  useSpriteLayerStore,
 } from "../stores";
 
 // ============================================
@@ -54,23 +53,25 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get store states for autosave
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const uiStore = useSpriteUIStore();
-  const layerStore = useSpriteLayerStore();
 
   // Autosave: Load saved data on mount
   useEffect(() => {
     const loadData = async () => {
       const data = await loadAutosaveData();
       if (data) {
-        // Restore frame state
-        if (data.imageSrc) frameStore.setImageSrc(data.imageSrc);
-        if (data.imageSize) frameStore.setImageSize(data.imageSize);
-        if (data.frames && data.frames.length > 0) frameStore.setFrames(data.frames);
-        if (data.nextFrameId) frameStore.setNextFrameId(data.nextFrameId);
-        if (data.fps) frameStore.setFps(data.fps);
-        if (data.currentFrameIndex !== undefined) frameStore.setCurrentFrameIndex(data.currentFrameIndex);
+        // Restore image
+        if (data.imageSrc) trackStore.setImageSrc(data.imageSrc);
+        if (data.imageSize) trackStore.setImageSize(data.imageSize);
+
+        // Restore tracks
+        if (data.tracks && data.tracks.length > 0) {
+          trackStore.restoreTracks(data.tracks, data.nextFrameId ?? 1);
+        }
+        if (data.fps) trackStore.setFps(data.fps);
+        if (data.currentFrameIndex !== undefined) trackStore.setCurrentFrameIndex(data.currentFrameIndex);
 
         // Restore viewport state
         if (data.zoom) viewportStore.setZoom(data.zoom);
@@ -79,10 +80,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
         // Restore UI state
         if (data.projectName) uiStore.setProjectName(data.projectName);
-
-        // Restore layer state
-        if (data.compositionLayers) layerStore.setCompositionLayers(data.compositionLayers);
-        if (data.activeLayerId !== undefined) layerStore.setActiveLayerId(data.activeLayerId);
       }
       isInitializedRef.current = true;
     };
@@ -95,26 +92,22 @@ export function EditorProvider({ children }: EditorProviderProps) {
     if (typeof window === "undefined") return;
     if (!isInitializedRef.current) return;
 
-    // Clear previous timeout
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
     }
 
-    // Debounce the save
     autosaveTimeoutRef.current = setTimeout(() => {
       void saveAutosaveData({
-        imageSrc: frameStore.imageSrc,
-        imageSize: frameStore.imageSize,
-        frames: frameStore.frames,
-        nextFrameId: frameStore.nextFrameId,
-        fps: frameStore.fps,
-        currentFrameIndex: frameStore.currentFrameIndex,
+        imageSrc: trackStore.imageSrc,
+        imageSize: trackStore.imageSize,
+        tracks: trackStore.tracks,
+        nextFrameId: trackStore.nextFrameId,
+        fps: trackStore.fps,
+        currentFrameIndex: trackStore.currentFrameIndex,
         zoom: viewportStore.zoom,
         pan: viewportStore.pan,
         scale: viewportStore.scale,
         projectName: uiStore.projectName,
-        compositionLayers: layerStore.compositionLayers,
-        activeLayerId: layerStore.activeLayerId,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -124,18 +117,16 @@ export function EditorProvider({ children }: EditorProviderProps) {
       }
     };
   }, [
-    frameStore.imageSrc,
-    frameStore.imageSize,
-    frameStore.frames,
-    frameStore.nextFrameId,
-    frameStore.fps,
-    frameStore.currentFrameIndex,
+    trackStore.imageSrc,
+    trackStore.imageSize,
+    trackStore.tracks,
+    trackStore.nextFrameId,
+    trackStore.fps,
+    trackStore.currentFrameIndex,
     viewportStore.zoom,
     viewportStore.pan,
     viewportStore.scale,
     uiStore.projectName,
-    layerStore.compositionLayers,
-    layerStore.activeLayerId,
   ]);
 
   const refsValue: EditorRefsContextValue = {
@@ -164,83 +155,99 @@ export function useEditorRefs(): EditorRefsContextValue {
 }
 
 // ============================================
-// Legacy useEditor Hook (Backwards Compatibility)
+// Legacy useEditor Hook (Facade over all stores)
 // ============================================
 
 export function useEditor() {
   const refs = useEditorRefs();
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
   const uiStore = useSpriteUIStore();
-  const layerStore = useSpriteLayerStore();
+
+  // Shim: frames = active track frames
+  const frames = trackStore.getActiveTrackFrames();
+
+  // Shim: setFrames operates on active track
+  const setFrames = useCallback(
+    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
+      const { activeTrackId } = useSpriteTrackStore.getState();
+      if (!activeTrackId) return;
+      const activeTrack = useSpriteTrackStore.getState().tracks.find((t) => t.id === activeTrackId);
+      if (!activeTrack) return;
+      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
+      trackStore.updateTrack(activeTrackId, { frames: newFrames });
+    },
+    [trackStore],
+  );
 
   // New project function
   const newProject = useCallback(() => {
-    frameStore.reset();
+    trackStore.reset();
     viewportStore.reset();
     toolStore.reset();
     dragStore.reset();
     uiStore.reset();
-    layerStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, layerStore, refs.imageRef]);
+  }, [trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
-  // Copy/Paste functions
+  // Copy/Paste operate on active track frames
   const copyFrame = useCallback(() => {
-    if (frameStore.frames.length === 0) return;
-    const frameToCopy = frameStore.frames[frameStore.currentFrameIndex];
+    if (frames.length === 0) return;
+    const frameToCopy = frames[trackStore.currentFrameIndex];
     if (frameToCopy) {
       uiStore.copyFrame(frameToCopy);
     }
-  }, [frameStore.frames, frameStore.currentFrameIndex, uiStore]);
+  }, [frames, trackStore.currentFrameIndex, uiStore]);
 
   const pasteFrame = useCallback(() => {
     const clipboardFrame = uiStore.getClipboardFrame();
     if (!clipboardFrame) return;
+    const { activeTrackId } = useSpriteTrackStore.getState();
+    if (!activeTrackId) return;
+    const activeTrack = useSpriteTrackStore.getState().tracks.find((t) => t.id === activeTrackId);
+    if (!activeTrack) return;
 
     const newFrame: SpriteFrame = {
       ...deepCopyFrame(clipboardFrame),
-      id: frameStore.nextFrameId,
+      id: trackStore.nextFrameId,
     };
 
-    frameStore.pushHistory();
-    const insertIndex = frameStore.currentFrameIndex + 1;
-    frameStore.setFrames((prev) => {
-      const newFrames = [...prev];
-      newFrames.splice(insertIndex, 0, newFrame);
-      return newFrames;
-    });
-    frameStore.setNextFrameId((prev) => prev + 1);
-    frameStore.setCurrentFrameIndex(insertIndex);
-  }, [uiStore, frameStore]);
+    trackStore.pushHistory();
+    const insertIndex = trackStore.currentFrameIndex + 1;
+    const newFrames = [...activeTrack.frames];
+    newFrames.splice(insertIndex, 0, newFrame);
+    trackStore.updateTrack(activeTrackId, { frames: newFrames });
+    trackStore.setNextFrameId((prev: number) => prev + 1);
+    trackStore.setCurrentFrameIndex(insertIndex);
+  }, [uiStore, trackStore]);
 
   return {
     // Image
-    imageSrc: frameStore.imageSrc,
-    setImageSrc: frameStore.setImageSrc,
-    imageSize: frameStore.imageSize,
-    setImageSize: frameStore.setImageSize,
+    imageSrc: trackStore.imageSrc,
+    setImageSrc: trackStore.setImageSrc,
+    imageSize: trackStore.imageSize,
+    setImageSize: trackStore.setImageSize,
 
-    // Frames
-    frames: frameStore.frames,
-    setFrames: frameStore.setFrames,
-    nextFrameId: frameStore.nextFrameId,
-    setNextFrameId: frameStore.setNextFrameId,
-    currentFrameIndex: frameStore.currentFrameIndex,
-    setCurrentFrameIndex: frameStore.setCurrentFrameIndex,
-    selectedFrameId: frameStore.selectedFrameId,
-    setSelectedFrameId: frameStore.setSelectedFrameId,
-    selectedPointIndex: frameStore.selectedPointIndex,
-    setSelectedPointIndex: frameStore.setSelectedPointIndex,
+    // Frames (shim over active track)
+    frames,
+    setFrames,
+    nextFrameId: trackStore.nextFrameId,
+    setNextFrameId: trackStore.setNextFrameId,
+    currentFrameIndex: trackStore.currentFrameIndex,
+    setCurrentFrameIndex: trackStore.setCurrentFrameIndex,
+    selectedFrameId: trackStore.selectedFrameId,
+    setSelectedFrameId: trackStore.setSelectedFrameId,
+    selectedPointIndex: trackStore.selectedPointIndex,
+    setSelectedPointIndex: trackStore.setSelectedPointIndex,
 
     // Tools
     toolMode: toolStore.toolMode,
     setSpriteToolMode: toolStore.setSpriteToolMode,
-    currentPoints: frameStore.currentPoints,
-    setCurrentPoints: frameStore.setCurrentPoints,
+    currentPoints: trackStore.currentPoints,
+    setCurrentPoints: trackStore.setCurrentPoints,
     isSpacePressed: toolStore.isSpacePressed,
     setIsSpacePressed: toolStore.setIsSpacePressed,
 
@@ -257,10 +264,10 @@ export function useEditor() {
     setIsCanvasCollapsed: viewportStore.setIsCanvasCollapsed,
 
     // Animation
-    isPlaying: frameStore.isPlaying,
-    setIsPlaying: frameStore.setIsPlaying,
-    fps: frameStore.fps,
-    setFps: frameStore.setFps,
+    isPlaying: trackStore.isPlaying,
+    setIsPlaying: trackStore.setIsPlaying,
+    fps: trackStore.fps,
+    setFps: trackStore.setFps,
 
     // Timeline
     timelineMode: toolStore.timelineMode,
@@ -279,6 +286,10 @@ export function useEditor() {
     setDraggedFrameId: dragStore.setDraggedFrameId,
     dragOverIndex: dragStore.dragOverIndex,
     setDragOverIndex: dragStore.setDragOverIndex,
+    draggedTrackId: dragStore.draggedTrackId,
+    setDraggedTrackId: dragStore.setDraggedTrackId,
+    dragOverTrackIndex: dragStore.dragOverTrackIndex,
+    setDragOverTrackIndex: dragStore.setDragOverTrackIndex,
     editingOffsetFrameId: dragStore.editingOffsetFrameId,
     setEditingOffsetFrameId: dragStore.setEditingOffsetFrameId,
     offsetDragStart: dragStore.offsetDragStart,
@@ -306,20 +317,12 @@ export function useEditor() {
     brushSize: toolStore.brushSize,
     setBrushSize: toolStore.setBrushSize,
 
-    // Background Removal
-    isBackgroundRemovalMode: toolStore.isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode: toolStore.setIsBackgroundRemovalMode,
-    eraserTolerance: toolStore.eraserTolerance,
-    setEraserTolerance: toolStore.setEraserTolerance,
-    eraserMode: toolStore.eraserMode,
-    setEraserMode: toolStore.setEraserMode,
-
     // History (Undo/Redo)
-    canUndo: frameStore.canUndo,
-    canRedo: frameStore.canRedo,
-    undo: frameStore.undo,
-    redo: frameStore.redo,
-    pushHistory: frameStore.pushHistory,
+    canUndo: trackStore.canUndo,
+    canRedo: trackStore.canRedo,
+    undo: trackStore.undo,
+    redo: trackStore.redo,
+    pushHistory: trackStore.pushHistory,
 
     // Project
     projectName: uiStore.projectName,
@@ -330,24 +333,35 @@ export function useEditor() {
     setCurrentProjectId: uiStore.setCurrentProjectId,
     newProject,
 
-    // Clipboard
+    // Clipboard (frame)
     copyFrame,
     pasteFrame,
     clipboardFrame: uiStore.clipboardFrame,
 
-    // Composition Layers
-    compositionLayers: layerStore.compositionLayers,
-    setCompositionLayers: layerStore.setCompositionLayers,
-    activeLayerId: layerStore.activeLayerId,
-    setActiveLayerId: layerStore.setActiveLayerId,
-    addCompositionLayer: layerStore.addCompositionLayer,
-    removeCompositionLayer: layerStore.removeCompositionLayer,
-    updateCompositionLayer: layerStore.updateCompositionLayer,
-    reorderCompositionLayers: layerStore.reorderCompositionLayers,
-    duplicateCompositionLayer: layerStore.duplicateCompositionLayer,
+    // Clipboard (track)
+    copyTrack: uiStore.copyTrack,
+    getClipboardTrack: uiStore.getClipboardTrack,
+    clipboardTrack: uiStore.clipboardTrack,
 
     // Refs
     ...refs,
+
+    // Tracks (V2 multi-track)
+    tracks: trackStore.tracks,
+    activeTrackId: trackStore.activeTrackId,
+    setActiveTrackId: trackStore.setActiveTrackId,
+    addTrack: trackStore.addTrack,
+    removeTrack: trackStore.removeTrack,
+    updateTrack: trackStore.updateTrack,
+    reorderTracks: trackStore.reorderTracks,
+    addFramesToTrack: trackStore.addFramesToTrack,
+    removeFrameFromTrack: trackStore.removeFrame,
+    updateFrameInTrack: trackStore.updateFrame,
+    reorderFramesInTrack: trackStore.reorderFrames,
+    getActiveTrack: trackStore.getActiveTrack,
+    getActiveTrackFrames: trackStore.getActiveTrackFrames,
+    getMaxFrameCount: trackStore.getMaxFrameCount,
+    restoreTracks: trackStore.restoreTracks,
 
     // Computed
     getTransformParams: viewportStore.getTransformParams,
@@ -359,16 +373,30 @@ export function useEditor() {
 // ============================================
 
 export function useEditorImage() {
-  const { imageSrc, setImageSrc, imageSize, setImageSize } = useSpriteFrameStore();
+  const { imageSrc, setImageSrc, imageSize, setImageSize } = useSpriteTrackStore();
   const { imageRef } = useEditorRefs();
   return { imageSrc, setImageSrc, imageSize, setImageSize, imageRef };
 }
 
 export function useEditorFrames() {
-  const store = useSpriteFrameStore();
+  const store = useSpriteTrackStore();
+  const frames = store.getActiveTrackFrames();
+
+  const setFrames = useCallback(
+    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
+      const { activeTrackId, tracks } = useSpriteTrackStore.getState();
+      if (!activeTrackId) return;
+      const activeTrack = tracks.find((t) => t.id === activeTrackId);
+      if (!activeTrack) return;
+      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
+      store.updateTrack(activeTrackId, { frames: newFrames });
+    },
+    [store],
+  );
+
   return {
-    frames: store.frames,
-    setFrames: store.setFrames,
+    frames,
+    setFrames,
     nextFrameId: store.nextFrameId,
     setNextFrameId: store.setNextFrameId,
     currentFrameIndex: store.currentFrameIndex,
@@ -381,13 +409,13 @@ export function useEditorFrames() {
 }
 
 export function useEditorTools() {
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const toolStore = useSpriteToolStore();
   return {
     toolMode: toolStore.toolMode,
     setSpriteToolMode: toolStore.setSpriteToolMode,
-    currentPoints: frameStore.currentPoints,
-    setCurrentPoints: frameStore.setCurrentPoints,
+    currentPoints: trackStore.currentPoints,
+    setCurrentPoints: trackStore.setCurrentPoints,
     isSpacePressed: toolStore.isSpacePressed,
     setIsSpacePressed: toolStore.setIsSpacePressed,
   };
@@ -411,13 +439,13 @@ export function useEditorViewport() {
 }
 
 export function useEditorAnimation() {
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const { animationRef, lastFrameTimeRef } = useEditorRefs();
   return {
-    isPlaying: frameStore.isPlaying,
-    setIsPlaying: frameStore.setIsPlaying,
-    fps: frameStore.fps,
-    setFps: frameStore.setFps,
+    isPlaying: trackStore.isPlaying,
+    setIsPlaying: trackStore.setIsPlaying,
+    fps: trackStore.fps,
+    setFps: trackStore.setFps,
     animationRef,
     lastFrameTimeRef,
   };
@@ -439,6 +467,10 @@ export function useEditorDrag() {
     setDraggedFrameId: store.setDraggedFrameId,
     dragOverIndex: store.dragOverIndex,
     setDragOverIndex: store.setDragOverIndex,
+    draggedTrackId: store.draggedTrackId,
+    setDraggedTrackId: store.setDraggedTrackId,
+    dragOverTrackIndex: store.dragOverTrackIndex,
+    setDragOverTrackIndex: store.setDragOverTrackIndex,
     editingOffsetFrameId: store.editingOffsetFrameId,
     setEditingOffsetFrameId: store.setEditingOffsetFrameId,
     offsetDragStart: store.offsetDragStart,
@@ -477,20 +509,8 @@ export function useEditorBrush() {
   };
 }
 
-export function useEditorBackgroundRemoval() {
-  const store = useSpriteToolStore();
-  return {
-    isBackgroundRemovalMode: store.isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode: store.setIsBackgroundRemovalMode,
-    eraserTolerance: store.eraserTolerance,
-    setEraserTolerance: store.setEraserTolerance,
-    eraserMode: store.eraserMode,
-    setEraserMode: store.setEraserMode,
-  };
-}
-
 export function useEditorHistory() {
-  const store = useSpriteFrameStore();
+  const store = useSpriteTrackStore();
   return {
     canUndo: store.canUndo,
     canRedo: store.canRedo,
@@ -500,25 +520,44 @@ export function useEditorHistory() {
   };
 }
 
+export function useEditorTracks() {
+  const store = useSpriteTrackStore();
+  return {
+    tracks: store.tracks,
+    activeTrackId: store.activeTrackId,
+    setActiveTrackId: store.setActiveTrackId,
+    addTrack: store.addTrack,
+    removeTrack: store.removeTrack,
+    updateTrack: store.updateTrack,
+    reorderTracks: store.reorderTracks,
+    addFramesToTrack: store.addFramesToTrack,
+    removeFrame: store.removeFrame,
+    updateFrame: store.updateFrame,
+    reorderFrames: store.reorderFrames,
+    getActiveTrack: store.getActiveTrack,
+    getActiveTrackFrames: store.getActiveTrackFrames,
+    getMaxFrameCount: store.getMaxFrameCount,
+    restoreTracks: store.restoreTracks,
+  };
+}
+
 export function useEditorProject() {
   const uiStore = useSpriteUIStore();
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
-  const layerStore = useSpriteLayerStore();
   const refs = useEditorRefs();
 
   const newProject = useCallback(() => {
-    frameStore.reset();
+    trackStore.reset();
     viewportStore.reset();
     toolStore.reset();
     dragStore.reset();
     uiStore.reset();
-    layerStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, layerStore, refs.imageRef]);
+  }, [trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
   return {
     projectName: uiStore.projectName,
@@ -533,53 +572,63 @@ export function useEditorProject() {
 
 export function useEditorClipboard() {
   const uiStore = useSpriteUIStore();
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
+
+  const frames = trackStore.getActiveTrackFrames();
 
   const copyFrame = useCallback(() => {
-    if (frameStore.frames.length === 0) return;
-    const frameToCopy = frameStore.frames[frameStore.currentFrameIndex];
+    if (frames.length === 0) return;
+    const frameToCopy = frames[trackStore.currentFrameIndex];
     if (frameToCopy) {
       uiStore.copyFrame(frameToCopy);
     }
-  }, [frameStore.frames, frameStore.currentFrameIndex, uiStore]);
+  }, [frames, trackStore.currentFrameIndex, uiStore]);
 
   const pasteFrame = useCallback(() => {
     const clipboardFrame = uiStore.getClipboardFrame();
     if (!clipboardFrame) return;
+    const { activeTrackId, tracks } = useSpriteTrackStore.getState();
+    if (!activeTrackId) return;
+    const activeTrack = tracks.find((t) => t.id === activeTrackId);
+    if (!activeTrack) return;
 
     const newFrame: SpriteFrame = {
       ...deepCopyFrame(clipboardFrame),
-      id: frameStore.nextFrameId,
+      id: trackStore.nextFrameId,
     };
 
-    frameStore.pushHistory();
-    const insertIndex = frameStore.currentFrameIndex + 1;
-    frameStore.setFrames((prev) => {
-      const newFrames = [...prev];
-      newFrames.splice(insertIndex, 0, newFrame);
-      return newFrames;
-    });
-    frameStore.setNextFrameId((prev) => prev + 1);
-    frameStore.setCurrentFrameIndex(insertIndex);
-  }, [uiStore, frameStore]);
+    trackStore.pushHistory();
+    const insertIndex = trackStore.currentFrameIndex + 1;
+    const newFrames = [...activeTrack.frames];
+    newFrames.splice(insertIndex, 0, newFrame);
+    trackStore.updateTrack(activeTrackId, { frames: newFrames });
+    trackStore.setNextFrameId((prev: number) => prev + 1);
+    trackStore.setCurrentFrameIndex(insertIndex);
+  }, [uiStore, trackStore]);
 
-  return { copyFrame, pasteFrame, clipboardFrame: uiStore.clipboardFrame };
+  const copyTrack = useCallback(() => {
+    const activeTrack = trackStore.getActiveTrack();
+    if (activeTrack) {
+      uiStore.copyTrack(activeTrack);
+    }
+  }, [trackStore, uiStore]);
+
+  const pasteTrack = useCallback(() => {
+    const clipboard = uiStore.getClipboardTrack();
+    if (!clipboard) return;
+    trackStore.pushHistory();
+    trackStore.addTrack(clipboard.name + " (Copy)", clipboard.frames);
+  }, [uiStore, trackStore]);
+
+  return {
+    copyFrame,
+    pasteFrame,
+    clipboardFrame: uiStore.clipboardFrame,
+    copyTrack,
+    pasteTrack,
+    clipboardTrack: uiStore.clipboardTrack,
+  };
 }
 
 // Keep for backwards compatibility - now just returns refs from context
 export { useEditorRefs as useEditorRefsHook };
-
-export function useEditorUnifiedLayers() {
-  const store = useSpriteLayerStore();
-  return {
-    compositionLayers: store.compositionLayers,
-    setCompositionLayers: store.setCompositionLayers,
-    activeLayerId: store.activeLayerId,
-    setActiveLayerId: store.setActiveLayerId,
-    addCompositionLayer: store.addCompositionLayer,
-    removeCompositionLayer: store.removeCompositionLayer,
-    updateCompositionLayer: store.updateCompositionLayer,
-    reorderCompositionLayers: store.reorderCompositionLayers,
-    duplicateCompositionLayer: store.duplicateCompositionLayer,
-  };
-}

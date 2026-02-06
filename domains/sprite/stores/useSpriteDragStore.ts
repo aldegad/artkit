@@ -16,6 +16,10 @@ interface SpriteDragStore {
   draggedFrameId: number | null;
   dragOverIndex: number | null;
 
+  // Track Drag
+  draggedTrackId: string | null;
+  dragOverTrackIndex: number | null;
+
   // Offset Drag
   editingOffsetFrameId: number | null;
   offsetDragStart: Point;
@@ -30,6 +34,8 @@ interface SpriteDragStore {
   setLastPanPoint: (point: Point) => void;
   setDraggedFrameId: (id: number | null) => void;
   setDragOverIndex: (index: number | null) => void;
+  setDraggedTrackId: (id: string | null) => void;
+  setDragOverTrackIndex: (index: number | null) => void;
   setEditingOffsetFrameId: (id: number | null) => void;
   setOffsetDragStart: (start: Point) => void;
   setIsResizing: (resizing: boolean) => void;
@@ -50,6 +56,8 @@ export const useSpriteDragStore = create<SpriteDragStore>((set) => ({
   lastPanPoint: { x: 0, y: 0 },
   draggedFrameId: null,
   dragOverIndex: null,
+  draggedTrackId: null,
+  dragOverTrackIndex: null,
   editingOffsetFrameId: null,
   offsetDragStart: { x: 0, y: 0 },
   isResizing: false,
@@ -61,6 +69,8 @@ export const useSpriteDragStore = create<SpriteDragStore>((set) => ({
   setLastPanPoint: (point) => set({ lastPanPoint: point }),
   setDraggedFrameId: (id) => set({ draggedFrameId: id }),
   setDragOverIndex: (index) => set({ dragOverIndex: index }),
+  setDraggedTrackId: (id) => set({ draggedTrackId: id }),
+  setDragOverTrackIndex: (index) => set({ dragOverTrackIndex: index }),
   setEditingOffsetFrameId: (id) => set({ editingOffsetFrameId: id }),
   setOffsetDragStart: (start) => set({ offsetDragStart: start }),
   setIsResizing: (resizing) => set({ isResizing: resizing }),
@@ -74,6 +84,8 @@ export const useSpriteDragStore = create<SpriteDragStore>((set) => ({
       lastPanPoint: { x: 0, y: 0 },
       draggedFrameId: null,
       dragOverIndex: null,
+      draggedTrackId: null,
+      dragOverTrackIndex: null,
       editingOffsetFrameId: null,
       offsetDragStart: { x: 0, y: 0 },
       isResizing: false,
