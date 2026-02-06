@@ -76,6 +76,7 @@ export default function CanvasContent() {
 
   // Sync viewport hook state back to the Zustand store for autosave
   useEffect(() => {
+    console.log("[SpriteCanvas] SUBSCRIBING to viewport changes, emitter listeners count:", viewport.emitter.listenerCount());
     const unsub = viewport.onViewportChange((state) => {
       console.log("[SpriteCanvas] viewport → store sync:", {
         zoom: state.zoom,
@@ -86,7 +87,11 @@ export default function CanvasContent() {
       setPan(state.pan);
       setScale(state.baseScale);
     });
-    return unsub;
+    console.log("[SpriteCanvas] SUBSCRIBED, emitter listeners count:", viewport.emitter.listenerCount());
+    return () => {
+      console.log("[SpriteCanvas] UNSUBSCRIBING from viewport changes");
+      unsub();
+    };
   }, [viewport, setZoom, setPan, setScale]);
 
   // Merge wheel + canvas ref callbacks
