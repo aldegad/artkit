@@ -6,15 +6,14 @@ import { SUPPORTED_VIDEO_FORMATS, SUPPORTED_IMAGE_FORMATS } from "../constants";
 import { saveMediaBlob } from "../utils/mediaStorage";
 
 export function useMediaImport() {
-  const { tracks, clips, addVideoClip, addImageClip } = useTimeline();
+  const { tracks, clips, addTrack, addVideoClip, addImageClip } = useTimeline();
   const { project, setProject } = useVideoState();
 
   const importFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
 
-      const trackId = tracks[0]?.id;
-      if (!trackId) return;
+      const hasExistingClips = clips.length > 0;
 
       for (const file of files) {
         const isVideo = SUPPORTED_VIDEO_FORMATS.some((format) =>
@@ -23,6 +22,12 @@ export function useMediaImport() {
         const isImage = SUPPORTED_IMAGE_FORMATS.some(
           (format) => file.type === format
         );
+
+        // Use first track for initial import, create new track for additional media
+        const trackId = hasExistingClips
+          ? addTrack(undefined, "video")
+          : tracks[0]?.id;
+        if (!trackId) return;
 
         if (isVideo) {
           const url = URL.createObjectURL(file);
@@ -36,7 +41,7 @@ export function useMediaImport() {
                 height: video.videoHeight,
               };
 
-              const isFirstClip = clips.length === 0;
+              const isFirstClip = !hasExistingClips;
               if (isFirstClip) {
                 setProject({
                   ...project,
@@ -75,7 +80,7 @@ export function useMediaImport() {
                 height: img.naturalHeight,
               };
 
-              const isFirstClip = clips.length === 0;
+              const isFirstClip = !hasExistingClips;
               if (isFirstClip) {
                 setProject({
                   ...project,
@@ -105,7 +110,7 @@ export function useMediaImport() {
         }
       }
     },
-    [tracks, clips, project, setProject, addVideoClip, addImageClip]
+    [tracks, clips, project, setProject, addTrack, addVideoClip, addImageClip]
   );
 
   return { importFiles };
