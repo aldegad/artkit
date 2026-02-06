@@ -82,6 +82,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         if (data.projectName) uiStore.setProjectName(data.projectName);
       }
       isInitializedRef.current = true;
+      uiStore.setIsAutosaveLoading(false);
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -361,6 +362,9 @@ export function useEditor() {
     getActiveTrackFrames: trackStore.getActiveTrackFrames,
     getMaxFrameCount: trackStore.getMaxFrameCount,
     restoreTracks: trackStore.restoreTracks,
+
+    // Loading
+    isAutosaveLoading: uiStore.isAutosaveLoading,
 
     // Computed
     getTransformParams: viewportStore.getTransformParams,

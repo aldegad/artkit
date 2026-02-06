@@ -17,7 +17,7 @@ import { migrateFramesToTracks } from "../../domains/sprite/utils/migration";
 import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
 import { useLanguage } from "../../shared/contexts";
-import { HeaderContent } from "../../shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay } from "../../shared/components";
 import { Tooltip, Scrollbar } from "../../shared/components";
 import {
   BrushIcon,
@@ -88,12 +88,17 @@ function SpriteEditorMain() {
     tracks,
     addTrack,
     restoreTracks,
+    isAutosaveLoading,
   } = useEditor();
   const { resetLayout } = useLayout();
 
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
   const [isFrameEditOpen, setIsFrameEditOpen] = useState(true);
+
+  // Save feedback state
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveCount, setSaveCount] = useState(0);
 
   // Video import modal state is now in the UI store (pendingVideoFile, isVideoImportOpen)
 
@@ -305,13 +310,13 @@ function SpriteEditorMain() {
   // Save project to IndexedDB (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
     if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
-      alert(t.noFramesToSave);
       return;
     }
 
     const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
     const saveImageSrc = imageSrc || firstFrameImage || "";
 
+    setIsSaving(true);
     if (currentProjectId) {
       const updatedProject = {
         id: currentProjectId,
@@ -332,11 +337,12 @@ function SpriteEditorMain() {
 
         const info = await getStorageInfo();
         setStorageInfo(info);
-
-        alert(`"${name}" ${t.saved}`);
+        setSaveCount((c) => c + 1);
       } catch (error) {
         console.error("Save failed:", error);
         alert(`${t.saveFailed}: ${(error as Error).message}`);
+      } finally {
+        setIsSaving(false);
       }
     } else {
       const newId = Date.now().toString();
@@ -358,11 +364,12 @@ function SpriteEditorMain() {
 
         const info = await getStorageInfo();
         setStorageInfo(info);
-
-        alert(`"${name}" ${t.saved}`);
+        setSaveCount((c) => c + 1);
       } catch (error) {
         console.error("Save failed:", error);
         alert(`${t.saveFailed}: ${(error as Error).message}`);
+      } finally {
+        setIsSaving(false);
       }
     }
   }, [
@@ -383,7 +390,6 @@ function SpriteEditorMain() {
   // Save project as new (always create new project)
   const saveProjectAs = useCallback(async () => {
     if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
-      alert(t.noFramesToSave);
       return;
     }
 
@@ -405,6 +411,7 @@ function SpriteEditorMain() {
       savedAt: Date.now(),
     };
 
+    setIsSaving(true);
     try {
       await saveProjectToDB(newProj);
       setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
@@ -413,11 +420,12 @@ function SpriteEditorMain() {
 
       const info = await getStorageInfo();
       setStorageInfo(info);
-
-      alert(`"${name}" ${t.saved} (${formatBytes(JSON.stringify(newProj).length)})`);
+      setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Save failed:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
+    } finally {
+      setIsSaving(false);
     }
   }, [
     imageSrc,
@@ -555,6 +563,16 @@ function SpriteEditorMain() {
         e.preventDefault();
         pasteFrame();
       }
+
+      // Ctrl+S / Cmd+S = Save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          saveProjectAs();
+        } else {
+          saveProject();
+        }
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -571,7 +589,7 @@ function SpriteEditorMain() {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [setIsSpacePressed, undo, redo, canUndo, canRedo, copyFrame, pasteFrame]);
+  }, [setIsSpacePressed, undo, redo, canUndo, canRedo, copyFrame, pasteFrame, saveProject, saveProjectAs]);
 
   // Handle new project with confirmation
   const handleNew = useCallback(() => {
@@ -585,7 +603,18 @@ function SpriteEditorMain() {
   }, [frames.length, imageSrc, t.newProjectConfirm, newProject]);
 
   return (
-    <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
+    <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
+      {/* Loading overlay during autosave restore */}
+      <LoadingOverlay isLoading={isAutosaveLoading} message={t.loading || "Loading..."} />
+
+      {/* Save toast notification */}
+      <SaveToast
+        isSaving={isSaving}
+        saveCount={saveCount}
+        savingLabel={t.saving || "Saving…"}
+        savedLabel={t.saved || "Saved"}
+      />
+
       {/* Hidden file input for menu-triggered image import */}
       <input
         ref={imageInputRef}
@@ -612,7 +641,8 @@ function SpriteEditorMain() {
             onResetLayout={resetLayout}
             isPreviewOpen={isPreviewOpen}
             isFrameEditOpen={isFrameEditOpen}
-            canSave={frames.length > 0 && frames.some((f) => f.imageData)}
+            canSave={frames.length > 0 && frames.some((f) => f.imageData) && !isSaving}
+            isLoading={isSaving}
             translations={{
               file: t.file,
               window: t.window,
