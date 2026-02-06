@@ -9,6 +9,7 @@ import { PREVIEW, PLAYBACK } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
+import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -53,6 +54,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     saveMaskData,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
+
+  // Shared viewport hook — fitOnMount auto-calculates baseScale
+  // enableWheel/Pinch are off for now; flip to true for manual zoom later
+  const viewport = useCanvasViewport({
+    containerRef: previewContainerRef,
+    canvasRef: previewCanvasRef,
+    contentSize: project.canvasSize,
+    config: { origin: "center", minZoom: 0.1, maxZoom: 10 },
+    fitOnMount: true,
+    fitPadding: 40,
+    enableWheel: false,
+    enablePinch: false,
+  });
 
   const previewGeometryRef = useRef({
     offsetX: 0,
@@ -290,17 +304,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.fillStyle = surfacePrimary;
     ctx.fillRect(0, 0, width, height);
 
-    // Calculate preview area (fit project canvas to container)
+    // Calculate preview area from shared viewport transform
     const projectWidth = project.canvasSize.width;
     const projectHeight = project.canvasSize.height;
-    const scale = Math.min(
-      (width - 40) / projectWidth,
-      (height - 40) / projectHeight
-    );
+    const vt = viewport.getTransform();
+    const scale = vt.baseScale * vt.zoom;
     const previewWidth = projectWidth * scale;
     const previewHeight = projectHeight * scale;
-    const offsetX = (width - previewWidth) / 2;
-    const offsetY = (height - previewHeight) / 2;
+    const offsetX = (width - previewWidth) / 2 + vt.pan.x * vt.zoom;
+    const offsetY = (height - previewHeight) / 2 + vt.pan.y * vt.zoom;
     previewGeometryRef.current = { offsetX, offsetY, scale, previewWidth, previewHeight };
 
     // Draw checkerboard for transparency
@@ -814,18 +826,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     renderRef.current();
   }, [invalidateCssCache]);
 
-  // Handle resize
+  // Handle resize — recalculate fit scale via viewport, then re-render
   useEffect(() => {
     const container = previewContainerRef.current;
     if (!container) return;
 
     const resizeObserver = new ResizeObserver(() => {
+      viewport.fitToContainer(40);
       requestAnimationFrame(() => renderRef.current());
     });
 
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
-  }, [previewContainerRef]);
+  }, [previewContainerRef, viewport]);
 
   return (
     <div

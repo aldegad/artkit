@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useState, DragEvent } from "react";
+import { useEffect, useCallback, useRef, useState, DragEvent } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame } from "../types";
@@ -8,6 +8,8 @@ import { getBoundingBox, isPointInPolygon } from "../../../utils/geometry";
 import { ImageDropZone } from "../../../shared/components";
 import { getCanvasColorsSync } from "@/hooks";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
+import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import { useRenderScheduler } from "@/shared/hooks/useRenderScheduler";
 
 // ============================================
 // Component
@@ -31,21 +33,14 @@ export default function CanvasContent() {
     setSelectedFrameId,
     selectedPointIndex,
     setSelectedPointIndex,
-    scale,
     setScale,
-    zoom,
     setZoom,
-    pan,
     setPan,
     isSpacePressed,
     isDragging,
     setIsDragging,
     dragStart,
     setDragStart,
-    isPanning,
-    setIsPanning,
-    lastPanPoint,
-    setLastPanPoint,
     canvasRef,
     canvasContainerRef,
     didPanOrDragRef,
@@ -54,11 +49,69 @@ export default function CanvasContent() {
   // Get current theme for canvas redraw
   const { resolvedTheme } = useTheme();
 
-  // Resize counter to trigger redraw when container resizes
-  const [resizeCounter, setResizeCounter] = useState(0);
+  // Track theme changes with a ref for the render function
+  const resolvedThemeRef = useRef(resolvedTheme);
+  resolvedThemeRef.current = resolvedTheme;
 
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // ---- Shared viewport hook ----
+  const viewport = useCanvasViewport({
+    containerRef: canvasContainerRef,
+    canvasRef,
+    contentSize: { width: imageSize.width, height: imageSize.height },
+    config: {
+      origin: "topLeft",
+      minZoom: 0.1,
+      maxZoom: 5,
+      wheelZoomFactor: 0.03,
+    },
+    enableWheel: true,
+    enablePinch: true,
+  });
+
+  // ---- Shared render scheduler ----
+  const { requestRender, setRenderFn } = useRenderScheduler(canvasContainerRef);
+
+  // Sync viewport hook state back to the Zustand store for autosave
+  useEffect(() => {
+    const unsub = viewport.onViewportChange((state) => {
+      setZoom(state.zoom);
+      setPan(state.pan);
+      setScale(state.baseScale);
+    });
+    return unsub;
+  }, [viewport, setZoom, setPan, setScale]);
+
+  // Merge wheel + canvas ref callbacks
+  const canvasCallbackRef = useCallback(
+    (el: HTMLCanvasElement | null) => {
+      // Update the canvasRef from context
+      canvasRef.current = el;
+      // Bind wheel zoom
+      viewport.wheelRef(el);
+      // Bind pinch zoom
+      viewport.pinchRef(el);
+    },
+    [canvasRef, viewport],
+  );
+
+  // ---- Coordinate transforms via viewport ----
+  const screenToImage = useCallback(
+    (screenX: number, screenY: number): Point => {
+      const result = viewport.screenToContent({ x: screenX, y: screenY });
+      return { x: Math.round(result.x), y: Math.round(result.y) };
+    },
+    [viewport],
+  );
+
+  const imageToScreen = useCallback(
+    (imgX: number, imgY: number): Point => {
+      return viewport.contentToScreen({ x: imgX, y: imgY });
+    },
+    [viewport],
+  );
 
   // Handle file drop for image upload - sets as main sprite image
   const handleFileDrop = useCallback(
@@ -80,15 +133,17 @@ export default function CanvasContent() {
 
           const maxWidth = 900;
           const newScale = Math.min(maxWidth / img.width, 1);
-          setScale(newScale);
-          setZoom(1);
-          setPan({ x: 0, y: 0 });
+          viewport.updateTransform({
+            baseScale: newScale,
+            zoom: 1,
+            pan: { x: 0, y: 0 },
+          });
         };
         img.src = src;
       };
       reader.readAsDataURL(file);
     },
-    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
+    [setImageSrc, setImageSize, imageRef, viewport, setCurrentPoints, setFrames],
   );
 
   // Drag event handlers
@@ -126,22 +181,6 @@ export default function CanvasContent() {
     [handleFileDrop, setPendingVideoFile, setIsVideoImportOpen],
   );
 
-  // ResizeObserver to detect container size changes
-  useEffect(() => {
-    const container = canvasContainerRef.current;
-    if (!container) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      setResizeCounter((c) => c + 1);
-    });
-
-    resizeObserver.observe(container);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [canvasContainerRef]);
-
   // Load image when imageSrc changes (for autosave restore)
   useEffect(() => {
     if (!imageSrc) {
@@ -158,35 +197,10 @@ export default function CanvasContent() {
     img.onload = () => {
       imageRef.current = img;
       // Trigger a redraw
-      setResizeCounter((c) => c + 1);
+      requestRender();
     };
     img.src = imageSrc;
-  }, [imageSrc, imageRef]);
-
-  // Coordinate transforms
-  const screenToImage = useCallback(
-    (screenX: number, screenY: number): Point => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-
-      const rect = canvas.getBoundingClientRect();
-      const x = (screenX - rect.left - pan.x) / (scale * zoom);
-      const y = (screenY - rect.top - pan.y) / (scale * zoom);
-
-      return { x: Math.round(x), y: Math.round(y) };
-    },
-    [canvasRef, pan, scale, zoom],
-  );
-
-  const imageToScreen = useCallback(
-    (imgX: number, imgY: number): Point => {
-      return {
-        x: imgX * scale * zoom + pan.x,
-        y: imgY * scale * zoom + pan.y,
-      };
-    },
-    [scale, zoom, pan],
-  );
+  }, [imageSrc, imageRef, requestRender]);
 
   // Check if near point
   const isNearPoint = useCallback(
@@ -248,139 +262,174 @@ export default function CanvasContent() {
     setCurrentPoints([]);
   }, [currentPoints, nextFrameId, extractFrameImage, setFrames, setNextFrameId, setCurrentPoints]);
 
-  // Canvas drawing
+  // ---- Store refs for render function (avoids re-creating render fn on every state change) ----
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
+  const currentPointsRef = useRef(currentPoints);
+  currentPointsRef.current = currentPoints;
+  const selectedFrameIdRef = useRef(selectedFrameId);
+  selectedFrameIdRef.current = selectedFrameId;
+  const selectedPointIndexRef = useRef(selectedPointIndex);
+  selectedPointIndexRef.current = selectedPointIndex;
+  const toolModeRef = useRef(toolMode);
+  toolModeRef.current = toolMode;
+  const imageSrcRef = useRef(imageSrc);
+  imageSrcRef.current = imageSrc;
+
+  // ---- Set up the render function (stable reference) ----
   useEffect(() => {
-    if (!canvasRef.current || !canvasContainerRef.current || !imageRef.current || !imageSrc) return;
+    setRenderFn(() => {
+      if (!canvasRef.current || !canvasContainerRef.current || !imageRef.current || !imageSrcRef.current) return;
 
-    const canvas = canvasRef.current;
-    const container = canvasContainerRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+      const canvas = canvasRef.current;
+      const container = canvasContainerRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    const img = imageRef.current;
-    const displayWidth = img.width * scale * zoom;
-    const displayHeight = img.height * scale * zoom;
+      const img = imageRef.current;
+      const effectiveScale = viewport.getEffectiveScale();
+      const pan = viewport.getPan();
+      const displayWidth = img.width * effectiveScale;
+      const displayHeight = img.height * effectiveScale;
 
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
 
-    // Checkerboard background - read CSS variables
-    const colors = getCanvasColorsSync();
-    const checkerLight = colors.checkerboardLight;
-    const checkerDark = colors.checkerboardDark;
+      // Checkerboard background - read CSS variables
+      const colors = getCanvasColorsSync();
+      const checkerLight = colors.checkerboardLight;
+      const checkerDark = colors.checkerboardDark;
 
-    const checkerSize = 10;
-    for (let y = 0; y < canvas.height; y += checkerSize) {
-      for (let x = 0; x < canvas.width; x += checkerSize) {
-        ctx.fillStyle =
-          (Math.floor(x / checkerSize) + Math.floor(y / checkerSize)) % 2 === 0
-            ? checkerLight
-            : checkerDark;
-        ctx.fillRect(x, y, checkerSize, checkerSize);
+      const checkerSize = 10;
+      for (let y = 0; y < canvas.height; y += checkerSize) {
+        for (let x = 0; x < canvas.width; x += checkerSize) {
+          ctx.fillStyle =
+            (Math.floor(x / checkerSize) + Math.floor(y / checkerSize)) % 2 === 0
+              ? checkerLight
+              : checkerDark;
+          ctx.fillRect(x, y, checkerSize, checkerSize);
+        }
       }
-    }
 
-    // Draw main sprite image
-    ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
+      // Draw main sprite image
+      ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
 
-    // Draw saved frame polygons
-    frames.forEach((frame, idx) => {
-      if (frame.points.length < 2) return;
+      // Helper: content -> canvas coordinates (using ref-backed viewport)
+      const toScreen = (imgX: number, imgY: number): Point => {
+        return viewport.contentToScreen({ x: imgX, y: imgY });
+      };
 
-      const isSelected = frame.id === selectedFrameId;
+      const _frames = framesRef.current;
+      const _selectedFrameId = selectedFrameIdRef.current;
+      const _selectedPointIndex = selectedPointIndexRef.current;
+      const _toolMode = toolModeRef.current;
+      const _currentPoints = currentPointsRef.current;
 
-      ctx.beginPath();
-      const startScreen = imageToScreen(frame.points[0].x, frame.points[0].y);
-      ctx.moveTo(startScreen.x, startScreen.y);
+      // Draw saved frame polygons
+      _frames.forEach((frame, idx) => {
+        if (frame.points.length < 2) return;
 
-      frame.points.slice(1).forEach((p) => {
-        const screen = imageToScreen(p.x, p.y);
-        ctx.lineTo(screen.x, screen.y);
+        const isSelected = frame.id === _selectedFrameId;
+
+        ctx.beginPath();
+        const startScreen = toScreen(frame.points[0].x, frame.points[0].y);
+        ctx.moveTo(startScreen.x, startScreen.y);
+
+        frame.points.slice(1).forEach((p) => {
+          const screen = toScreen(p.x, p.y);
+          ctx.lineTo(screen.x, screen.y);
+        });
+        ctx.closePath();
+
+        ctx.fillStyle = isSelected
+          ? colors.selectionAltFill
+          : `hsla(${(idx * 60) % 360}, 70%, 50%, 0.15)`;
+        ctx.fill();
+        ctx.strokeStyle = isSelected ? colors.selectionAlt : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
+        ctx.lineWidth = isSelected ? 3 : 2;
+        ctx.stroke();
+
+        // Frame number
+        const centerX = frame.points.reduce((sum, p) => sum + p.x, 0) / frame.points.length;
+        const centerY = frame.points.reduce((sum, p) => sum + p.y, 0) / frame.points.length;
+        const centerScreen = toScreen(centerX, centerY);
+
+        ctx.fillStyle = isSelected ? colors.selectionAlt : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
+        ctx.beginPath();
+        ctx.arc(centerScreen.x, centerScreen.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = colors.textOnColor;
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(idx + 1), centerScreen.x, centerScreen.y);
+
+        // Selected frame points
+        if (isSelected && _toolMode === "select") {
+          frame.points.forEach((p, pIdx) => {
+            const screen = toScreen(p.x, p.y);
+            ctx.beginPath();
+            ctx.arc(screen.x, screen.y, 7, 0, Math.PI * 2);
+            ctx.fillStyle = pIdx === _selectedPointIndex ? colors.toolHighlight : colors.selectionAlt;
+            ctx.fill();
+            ctx.strokeStyle = colors.textOnColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          });
+        }
       });
-      ctx.closePath();
 
-      ctx.fillStyle = isSelected
-        ? colors.selectionAltFill
-        : `hsla(${(idx * 60) % 360}, 70%, 50%, 0.15)`;
-      ctx.fill();
-      ctx.strokeStyle = isSelected ? colors.selectionAlt : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
-      ctx.lineWidth = isSelected ? 3 : 2;
-      ctx.stroke();
+      // Draw current polygon
+      if (_currentPoints.length > 0 && _toolMode === "pen") {
+        ctx.beginPath();
+        const startScreen = toScreen(_currentPoints[0].x, _currentPoints[0].y);
+        ctx.moveTo(startScreen.x, startScreen.y);
 
-      // Frame number
-      const centerX = frame.points.reduce((sum, p) => sum + p.x, 0) / frame.points.length;
-      const centerY = frame.points.reduce((sum, p) => sum + p.y, 0) / frame.points.length;
-      const centerScreen = imageToScreen(centerX, centerY);
+        _currentPoints.slice(1).forEach((p) => {
+          const screen = toScreen(p.x, p.y);
+          ctx.lineTo(screen.x, screen.y);
+        });
 
-      ctx.fillStyle = isSelected ? colors.selectionAlt : `hsl(${(idx * 60) % 360}, 70%, 50%)`;
-      ctx.beginPath();
-      ctx.arc(centerScreen.x, centerScreen.y, 12, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.strokeStyle = colors.toolDraw;
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-      ctx.fillStyle = colors.textOnColor;
-      ctx.font = "bold 11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(idx + 1), centerScreen.x, centerScreen.y);
-
-      // Selected frame points
-      if (isSelected && toolMode === "select") {
-        frame.points.forEach((p, pIdx) => {
-          const screen = imageToScreen(p.x, p.y);
+        _currentPoints.forEach((p, idx) => {
+          const screen = toScreen(p.x, p.y);
           ctx.beginPath();
-          ctx.arc(screen.x, screen.y, 7, 0, Math.PI * 2);
-          ctx.fillStyle = pIdx === selectedPointIndex ? colors.toolHighlight : colors.selectionAlt;
+          ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
+          ctx.fillStyle = idx === 0 ? colors.toolHighlight : colors.toolDraw;
           ctx.fill();
           ctx.strokeStyle = colors.textOnColor;
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 1;
           ctx.stroke();
         });
       }
     });
+  }, [canvasRef, canvasContainerRef, imageRef, viewport, setRenderFn]);
 
-    // Draw current polygon
-    if (currentPoints.length > 0 && toolMode === "pen") {
-      ctx.beginPath();
-      const startScreen = imageToScreen(currentPoints[0].x, currentPoints[0].y);
-      ctx.moveTo(startScreen.x, startScreen.y);
-
-      currentPoints.slice(1).forEach((p) => {
-        const screen = imageToScreen(p.x, p.y);
-        ctx.lineTo(screen.x, screen.y);
-      });
-
-      ctx.strokeStyle = colors.toolDraw;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      currentPoints.forEach((p, idx) => {
-        const screen = imageToScreen(p.x, p.y);
-        ctx.beginPath();
-        ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = idx === 0 ? colors.toolHighlight : colors.toolDraw;
-        ctx.fill();
-        ctx.strokeStyle = colors.textOnColor;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      });
-    }
+  // ---- Trigger render on content/state changes ----
+  useEffect(() => {
+    requestRender();
   }, [
     imageSrc,
     currentPoints,
     frames,
-    scale,
-    zoom,
-    pan,
     selectedFrameId,
     selectedPointIndex,
     toolMode,
-    canvasRef,
-    canvasContainerRef,
-    imageRef,
-    imageToScreen,
-    resizeCounter, // Trigger redraw on container resize
-    resolvedTheme, // Trigger redraw on theme change
+    resolvedTheme,
+    requestRender,
   ]);
+
+  // Subscribe to viewport changes to trigger re-render
+  useEffect(() => {
+    const unsub = viewport.onViewportChange(() => {
+      requestRender();
+    });
+    return unsub;
+  }, [viewport, requestRender]);
 
   // Canvas click handler
   const handleCanvasClick = useCallback(
@@ -389,7 +438,7 @@ export default function CanvasContent() {
         didPanOrDragRef.current = false;
         return;
       }
-      if (isPanning || isDragging) return;
+      if (viewport.isPanDragging() || isDragging) return;
 
       const point = screenToImage(e.clientX, e.clientY);
 
@@ -437,7 +486,6 @@ export default function CanvasContent() {
       }
     },
     [
-      isPanning,
       isDragging,
       screenToImage,
       imageSize,
@@ -452,6 +500,7 @@ export default function CanvasContent() {
       setSelectedPointIndex,
       setSelectedFrameId,
       didPanOrDragRef,
+      viewport,
     ],
   );
 
@@ -466,8 +515,7 @@ export default function CanvasContent() {
         (e.button === 0 && isSpacePressed) ||
         (e.button === 0 && toolMode === "hand")
       ) {
-        setIsPanning(true);
-        setLastPanPoint({ x: e.clientX, y: e.clientY });
+        viewport.startPanDrag({ x: e.clientX, y: e.clientY });
         e.preventDefault();
         return;
       }
@@ -497,8 +545,7 @@ export default function CanvasContent() {
     [
       isSpacePressed,
       toolMode,
-      setIsPanning,
-      setLastPanPoint,
+      viewport,
       screenToImage,
       selectedFrameId,
       selectedPointIndex,
@@ -513,14 +560,9 @@ export default function CanvasContent() {
   // Mouse move handler
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (isPanning) {
-        const dx = e.clientX - lastPanPoint.x;
-        const dy = e.clientY - lastPanPoint.y;
-        if (dx !== 0 || dy !== 0) {
-          didPanOrDragRef.current = true;
-        }
-        setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-        setLastPanPoint({ x: e.clientX, y: e.clientY });
+      if (viewport.isPanDragging()) {
+        didPanOrDragRef.current = true;
+        viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
         return;
       }
 
@@ -554,10 +596,7 @@ export default function CanvasContent() {
       }
     },
     [
-      isPanning,
-      lastPanPoint,
-      setPan,
-      setLastPanPoint,
+      viewport,
       isDragging,
       selectedFrameId,
       screenToImage,
@@ -580,47 +619,9 @@ export default function CanvasContent() {
         }),
       );
     }
-    setIsPanning(false);
+    viewport.endPanDrag();
     setIsDragging(false);
-  }, [isDragging, selectedFrameId, setFrames, extractFrameImage, setIsPanning, setIsDragging]);
-
-  // Wheel zoom
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
-      e.preventDefault();
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      const imgX = (mouseX - pan.x) / (scale * zoom);
-      const imgY = (mouseY - pan.y) / (scale * zoom);
-
-      const delta = e.deltaY > 0 ? 0.97 : 1.03;
-      const newZoom = Math.max(0.1, Math.min(5, zoom * delta));
-
-      const newPanX = mouseX - imgX * scale * newZoom;
-      const newPanY = mouseY - imgY * scale * newZoom;
-
-      setZoom(newZoom);
-      setPan({ x: newPanX, y: newPanY });
-    },
-    [canvasRef, pan, scale, zoom, setZoom, setPan],
-  );
-
-  // Register wheel event
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.addEventListener("wheel", handleWheel, { passive: false });
-    return () => {
-      canvas.removeEventListener("wheel", handleWheel);
-    };
-  }, [canvasRef, handleWheel]);
+  }, [isDragging, selectedFrameId, setFrames, extractFrameImage, viewport, setIsDragging]);
 
   return (
     <div
@@ -633,7 +634,7 @@ export default function CanvasContent() {
       {imageSrc ? (
         <>
           <canvas
-            ref={canvasRef}
+            ref={canvasCallbackRef}
             onClick={handleCanvasClick}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -641,7 +642,7 @@ export default function CanvasContent() {
             onMouseLeave={handleMouseUp}
             className={`w-full h-full rounded border border-border-default ${
               isSpacePressed || toolMode === "hand"
-                ? isPanning
+                ? viewport.isPanDragging()
                   ? "cursor-grabbing"
                   : "cursor-grab"
                 : toolMode === "pen"

@@ -262,15 +262,6 @@ export function useEditor() {
     setCanvasHeight: viewportStore.setCanvasHeight,
     isCanvasCollapsed: viewportStore.isCanvasCollapsed,
     setIsCanvasCollapsed: viewportStore.setIsCanvasCollapsed,
-    previewZoom: viewportStore.previewZoom,
-    setPreviewZoom: viewportStore.setPreviewZoom,
-    previewPan: viewportStore.previewPan,
-    setPreviewPan: viewportStore.setPreviewPan,
-    frameEditZoom: viewportStore.frameEditZoom,
-    setFrameEditZoom: viewportStore.setFrameEditZoom,
-    frameEditPan: viewportStore.frameEditPan,
-    setFrameEditPan: viewportStore.setFrameEditPan,
-
     // Animation
     isPlaying: trackStore.isPlaying,
     setIsPlaying: trackStore.setIsPlaying,
@@ -443,14 +434,6 @@ export function useEditorViewport() {
     isCanvasCollapsed: store.isCanvasCollapsed,
     setIsCanvasCollapsed: store.setIsCanvasCollapsed,
     getTransformParams: store.getTransformParams,
-    previewZoom: store.previewZoom,
-    setPreviewZoom: store.setPreviewZoom,
-    previewPan: store.previewPan,
-    setPreviewPan: store.setPreviewPan,
-    frameEditZoom: store.frameEditZoom,
-    setFrameEditZoom: store.setFrameEditZoom,
-    frameEditPan: store.frameEditPan,
-    setFrameEditPan: store.setFrameEditPan,
   };
 }
 
