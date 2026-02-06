@@ -29,7 +29,14 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
       )}
     >
       {/* Add track */}
-      <Tooltip content="Add Video/Image Track">
+      <Tooltip
+        content={
+          <div className="flex flex-col gap-1">
+            <span className="font-medium">Add Video/Image Track</span>
+            <span className="text-text-tertiary text-[11px]">Add a new video or image track to the timeline</span>
+          </div>
+        }
+      >
         <button
           onClick={() => addTrack(undefined, "video")}
           className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
@@ -38,7 +45,14 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         </button>
       </Tooltip>
 
-      <Tooltip content="Add Audio Track">
+      <Tooltip
+        content={
+          <div className="flex flex-col gap-1">
+            <span className="font-medium">Add Audio Track</span>
+            <span className="text-text-tertiary text-[11px]">Add a new audio track to the timeline</span>
+          </div>
+        }
+      >
         <button
           onClick={() => addTrack(undefined, "audio")}
           className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
@@ -50,7 +64,16 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
       <div className="w-px h-4 bg-border-default" />
 
       {/* Snap toggle */}
-      <Tooltip content={viewState.snapEnabled ? "Snap: ON — Clips snap to edges" : "Snap: OFF — Free positioning"}>
+      <Tooltip
+        content={
+          <div className="flex flex-col gap-1">
+            <span className="font-medium">{viewState.snapEnabled ? "Snap: ON" : "Snap: OFF"}</span>
+            <span className="text-text-tertiary text-[11px]">
+              {viewState.snapEnabled ? "Clips snap to edges of other clips" : "Free positioning without snapping"}
+            </span>
+          </div>
+        }
+      >
         <button
           onClick={toggleSnap}
           className={cn(

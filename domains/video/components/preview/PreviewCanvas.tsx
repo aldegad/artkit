@@ -32,13 +32,23 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const renderRef = useRef<() => void>(() => {});
   const imageCacheRef = useRef(new Map<string, HTMLImageElement>());
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isMaskDrawingRef = useRef(false);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
+  const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
 
   // Mask
-  const { isEditingMask, activeClipId, maskCanvasRef: maskContextCanvasRef, getMaskForClip, getMaskAtTime } = useMask();
+  const {
+    isEditingMask,
+    activeTrackId,
+    maskCanvasRef: maskContextCanvasRef,
+    getMaskAtTimeForTrack,
+    brushSettings,
+    setBrushMode,
+  } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
   const previewGeometryRef = useRef({
@@ -70,46 +80,64 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
 
-  // Handle playback state changes - sync video elements
+  // Ref for current time so the sync interval can read it without being a dependency
+  const currentTimeRef = useRef(playback.currentTime);
+  currentTimeRef.current = playback.currentTime;
+
+  // Handle playback state changes - sync video/audio elements.
+  // Runs only when play state or clip/track structure changes, NOT every frame.
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
     const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
-    const trackById = new Map(tracks.map((track) => [track.id, track]));
 
-    // Collect all audible clips at current time.
-    // Top track (index 0) = foreground; iterate top-to-bottom
-    const sortedTracks = [...tracks];
-    const audibleClipIds = new Set<string>();
-    for (const track of sortedTracks) {
-      if (!track.visible || track.muted) continue;
-
-      const clip = getClipAtTime(track.id, playback.currentTime);
-      if (!clip || !clip.visible) continue;
-
-      if (clip.type === "video") {
-        const hasAudio = clip.hasAudio ?? true;
-        const audioMuted = clip.audioMuted ?? false;
-        const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
-        if (hasAudio && !audioMuted && audioVolume > 0) {
-          audibleClipIds.add(clip.id);
+    if (!playback.isPlaying) {
+      if (wasPlayingRef.current) {
+        // Playback stopped - pause all media.
+        for (const clip of videoClips) {
+          const video = videoElementsRef.current?.get(clip.sourceUrl);
+          if (!video) continue;
+          video.pause();
+          video.muted = true;
         }
-      } else if (clip.type === "audio") {
-        const audioMuted = clip.audioMuted ?? false;
-        const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
-        if (!audioMuted && audioVolume > 0) {
-          audibleClipIds.add(clip.id);
+        for (const clip of audioClips) {
+          const audio = audioElementsRef.current?.get(clip.sourceUrl);
+          if (!audio) continue;
+          audio.pause();
+          audio.muted = true;
         }
       }
+      wasPlayingRef.current = false;
+      return;
     }
 
-    if (playback.isPlaying) {
-      // Playback started/continued - sync and play all visible video clips for visual render.
+    // Sync and start/stop media elements
+    const syncMedia = () => {
+      const ct = currentTimeRef.current;
+      const trackById = new Map(tracks.map((t) => [t.id, t]));
+
+      // Collect audible clips at current time
+      const audibleClipIds = new Set<string>();
+      for (const track of tracks) {
+        if (!track.visible || track.muted) continue;
+        const clip = getClipAtTime(track.id, ct);
+        if (!clip || !clip.visible) continue;
+        if (clip.type === "video") {
+          if ((clip.hasAudio ?? true) && !(clip.audioMuted ?? false) && ((typeof clip.audioVolume === "number" ? clip.audioVolume : 100) > 0)) {
+            audibleClipIds.add(clip.id);
+          }
+        } else if (clip.type === "audio") {
+          if (!(clip.audioMuted ?? false) && ((typeof clip.audioVolume === "number" ? clip.audioVolume : 100) > 0)) {
+            audibleClipIds.add(clip.id);
+          }
+        }
+      }
+
       for (const clip of videoClips) {
         const video = videoElementsRef.current?.get(clip.sourceUrl);
         const track = trackById.get(clip.trackId);
         if (!video || !track || video.readyState < 2) continue;
 
-        const clipTime = playback.currentTime - clip.startTime;
+        const clipTime = ct - clip.startTime;
         if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible) {
           video.pause();
           video.muted = true;
@@ -117,67 +145,52 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(video.currentTime - sourceTime) > 0.1) {
+        // Only seek when drift is significant (0.3s), not on minor differences
+        if (Math.abs(video.currentTime - sourceTime) > 0.3) {
           video.currentTime = sourceTime;
         }
 
         video.playbackRate = playback.playbackRate;
-
         const isAudible = audibleClipIds.has(clip.id);
         video.muted = !isAudible;
         const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
         video.volume = isAudible ? Math.max(0, Math.min(1, clipVolume / 100)) : 0;
 
-        video.play().catch(() => {});
+        if (video.paused) video.play().catch(() => {});
       }
 
-      // Sync and play audio-only clips.
       for (const clip of audioClips) {
         const audio = audioElementsRef.current?.get(clip.sourceUrl);
         const track = trackById.get(clip.trackId);
         if (!audio || !track) continue;
 
-        const clipTime = playback.currentTime - clip.startTime;
-        if (
-          clipTime < 0 ||
-          clipTime >= clip.duration ||
-          !clip.visible ||
-          !track.visible ||
-          !audibleClipIds.has(clip.id)
-        ) {
+        const clipTime = ct - clip.startTime;
+        if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible || !audibleClipIds.has(clip.id)) {
           audio.pause();
           audio.muted = true;
           continue;
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(audio.currentTime - sourceTime) > 0.1) {
+        if (Math.abs(audio.currentTime - sourceTime) > 0.3) {
           audio.currentTime = sourceTime;
         }
 
         audio.playbackRate = playback.playbackRate;
         audio.muted = false;
         audio.volume = Math.max(0, Math.min(1, (clip.audioVolume ?? 100) / 100));
-        audio.play().catch(() => {});
-      }
-    } else if (wasPlayingRef.current) {
-      // Playback stopped - pause all videos and mute audio.
-      for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.sourceUrl);
-        if (!video) continue;
-        video.pause();
-        video.muted = true;
-      }
-      for (const clip of audioClips) {
-        const audio = audioElementsRef.current?.get(clip.sourceUrl);
-        if (!audio) continue;
-        audio.pause();
-        audio.muted = true;
-      }
-    }
 
-    wasPlayingRef.current = playback.isPlaying;
-  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
+        if (audio.paused) audio.play().catch(() => {});
+      }
+    };
+
+    syncMedia(); // Initial sync when playback starts
+    // Periodic re-sync for clip boundaries and drift correction (not every frame)
+    const intervalId = setInterval(syncMedia, 250);
+    wasPlayingRef.current = true;
+
+    return () => clearInterval(intervalId);
+  }, [playback.isPlaying, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
 
   // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
   useEffect(() => {
@@ -239,6 +252,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // During playback, skip render if any video clip isn't decoded yet.
+    // This keeps the previous frame visible instead of showing a blank flash.
+    if (playback.isPlaying) {
+      for (const track of tracks) {
+        if (!track.visible) continue;
+        const clip = getClipAtTime(track.id, playback.currentTime);
+        if (!clip || !clip.visible || clip.type !== "video") continue;
+        const videoElement = videoElementsRef.current.get(clip.sourceUrl);
+        if (!videoElement || videoElement.readyState < 2) {
+          return;
+        }
+      }
+    }
 
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
@@ -337,29 +364,26 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const drawW = clip.sourceSize.width * scale * clip.scale;
         const drawH = clip.sourceSize.height * scale * clip.scale;
 
-        // Check for mask (live editing or saved keyframes)
+        // Check for mask on this track at current time
+        const maskResult = getMaskAtTimeForTrack(clip.trackId, playback.currentTime);
         let clipMaskSource: CanvasImageSource | null = null;
-        if (isEditingMask && activeClipId === clip.id && maskContextCanvasRef.current) {
+
+        if (maskResult === "__live_canvas__" && maskContextCanvasRef.current) {
+          // Live editing: use mask canvas directly
           clipMaskSource = maskContextCanvasRef.current;
-        } else {
-          const savedMask = getMaskForClip(clip.id);
-          if (savedMask && savedMask.keyframes && savedMask.keyframes.length > 0) {
-            const clipLocalTime = playback.currentTime - clip.startTime;
-            const maskDataUrl = getMaskAtTime(savedMask.id, clipLocalTime);
-            if (maskDataUrl) {
-              let maskImg = savedMaskImgCacheRef.current.get(maskDataUrl);
-              if (!maskImg) {
-                maskImg = new Image();
-                maskImg.src = maskDataUrl;
-                savedMaskImgCacheRef.current.set(maskDataUrl, maskImg);
-                maskImg.onload = () => {
-                  renderRef.current();
-                };
-              }
-              if (maskImg.complete && maskImg.naturalWidth > 0) {
-                clipMaskSource = maskImg;
-              }
-            }
+        } else if (maskResult && maskResult !== "__live_canvas__") {
+          // Saved keyframe data
+          let maskImg = savedMaskImgCacheRef.current.get(maskResult);
+          if (!maskImg) {
+            maskImg = new Image();
+            maskImg.src = maskResult;
+            savedMaskImgCacheRef.current.set(maskResult, maskImg);
+            maskImg.onload = () => {
+              renderRef.current();
+            };
+          }
+          if (maskImg.complete && maskImg.naturalWidth > 0) {
+            clipMaskSource = maskImg;
           }
         }
 
@@ -369,25 +393,58 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             maskTempCanvasRef.current = document.createElement("canvas");
           }
           const tmpCanvas = maskTempCanvasRef.current;
-          const srcW = clip.sourceSize.width;
-          const srcH = clip.sourceSize.height;
-          if (tmpCanvas.width !== srcW || tmpCanvas.height !== srcH) {
-            tmpCanvas.width = srcW;
-            tmpCanvas.height = srcH;
+          // Mask is project-canvas sized
+          const maskW = project.canvasSize.width;
+          const maskH = project.canvasSize.height;
+          if (tmpCanvas.width !== maskW || tmpCanvas.height !== maskH) {
+            tmpCanvas.width = maskW;
+            tmpCanvas.height = maskH;
           }
           const tmpCtx = tmpCanvas.getContext("2d");
           if (tmpCtx) {
-            tmpCtx.clearRect(0, 0, srcW, srcH);
+            tmpCtx.clearRect(0, 0, maskW, maskH);
             tmpCtx.globalCompositeOperation = "source-over";
             tmpCtx.globalAlpha = 1;
-            tmpCtx.drawImage(sourceEl, 0, 0, srcW, srcH);
+            // Draw clip at its position within the project canvas
+            tmpCtx.drawImage(
+              sourceEl,
+              clip.position.x,
+              clip.position.y,
+              clip.sourceSize.width * clip.scale,
+              clip.sourceSize.height * clip.scale
+            );
             tmpCtx.globalCompositeOperation = "destination-in";
-            tmpCtx.drawImage(clipMaskSource, 0, 0, srcW, srcH);
+            tmpCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
             tmpCtx.globalCompositeOperation = "source-over";
 
             ctx.globalAlpha = clip.opacity / 100;
-            ctx.drawImage(tmpCanvas, drawX, drawY, drawW, drawH);
+            ctx.drawImage(tmpCanvas, offsetX, offsetY, previewWidth, previewHeight);
             ctx.globalAlpha = 1;
+          }
+
+          // Draw mask overlay when editing
+          if (isEditingMask && activeTrackId === clip.trackId && maskResult === "__live_canvas__") {
+            if (!maskOverlayCanvasRef.current) {
+              maskOverlayCanvasRef.current = document.createElement("canvas");
+            }
+            const overlayCanvas = maskOverlayCanvasRef.current;
+            if (overlayCanvas.width !== maskW || overlayCanvas.height !== maskH) {
+              overlayCanvas.width = maskW;
+              overlayCanvas.height = maskH;
+            }
+            const overlayCtx = overlayCanvas.getContext("2d");
+            if (overlayCtx) {
+              overlayCtx.clearRect(0, 0, maskW, maskH);
+              // Draw mask
+              overlayCtx.globalCompositeOperation = "source-over";
+              overlayCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
+              // Tint with red: only where mask is white (painted)
+              overlayCtx.globalCompositeOperation = "source-in";
+              overlayCtx.fillStyle = "rgba(255, 60, 60, 0.35)";
+              overlayCtx.fillRect(0, 0, maskW, maskH);
+
+              ctx.drawImage(overlayCanvas, offsetX, offsetY, previewWidth, previewHeight);
+            }
           }
         } else {
           ctx.globalAlpha = clip.opacity / 100;
@@ -498,16 +555,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     };
   }, [previewContainerRef]);
 
+  // Mask uses project coordinates (not clip-local) since it's track-level
   const screenToMaskCoords = useCallback((clientX: number, clientY: number) => {
     const point = screenToProject(clientX, clientY, true);
-    if (!point || !activeClipId) return null;
-    const activeClip = clips.find((c) => c.id === activeClipId);
-    if (!activeClip || activeClip.type === "audio") return null;
+    if (!point) return null;
     return {
-      x: Math.max(0, Math.min(activeClip.sourceSize.width, (point.x - activeClip.position.x) / activeClip.scale)),
-      y: Math.max(0, Math.min(activeClip.sourceSize.height, (point.y - activeClip.position.y) / activeClip.scale)),
+      x: Math.max(0, Math.min(project.canvasSize.width, point.x)),
+      y: Math.max(0, Math.min(project.canvasSize.height, point.y)),
     };
-  }, [screenToProject, activeClipId, clips]);
+  }, [screenToProject, project.canvasSize]);
 
   const isInsideCropArea = useCallback((point: { x: number; y: number }, area: { x: number; y: number; width: number; height: number }) => {
     return (
@@ -557,11 +613,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [tracks, getClipAtTime, playback.currentTime]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (toolMode === "mask" && isEditingMask && activeClipId) {
+    if (toolMode === "mask" && isEditingMask && activeTrackId) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (!maskCoords) return;
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
+
+      // Alt key toggles erase mode temporarily
+      if (e.altKey && brushSettings.mode !== "erase") {
+        prevBrushModeRef.current = brushSettings.mode;
+        setBrushMode("erase");
+      }
+
       startDraw(maskCoords.x, maskCoords.y);
       isMaskDrawingRef.current = true;
       cancelAnimationFrame(renderRequestRef.current);
@@ -619,9 +682,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeClipId, screenToMaskCoords, startDraw]);
+  }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Update brush cursor position in mask mode
+    if (toolMode === "mask" && isEditingMask) {
+      const container = previewContainerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        setBrushCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      }
+    }
+
     if (isMaskDrawingRef.current) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords) {
@@ -687,12 +759,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw]);
+  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     if (isMaskDrawingRef.current) {
       endDraw();
       isMaskDrawingRef.current = false;
+
+      // Restore brush mode if Alt was used
+      if (prevBrushModeRef.current !== null) {
+        setBrushMode(prevBrushModeRef.current);
+        prevBrushModeRef.current = null;
+      }
+
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
     }
@@ -712,12 +791,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       cropStart: null,
     };
     setIsDraggingCrop(false);
-  }, [endDraw]);
+  }, [endDraw, setBrushMode]);
 
   // Render on playback time change
   useEffect(() => {
     renderRef.current();
-  }, [playback.currentTime, playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize, isEditingMask, activeClipId]);
+  }, [playback.currentTime, playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize, isEditingMask, activeTrackId]);
 
   // Handle resize
   useEffect(() => {
@@ -743,17 +822,41 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         style={{
           cursor: toolMode === "crop"
             ? (isDraggingCrop ? "grabbing" : "crosshair")
-            : toolMode === "mask"
-              ? "crosshair"
-              : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+            : toolMode === "mask" && isEditingMask
+              ? "none"
+              : toolMode === "mask"
+                ? "crosshair"
+                : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onPointerLeave={(e) => {
+          handlePointerUp(e);
+          setBrushCursor(null);
+        }}
       />
+      {/* Brush cursor preview */}
+      {toolMode === "mask" && isEditingMask && brushCursor && (() => {
+        const { scale } = previewGeometryRef.current;
+        const displaySize = brushSettings.size * scale;
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: brushCursor.x - displaySize / 2,
+              top: brushCursor.y - displaySize / 2,
+              width: displaySize,
+              height: displaySize,
+              borderRadius: "50%",
+              border: `1.5px solid ${brushSettings.mode === "erase" ? "rgba(255,100,100,0.8)" : "rgba(255,255,255,0.8)"}`,
+              boxShadow: `0 0 0 1px ${brushSettings.mode === "erase" ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.5)"}`,
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

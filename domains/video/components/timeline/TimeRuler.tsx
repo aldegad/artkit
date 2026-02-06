@@ -15,7 +15,7 @@ interface TimeRulerProps {
 export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { viewState } = useTimeline();
+  const { viewState, setScrollX } = useTimeline();
   const { playback, seek } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
 
@@ -78,7 +78,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       if (x < 0 || x > width) continue;
 
       const isMajor = time % majorTickInterval < 0.001 || time % majorTickInterval > majorTickInterval - 0.001;
-      const tickHeight = isMajor ? 12 : 6;
+      const tickHeight = isMajor ? 8 : 4;
 
       ctx.strokeStyle = isMajor ? colors.rulerTickMajor : colors.rulerTick;
       ctx.lineWidth = isMajor ? 1 : 0.5;
@@ -93,7 +93,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
         const secs = Math.floor(time % 60);
         const label = mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : `${secs}s`;
         ctx.fillStyle = colors.rulerText;
-        ctx.fillText(label, x, height - 14);
+        ctx.fillText(label, x, height - 9);
       }
     }
 
@@ -102,9 +102,9 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     if (playheadX >= 0 && playheadX <= width) {
       ctx.fillStyle = colors.waveformPlayhead;
       ctx.beginPath();
-      ctx.moveTo(playheadX - 6, 0);
-      ctx.lineTo(playheadX + 6, 0);
-      ctx.lineTo(playheadX, 8);
+      ctx.moveTo(playheadX - 5, 0);
+      ctx.lineTo(playheadX + 5, 0);
+      ctx.lineTo(playheadX, 6);
       ctx.closePath();
       ctx.fill();
     }
@@ -124,8 +124,13 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       } else {
         seek(time);
       }
+
+      // Auto-scroll to keep playhead visible
+      if (time < viewState.scrollX) {
+        setScrollX(time);
+      }
     },
-    [pixelToTime, seek, onSeek]
+    [pixelToTime, seek, onSeek, viewState.scrollX, setScrollX]
   );
 
   useEffect(() => {
@@ -147,7 +152,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   return (
     <div
       ref={containerRef}
-      className={cn("h-6 w-full overflow-hidden", className)}
+      className={cn("h-4 w-full overflow-hidden", className)}
     >
       <canvas
         ref={canvasRef}
