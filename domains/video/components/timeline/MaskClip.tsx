@@ -29,6 +29,7 @@ export function MaskClip({ mask }: MaskClipProps) {
     originalDuration: 0,
   });
   const didDragRef = useRef(false);
+  const wasActiveOnDownRef = useRef(false);
 
   // Snap to own track clips + adjacent track below clips
   const snapToPoints = useCallback(
@@ -65,8 +66,9 @@ export function MaskClip({ mask }: MaskClipProps) {
     e.stopPropagation();
     e.preventDefault();
     didDragRef.current = false;
+    wasActiveOnDownRef.current = isActive;
 
-    // Select or deselect on click (deselect handled in mouseUp if no drag)
+    // Select on click (deselect handled in mouseUp if no drag)
     if (!isActive) {
       startMaskEditById(mask.id);
     }
@@ -125,8 +127,8 @@ export function MaskClip({ mask }: MaskClipProps) {
     };
 
     const onMouseUp = () => {
-      // Deselect if it was already active and user just clicked (no drag)
-      if (isActive && !didDragRef.current) {
+      // Deselect only if it was already active before mouseDown and user just clicked (no drag)
+      if (wasActiveOnDownRef.current && !didDragRef.current) {
         endMaskEdit();
       }
       setDragMode("none");
@@ -138,7 +140,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
-  }, [dragMode, mask.id, isActive, updateMaskTime, endMaskEdit, durationToWidth, snapToPoints]);
+  }, [dragMode, mask.id, updateMaskTime, endMaskEdit, durationToWidth, snapToPoints]);
 
   // Cursor based on hover position
   const handleMouseMoveLocal = useCallback((e: React.MouseEvent) => {
