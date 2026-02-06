@@ -286,14 +286,15 @@ function VideoEditorContent() {
             continue;
           }
 
-          if (!hasExistingVisualClip && visualImportedCount === 0) {
+          const isFirstVisual = !hasExistingVisualClip && visualImportedCount === 0;
+          if (isFirstVisual) {
             setProject({
               ...project,
               canvasSize: metadata.size,
             });
           }
 
-          const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime));
+          const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime), isFirstVisual ? metadata.size : undefined);
           try {
             await saveMediaBlob(clipId, file);
           } catch (error) {
@@ -364,14 +365,15 @@ function VideoEditorContent() {
           continue;
         }
 
-        if (!hasExistingVisualClip && visualImportedCount === 0) {
+        const isFirstVisualImg = !hasExistingVisualClip && visualImportedCount === 0;
+        if (isFirstVisualImg) {
           setProject({
             ...project,
             canvasSize: size,
           });
         }
 
-        const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5);
+        const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5, isFirstVisualImg ? size : undefined);
         try {
           await saveMediaBlob(clipId, file);
         } catch (error) {

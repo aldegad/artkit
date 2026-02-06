@@ -72,7 +72,6 @@ export {
   Clip as ClipComponent,
   Playhead,
   TimelineToolbar,
-  AssetDropZone,
   MaskControls,
   VideoMenuBar,
   VideoToolbar,

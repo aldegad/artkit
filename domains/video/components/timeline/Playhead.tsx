@@ -29,14 +29,14 @@ export function Playhead({ className, height }: PlayheadProps) {
         left: x,
         height,
         width: TIMELINE.PLAYHEAD_WIDTH,
-        backgroundColor: "var(--canvas-waveform-playhead, #ef4444)",
+        backgroundColor: "var(--waveform-playhead, #FF8C00)",
       }}
     >
       {/* Playhead handle at top */}
       <div
         className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45"
         style={{
-          backgroundColor: "var(--canvas-waveform-playhead, #ef4444)",
+          backgroundColor: "var(--waveform-playhead, #FF8C00)",
         }}
       />
     </div>

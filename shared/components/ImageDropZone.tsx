@@ -3,7 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useLanguage } from "../contexts";
 
-type DropZoneVariant = "sprite" | "editor" | "converter";
+type DropZoneVariant = "sprite" | "editor" | "converter" | "video";
 
 interface ImageDropZoneProps {
   variant: DropZoneVariant;
@@ -44,12 +44,20 @@ const variantIcons: Record<DropZoneVariant, React.ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 14l-3-3-4 4" />
     </svg>
   ),
+  video: (
+    <svg className="w-16 h-16 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* Video camera icon */}
+      <rect x="2" y="6" width="13" height="12" rx="2" strokeWidth={1.5} />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l5-3v10l-5-3" />
+    </svg>
+  ),
 };
 
 const variantMultiple: Record<DropZoneVariant, boolean> = {
   sprite: false,
   editor: false,
   converter: true,
+  video: true,
 };
 
 export default function ImageDropZone({
@@ -74,6 +82,10 @@ export default function ImageDropZone({
     converter: {
       title: t.dragOrClickToSelect,
       description: t.selectImagesToConvert,
+    },
+    video: {
+      title: t.dropMediaHere,
+      description: t.dropMediaDesc,
     },
   };
 
