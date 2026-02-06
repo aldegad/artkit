@@ -40,15 +40,7 @@ import {
   type VideoToolMode,
   type VideoTrack,
 } from "../../domains/video";
-import {
-  matchesShortcut,
-  matchesVideoToolShortcut,
-  hasCmdOrCtrl,
-  VIDEO_EDIT_SHORTCUTS,
-  VIDEO_ZOOM_SHORTCUTS,
-  VIDEO_CONTEXT_SHORTCUTS,
-  PLAYBACK_SHORTCUTS,
-} from "../../domains/video/constants/videoKeyboardShortcuts";
+import { useVideoKeyboardShortcuts } from "../../domains/video/hooks";
 import {
   getVideoStorageProvider,
   type VideoStorageInfo,
@@ -220,6 +212,8 @@ function VideoEditorContent() {
   const [saveCount, setSaveCount] = useState(0);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
+  const projectRef = useRef(project);
+  projectRef.current = project;
 
   const { saveProject, saveAsProject, isSaving, saveProgress } = useVideoSave({
     storageProvider,
@@ -276,6 +270,22 @@ function VideoEditorContent() {
     }, 0);
     return () => clearTimeout(timer);
   }, [isAutosaveInitialized, project.masks, restoreMasks]);
+
+  // Sync MaskContext masks → project.masks (MaskContext is the single source of truth)
+  useEffect(() => {
+    if (!masksRestoredRef.current) return;
+    setProject({
+      ...projectRef.current,
+      masks: masksArray,
+    });
+  }, [masksArray, setProject]);
+
+  // Auto-switch to mask tool when entering mask edit mode (e.g., double-click mask clip)
+  useEffect(() => {
+    if (isEditingMask && toolMode !== "mask") {
+      setToolMode("mask");
+    }
+  }, [isEditingMask, toolMode, setToolMode]);
 
   // Load saved projects when storage provider changes
   useEffect(() => {
@@ -1073,117 +1083,38 @@ function VideoEditorContent() {
   }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
 
 
-  // Keyboard shortcuts - global listener to work regardless of focus
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      // --- Modifier shortcuts (Cmd/Ctrl) ---
-      if (hasCmdOrCtrl(e)) {
-        // Redo: Cmd+Shift+Z or Cmd+Y
-        for (const redo of VIDEO_EDIT_SHORTCUTS.redo) {
-          if (matchesShortcut(e, redo)) { e.preventDefault(); handleRedo(); return; }
-        }
-        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.undo)) { e.preventDefault(); handleUndo(); return; }
-        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.save)) { e.preventDefault(); handleSave(); return; }
-        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.open)) { e.preventDefault(); handleOpen(); return; }
-        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.copy)) { e.preventDefault(); handleCopy(); return; }
-        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.cut)) { e.preventDefault(); handleCut(); return; }
-        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.paste)) { e.preventDefault(); handlePaste(); return; }
-        if (matchesShortcut(e, VIDEO_ZOOM_SHORTCUTS.zoomIn)) { e.preventDefault(); handleZoomIn(); return; }
-        if (matchesShortcut(e, VIDEO_ZOOM_SHORTCUTS.zoomOut)) { e.preventDefault(); handleZoomOut(); return; }
-        if (matchesShortcut(e, VIDEO_ZOOM_SHORTCUTS.fitToScreen)) { e.preventDefault(); handleFitToScreen(); return; }
-        return;
-      }
-
-      // --- Shift shortcuts ---
-      if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.duplicate)) {
-        e.preventDefault();
-        handleDuplicate();
-        return;
-      }
-
-      // --- Tool shortcuts (single key, no modifiers) ---
-      const matchedTool = matchesVideoToolShortcut(e);
-      if (matchedTool) {
-        handleToolModeChange(matchedTool);
-        return;
-      }
-
-      // --- Playback & context shortcuts (e.code based) ---
-      if (e.code === PLAYBACK_SHORTCUTS.togglePlay) {
-        e.preventDefault();
-        togglePlay();
-        return;
-      }
-      if (e.code === PLAYBACK_SHORTCUTS.stepBackward) {
-        stepBackward();
-        return;
-      }
-      if (e.code === PLAYBACK_SHORTCUTS.stepForward) {
-        stepForward();
-        return;
-      }
-      if (e.code === VIDEO_CONTEXT_SHORTCUTS.applyCrop) {
-        if (toolMode === "crop") {
-          e.preventDefault();
-          handleApplyCrop();
-        }
-        return;
-      }
-      if (e.code === VIDEO_CONTEXT_SHORTCUTS.cancel) {
-        if (activeMaskId) deselectMask();
-        if (isEditingMask) endMaskEdit();
-        return;
-      }
-      if (VIDEO_CONTEXT_SHORTCUTS.delete.includes(e.code)) {
-        e.preventDefault();
-        handleDelete();
-        return;
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [
+  // Keyboard shortcuts
+  useVideoKeyboardShortcuts({
     togglePlay,
-    handleToolModeChange,
-    toolMode,
-    handleApplyCrop,
-    activeMaskId,
-    deselectMask,
-    isEditingMask,
-    endMaskEdit,
-    stepBackward,
     stepForward,
+    stepBackward,
+    onToolModeChange: handleToolModeChange,
+    toolMode,
     handleUndo,
     handleRedo,
     handleSave,
     handleOpen,
-    handleZoomIn,
-    handleZoomOut,
-    handleFitToScreen,
     handleCopy,
     handleCut,
     handlePaste,
     handleDelete,
     handleDuplicate,
-  ]);
+    handleZoomIn,
+    handleZoomOut,
+    handleFitToScreen,
+    handleApplyCrop,
+    activeMaskId,
+    deselectMask,
+    isEditingMask,
+    endMaskEdit,
+  });
 
   const menuTranslations = {
     file: t.file,
     edit: t.edit,
     view: t.view,
-    newProject: t.newProject,
-    openProject: t.openProject,
+    new: t.new,
+    load: t.load,
     save: t.save,
     saveAs: t.saveAs,
     importMedia: t.importMedia,
@@ -1213,7 +1144,7 @@ function VideoEditorContent() {
     maskDesc: t.maskDesc,
   };
 
-  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask", "move"];
+  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask"];
 
   return (
     <div
@@ -1238,7 +1169,7 @@ function VideoEditorContent() {
         menuBar={
           <VideoMenuBar
             onNew={handleNew}
-            onOpen={handleOpen}
+            onLoad={handleOpen}
             onImportFile={handleImportFile}
             onSave={handleSave}
             onSaveAs={handleSaveAs}

@@ -1,33 +1,30 @@
 /**
- * Keyboard Shortcut Configuration
+ * Editor Keyboard Shortcut Configuration
  *
- * Uses e.code (physical key position) instead of e.key (character)
- * to support shortcuts regardless of keyboard input language (Korean/English)
+ * Domain-specific shortcuts for the image editor.
+ * Common shortcuts and utilities are imported from shared/utils/keyboard.
  */
 
 import { EditorToolMode } from "../types";
+import { COMMON_SHORTCUTS } from "@/shared/utils/keyboard";
+import type { ToolShortcutMap } from "@/shared/utils/keyboard";
+
+// Re-export shared types and utilities for backward compatibility
+export type { ShortcutDefinition } from "@/shared/utils/keyboard";
+export {
+  hasCmdOrCtrl,
+  matchesShortcut,
+  matchesAnyCodes,
+} from "@/shared/utils/keyboard";
 
 // ============================================
-// Types
-// ============================================
-
-export interface ShortcutDefinition {
-  code: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  shift?: boolean;
-  alt?: boolean;
-  ctrlOrMeta?: boolean;
-}
-
-// ============================================
-// Shortcut Configurations
+// Editor-specific Shortcut Configurations
 // ============================================
 
 /**
  * Tool mode shortcuts - single keys without modifiers
  */
-export const TOOL_SHORTCUTS: Record<string, EditorToolMode> = {
+export const TOOL_SHORTCUTS: ToolShortcutMap<EditorToolMode> = {
   KeyC: "crop",
   KeyH: "hand",
   KeyZ: "zoom",
@@ -46,8 +43,8 @@ export const TOOL_SHORTCUTS: Record<string, EditorToolMode> = {
  */
 export const TRANSFORM_SHORTCUTS = {
   enterTransform: { code: "KeyT", ctrlOrMeta: true } as const,
-  applyTransform: "Enter",
-  cancelTransform: "Escape",
+  applyTransform: COMMON_SHORTCUTS.confirm,
+  cancelTransform: COMMON_SHORTCUTS.cancel,
 } as const;
 
 /**
@@ -71,71 +68,39 @@ export const ZOOM_SHORTCUTS = {
  * History shortcuts (Undo/Redo)
  */
 export const HISTORY_SHORTCUTS = {
-  undo: { code: "KeyZ", ctrlOrMeta: true } as const,
-  redo: [
-    { code: "KeyZ", ctrlOrMeta: true, shift: true },
-    { code: "KeyY", ctrlOrMeta: true },
-  ] as const,
+  undo: COMMON_SHORTCUTS.undo,
+  redo: COMMON_SHORTCUTS.redo,
 };
 
 /**
  * Clipboard shortcuts
  */
 export const CLIPBOARD_SHORTCUTS = {
-  copy: { code: "KeyC", ctrlOrMeta: true } as const,
-  paste: { code: "KeyV", ctrlOrMeta: true } as const,
+  copy: COMMON_SHORTCUTS.copy,
+  paste: COMMON_SHORTCUTS.paste,
 };
 
 /**
  * File operation shortcuts
  */
 export const FILE_SHORTCUTS = {
-  save: { code: "KeyS", ctrlOrMeta: true } as const,
+  save: COMMON_SHORTCUTS.save,
 };
 
 /**
  * Special key shortcuts
  */
 export const SPECIAL_SHORTCUTS = {
-  temporaryHand: "Space",
-  cancel: "Escape",
+  temporaryHand: COMMON_SHORTCUTS.space,
+  cancel: COMMON_SHORTCUTS.cancel,
 } as const;
 
 // ============================================
-// Helper Functions
+// Editor-specific Helper Functions
 // ============================================
 
 /**
- * Check if event has Cmd/Ctrl modifier (cross-platform)
- */
-export function hasCmdOrCtrl(event: KeyboardEvent): boolean {
-  return event.metaKey || event.ctrlKey;
-}
-
-/**
- * Check if a keyboard event matches a shortcut definition
- */
-export function matchesShortcut(
-  event: KeyboardEvent,
-  shortcut: ShortcutDefinition
-): boolean {
-  if (event.code !== shortcut.code) return false;
-
-  if (shortcut.ctrlOrMeta) {
-    if (!event.ctrlKey && !event.metaKey) return false;
-  } else {
-    if (shortcut.ctrl && !event.ctrlKey) return false;
-    if (shortcut.meta && !event.metaKey) return false;
-  }
-
-  if (shortcut.shift && !event.shiftKey) return false;
-  if (shortcut.alt && !event.altKey) return false;
-
-  return true;
-}
-
-/**
- * Check if a keyboard event matches a tool shortcut (no modifiers)
+ * Check if a keyboard event matches an editor tool shortcut (no modifiers)
  * Returns the tool mode or null if no match
  */
 export function matchesToolShortcut(
@@ -143,14 +108,4 @@ export function matchesToolShortcut(
 ): EditorToolMode | null {
   if (event.metaKey || event.ctrlKey) return null;
   return TOOL_SHORTCUTS[event.code] ?? null;
-}
-
-/**
- * Check if event matches any code in an array
- */
-export function matchesAnyCodes(
-  event: KeyboardEvent,
-  codes: readonly string[]
-): boolean {
-  return codes.includes(event.code);
 }
