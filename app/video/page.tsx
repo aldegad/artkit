@@ -171,7 +171,7 @@ function VideoEditorContent() {
     canRedo,
     isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, restoreMasks, masks: masksMap } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, restoreMasks, masks: masksMap, autoSaveKeyframe } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -957,6 +957,13 @@ function VideoEditorContent() {
       startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
     }
   }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
+
+  // Auto-switch to mask tool when mask editing starts (e.g., from timeline mask clip click)
+  useEffect(() => {
+    if (isEditingMask && toolMode !== "mask") {
+      setToolMode("mask");
+    }
+  }, [isEditingMask, toolMode, setToolMode]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

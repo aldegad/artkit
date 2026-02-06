@@ -4,6 +4,7 @@ import { useCallback, useRef, useEffect, useState } from "react";
 import { MaskData } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useMask } from "../../contexts";
+import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { UI } from "../../constants";
 
@@ -15,7 +16,8 @@ interface MaskClipProps {
 
 export function MaskClip({ mask }: MaskClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
-  const { activeMaskId, selectMask, updateMaskTime } = useMask();
+  const { activeMaskId, startMaskEditById, updateMaskTime } = useMask();
+  const { playback } = useVideoState();
 
   const isActive = activeMaskId === mask.id;
   const x = timeToPixel(mask.startTime);
@@ -31,7 +33,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    selectMask(mask.id);
+    startMaskEditById(mask.id, playback.currentTime);
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const localX = e.clientX - rect.left;
@@ -49,7 +51,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       originalDuration: mask.duration,
     };
     setDragMode(mode);
-  }, [selectMask, mask.id, mask.startTime, mask.duration]);
+  }, [startMaskEditById, mask.id, mask.startTime, mask.duration, playback.currentTime]);
 
   useEffect(() => {
     if (dragMode === "none") return;

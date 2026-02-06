@@ -39,7 +39,9 @@ interface MaskContextValue {
   selectMask: (maskId: string) => void;
   deselectMask: () => void;
   startMaskEdit: (trackId: string, canvasSize: Size, currentTime: number) => string;
+  startMaskEditById: (maskId: string, currentTime: number) => void;
   endMaskEdit: () => void;
+  autoSaveKeyframe: (currentTime: number) => void;
   addMask: (trackId: string, size: Size, startTime: number, duration: number) => string;
   deleteMask: (maskId: string) => void;
   updateMaskTime: (maskId: string, startTime: number, duration: number) => void;
@@ -213,6 +215,41 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     [masks, addMask]
   );
 
+  // Start editing a specific mask by ID (e.g., when clicking a mask clip in timeline)
+  const startMaskEditById = useCallback(
+    (maskId: string, currentTime: number) => {
+      const mask = masks.get(maskId);
+      if (!mask) return;
+
+      setActiveMaskId(maskId);
+      setActiveTrackId(mask.trackId);
+      setIsEditingMask(true);
+
+      // Initialize mask canvas
+      if (maskCanvasRef.current) {
+        maskCanvasRef.current.width = mask.size.width;
+        maskCanvasRef.current.height = mask.size.height;
+        const ctx = maskCanvasRef.current.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, mask.size.width, mask.size.height);
+
+          // Load existing keyframe data at current time
+          const localTime = Math.max(0, currentTime - mask.startTime);
+          const existingData = getMaskAtTimeInternal(mask, localTime);
+          if (existingData) {
+            const img = new Image();
+            img.onload = () => {
+              ctx.clearRect(0, 0, mask.size.width, mask.size.height);
+              ctx.drawImage(img, 0, 0, mask.size.width, mask.size.height);
+            };
+            img.src = existingData;
+          }
+        }
+      }
+    },
+    [masks]
+  );
+
   // End mask editing
   const endMaskEdit = useCallback(() => {
     setActiveMaskId(null);
@@ -246,6 +283,20 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       });
     },
     []
+  );
+
+  // Auto-save current mask canvas as keyframe
+  const autoSaveKeyframe = useCallback(
+    (currentTime: number) => {
+      if (!activeMaskId || !maskCanvasRef.current) return;
+      const mask = masks.get(activeMaskId);
+      if (!mask) return;
+
+      const dataUrl = maskCanvasRef.current.toDataURL("image/png");
+      const localTime = currentTime - mask.startTime;
+      addKeyframe(activeMaskId, localTime, dataUrl);
+    },
+    [activeMaskId, masks, addKeyframe]
   );
 
   // Remove a keyframe
@@ -366,12 +417,13 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     (trackId: string, time: number): string | null => {
       for (const mask of masks.values()) {
         if (mask.trackId !== trackId) continue;
-        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
 
-        // Currently editing this mask - use live canvas
+        // Currently editing this mask - always show live canvas regardless of time position
         if (isEditingMask && activeMaskId === mask.id && maskCanvasRef.current) {
-          return "__live_canvas__"; // Signal to use maskCanvasRef directly
+          return "__live_canvas__";
         }
+
+        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
 
         const localTime = time - mask.startTime;
         return getMaskAtTimeInternal(mask, localTime);
@@ -395,7 +447,9 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     selectMask,
     deselectMask,
     startMaskEdit,
+    startMaskEditById,
     endMaskEdit,
+    autoSaveKeyframe,
     addMask,
     deleteMask,
     updateMaskTime,
