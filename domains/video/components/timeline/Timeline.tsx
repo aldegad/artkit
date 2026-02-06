@@ -198,7 +198,7 @@ export function Timeline({ className }: TimelineProps) {
         <div className="flex border-b border-border-default">
           {/* Track header column */}
           <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default" style={headerWidthStyle}>
-            <div className="h-6" /> {/* Ruler spacer */}
+            <div className="h-4" /> {/* Ruler spacer */}
           </div>
 
           {/* Ruler */}
@@ -208,7 +208,7 @@ export function Timeline({ className }: TimelineProps) {
         </div>
 
         {/* Tracks area */}
-        <div className="flex overflow-hidden" style={{ height: `calc(100% - 24px)` }}>
+        <div className="flex overflow-hidden" style={{ height: `calc(100% - 16px)` }}>
           {/* Track headers */}
           <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
             {tracks.map((track) => (
