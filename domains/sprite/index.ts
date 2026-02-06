@@ -10,6 +10,7 @@ export {
   SpriteCanvas,
   AnimationPreview,
   FramePreview,
+  FrameStrip,
   SpriteSheetImportModal,
   SpriteMenuBar,
   VideoImportModal,

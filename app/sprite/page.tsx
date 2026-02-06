@@ -89,6 +89,7 @@ function SpriteEditorMain() {
     copyFrame,
     pasteFrame,
     tracks,
+    addTrack,
     restoreTracks,
   } = useEditor();
 
@@ -221,46 +222,42 @@ function SpriteEditorMain() {
     [imageRef],
   );
 
-  // Import sprite sheet frames
+  // Import sprite sheet frames → new track
   const handleSpriteSheetImport = useCallback(
     (importedFrames: Omit<SpriteFrame, "id">[]) => {
       if (importedFrames.length === 0) return;
 
-      // Save history before adding frames
       pushHistory();
 
-      // Add frames with new IDs
       const newFrames = importedFrames.map((frame, idx) => ({
         ...frame,
         id: nextFrameId + idx,
       }));
 
-      setFrames((prev) => [...prev, ...newFrames]);
+      addTrack("Sheet Import", newFrames as SpriteFrame[]);
       setNextFrameId((prev) => prev + importedFrames.length);
     },
-    [nextFrameId, setFrames, setNextFrameId, pushHistory],
+    [nextFrameId, setNextFrameId, pushHistory, addTrack],
   );
 
-  // Import video frames
+  // Import video frames → new track
   const handleVideoImport = useCallback(
     (importedFrames: Omit<SpriteFrame, "id">[]) => {
       if (importedFrames.length === 0) return;
 
-      // Save history before adding frames
       pushHistory();
 
-      // Add frames with new IDs
       const newFrames = importedFrames.map((frame, idx) => ({
         ...frame,
         id: nextFrameId + idx,
       }));
 
-      setFrames((prev) => [...prev, ...newFrames]);
+      addTrack("Video Import", newFrames as SpriteFrame[]);
       setNextFrameId((prev) => prev + importedFrames.length);
       setIsVideoImportOpen(false);
       setPendingVideoFile(null);
     },
-    [nextFrameId, setFrames, setNextFrameId, pushHistory, setIsVideoImportOpen, setPendingVideoFile],
+    [nextFrameId, setNextFrameId, pushHistory, addTrack, setIsVideoImportOpen, setPendingVideoFile],
   );
 
   // Undo last point

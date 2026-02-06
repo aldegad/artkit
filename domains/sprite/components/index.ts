@@ -5,6 +5,7 @@
 export { default as SpriteCanvas } from "./SpriteCanvas";
 export { default as AnimationPreview } from "./AnimationPreview";
 export { default as FramePreview } from "./FramePreview";
+export { default as FrameStrip } from "./FrameStrip";
 export { default as SpriteSheetImportModal } from "./SpriteSheetImportModal";
 export { default as SpriteMenuBar } from "./SpriteMenuBar";
 export { default as VideoImportModal } from "./VideoImportModal";

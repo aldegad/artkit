@@ -4,3 +4,4 @@
 
 export * from "./autosave";
 export * from "./frameUtils";
+export * from "./compositor";
