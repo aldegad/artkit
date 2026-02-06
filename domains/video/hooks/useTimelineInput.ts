@@ -48,7 +48,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
   const getTrackAtY = useCallback(
     (y: number): string | null => {
-      if (tracks.length === 0) return null;
+      if (tracks.length === 0 || y < 0) return null;
 
       let offset = 0;
       for (const track of tracks) {
