@@ -34,6 +34,7 @@ interface VideoState {
 
   // Selection
   selectedClipIds: string[];
+  selectedMaskIds: string[];
   selectedTrackId: string | null;
 
   // UI
@@ -69,6 +70,8 @@ interface VideoStateContextValue extends VideoState {
   // Selection actions
   selectClip: (clipId: string, addToSelection?: boolean) => void;
   selectClips: (clipIds: string[]) => void;
+  selectMaskForTimeline: (maskId: string, addToSelection?: boolean) => void;
+  selectMasksForTimeline: (maskIds: string[]) => void;
   deselectAll: () => void;
   selectTrack: (trackId: string | null) => void;
 
@@ -99,6 +102,7 @@ const initialState: VideoState = {
   playback: INITIAL_PLAYBACK_STATE,
   toolMode: "select",
   selectedClipIds: [],
+  selectedMaskIds: [],
   selectedTrackId: null,
   showAssetLibrary: false,
   cropArea: null,
@@ -318,6 +322,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       selectedClipIds: addToSelection
         ? [...prev.selectedClipIds, clipId]
         : [clipId],
+      selectedMaskIds: addToSelection ? prev.selectedMaskIds : [],
     }));
   }, []);
 
@@ -325,10 +330,25 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, selectedClipIds: clipIds }));
   }, []);
 
+  const selectMaskForTimeline = useCallback((maskId: string, addToSelection: boolean = false) => {
+    setState((prev) => ({
+      ...prev,
+      selectedMaskIds: addToSelection
+        ? [...prev.selectedMaskIds, maskId]
+        : [maskId],
+      selectedClipIds: addToSelection ? prev.selectedClipIds : [],
+    }));
+  }, []);
+
+  const selectMasksForTimeline = useCallback((maskIds: string[]) => {
+    setState((prev) => ({ ...prev, selectedMaskIds: maskIds }));
+  }, []);
+
   const deselectAll = useCallback(() => {
     setState((prev) => ({
       ...prev,
       selectedClipIds: [],
+      selectedMaskIds: [],
       selectedTrackId: null,
     }));
   }, []);
@@ -375,6 +395,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setToolMode,
     selectClip,
     selectClips,
+    selectMaskForTimeline,
+    selectMasksForTimeline,
     deselectAll,
     selectTrack,
     setShowAssetLibrary,
