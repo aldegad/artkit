@@ -959,12 +959,6 @@ function VideoEditorContent() {
     }
   }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
 
-  // Auto-switch to mask tool when mask editing starts (e.g., from timeline mask clip click)
-  useEffect(() => {
-    if (isEditingMask && toolMode !== "mask") {
-      setToolMode("mask");
-    }
-  }, [isEditingMask, toolMode, setToolMode]);
 
   // Keyboard shortcuts - global listener to work regardless of focus
   useEffect(() => {
@@ -1046,13 +1040,13 @@ function VideoEditorContent() {
           togglePlay();
           break;
         case "v":
-          setToolMode("select");
+          handleToolModeChange("select");
           break;
         case "c":
-          setToolMode("razor");
+          handleToolModeChange("razor");
           break;
         case "t":
-          setToolMode("trim");
+          handleToolModeChange("trim");
           break;
         case "r":
           handleToolModeChange("crop");

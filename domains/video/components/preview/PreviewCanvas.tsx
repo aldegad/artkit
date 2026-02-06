@@ -612,7 +612,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [tracks, getClipAtTime, currentTimeRef]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (toolMode === "mask" && isEditingMask && activeTrackId) {
+    if (isEditingMask && activeTrackId) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (!maskCoords) return;
       e.preventDefault();
@@ -684,8 +684,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    // Update brush cursor position in mask mode
-    if (toolMode === "mask" && isEditingMask) {
+    // Update brush cursor position when editing mask
+    if (isEditingMask) {
       const container = previewContainerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
@@ -833,13 +833,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         ref={previewCanvasRef}
         className="absolute inset-0"
         style={{
-          cursor: toolMode === "crop"
-            ? (isDraggingCrop ? "grabbing" : "crosshair")
-            : toolMode === "mask" && isEditingMask
-              ? "none"
-              : toolMode === "mask"
-                ? "crosshair"
-                : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+          cursor: isEditingMask
+            ? "none"
+            : toolMode === "crop"
+              ? (isDraggingCrop ? "grabbing" : "crosshair")
+              : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
@@ -852,7 +850,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }}
       />
       {/* Brush cursor preview */}
-      {toolMode === "mask" && isEditingMask && brushCursor && (() => {
+      {isEditingMask && brushCursor && (() => {
         const { scale } = previewGeometryRef.current;
         const displaySize = brushSettings.size * scale;
         return (
