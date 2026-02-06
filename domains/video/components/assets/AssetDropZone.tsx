@@ -183,7 +183,7 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
           multiple
           onChange={handleFileSelect}
         />
-        <span className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded transition-colors">
+        <span className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded transition-colors" title="Select video or image files to import">
           Browse Files
         </span>
       </label>
