@@ -4,6 +4,13 @@ import { useMask } from "../../contexts/MaskContext";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { cn } from "@/shared/utils/cn";
 import { MASK_BRUSH } from "../../constants";
+import Tooltip from "@/shared/components/Tooltip";
+import {
+  BrushIcon,
+  EraserIcon,
+  FillBucketIcon,
+  DeleteIcon,
+} from "@/shared/components/icons";
 
 interface MaskControlsProps {
   className?: string;
@@ -24,94 +31,89 @@ export function MaskControls({ className }: MaskControlsProps) {
     return null;
   }
 
+  const modeBtn = (active: boolean) =>
+    cn(
+      "p-1.5 rounded transition-colors",
+      active
+        ? "bg-accent-primary text-white"
+        : "hover:bg-interactive-hover text-text-secondary hover:text-text-primary"
+    );
+
+  const actionBtn =
+    "p-1.5 rounded transition-colors hover:bg-interactive-hover text-text-secondary hover:text-text-primary";
+
   return (
     <div
       className={cn(
-        "p-3 bg-surface-secondary border border-border-default rounded-lg",
+        "flex items-center gap-1 px-2 py-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg",
         className
       )}
     >
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">Mask Brush</h3>
-      </div>
-
-      {/* Brush Mode */}
-      <div className="flex gap-1 mb-3">
+      {/* Paint / Erase mode toggle */}
+      <Tooltip content="Paint mask" shortcut="B">
         <button
           onClick={() => setBrushMode("paint")}
-          className={cn(
-            "flex-1 py-1.5 text-xs rounded transition-colors",
-            brushSettings.mode === "paint"
-              ? "bg-accent text-white"
-              : "bg-surface-tertiary hover:bg-surface-tertiary/80"
-          )}
-          title="Paint to reveal mask area (white = visible)"
+          className={modeBtn(brushSettings.mode === "paint")}
         >
-          Paint
+          <BrushIcon className="w-3.5 h-3.5" />
         </button>
+      </Tooltip>
+      <Tooltip content="Erase mask" shortcut="E">
         <button
           onClick={() => setBrushMode("erase")}
-          className={cn(
-            "flex-1 py-1.5 text-xs rounded transition-colors",
-            brushSettings.mode === "erase"
-              ? "bg-accent text-white"
-              : "bg-surface-tertiary hover:bg-surface-tertiary/80"
-          )}
-          title="Erase mask area (black = transparent)"
+          className={modeBtn(brushSettings.mode === "erase")}
         >
-          Erase
+          <EraserIcon className="w-3.5 h-3.5" />
         </button>
-      </div>
+      </Tooltip>
 
-      {/* Brush Size */}
-      <div className="mb-3">
-        <div className="flex justify-between text-xs text-text-secondary mb-1">
-          <span>Size</span>
-          <span>{brushSettings.size}px</span>
-        </div>
+      <div className="w-px h-5 bg-border-default mx-1" />
+
+      {/* Size slider */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] text-text-tertiary w-5 text-right">
+          {brushSettings.size}
+        </span>
         <input
           type="range"
           min={MASK_BRUSH.MIN_SIZE}
           max={MASK_BRUSH.MAX_SIZE}
           value={brushSettings.size}
           onChange={(e) => setBrushSize(Number(e.target.value))}
-          className="w-full h-1.5 bg-surface-tertiary rounded-full appearance-none cursor-pointer"
+          className="w-16 h-1 bg-surface-tertiary rounded-full appearance-none cursor-pointer accent-accent-primary"
+          title="Brush size"
         />
       </div>
 
-      {/* Brush Hardness */}
-      <div className="mb-3">
-        <div className="flex justify-between text-xs text-text-secondary mb-1">
-          <span>Hardness</span>
-          <span>{brushSettings.hardness}%</span>
-        </div>
+      {/* Hardness slider */}
+      <div className="flex items-center gap-1.5 ml-1">
+        <span className="text-[10px] text-text-tertiary w-6 text-right">
+          {brushSettings.hardness}%
+        </span>
         <input
           type="range"
           min={MASK_BRUSH.MIN_HARDNESS}
           max={MASK_BRUSH.MAX_HARDNESS}
           value={brushSettings.hardness}
           onChange={(e) => setBrushHardness(Number(e.target.value))}
-          className="w-full h-1.5 bg-surface-tertiary rounded-full appearance-none cursor-pointer"
+          className="w-16 h-1 bg-surface-tertiary rounded-full appearance-none cursor-pointer accent-accent-primary"
+          title="Brush hardness"
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="flex gap-2 pt-2 border-t border-border-default">
-        <button
-          onClick={fillMask}
-          className="flex-1 py-1.5 text-xs bg-surface-tertiary hover:bg-surface-tertiary/80 rounded transition-colors"
-          title="Fill entire mask (make all visible)"
-        >
-          Fill
+      <div className="w-px h-5 bg-border-default mx-1" />
+
+      {/* Fill / Clear */}
+      <Tooltip content="Fill mask">
+        <button onClick={fillMask} className={actionBtn}>
+          <FillBucketIcon className="w-3.5 h-3.5" />
         </button>
-        <button
-          onClick={clearMask}
-          className="flex-1 py-1.5 text-xs bg-surface-tertiary hover:bg-surface-tertiary/80 rounded transition-colors"
-          title="Clear entire mask (make all transparent)"
-        >
-          Clear
+      </Tooltip>
+      <Tooltip content="Clear mask">
+        <button onClick={clearMask} className={actionBtn}>
+          <DeleteIcon className="w-3.5 h-3.5" />
         </button>
-      </div>
+      </Tooltip>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useMask } from "../contexts/MaskContext";
 import { Point } from "@/shared/types";
+import { drawDab as sharedDrawDab, drawLine as sharedDrawLine } from "@/shared/utils/brushEngine";
 
 interface UseMaskToolReturn {
   // Drawing
@@ -26,78 +27,59 @@ export function useMaskTool(): UseMaskToolReturn {
   const lastPointRef = useRef<Point | null>(null);
   const isDrawingRef = useRef(false);
 
-  // Draw a soft brush dab
-  const drawDab = useCallback(
+  // Draw a single dab using shared brush engine
+  const drawMaskDab = useCallback(
     (ctx: CanvasRenderingContext2D, x: number, y: number) => {
       const { size, hardness, opacity, mode } = brushSettings;
-      const radius = size / 2;
+      const isEraser = mode === "erase";
 
       ctx.save();
-
-      if (mode === "paint") {
-        // Paint mode: add white (visible)
-        if (hardness >= 99) {
-          ctx.globalAlpha = opacity / 100;
-          ctx.fillStyle = "#ffffff";
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          // Soft brush with gradient
-          const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-          const hardnessRatio = hardness / 100;
-          gradient.addColorStop(0, `rgba(255, 255, 255, ${opacity / 100})`);
-          gradient.addColorStop(hardnessRatio, `rgba(255, 255, 255, ${opacity / 100})`);
-          gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else {
-        // Erase mode: add black (transparent)
+      if (isEraser) {
         ctx.globalCompositeOperation = "destination-out";
-        if (hardness >= 99) {
-          ctx.globalAlpha = opacity / 100;
-          ctx.fillStyle = "#000000";
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-          const hardnessRatio = hardness / 100;
-          gradient.addColorStop(0, `rgba(0, 0, 0, ${opacity / 100})`);
-          gradient.addColorStop(hardnessRatio, `rgba(0, 0, 0, ${opacity / 100})`);
-          gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
       }
+
+      sharedDrawDab(ctx, {
+        x,
+        y,
+        radius: size / 2,
+        hardness: hardness / 100,
+        color: "#ffffff",
+        alpha: opacity / 100,
+        isEraser,
+      });
 
       ctx.restore();
     },
     [brushSettings]
   );
 
-  // Draw a line of dabs between two points
-  const drawLine = useCallback(
+  // Draw a line of dabs using shared brush engine
+  const drawMaskLine = useCallback(
     (ctx: CanvasRenderingContext2D, from: Point, to: Point) => {
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const spacing = Math.max(1, brushSettings.size * 0.1); // 10% of brush size
-      const steps = Math.ceil(distance / spacing);
+      const { size, hardness, opacity, mode } = brushSettings;
+      const isEraser = mode === "erase";
 
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const x = from.x + dx * t;
-        const y = from.y + dy * t;
-        drawDab(ctx, x, y);
+      ctx.save();
+      if (isEraser) {
+        ctx.globalCompositeOperation = "destination-out";
       }
+
+      sharedDrawLine(ctx, {
+        from,
+        to,
+        spacing: Math.max(1, size * 0.1),
+        dab: {
+          radius: size / 2,
+          hardness: hardness / 100,
+          color: "#ffffff",
+          alpha: opacity / 100,
+          isEraser,
+        },
+      });
+
+      ctx.restore();
     },
-    [brushSettings.size, drawDab]
+    [brushSettings]
   );
 
   // Start drawing
@@ -110,9 +92,9 @@ export function useMaskTool(): UseMaskToolReturn {
 
       isDrawingRef.current = true;
       lastPointRef.current = { x, y };
-      drawDab(ctx, x, y);
+      drawMaskDab(ctx, x, y);
     },
-    [isEditingMask, maskCanvasRef, drawDab]
+    [isEditingMask, maskCanvasRef, drawMaskDab]
   );
 
   // Continue drawing
@@ -124,14 +106,14 @@ export function useMaskTool(): UseMaskToolReturn {
       if (!ctx) return;
 
       if (lastPointRef.current) {
-        drawLine(ctx, lastPointRef.current, { x, y });
+        drawMaskLine(ctx, lastPointRef.current, { x, y });
       } else {
-        drawDab(ctx, x, y);
+        drawMaskDab(ctx, x, y);
       }
 
       lastPointRef.current = { x, y };
     },
-    [isEditingMask, maskCanvasRef, drawDab, drawLine]
+    [isEditingMask, maskCanvasRef, drawMaskDab, drawMaskLine]
   );
 
   // End drawing
