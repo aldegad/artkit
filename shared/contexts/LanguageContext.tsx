@@ -243,6 +243,9 @@ interface Translations {
   firstRunDownload: string;
   selectFrameForBgRemoval: string;
   frameImageNotFound: string;
+  removeBackgroundCurrentFrame: string;
+  removeBackgroundAllFrames: string;
+  processingFrameProgress: string;
 
   // Layout components
   floatingMode: string;
@@ -520,6 +523,9 @@ const translations: Record<Language, Translations> = {
     firstRunDownload: "첫 실행 시 AI 모델을 다운로드합니다 (~30MB)",
     selectFrameForBgRemoval: "배경을 제거할 프레임을 선택하세요.",
     frameImageNotFound: "프레임 이미지를 찾을 수 없습니다.",
+    removeBackgroundCurrentFrame: "현재 프레임",
+    removeBackgroundAllFrames: "모든 프레임",
+    processingFrameProgress: "프레임 처리 중",
 
     // Layout components
     floatingMode: "플로팅으로 전환",
@@ -795,6 +801,9 @@ const translations: Record<Language, Translations> = {
     firstRunDownload: "First run will download the AI model (~30MB)",
     selectFrameForBgRemoval: "Please select a frame to remove background.",
     frameImageNotFound: "Frame image not found.",
+    removeBackgroundCurrentFrame: "Current Frame",
+    removeBackgroundAllFrames: "All Frames",
+    processingFrameProgress: "Processing frames",
 
     // Layout components
     floatingMode: "Float window",

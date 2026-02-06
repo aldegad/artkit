@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { SpriteFrame } from "../types";
 import { SpinnerIcon } from "../../../shared/components";
 
@@ -20,6 +20,7 @@ interface VideoImportModalProps {
   onClose: () => void;
   onImport: (frames: Omit<SpriteFrame, "id">[]) => void;
   startFrameId: number;
+  initialFile?: File | null;
   translations: {
     videoImport: string;
     selectVideo: string;
@@ -65,6 +66,7 @@ export default function VideoImportModal({
   onClose,
   onImport,
   startFrameId,
+  initialFile,
   translations: t,
 }: VideoImportModalProps) {
   // Video state
@@ -72,6 +74,19 @@ export default function VideoImportModal({
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+
+  // Auto-load initial file when provided
+  useEffect(() => {
+    if (isOpen && initialFile) {
+      if (videoSrc) {
+        URL.revokeObjectURL(videoSrc);
+      }
+      const url = URL.createObjectURL(initialFile);
+      setVideoSrc(url);
+      setExtractedFrames([]);
+      setSelectedFrameIndices(new Set());
+    }
+  }, [isOpen, initialFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Extraction settings
   const [extractionMode, setExtractionMode] = useState<"nth" | "interval">("interval");

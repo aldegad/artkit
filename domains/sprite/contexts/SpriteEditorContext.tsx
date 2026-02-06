@@ -295,6 +295,10 @@ export function useEditor() {
     setIsProjectListOpen: uiStore.setIsProjectListOpen,
     isSpriteSheetImportOpen: uiStore.isSpriteSheetImportOpen,
     setIsSpriteSheetImportOpen: uiStore.setIsSpriteSheetImportOpen,
+    isVideoImportOpen: uiStore.isVideoImportOpen,
+    setIsVideoImportOpen: uiStore.setIsVideoImportOpen,
+    pendingVideoFile: uiStore.pendingVideoFile,
+    setPendingVideoFile: uiStore.setPendingVideoFile,
 
     // Brush Tool
     brushColor: toolStore.brushColor,
@@ -456,6 +460,10 @@ export function useEditorWindows() {
     setIsProjectListOpen: store.setIsProjectListOpen,
     isSpriteSheetImportOpen: store.isSpriteSheetImportOpen,
     setIsSpriteSheetImportOpen: store.setIsSpriteSheetImportOpen,
+    isVideoImportOpen: store.isVideoImportOpen,
+    setIsVideoImportOpen: store.setIsVideoImportOpen,
+    pendingVideoFile: store.pendingVideoFile,
+    setPendingVideoFile: store.setPendingVideoFile,
   };
 }
 
