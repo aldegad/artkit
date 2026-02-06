@@ -8,6 +8,7 @@ import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../..
 import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
+import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 
 // Background icon for popover trigger
 const BackgroundPatternIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -122,6 +123,32 @@ export default function AnimationPreviewContent() {
 
   // Throttled React state for UI display only (zoom %, CSS transform)
   const viewportSync = viewport.useReactSync(16);
+
+  // ---- Sync viewport to Zustand store for autosave ----
+  const vpStore = useSpriteViewportStore();
+  const uiStore = useSpriteUIStore();
+
+  useEffect(() => {
+    const unsub = viewport.onViewportChange((state) => {
+      vpStore.setAnimPreviewZoom(state.zoom);
+      vpStore.setAnimPreviewPan(state.pan);
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewport]);
+
+  // Restore viewport from autosave on load
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || uiStore.isAutosaveLoading) return;
+    restoredRef.current = true;
+    const { animPreviewZoom, animPreviewPan } = useSpriteViewportStore.getState();
+    if (animPreviewZoom > 0) {
+      viewport.setZoom(animPreviewZoom);
+      viewport.setPan(animPreviewPan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiStore.isAutosaveLoading]);
 
   // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);

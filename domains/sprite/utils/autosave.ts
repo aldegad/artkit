@@ -20,6 +20,11 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
+  // Per-panel viewport state (added later, optional for backwards compat)
+  animPreviewZoom?: number;
+  animPreviewPan?: Point;
+  frameEditZoom?: number;
+  frameEditPan?: Point;
 }
 
 // Create autosave storage using shared abstraction
