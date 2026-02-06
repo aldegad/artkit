@@ -2,6 +2,7 @@
 
 import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { useLanguage } from "@/shared/contexts/LanguageContext";
+import { PlayIcon24, PauseIcon24, StopIcon24 } from "@/shared/components/icons";
 
 export function PlaybackControls() {
   const { t } = useLanguage();
@@ -26,14 +27,9 @@ export function PlaybackControls() {
         title={isPlaying ? t.pause : t.play}
       >
         {isPlaying ? (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <rect x="6" y="4" width="4" height="16" />
-            <rect x="14" y="4" width="4" height="16" />
-          </svg>
+          <PauseIcon24 className="w-5 h-5" />
         ) : (
-          <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-            <polygon points="5,3 19,12 5,21" />
-          </svg>
+          <PlayIcon24 className="w-5 h-5 ml-0.5" />
         )}
       </button>
 
@@ -43,9 +39,7 @@ export function PlaybackControls() {
         className="w-8 h-8 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded transition-colors"
         title="Stop"
       >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <rect x="6" y="6" width="12" height="12" />
-        </svg>
+        <StopIcon24 />
       </button>
 
       {/* Time Display */}

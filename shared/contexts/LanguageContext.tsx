@@ -11,6 +11,7 @@ interface Translations {
   imageConverter: string;
   soundEditor: string;
   videoEditor: string;
+  iconShowcase: string;
 
   // Settings menu
   settings: string;
@@ -69,6 +70,7 @@ interface Translations {
   noSavedProjects: string;
   storage: string;
   export: string;
+  exportLayers: string;
   import: string;
   importComplete: string;
   added: string;
@@ -286,6 +288,7 @@ const translations: Record<Language, Translations> = {
     imageConverter: "이미지 컨버터",
     soundEditor: "사운드 에디터",
     videoEditor: "비디오 에디터",
+    iconShowcase: "아이콘 쇼케이스",
 
     // Settings menu
     settings: "설정",
@@ -344,6 +347,7 @@ const translations: Record<Language, Translations> = {
     noSavedProjects: "저장된 프로젝트가 없습니다",
     storage: "저장소",
     export: "내보내기",
+    exportLayers: "레이어 개별 내보내기",
     import: "가져오기",
     importComplete: "가져오기 완료!",
     added: "추가됨",
@@ -559,6 +563,7 @@ const translations: Record<Language, Translations> = {
     imageConverter: "Image Converter",
     soundEditor: "Sound Editor",
     videoEditor: "Video Editor",
+    iconShowcase: "Icon Showcase",
 
     // Settings menu
     settings: "Settings",
@@ -617,6 +622,7 @@ const translations: Record<Language, Translations> = {
     noSavedProjects: "No saved projects",
     storage: "Storage",
     export: "Export",
+    exportLayers: "Export Layers",
     import: "Import",
     importComplete: "Import complete!",
     added: "added",

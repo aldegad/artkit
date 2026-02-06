@@ -1,6 +1,7 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
+import { CursorIcon, VideoCropToolIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon } from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
 
 interface ToolButton {
@@ -18,12 +19,12 @@ interface VideoToolbarProps {
   translations: {
     select: string;
     selectDesc: string;
+    crop: string;
+    cropDesc: string;
     trim: string;
     trimDesc: string;
     razor: string;
     razorDesc: string;
-    crop: string;
-    cropDesc: string;
     mask: string;
     maskDesc: string;
   };
@@ -41,11 +42,15 @@ export default function VideoToolbar({
       description: t.selectDesc,
       shortcut: "V",
       keys: ["Drag: Move clip", "Alt+Drag: Duplicate"],
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-        </svg>
-      ),
+      icon: <CursorIcon />,
+    },
+    {
+      mode: "crop",
+      name: t.crop,
+      description: t.cropDesc,
+      shortcut: "R",
+      keys: ["Drag: Select crop area", "Handles: Resize", "Enter: Apply", "Esc: Cancel"],
+      icon: <VideoCropToolIcon />,
     },
     {
       mode: "trim",
@@ -53,11 +58,7 @@ export default function VideoToolbar({
       description: t.trimDesc,
       shortcut: "T",
       keys: ["Drag edges: Adjust in/out points"],
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 18h16M8 6v12M16 6v12" />
-        </svg>
-      ),
+      icon: <TrimToolIcon />,
     },
     {
       mode: "razor",
@@ -65,23 +66,7 @@ export default function VideoToolbar({
       description: t.razorDesc,
       shortcut: "C",
       keys: ["Click: Split clip at cursor"],
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
-        </svg>
-      ),
-    },
-    {
-      mode: "crop",
-      name: t.crop,
-      description: t.cropDesc,
-      shortcut: "R",
-      keys: ["Drag: Set area", "Enter: Apply crop"],
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6M4 4v6M20 4h-6M20 4v6M4 20h6M4 20v-6M20 20h-6M20 20v-6" />
-        </svg>
-      ),
+      icon: <RazorToolIcon />,
     },
     {
       mode: "mask",
@@ -89,12 +74,7 @@ export default function VideoToolbar({
       description: t.maskDesc,
       shortcut: "M",
       keys: ["Draw: Paint mask", "Alt+Draw: Erase mask"],
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-        </svg>
-      ),
+      icon: <MaskToolIcon />,
     },
   ];
 

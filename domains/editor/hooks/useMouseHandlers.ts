@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, RefObject } from "react";
 import { EditorToolMode, CropArea, Point, DragType, Guide } from "../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
+import { HANDLE_SIZE } from "../constants";
+import { getRectHandleAtPosition } from "../utils/rectTransform";
 import {
   buildContext,
   FloatingLayer,
@@ -108,8 +110,8 @@ interface UseMouseHandlersReturn {
   // Handlers
   handleMouseDown: (e: React.MouseEvent | React.PointerEvent) => void;
   handleMouseMove: (e: React.MouseEvent | React.PointerEvent) => void;
-  handleMouseUp: () => void;
-  handleMouseLeave: () => void;
+  handleMouseUp: (e?: React.MouseEvent | React.PointerEvent) => void;
+  handleMouseLeave: (e?: React.MouseEvent | React.PointerEvent) => void;
 }
 
 // ============================================
@@ -119,7 +121,7 @@ interface UseMouseHandlersReturn {
 export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHandlersReturn {
   // Get state and setters from EditorStateContext
   const {
-    state: { zoom, pan, rotation, canvasSize },
+    state: { zoom, pan, rotation, canvasSize, isPanLocked },
     setZoom,
     setPan,
   } = useEditorState();
@@ -178,6 +180,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   const [dragType, setDragType] = useState<DragType>(null);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point | null>(null);
+  const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
 
   // Base handler options
   const baseOptions = {
@@ -278,6 +281,16 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     (e: React.MouseEvent | React.PointerEvent) => {
       if (layers.length === 0) return;
 
+      const inputDevice = getInputDevice(e);
+      if ("pointerId" in e && inputDevice === "touch") {
+        activeTouchPointerIdsRef.current.add(e.pointerId);
+      }
+
+      const isTouchPanOnlyInput = isPanLocked && inputDevice === "touch";
+      if (isTouchPanOnlyInput && "isPrimary" in e && !e.isPrimary) {
+        return;
+      }
+
       // Capture pointer for touch/pen to receive move events during drag
       if ("pointerId" in e && e.target instanceof Element) {
         e.target.setPointerCapture(e.pointerId);
@@ -285,11 +298,22 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       const screenPos = getMousePos(e);
       const imagePos = screenToImage(screenPos.x, screenPos.y);
-      const activeMode = getActiveToolMode();
+      const activeMode = isTouchPanOnlyInput ? "hand" : getActiveToolMode();
       const displayDimensions = getDisplayDimensions();
       const inBounds = isInBounds(imagePos);
 
       const ctx = buildContext(e, screenPos, imagePos, activeMode, inBounds, displayDimensions);
+
+      // Touch pan lock: finger input should only pan/zoom (no guides/draw/move/crop)
+      if (isTouchPanOnlyInput) {
+        const panZoomResult = panZoomHandler.handleMouseDown(ctx);
+        if (panZoomResult.handled) {
+          setDragType(panZoomResult.dragType || null);
+          if (panZoomResult.dragStart) dragStartRef.current = panZoomResult.dragStart;
+          if (panZoomResult.dragType) setIsDragging(true);
+        }
+        return;
+      }
 
       // Try handlers in order of priority
       // 1. Guide handler (highest priority when clicking on guide)
@@ -365,6 +389,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       getMousePos,
       screenToImage,
       getActiveToolMode,
+      isPanLocked,
       getDisplayDimensions,
       isInBounds,
       guideHandler,
@@ -383,10 +408,17 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   // Handle mouse/pointer move
   const handleMouseMove = useCallback(
     (e: React.MouseEvent | React.PointerEvent) => {
+      const inputDevice = getInputDevice(e);
+      const isTouchPanOnlyInput = isPanLocked && inputDevice === "touch";
+      if (isTouchPanOnlyInput && activeTouchPointerIdsRef.current.size > 1) {
+        setMousePos(null);
+        return;
+      }
+
       const screenPos = getMousePos(e);
       const imagePos = screenToImage(screenPos.x, screenPos.y);
       const displayDimensions = getDisplayDimensions();
-      const activeMode = getActiveToolMode();
+      const activeMode = isTouchPanOnlyInput ? "hand" : getActiveToolMode();
       const inBounds = isInBounds(imagePos);
 
       const ctx = buildContext(e, screenPos, imagePos, activeMode, inBounds, displayDimensions);
@@ -399,7 +431,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       }
 
       // Update guide hover state when not dragging
-      if (!isDragging) {
+      if (!isDragging && !isTouchPanOnlyInput) {
         guideHandler.updateHoveredGuide(ctx);
       }
 
@@ -416,6 +448,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         dragStartRef.current = screenPos; // Update for next frame
         return;
       }
+
+      if (isTouchPanOnlyInput) return;
 
       if (dragType === "draw") {
         brushHandler.handleMouseMove(ctx);
@@ -477,6 +511,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       screenToImage,
       getDisplayDimensions,
       getActiveToolMode,
+      isPanLocked,
       isInBounds,
       isDragging,
       dragType,
@@ -499,7 +534,13 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   );
 
   // Handle mouse up
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e?: React.MouseEvent | React.PointerEvent) => {
+    if (e && "pointerType" in e && e.pointerType === "touch" && "pointerId" in e) {
+      activeTouchPointerIdsRef.current.delete(e.pointerId);
+    } else if (!e) {
+      activeTouchPointerIdsRef.current.clear();
+    }
+
     // Handle transform tool mouse up
     if (handleTransformMouseUp) {
       handleTransformMouseUp();
@@ -577,9 +618,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   ]);
 
   // Handle mouse leave
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeave = useCallback((e?: React.MouseEvent | React.PointerEvent) => {
     setMousePos(null);
-    handleMouseUp();
+    handleMouseUp(e);
   }, [handleMouseUp]);
 
   return {
@@ -598,25 +639,20 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   };
 }
 
+function getInputDevice(e: React.MouseEvent | React.PointerEvent): "mouse" | "touch" | "pen" {
+  if ("pointerType" in e) {
+    const pointerType = e.pointerType;
+    if (pointerType === "touch" || pointerType === "pen") return pointerType;
+  }
+  return "mouse";
+}
+
 // Helper function to get resize handle name for crop
 function getResizeHandleName(imagePos: Point, cropArea: CropArea | null): string | null {
   if (!cropArea) return null;
-
-  const handles = [
-    { x: cropArea.x, y: cropArea.y, name: "nw" },
-    { x: cropArea.x + cropArea.width / 2, y: cropArea.y, name: "n" },
-    { x: cropArea.x + cropArea.width, y: cropArea.y, name: "ne" },
-    { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height / 2, name: "e" },
-    { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height, name: "se" },
-    { x: cropArea.x + cropArea.width / 2, y: cropArea.y + cropArea.height, name: "s" },
-    { x: cropArea.x, y: cropArea.y + cropArea.height, name: "sw" },
-    { x: cropArea.x, y: cropArea.y + cropArea.height / 2, name: "w" },
-  ];
-
-  for (const handle of handles) {
-    if (Math.abs(imagePos.x - handle.x) <= 10 && Math.abs(imagePos.y - handle.y) <= 10) {
-      return handle.name;
-    }
-  }
-  return null;
+  const hit = getRectHandleAtPosition(imagePos, cropArea, {
+    handleSize: HANDLE_SIZE.HIT_AREA,
+    includeMove: false,
+  });
+  return hit === "move" ? null : hit;
 }

@@ -5,6 +5,7 @@
 import { useCallback } from "react";
 import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, SelectionHandlerOptions, FloatingLayer } from "./types";
+import { createRectFromDrag } from "../../utils/rectTransform";
 
 export interface UseSelectionHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
@@ -138,23 +139,29 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
 
   const handleMouseMove = useCallback(
     (ctx: MouseEventContext, dragStart: Point) => {
-      const { imagePos, displayDimensions } = ctx;
+      const { imagePos, displayDimensions, e } = ctx;
       const { width: displayWidth, height: displayHeight } = displayDimensions;
 
       if (!selection) return;
 
-      let width = Math.round(imagePos.x) - dragStart.x;
-      let height = Math.round(imagePos.y) - dragStart.y;
+      const clampedPos = {
+        x: Math.max(0, Math.min(Math.round(imagePos.x), displayWidth)),
+        y: Math.max(0, Math.min(Math.round(imagePos.y), displayHeight)),
+      };
 
-      const newX = width < 0 ? dragStart.x + width : dragStart.x;
-      const newY = height < 0 ? dragStart.y + height : dragStart.y;
-
-      setSelection({
-        x: Math.max(0, newX),
-        y: Math.max(0, newY),
-        width: Math.min(Math.abs(width), displayWidth - Math.max(0, newX)),
-        height: Math.min(Math.abs(height), displayHeight - Math.max(0, newY)),
+      const nextSelection = createRectFromDrag(dragStart, clampedPos, {
+        keepAspect: e.shiftKey,
+        targetAspect: 1,
+        round: true,
+        fromCenter: e.altKey || e.metaKey,
+        bounds: {
+          minX: 0,
+          minY: 0,
+          maxX: displayWidth,
+          maxY: displayHeight,
+        },
       });
+      setSelection(nextSelection);
     },
     [selection, setSelection]
   );

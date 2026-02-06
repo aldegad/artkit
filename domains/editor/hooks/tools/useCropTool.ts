@@ -2,7 +2,14 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { CropArea, AspectRatio, ASPECT_RATIO_VALUES } from "../../types";
+import { HANDLE_SIZE, INTERACTION } from "../../constants";
 import { useEditorState } from "../../contexts";
+import {
+  createRectFromDrag,
+  getRectHandleAtPosition,
+  resizeRectByHandle,
+  type RectHandle,
+} from "../../utils/rectTransform";
 
 // ============================================
 // Types
@@ -182,39 +189,18 @@ export function useCropTool(): UseCropToolReturn {
   const getCropHandleAtPosition = useCallback(
     (
       imagePos: { x: number; y: number },
-      handleSize: number = 10
+      handleSize: number = HANDLE_SIZE.HIT_AREA
     ): { type: "handle" | "inside" | null; handle?: string } => {
       if (!cropArea) return { type: null };
-
-      const handles = [
-        { x: cropArea.x, y: cropArea.y, name: "nw" },
-        { x: cropArea.x + cropArea.width / 2, y: cropArea.y, name: "n" },
-        { x: cropArea.x + cropArea.width, y: cropArea.y, name: "ne" },
-        { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height / 2, name: "e" },
-        { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height, name: "se" },
-        { x: cropArea.x + cropArea.width / 2, y: cropArea.y + cropArea.height, name: "s" },
-        { x: cropArea.x, y: cropArea.y + cropArea.height, name: "sw" },
-        { x: cropArea.x, y: cropArea.y + cropArea.height / 2, name: "w" },
-      ];
-
-      // Check handles
-      for (const h of handles) {
-        if (Math.abs(imagePos.x - h.x) <= handleSize && Math.abs(imagePos.y - h.y) <= handleSize) {
-          return { type: "handle", handle: h.name };
-        }
-      }
-
-      // Check if inside crop area
-      if (
-        imagePos.x >= cropArea.x &&
-        imagePos.x <= cropArea.x + cropArea.width &&
-        imagePos.y >= cropArea.y &&
-        imagePos.y <= cropArea.y + cropArea.height
-      ) {
+      const hit = getRectHandleAtPosition(imagePos, cropArea, {
+        handleSize,
+        includeMove: true,
+      });
+      if (!hit) return { type: null };
+      if (hit === "move") {
         return { type: "inside" };
       }
-
-      return { type: null };
+      return { type: "handle", handle: hit };
     },
     [cropArea]
   );
@@ -236,35 +222,19 @@ export function useCropTool(): UseCropToolReturn {
   const resizeCrop = useCallback(
     (handle: string, dx: number, dy: number) => {
       if (!cropArea) return;
-
-      const newArea = { ...cropArea };
-
-      if (handle.includes("e")) {
-        newArea.width = Math.max(20, cropArea.width + dx);
-      }
-      if (handle.includes("w")) {
-        newArea.x = cropArea.x + dx;
-        newArea.width = Math.max(20, cropArea.width - dx);
-      }
-      if (handle.includes("s")) {
-        newArea.height = Math.max(20, cropArea.height + dy);
-      }
-      if (handle.includes("n")) {
-        newArea.y = cropArea.y + dy;
-        newArea.height = Math.max(20, cropArea.height - dy);
-      }
-
-      // Apply aspect ratio constraint if needed
       const ratioValue = getAspectRatioValue(aspectRatio);
-      if (ratioValue) {
-        // Maintain aspect ratio based on which dimension changed more
-        if (Math.abs(dx) > Math.abs(dy)) {
-          newArea.height = newArea.width / ratioValue;
-        } else {
-          newArea.width = newArea.height * ratioValue;
+      const newArea = resizeRectByHandle(
+        cropArea,
+        handle as RectHandle,
+        { dx, dy },
+        {
+          minWidth: INTERACTION.MIN_RESIZE_SIZE,
+          minHeight: INTERACTION.MIN_RESIZE_SIZE,
+          keepAspect: Boolean(ratioValue),
+          targetAspect: ratioValue ?? undefined,
+          fromCenter: false,
         }
-      }
-
+      );
       setCropArea(newArea);
     },
     [cropArea, aspectRatio, getAspectRatioValue]
@@ -281,28 +251,26 @@ export function useCropTool(): UseCropToolReturn {
       const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
       const ratioValue = getAspectRatioValue(aspectRatio);
 
-      const clampedX = Math.max(0, Math.min(x, displayWidth));
-      const clampedY = Math.max(0, Math.min(y, displayHeight));
-
-      let newWidth = Math.abs(clampedX - startX);
-      let newHeight = Math.abs(clampedY - startY);
-
-      if (ratioValue) {
-        // Maintain aspect ratio
-        if (newWidth / ratioValue <= newHeight) {
-          newHeight = newWidth / ratioValue;
-        } else {
-          newWidth = newHeight * ratioValue;
-        }
-      }
-
-      const newCrop = {
-        x: clampedX < startX ? startX - newWidth : startX,
-        y: clampedY < startY ? startY - newHeight : startY,
-        width: newWidth,
-        height: newHeight,
+      const clampedPos = {
+        x: Math.max(0, Math.min(x, displayWidth)),
+        y: Math.max(0, Math.min(y, displayHeight)),
       };
 
+      const newCrop = createRectFromDrag(
+        { x: startX, y: startY },
+        clampedPos,
+        {
+          keepAspect: Boolean(ratioValue),
+          targetAspect: ratioValue ?? undefined,
+          round: false,
+          bounds: {
+            minX: 0,
+            minY: 0,
+            maxX: displayWidth,
+            maxY: displayHeight,
+          },
+        }
+      );
       setCropArea(newCrop);
     },
     [getDisplayDimensions, aspectRatio, getAspectRatioValue]
@@ -313,26 +281,15 @@ export function useCropTool(): UseCropToolReturn {
     (x: number, y: number, startX: number, startY: number) => {
       const ratioValue = getAspectRatioValue(aspectRatio);
 
-      // No clamping in expand mode
-      let newWidth = Math.abs(x - startX);
-      let newHeight = Math.abs(y - startY);
-
-      if (ratioValue) {
-        // Maintain aspect ratio
-        if (newWidth / ratioValue <= newHeight) {
-          newHeight = newWidth / ratioValue;
-        } else {
-          newWidth = newHeight * ratioValue;
+      const newCrop = createRectFromDrag(
+        { x: startX, y: startY },
+        { x, y },
+        {
+          keepAspect: Boolean(ratioValue),
+          targetAspect: ratioValue ?? undefined,
+          round: false,
         }
-      }
-
-      const newCrop = {
-        x: x < startX ? startX - newWidth : startX,
-        y: y < startY ? startY - newHeight : startY,
-        width: newWidth,
-        height: newHeight,
-      };
-
+      );
       setCropArea(newCrop);
     },
     [aspectRatio, getAspectRatioValue]

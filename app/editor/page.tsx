@@ -4,6 +4,25 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
 import { Tooltip, Select, Scrollbar } from "../../shared/components";
 import {
+  MarqueeIcon,
+  MoveIcon,
+  TransformIcon,
+  BrushIcon,
+  EraserIcon,
+  FillBucketIcon,
+  EyedropperIcon,
+  CloneStampIcon,
+  CropIcon,
+  HandIcon,
+  ZoomSearchIcon,
+  BackgroundRemovalIcon,
+  UndoIcon,
+  RedoIcon,
+  RotateIcon,
+  MinusIcon,
+  PlusIcon,
+} from "../../shared/components/icons";
+import {
   EditorToolMode,
   OutputFormat,
   SavedImageProject,
@@ -204,7 +223,6 @@ function ImageEditorContent() {
       zoom,
       pan,
       isSpacePressed,
-      isPanLocked,
       projectName,
       currentProjectId,
       savedProjects,
@@ -637,9 +655,9 @@ function ImageEditorContent() {
 
   // Check if in active tool mode (considering space key for temporary hand tool)
   const getActiveToolMode = useCallback(() => {
-    if (isPanLocked || isSpacePressed) return "hand";
+    if (isSpacePressed) return "hand";
     return toolMode;
-  }, [isPanLocked, isSpacePressed, toolMode]);
+  }, [isSpacePressed, toolMode]);
 
   // Get active layer's position for coordinate conversion (brush drawing)
   const activeLayerPosition = useMemo(() => {
@@ -1398,6 +1416,58 @@ function ImageEditorContent() {
     );
   }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
 
+  // Export each selected layer individually at canvas size
+  const exportSelectedLayers = useCallback(() => {
+    const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
+    if (targetIds.length === 0) return;
+
+    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+    const mimeType =
+      outputFormat === "webp" ? "image/webp" : outputFormat === "jpeg" ? "image/jpeg" : "image/png";
+    const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+
+    targetIds.forEach((layerId) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+
+      const layerCanvas = layerCanvasesRef.current.get(layerId);
+      if (!layerCanvas) return;
+
+      // Create export canvas at full canvas size
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = displayWidth;
+      exportCanvas.height = displayHeight;
+      const ctx = exportCanvas.getContext("2d");
+      if (!ctx) return;
+
+      // Fill with white background for JPEG
+      if (outputFormat === "jpeg") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, displayWidth, displayHeight);
+      }
+
+      // Draw layer at its position within the canvas
+      const posX = layer.position?.x || 0;
+      const posY = layer.position?.y || 0;
+      ctx.globalAlpha = layer.opacity;
+      ctx.drawImage(layerCanvas, posX, posY);
+
+      exportCanvas.toBlob(
+        (blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${layer.name || "layer"}.${ext}`;
+          link.click();
+          URL.revokeObjectURL(url);
+        },
+        mimeType,
+        quality,
+      );
+    });
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, outputFormat, quality, getDisplayDimensions]);
+
   // Get cursor based on tool mode
   const getCursor = () => {
     // Guide hover cursor (when guides visible and not locked)
@@ -1759,11 +1829,7 @@ function ImageEditorContent() {
       description: t.marquee,
       keys: ["⌥+Drag: Clone", "⇧: Axis lock", "Delete: Clear"],
       shortcut: "M",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <rect x="3" y="3" width="18" height="18" strokeWidth={2} strokeDasharray="4 2" rx="1" />
-        </svg>
-      ),
+      icon: <MarqueeIcon className="w-4 h-4" />,
     },
     {
       mode: "move",
@@ -1771,17 +1837,7 @@ function ImageEditorContent() {
       description: t.moveToolTip,
       keys: ["Drag: Move selection"],
       shortcut: "V",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {/* Move tool icon - four-way arrow */}
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 4v16m0-16l-3 3m3-3l3 3m-3 13l-3-3m3 3l3-3M4 12h16m-16 0l3-3m-3 3l3 3m13-3l-3-3m3 3l-3 3"
-          />
-        </svg>
-      ),
+      icon: <MoveIcon className="w-4 h-4" />,
     },
     {
       mode: "transform",
@@ -1789,16 +1845,7 @@ function ImageEditorContent() {
       description: "Scale and move layer content",
       keys: ["⌘T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
       shortcut: "T",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {/* Transform tool icon - bounding box with handles */}
-          <rect x="4" y="4" width="16" height="16" strokeWidth={2} rx="1" />
-          <circle cx="4" cy="4" r="2" fill="currentColor" />
-          <circle cx="20" cy="4" r="2" fill="currentColor" />
-          <circle cx="4" cy="20" r="2" fill="currentColor" />
-          <circle cx="20" cy="20" r="2" fill="currentColor" />
-        </svg>
-      ),
+      icon: <TransformIcon className="w-4 h-4" />,
     },
     {
       mode: "brush",
@@ -1806,16 +1853,7 @@ function ImageEditorContent() {
       description: t.brushToolTip,
       keys: ["[ ]: Size -/+", "⇧: Straight line"],
       shortcut: "B",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-          />
-        </svg>
-      ),
+      icon: <BrushIcon className="w-4 h-4" />,
     },
     {
       mode: "eraser",
@@ -1823,17 +1861,7 @@ function ImageEditorContent() {
       description: t.eraserToolTip,
       keys: ["[ ]: Size -/+"],
       shortcut: "E",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M18.364 5.636l-1.414-1.414a2 2 0 00-2.828 0L3.636 14.707a2 2 0 000 2.829l2.828 2.828a2 2 0 002.829 0L19.778 9.879a2 2 0 000-2.829l-1.414-1.414zM9.172 20.485L3.515 14.83M15 9l-6 6"
-          />
-          <path strokeLinecap="round" strokeWidth={2} d="M3 21h18" />
-        </svg>
-      ),
+      icon: <EraserIcon className="w-4 h-4" />,
     },
     {
       mode: "fill",
@@ -1841,22 +1869,7 @@ function ImageEditorContent() {
       description: t.fillToolTip,
       keys: ["Click: Fill area"],
       shortcut: "G",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 11V5a2 2 0 00-2-2H7a2 2 0 00-2 2v6M5 11l7 10 7-10H5z"
-          />
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M21 17c0 1.657-1.343 3-3 3s-3-1.343-3-3c0-2 3-5 3-5s3 3 3 5z"
-          />
-        </svg>
-      ),
+      icon: <FillBucketIcon className="w-4 h-4" />,
     },
     {
       mode: "eyedropper",
@@ -1864,17 +1877,7 @@ function ImageEditorContent() {
       description: t.eyedropperToolTip,
       keys: ["Click: Pick color", "⌥+Click: From any tool"],
       shortcut: "I",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M20.354 3.646a2.5 2.5 0 00-3.536 0l-1.06 1.061 3.535 3.536 1.061-1.061a2.5 2.5 0 000-3.536zM14.172 6.293l-8.586 8.586a2 2 0 00-.498.83l-1.06 3.535a.5.5 0 00.631.632l3.536-1.06a2 2 0 00.829-.499l8.586-8.586-3.438-3.438z"
-          />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.5 21.5l-1-1" />
-        </svg>
-      ),
+      icon: <EyedropperIcon className="w-4 h-4" />,
     },
     {
       mode: "stamp",
@@ -1882,16 +1885,7 @@ function ImageEditorContent() {
       description: t.cloneStampToolTip,
       keys: ["⌥+Click: Set source", "Drag: Clone paint"],
       shortcut: "S",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 3v4M12 7c-3 0-6 1-6 4v1h12v-1c0-3-3-4-6-4zM4 14h16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM8 18v3M16 18v3"
-          />
-        </svg>
-      ),
+      icon: <CloneStampIcon className="w-4 h-4" />,
     },
     {
       mode: "crop",
@@ -1899,16 +1893,7 @@ function ImageEditorContent() {
       description: t.cropToolTip,
       keys: ["Drag: Select area", "Enter: Apply crop"],
       shortcut: "C",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="square"
-            strokeLinejoin="miter"
-            strokeWidth={2}
-            d="M6 2v4H2M6 6h12v12M18 22v-4h4M18 18H6V6"
-          />
-        </svg>
-      ),
+      icon: <CropIcon className="w-4 h-4" />,
     },
     {
       mode: "hand",
@@ -1916,16 +1901,7 @@ function ImageEditorContent() {
       description: t.handToolTip,
       keys: ["Drag: Pan canvas", "Space: Temp hand", "Wheel: Zoom"],
       shortcut: "H",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11"
-          />
-        </svg>
-      ),
+      icon: <HandIcon className="w-4 h-4" />,
     },
     {
       mode: "zoom",
@@ -1933,16 +1909,7 @@ function ImageEditorContent() {
       description: t.zoomToolTip,
       keys: ["Click: Zoom in", "⌥+Click: Zoom out", "Wheel: Zoom"],
       shortcut: "Z",
-      icon: (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"
-          />
-        </svg>
-      ),
+      icon: <ZoomSearchIcon className="w-4 h-4" />,
     },
   ];
 
@@ -1962,7 +1929,10 @@ function ImageEditorContent() {
           onSave={handleSaveProject}
           onSaveAs={handleSaveAsProject}
           onImportImage={() => fileInputRef.current?.click()}
+          onExport={exportImage}
+          onExportLayers={exportSelectedLayers}
           canSave={layers.length > 0}
+          hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
           isLoading={isLoading || isSaving}
           showRulers={showRulers}
           showGuides={showGuides}
@@ -1982,6 +1952,8 @@ function ImageEditorContent() {
             save: t.save,
             saveAs: t.saveAs,
             importImage: t.importImage,
+            export: t.export,
+            exportLayers: t.exportLayers,
             layers: t.layers,
             showRulers: t.showRulers,
             showGuides: t.showGuides,
@@ -2074,21 +2046,7 @@ function ImageEditorContent() {
                     : "hover:bg-interactive-hover"
                 }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="7" r="3" strokeWidth={2} />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeWidth={2}
-                    strokeDasharray="2 2"
-                    d="M3 21L21 3"
-                  />
-                </svg>
+                <BackgroundRemovalIcon className="w-4 h-4" />
               </button>
             </Tooltip>
           </div>
@@ -2102,14 +2060,7 @@ function ImageEditorContent() {
                 onClick={handleUndo}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                  />
-                </svg>
+                <UndoIcon className="w-4 h-4" />
               </button>
             </Tooltip>
             <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
@@ -2117,14 +2068,7 @@ function ImageEditorContent() {
                 onClick={handleRedo}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
-                  />
-                </svg>
+                <RedoIcon className="w-4 h-4" />
               </button>
             </Tooltip>
           </div>
@@ -2138,14 +2082,7 @@ function ImageEditorContent() {
                 onClick={() => setShowRotateMenu(!showRotateMenu)}
                 className={`p-1 hover:bg-interactive-hover rounded transition-colors ${showRotateMenu ? 'bg-interactive-hover' : ''}`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
+                <RotateIcon className="w-4 h-4" />
               </button>
             </Tooltip>
             {showRotateMenu && (
@@ -2154,28 +2091,14 @@ function ImageEditorContent() {
                   onClick={() => { rotate(-90); setShowRotateMenu(false); }}
                   className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                    />
-                  </svg>
+                  <UndoIcon className="w-4 h-4" />
                   {t.rotateLeft} 90°
                 </button>
                 <button
                   onClick={() => { rotate(90); setShowRotateMenu(false); }}
                   className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 10H11a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"
-                    />
-                  </svg>
+                  <RedoIcon className="w-4 h-4" />
                   {t.rotateRight} 90°
                 </button>
               </div>
@@ -2191,9 +2114,7 @@ function ImageEditorContent() {
               className="p-1 hover:bg-interactive-hover rounded transition-colors"
               title={t.zoomOut}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-              </svg>
+              <MinusIcon className="w-4 h-4" />
             </button>
             <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
             <button
@@ -2201,14 +2122,7 @@ function ImageEditorContent() {
               className="p-1 hover:bg-interactive-hover rounded transition-colors"
               title={t.zoomIn}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
+              <PlusIcon className="w-4 h-4" />
             </button>
             <button
               onClick={fitToScreen}
@@ -2250,21 +2164,6 @@ function ImageEditorContent() {
           </div>
 
           <div className="flex-1 min-w-0" />
-
-          <button
-            onClick={clearEdits}
-            className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
-            title={t.resetEdit}
-          >
-            {t.reset}
-          </button>
-
-          <button
-            onClick={exportImage}
-            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
-          >
-            Export
-          </button>
           </div>
         </Scrollbar>
       )}
@@ -2324,12 +2223,8 @@ function ImageEditorContent() {
       {/* Main Content Area with Docking System */}
       <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
         <EditorDockableArea />
-        {/* Mobile Pan Mode Toggle - floating button */}
-        {layers.length > 0 && (
-          <div className="absolute bottom-4 right-4 z-50 md:hidden">
-            <PanModeToggle />
-          </div>
-        )}
+        {/* Mobile Pan Mode Toggle - draggable floating button */}
+        {layers.length > 0 && <PanModeToggle />}
       </div>
 
       {/* Background Removal Modals */}
@@ -2442,7 +2337,10 @@ interface EditorMenuBarInnerProps {
   onSave: () => void;
   onSaveAs: () => void;
   onImportImage: () => void;
+  onExport: () => void;
+  onExportLayers: () => void;
   canSave: boolean;
+  hasSelectedLayers: boolean;
   isLoading?: boolean;
   // View menu props
   showRulers: boolean;
@@ -2463,6 +2361,8 @@ interface EditorMenuBarInnerProps {
     save: string;
     saveAs: string;
     importImage: string;
+    export: string;
+    exportLayers: string;
     layers: string;
     showRulers: string;
     showGuides: string;

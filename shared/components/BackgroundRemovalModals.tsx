@@ -1,5 +1,7 @@
 "use client";
 
+import { PersonIcon, SpinnerIcon } from "./icons";
+
 // ============================================
 // Types
 // ============================================
@@ -30,53 +32,6 @@ interface BackgroundRemovalModalsProps {
 }
 
 // ============================================
-// Icons (inline SVGs to avoid dependencies)
-// ============================================
-
-function PersonIcon() {
-  return (
-    <svg
-      className="w-5 h-5 text-accent-primary"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <circle cx="12" cy="7" r="3" strokeWidth={2} />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
-      />
-    </svg>
-  );
-}
-
-function LoadingSpinner() {
-  return (
-    <svg
-      className="w-12 h-12 animate-spin text-accent-primary"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
-  );
-}
-
-// ============================================
 // Component
 // ============================================
 
@@ -98,7 +53,7 @@ export function BackgroundRemovalModals({
           <div className="bg-surface-primary rounded-lg p-6 shadow-xl max-w-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-accent-primary/20 flex items-center justify-center">
-                <PersonIcon />
+                <PersonIcon className="w-5 h-5 text-accent-primary" />
               </div>
               <h3 className="text-lg font-semibold text-text-primary">
                 {t.title}
@@ -134,7 +89,7 @@ export function BackgroundRemovalModals({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-surface-primary rounded-lg p-6 shadow-xl flex flex-col items-center gap-4 min-w-[280px]">
             <div className="relative">
-              <LoadingSpinner />
+              <SpinnerIcon className="w-12 h-12 text-accent-primary" />
             </div>
             <div className="text-center">
               <p className="text-text-primary font-medium">{t.title}</p>

@@ -5,6 +5,7 @@ import { Clip as ClipType } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
+import { VideoClipIcon, AudioClipIcon, ImageClipIcon } from "@/shared/components/icons";
 import { UI } from "../../constants";
 
 interface ClipProps {
@@ -163,17 +164,11 @@ export function Clip({ clip }: ClipProps) {
       {/* Type indicator */}
       <div className="absolute bottom-1 right-1">
         {clip.type === "video" ? (
-          <svg className="w-3 h-3 text-white/60" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 3h8v10H2V3zm10 2l4-2v10l-4-2V5z" />
-          </svg>
+          <VideoClipIcon className="w-3 h-3 text-white/60" />
         ) : clip.type === "audio" ? (
-          <svg className="w-3 h-3 text-white/70" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
-          </svg>
+          <AudioClipIcon className="w-3 h-3 text-white/70" />
         ) : (
-          <svg className="w-3 h-3 text-white/60" viewBox="0 0 16 16" fill="currentColor">
-            <rect x="2" y="2" width="12" height="12" rx="1" />
-          </svg>
+          <ImageClipIcon className="w-3 h-3 text-white/60" />
         )}
       </div>
     </div>

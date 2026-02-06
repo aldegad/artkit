@@ -17,9 +17,12 @@ interface MenuBarProps {
   onSave: () => void;
   onSaveAs: () => void;
   onImportImage: () => void;
+  onExport: () => void;
+  onExportLayers: () => void;
   onToggleLayers: () => void;
   isLayersOpen: boolean;
   canSave: boolean;
+  hasSelectedLayers: boolean;
   isLoading?: boolean;
   // View menu props
   showRulers: boolean;
@@ -40,6 +43,8 @@ interface MenuBarProps {
     save: string;
     saveAs: string;
     importImage: string;
+    export: string;
+    exportLayers: string;
     layers: string;
     showRulers: string;
     showGuides: string;
@@ -59,9 +64,12 @@ export default function EditorMenuBar({
   onSave,
   onSaveAs,
   onImportImage,
+  onExport,
+  onExportLayers,
   onToggleLayers,
   isLayersOpen,
   canSave,
+  hasSelectedLayers,
   isLoading,
   showRulers,
   showGuides,
@@ -84,6 +92,9 @@ export default function EditorMenuBar({
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
+    { divider: true },
+    { label: t.export, onClick: onExport, disabled: !canSave, shortcut: "⇧⌘E" },
+    { label: t.exportLayers, onClick: onExportLayers, disabled: !hasSelectedLayers },
   ];
 
   const viewMenuItems: MenuItem[] = [

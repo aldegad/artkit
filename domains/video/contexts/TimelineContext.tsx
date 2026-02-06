@@ -141,6 +141,41 @@ function normalizeClip(clip: Clip): Clip {
   return clip;
 }
 
+function fitsTrackType(track: VideoTrack | null, clip: Clip): boolean {
+  if (!track) return false;
+  if (track.type === "audio") return clip.type === "audio";
+  return clip.type !== "audio";
+}
+
+function getFittedVisualTransform(sourceSize: Size, canvasSize: Size): { position: { x: number; y: number }; scale: number } {
+  if (
+    sourceSize.width <= 0 ||
+    sourceSize.height <= 0 ||
+    canvasSize.width <= 0 ||
+    canvasSize.height <= 0
+  ) {
+    return {
+      position: { x: 0, y: 0 },
+      scale: 1,
+    };
+  }
+
+  const scale = Math.min(
+    canvasSize.width / sourceSize.width,
+    canvasSize.height / sourceSize.height
+  );
+  const fittedWidth = sourceSize.width * scale;
+  const fittedHeight = sourceSize.height * scale;
+
+  return {
+    position: {
+      x: (canvasSize.width - fittedWidth) / 2,
+      y: (canvasSize.height - fittedHeight) / 2,
+    },
+    scale,
+  };
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
     updateProjectDuration,
@@ -435,12 +470,24 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceSize: Size,
       startTime: number = 0
     ): string => {
-      const clip = createVideoClip(trackId, sourceUrl, sourceDuration, sourceSize, startTime);
+      const track = tracks.find((t) => t.id === trackId) || null;
+      const resolvedTrackId =
+        track && track.type !== "audio"
+          ? trackId
+          : tracks.find((t) => t.type !== "audio")?.id || trackId;
+
+      const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
+      const fitted = getFittedVisualTransform(sourceSize, projectRef.current.canvasSize);
+      const clip: Clip = {
+        ...baseClip,
+        position: fitted.position,
+        scale: fitted.scale,
+      };
       setClips((prev) => [...prev, clip]);
       updateProjectDuration();
       return clip.id;
     },
-    [updateProjectDuration]
+    [tracks, updateProjectDuration]
   );
 
   const addAudioClip = useCallback(
@@ -451,12 +498,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       startTime: number = 0,
       sourceSize: Size = { width: 0, height: 0 }
     ): string => {
-      const clip = createAudioClip(trackId, sourceUrl, sourceDuration, startTime, sourceSize);
+      const track = tracks.find((t) => t.id === trackId) || null;
+      const resolvedTrackId =
+        track && track.type === "audio"
+          ? trackId
+          : tracks.find((t) => t.type === "audio")?.id || trackId;
+
+      const clip = createAudioClip(resolvedTrackId, sourceUrl, sourceDuration, startTime, sourceSize);
       setClips((prev) => [...prev, clip]);
       updateProjectDuration();
       return clip.id;
     },
-    [updateProjectDuration]
+    [tracks, updateProjectDuration]
   );
 
   const addImageClip = useCallback(
@@ -467,12 +520,24 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       startTime: number = 0,
       duration: number = 5
     ): string => {
-      const clip = createImageClip(trackId, sourceUrl, sourceSize, startTime, duration);
+      const track = tracks.find((t) => t.id === trackId) || null;
+      const resolvedTrackId =
+        track && track.type !== "audio"
+          ? trackId
+          : tracks.find((t) => t.type !== "audio")?.id || trackId;
+
+      const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
+      const fitted = getFittedVisualTransform(sourceSize, projectRef.current.canvasSize);
+      const clip: Clip = {
+        ...baseClip,
+        position: fitted.position,
+        scale: fitted.scale,
+      };
       setClips((prev) => [...prev, clip]);
       updateProjectDuration();
       return clip.id;
     },
-    [updateProjectDuration]
+    [tracks, updateProjectDuration]
   );
 
   const removeClip = useCallback((clipId: string) => {
@@ -495,13 +560,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, [updateProjectDuration]);
 
   const moveClip = useCallback((clipId: string, trackId: string, startTime: number) => {
+    const targetTrack = tracks.find((t) => t.id === trackId) || null;
+    if (!targetTrack) return;
+
     setClips((prev) =>
-      prev.map((c) =>
-        c.id === clipId ? { ...c, trackId, startTime: Math.max(0, startTime) } : c
-      )
+      prev.map((c) => {
+        if (c.id !== clipId) return c;
+        if (!fitsTrackType(targetTrack, c)) return c;
+        return { ...c, trackId, startTime: Math.max(0, startTime) };
+      })
     );
     updateProjectDuration();
-  }, [updateProjectDuration]);
+  }, [tracks, updateProjectDuration]);
 
   const trimClipStart = useCallback((clipId: string, newStartTime: number) => {
     setClips((prev) =>

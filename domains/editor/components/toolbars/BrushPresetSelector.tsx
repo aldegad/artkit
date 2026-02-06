@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BrushPreset, BrushPresetType } from "../../types/brush";
 import { Popover, Scrollbar } from "../../../../shared/components";
+import { PencilPresetIcon, AirbrushPresetIcon, MarkerPresetIcon, WatercolorPresetIcon, DefaultBrushPresetIcon, ChevronDownIcon, CloseIcon } from "@/shared/components/icons";
 
 interface BrushPresetSelectorProps {
   presets: BrushPreset[];
@@ -22,48 +23,15 @@ interface BrushPresetSelectorProps {
 function PresetIcon({ type }: { type: BrushPresetType }) {
   switch (type) {
     case "pencil":
-      return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-          />
-        </svg>
-      );
+      return <PencilPresetIcon />;
     case "airbrush":
-      return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="3" strokeWidth={1.5} opacity={0.5} />
-          <circle cx="12" cy="12" r="6" strokeWidth={1.5} opacity={0.7} />
-          <circle cx="12" cy="12" r="9" strokeWidth={1.5} />
-        </svg>
-      );
+      return <AirbrushPresetIcon />;
     case "marker":
-      return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <rect x="8" y="4" width="8" height="16" rx="1" strokeWidth={2} />
-          <line x1="8" y1="8" x2="16" y2="8" strokeWidth={2} />
-        </svg>
-      );
+      return <MarkerPresetIcon />;
     case "watercolor":
-      return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 3c-2 4-4 6-4 9a4 4 0 108 0c0-3-2-5-4-9z"
-          />
-        </svg>
-      );
+      return <WatercolorPresetIcon />;
     default:
-      return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="8" strokeWidth={2} />
-        </svg>
-      );
+      return <DefaultBrushPresetIcon />;
   }
 }
 
@@ -85,14 +53,7 @@ export function BrushPresetSelector({
     >
       <PresetIcon type={activePreset.type} />
       <span className="text-xs hidden sm:inline">{activePreset.name}</span>
-      <svg
-        className={`w-3 h-3 text-text-tertiary transition-transform ${isOpen ? "rotate-180" : ""}`}
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
+      <ChevronDownIcon className={`w-3 h-3 text-text-tertiary transition-transform ${isOpen ? "rotate-180" : ""}`} />
     </button>
   );
 
@@ -140,14 +101,7 @@ export function BrushPresetSelector({
                 }}
                 className="p-0.5 hover:text-red-500 transition-colors"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <CloseIcon className="w-3 h-3" />
               </button>
             )}
           </button>

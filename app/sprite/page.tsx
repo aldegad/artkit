@@ -17,6 +17,13 @@ import { LayersPanelContent } from "../../components/panels";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { Tooltip } from "../../shared/components";
 import {
+  BrushIcon,
+  CursorIcon,
+  HandIcon,
+  BackgroundRemovalIcon,
+  ExportIcon,
+} from "../../shared/components/icons";
+import {
   saveProject as saveProjectToDB,
   getAllProjects,
   deleteProject as deleteProjectFromDB,
@@ -688,14 +695,7 @@ function SpriteEditorMain() {
                   : "hover:bg-interactive-hover text-text-primary"
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                />
-              </svg>
+              <BrushIcon className="w-4 h-4" />
               {t.pen}
             </button>
           </Tooltip>
@@ -720,14 +720,7 @@ function SpriteEditorMain() {
                   : "hover:bg-interactive-hover text-text-primary"
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"
-                />
-              </svg>
+              <CursorIcon className="w-4 h-4" />
               {t.select}
             </button>
           </Tooltip>
@@ -753,14 +746,7 @@ function SpriteEditorMain() {
                   : "hover:bg-interactive-hover text-text-primary"
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11"
-                />
-              </svg>
+              <HandIcon className="w-4 h-4" />
               {t.hand}
             </button>
           </Tooltip>
@@ -812,16 +798,7 @@ function SpriteEditorMain() {
             disabled={selectedFrameId === null || isRemovingBackground}
             className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed text-text-primary border border-border-default rounded-lg text-sm flex items-center gap-1.5 transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="7" r="3" strokeWidth={2} />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 10c-4 0-6 2.5-6 5v2h12v-2c0-2.5-2-5-6-5z"
-              />
-              <line x1="4" y1="4" x2="20" y2="20" strokeWidth={2} strokeLinecap="round" />
-            </svg>
+            <BackgroundRemovalIcon className="w-4 h-4" />
             {t.removeBackground}
           </button>
         </Tooltip>
@@ -879,19 +856,7 @@ function SpriteEditorMain() {
                   {t.export}
                 </button>
                 <label className="px-2 py-1 bg-surface-secondary hover:bg-surface-tertiary text-text-secondary border border-border-default rounded text-xs transition-colors flex items-center gap-1 cursor-pointer">
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                    />
-                  </svg>
+                  <ExportIcon className="w-3.5 h-3.5" />
                   {t.import}
                   <input type="file" accept=".json" onChange={handleImportDB} className="hidden" />
                 </label>
