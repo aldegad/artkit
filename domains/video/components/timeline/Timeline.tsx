@@ -7,6 +7,7 @@ import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
 import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
+import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
 import { TrackVisibleIcon, TrackHiddenIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon } from "@/shared/components/icons";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
@@ -210,8 +211,16 @@ export function Timeline({ className }: TimelineProps) {
           </div>
         </div>
 
+        {/* Pre-render cache status bar */}
+        <div className="flex border-b border-border-default">
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default" style={headerWidthStyle} />
+          <div className="flex-1 overflow-hidden">
+            <PreRenderBar />
+          </div>
+        </div>
+
         {/* Tracks area */}
-        <div className="flex overflow-hidden" style={{ height: `calc(100% - 16px)` }}>
+        <div className="flex overflow-hidden" style={{ height: `calc(100% - 19px)` }}>
           {/* Track headers */}
           <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
             {tracks.map((track) => {

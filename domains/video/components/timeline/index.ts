@@ -5,3 +5,4 @@ export { Clip } from "./Clip";
 export { Playhead } from "./Playhead";
 export { TimelineToolbar } from "./TimelineToolbar";
 export { MaskClip } from "./MaskClip";
+export { PreRenderBar } from "./PreRenderBar";
