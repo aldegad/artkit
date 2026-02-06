@@ -15,10 +15,19 @@ interface MaskClipProps {
 
 export function MaskClip({ mask }: MaskClipProps) {
   const { timeToPixel, durationToWidth, zoom } = useVideoCoordinates();
-  const { activeMaskId, startMaskEditById, endMaskEdit, updateMaskTime } = useMask();
+  const {
+    activeMaskId,
+    isEditingMask,
+    selectMask,
+    deselectMask,
+    startMaskEditById,
+    endMaskEdit,
+    updateMaskTime,
+  } = useMask();
   const { tracks, clips, viewState } = useTimeline();
 
   const isActive = activeMaskId === mask.id;
+  const isEditing = isActive && isEditingMask;
   const x = timeToPixel(mask.startTime);
   const width = Math.max(durationToWidth(mask.duration), 20);
 
@@ -30,6 +39,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   });
   const didDragRef = useRef(false);
   const wasActiveOnDownRef = useRef(false);
+  const wasEditingOnDownRef = useRef(false);
 
   // Snap to own track clips + adjacent track below clips
   const snapToPoints = useCallback(
@@ -67,10 +77,11 @@ export function MaskClip({ mask }: MaskClipProps) {
     e.preventDefault();
     didDragRef.current = false;
     wasActiveOnDownRef.current = isActive;
+    wasEditingOnDownRef.current = isEditing;
 
-    // Select on click (deselect handled in mouseUp if no drag)
+    // Select on first click (not edit)
     if (!isActive) {
-      startMaskEditById(mask.id);
+      selectMask(mask.id);
     }
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -89,7 +100,14 @@ export function MaskClip({ mask }: MaskClipProps) {
       originalDuration: mask.duration,
     };
     setDragMode(mode);
-  }, [startMaskEditById, endMaskEdit, isActive, mask.id, mask.startTime, mask.duration]);
+  }, [selectMask, isActive, isEditing, mask.id, mask.startTime, mask.duration]);
+
+  // Double-click to enter edit mode
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    startMaskEditById(mask.id);
+  }, [startMaskEditById, mask.id]);
 
   useEffect(() => {
     if (dragMode === "none") return;
@@ -99,7 +117,6 @@ export function MaskClip({ mask }: MaskClipProps) {
     const onMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startClientX;
       if (Math.abs(deltaX) > 2) didDragRef.current = true;
-      // Convert pixel delta to time delta using current zoom
       const deltaTime = deltaX / durationToWidth(1);
 
       if (dragMode === "move") {
@@ -127,9 +144,14 @@ export function MaskClip({ mask }: MaskClipProps) {
     };
 
     const onMouseUp = () => {
-      // Deselect only if it was already active before mouseDown and user just clicked (no drag)
-      if (wasActiveOnDownRef.current && !didDragRef.current) {
-        endMaskEdit();
+      if (!didDragRef.current) {
+        if (wasEditingOnDownRef.current) {
+          // Was editing → click exits edit mode (stays selected)
+          endMaskEdit();
+        } else if (wasActiveOnDownRef.current) {
+          // Was selected (not editing) → deselect
+          deselectMask();
+        }
       }
       setDragMode("none");
     };
@@ -140,7 +162,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
-  }, [dragMode, mask.id, updateMaskTime, endMaskEdit, durationToWidth, snapToPoints]);
+  }, [dragMode, mask.id, updateMaskTime, endMaskEdit, deselectMask, durationToWidth, snapToPoints]);
 
   // Cursor based on hover position
   const handleMouseMoveLocal = useCallback((e: React.MouseEvent) => {
@@ -158,7 +180,9 @@ export function MaskClip({ mask }: MaskClipProps) {
     <div
       className={cn(
         "absolute top-0.5 bottom-0.5 rounded",
-        "bg-purple-600/70 hover:bg-purple-500/70",
+        isEditing
+          ? "bg-purple-500/80 hover:bg-purple-400/80"
+          : "bg-purple-600/70 hover:bg-purple-500/70",
         isActive && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent"
       )}
       style={{
@@ -167,10 +191,11 @@ export function MaskClip({ mask }: MaskClipProps) {
         cursor: dragMode !== "none" ? (dragMode === "move" ? "grabbing" : "ew-resize") : "grab",
       }}
       onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMoveLocal}
     >
       <div className="px-1.5 py-0.5 text-[10px] text-white/80 truncate leading-tight select-none">
-        Mask
+        {isEditing ? "Editing" : "Mask"}
       </div>
     </div>
   );
