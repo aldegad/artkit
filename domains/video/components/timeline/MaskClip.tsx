@@ -103,7 +103,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       className={cn(
         "absolute top-0.5 bottom-0.5 rounded",
         "bg-purple-600/70 hover:bg-purple-500/70",
-        isActive && "ring-1 ring-purple-300 bg-purple-500/80"
+        isActive && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent"
       )}
       style={{
         left: x,

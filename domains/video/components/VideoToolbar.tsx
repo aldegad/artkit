@@ -1,7 +1,7 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
-import { CursorIcon, VideoCropToolIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon } from "@/shared/components/icons";
+import { CursorIcon, VideoCropToolIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon, DeleteIcon } from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
 
 interface ToolButton {
@@ -16,6 +16,8 @@ interface ToolButton {
 interface VideoToolbarProps {
   toolMode: VideoToolMode;
   onToolModeChange: (mode: VideoToolMode) => void;
+  onDelete?: () => void;
+  hasSelection?: boolean;
   translations: {
     select: string;
     selectDesc: string;
@@ -33,6 +35,8 @@ interface VideoToolbarProps {
 export default function VideoToolbar({
   toolMode,
   onToolModeChange,
+  onDelete,
+  hasSelection,
   translations: t,
 }: VideoToolbarProps) {
   const toolButtons: ToolButton[] = [
@@ -112,6 +116,24 @@ export default function VideoToolbar({
           </button>
         </Tooltip>
       ))}
+
+      {/* Separator */}
+      <div className="w-px bg-border-default mx-0.5" />
+
+      {/* Delete button */}
+      <Tooltip content="Delete" shortcut="Del">
+        <button
+          onClick={onDelete}
+          disabled={!hasSelection}
+          className={`p-1.5 rounded transition-colors ${
+            hasSelection
+              ? "hover:bg-red-500/20 text-text-secondary hover:text-red-400"
+              : "text-text-quaternary cursor-not-allowed"
+          }`}
+        >
+          <DeleteIcon />
+        </button>
+      </Tooltip>
     </div>
   );
 }

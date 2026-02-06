@@ -749,8 +749,9 @@ function VideoEditorContent() {
   }, [playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, addClips, selectClips]);
 
   const handleDelete = useCallback(() => {
-    // Delete selected mask if one is active (and not currently editing it)
-    if (activeMaskId && !isEditingMask) {
+    // Delete selected mask if one is active
+    if (activeMaskId) {
+      if (isEditingMask) endMaskEdit();
       deleteMask(activeMaskId);
       return;
     }
@@ -760,7 +761,7 @@ function VideoEditorContent() {
     saveToHistory();
     selectedClipIds.forEach((id) => removeClip(id));
     deselectAll();
-  }, [selectedClipIds, saveToHistory, removeClip, deselectAll, activeMaskId, isEditingMask, deleteMask]);
+  }, [selectedClipIds, saveToHistory, removeClip, deselectAll, activeMaskId, isEditingMask, deleteMask, endMaskEdit]);
 
   const handleDuplicate = useCallback(() => {
     if (selectedClipIds.length === 0) return;
@@ -1206,6 +1207,8 @@ function VideoEditorContent() {
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
+          onDelete={handleDelete}
+          hasSelection={selectedClipIds.length > 0 || !!activeMaskId}
           translations={toolbarTranslations}
         />
 
