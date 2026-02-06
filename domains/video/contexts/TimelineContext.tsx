@@ -18,7 +18,6 @@ import {
   createVideoClip,
   createAudioClip,
   createImageClip,
-  MaskData,
 } from "../types";
 import { TIMELINE } from "../constants";
 import { useVideoState } from "./VideoStateContext";
@@ -192,7 +191,6 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return [createVideoTrack("Video 1", 0)];
   });
   const [clips, setClips] = useState<Clip[]>([]);
-  const [masks, setMasks] = useState<MaskData[]>([]);
   const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -304,12 +302,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           if (data.timelineView) {
             setViewStateInternal(data.timelineView);
           }
-          if (data.masks) {
-            setMasks(data.masks);
-          }
           // Restore VideoState data
+          // Merge correct masks (data.masks) into project to avoid stale project.masks
           if (data.project) {
-            setProject(data.project);
+            setProject({
+              ...data.project,
+              masks: data.masks || data.project.masks || [],
+            });
           }
           if (data.projectName) {
             setProjectName(data.projectName);
@@ -340,6 +339,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   // autosave RESTORE (on mount, above).
 
   // Keep project.timeline data synchronized with TimelineContext state.
+  // NOTE: masks are NOT synced here — MaskContext is the single source of truth
+  // for mask data. project.masks is synced from MaskContext in page.tsx.
   useEffect(() => {
     const duration = clips.reduce((max, clip) => {
       return Math.max(max, clip.startTime + clip.duration);
@@ -349,10 +350,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       ...projectRef.current,
       tracks: tracks.map(cloneTrack),
       clips: clips.map(cloneClip),
-      masks: masks.length > 0 ? [...masks] : projectRef.current.masks,
       duration: Math.max(duration, 1),
     });
-  }, [tracks, clips, masks, setProject]);
+  }, [tracks, clips, setProject]);
 
   // View state actions
   const setZoom = useCallback((zoom: number) => {

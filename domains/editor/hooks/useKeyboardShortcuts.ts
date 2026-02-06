@@ -3,6 +3,7 @@
 import { useEffect, RefObject } from "react";
 import { CropArea, EditorToolMode } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
+import { shouldIgnoreKeyEvent } from "@/shared/utils/keyboard";
 import {
   BRUSH_SIZE_SHORTCUTS,
   ZOOM_SHORTCUTS,
@@ -102,15 +103,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if focus is on input elements
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA"
-      ) {
-        return;
-      }
+      if (shouldIgnoreKeyEvent(e)) return;
 
       // Space for temporary hand tool
       if (e.code === SPECIAL_SHORTCUTS.temporaryHand && !e.repeat) {
@@ -154,8 +147,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         }
       }
 
-      // Undo (Cmd+Z)
-      if (matchesShortcut(e, HISTORY_SHORTCUTS.undo) && !e.shiftKey) {
+      // Undo (Cmd+Z) — shared matchesShortcut includes strict shift check
+      if (matchesShortcut(e, HISTORY_SHORTCUTS.undo)) {
         e.preventDefault();
         // If transform is active, cancel it instead of undo
         if (isTransformActive && cancelTransform) {

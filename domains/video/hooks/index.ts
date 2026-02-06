@@ -7,3 +7,4 @@ export { useMediaImport } from "./useMediaImport";
 export { useVideoSave } from "./useVideoSave";
 export { usePlaybackTick, usePlaybackTime } from "./usePlaybackTick";
 export { usePreRenderCache, subscribeCacheStatus, getCacheStatus } from "./usePreRenderCache";
+export { useVideoKeyboardShortcuts } from "./useVideoKeyboardShortcuts";

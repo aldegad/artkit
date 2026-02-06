@@ -267,7 +267,7 @@ function ImageEditorContent() {
   const historyAdapterRef = useRef<HistoryAdapter<EditorHistorySnapshot> | null>(null);
 
   // Undo/Redo history - using extracted hook
-  const { saveToHistory, undo, redo, clearHistory } = useHistory({
+  const { saveToHistory, undo, redo, clearHistory, canUndo, canRedo } = useHistory({
     editCanvasRef,
     historyAdapterRef,
     maxHistory: 50,
@@ -1812,6 +1812,10 @@ function ImageEditorContent() {
             canSave={layers.length > 0}
             hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
             isLoading={isLoading || isSaving}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            canUndo={canUndo()}
+            canRedo={canRedo()}
             showRulers={showRulers}
             showGuides={showGuides}
             lockGuides={lockGuides}
@@ -1823,6 +1827,7 @@ function ImageEditorContent() {
             onClearGuides={clearAllGuides}
             translations={{
               file: t.file,
+              edit: t.edit,
               view: t.view,
               window: t.window,
               new: t.new,
@@ -1832,6 +1837,8 @@ function ImageEditorContent() {
               importImage: t.importImage,
               export: t.export,
               exportLayers: t.exportLayers,
+              undo: t.undo,
+              redo: t.redo,
               layers: t.layers,
               showRulers: t.showRulers,
               showGuides: t.showGuides,
@@ -2196,6 +2203,11 @@ interface EditorMenuBarInnerProps {
   canSave: boolean;
   hasSelectedLayers: boolean;
   isLoading?: boolean;
+  // Edit menu props
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   // View menu props
   showRulers: boolean;
   showGuides: boolean;
@@ -2208,6 +2220,7 @@ interface EditorMenuBarInnerProps {
   onClearGuides: () => void;
   translations: {
     file: string;
+    edit: string;
     view: string;
     window: string;
     new: string;
@@ -2217,6 +2230,8 @@ interface EditorMenuBarInnerProps {
     importImage: string;
     export: string;
     exportLayers: string;
+    undo: string;
+    redo: string;
     layers: string;
     showRulers: string;
     showGuides: string;
