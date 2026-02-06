@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
+import { useLanguage, useAuth } from "../../shared/contexts";
+import { HeaderContent } from "../../shared/components";
 import { Tooltip, Scrollbar, ExportModal } from "../../shared/components";
 import {
   MarqueeIcon,
@@ -1908,64 +1909,56 @@ function ImageEditorContent() {
     <EditorCanvasProvider value={canvasContextValue}>
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Header Slot Content */}
-      <HeaderSlot>
-        {/* Title - Desktop only */}
-        <h1 className="text-sm font-semibold hidden md:block whitespace-nowrap">{t.imageEditor}</h1>
-        {/* Menu Bar - now in header */}
-        <EditorMenuBarInner
-          onNew={handleNewCanvas}
-          onLoad={() => setIsProjectListOpen(true)}
-          onSave={handleSaveProject}
-          onSaveAs={handleSaveAsProject}
-          onImportImage={() => fileInputRef.current?.click()}
-          onExport={() => { setExportMode("single"); setShowExportModal(true); }}
-          onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
-          canSave={layers.length > 0}
-          hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
-          isLoading={isLoading || isSaving}
-          showRulers={showRulers}
-          showGuides={showGuides}
-          lockGuides={lockGuides}
-          snapToGuides={snapToGuides}
-          onToggleRulers={() => setShowRulers(!showRulers)}
-          onToggleGuides={() => setShowGuides(!showGuides)}
-          onToggleLockGuides={() => setLockGuides(!lockGuides)}
-          onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
-          onClearGuides={clearAllGuides}
-          translations={{
-            file: t.file,
-            view: t.view,
-            window: t.window,
-            new: t.new,
-            load: t.load,
-            save: t.save,
-            saveAs: t.saveAs,
-            importImage: t.importImage,
-            export: t.export,
-            exportLayers: t.exportLayers,
-            layers: t.layers,
-            showRulers: t.showRulers,
-            showGuides: t.showGuides,
-            lockGuides: t.lockGuides,
-            snapToGuides: t.snapToGuides,
-            clearGuides: t.clearGuides,
-          }}
-        />
-        {layers.length > 0 && (
-          <>
-            <div className="h-4 w-px bg-border-default" />
-            {/* Project name */}
-            <input
-              type="text"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-16 md:w-24 focus:outline-none focus:border-accent-primary"
-              placeholder={t.projectName}
-            />
-            <div className="flex-1" />
-          </>
-        )}
-      </HeaderSlot>
+      <HeaderContent
+        title={t.imageEditor}
+        menuBar={
+          <EditorMenuBarInner
+            onNew={handleNewCanvas}
+            onLoad={() => setIsProjectListOpen(true)}
+            onSave={handleSaveProject}
+            onSaveAs={handleSaveAsProject}
+            onImportImage={() => fileInputRef.current?.click()}
+            onExport={() => { setExportMode("single"); setShowExportModal(true); }}
+            onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
+            canSave={layers.length > 0}
+            hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
+            isLoading={isLoading || isSaving}
+            showRulers={showRulers}
+            showGuides={showGuides}
+            lockGuides={lockGuides}
+            snapToGuides={snapToGuides}
+            onToggleRulers={() => setShowRulers(!showRulers)}
+            onToggleGuides={() => setShowGuides(!showGuides)}
+            onToggleLockGuides={() => setLockGuides(!lockGuides)}
+            onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+            onClearGuides={clearAllGuides}
+            translations={{
+              file: t.file,
+              view: t.view,
+              window: t.window,
+              new: t.new,
+              load: t.load,
+              save: t.save,
+              saveAs: t.saveAs,
+              importImage: t.importImage,
+              export: t.export,
+              exportLayers: t.exportLayers,
+              layers: t.layers,
+              showRulers: t.showRulers,
+              showGuides: t.showGuides,
+              lockGuides: t.lockGuides,
+              snapToGuides: t.snapToGuides,
+              clearGuides: t.clearGuides,
+            }}
+          />
+        }
+        projectName={layers.length > 0 ? {
+          value: projectName,
+          onChange: setProjectName,
+          placeholder: t.projectName,
+        } : undefined}
+        extra={layers.length > 0 ? <div className="flex-1" /> : undefined}
+      />
 
       {/* Row 2: Tools (only when layers exist) */}
       {layers.length > 0 && (

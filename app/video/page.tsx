@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
+import { useLanguage, useAuth } from "../../shared/contexts";
+import { HeaderContent } from "../../shared/components";
 import { downloadBlob } from "../../shared/utils";
 import {
   VideoStateProvider,
@@ -1169,48 +1170,49 @@ function VideoEditorContent() {
       className="h-full bg-background text-text-primary flex flex-col overflow-hidden"
     >
       {/* Header Slot - Menu Bar + Project Info */}
-      <HeaderSlot>
-        <h1 className="text-sm font-semibold hidden md:block whitespace-nowrap">{t.videoEditor}</h1>
-        <VideoMenuBar
-          onNew={handleNew}
-          onOpen={handleOpen}
-          onImportFile={handleImportFile}
-          onSave={handleSave}
-          onSaveAs={handleSaveAs}
-          onImportMedia={handleImportMedia}
-          onExport={() => setShowExportModal(true)}
-          canSave={hasContent}
-          isSaving={isSaving}
-          isLoading={isExporting}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onCut={handleCut}
-          onCopy={handleCopy}
-          onPaste={handlePaste}
-          onDelete={handleDelete}
-          hasSelection={selectedClipIds.length > 0}
-          hasClipboard={hasClipboard}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onFitToScreen={handleFitToScreen}
-          onToggleTimeline={handleToggleTimeline}
-          showTimeline={isTimelineVisible}
-          translations={menuTranslations}
-        />
-        <div className="h-4 w-px bg-border-default mx-2" />
-        <input
-          type="text"
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-16 md:w-24 focus:outline-none focus:border-accent-primary"
-          placeholder={t.projectName}
-        />
-        <span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
-          ({project.canvasSize.width}x{project.canvasSize.height})
-        </span>
-      </HeaderSlot>
+      <HeaderContent
+        title={t.videoEditor}
+        menuBar={
+          <VideoMenuBar
+            onNew={handleNew}
+            onOpen={handleOpen}
+            onImportFile={handleImportFile}
+            onSave={handleSave}
+            onSaveAs={handleSaveAs}
+            onImportMedia={handleImportMedia}
+            onExport={() => setShowExportModal(true)}
+            canSave={hasContent}
+            isSaving={isSaving}
+            isLoading={isExporting}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onCut={handleCut}
+            onCopy={handleCopy}
+            onPaste={handlePaste}
+            onDelete={handleDelete}
+            hasSelection={selectedClipIds.length > 0}
+            hasClipboard={hasClipboard}
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
+            onFitToScreen={handleFitToScreen}
+            onToggleTimeline={handleToggleTimeline}
+            showTimeline={isTimelineVisible}
+            translations={menuTranslations}
+          />
+        }
+        projectName={{
+          value: projectName,
+          onChange: setProjectName,
+          placeholder: t.projectName,
+        }}
+        info={
+          <span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
+            ({project.canvasSize.width}x{project.canvasSize.height})
+          </span>
+        }
+      />
 
       {/* Toolbar */}
       <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border-default overflow-x-auto">

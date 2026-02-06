@@ -16,7 +16,8 @@ import type { SavedSpriteProject } from "../../domains/sprite";
 import { migrateFramesToTracks } from "../../domains/sprite/utils/migration";
 import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
-import { useLanguage, HeaderSlot } from "../../shared/contexts";
+import { useLanguage } from "../../shared/contexts";
+import { HeaderContent } from "../../shared/components";
 import { Tooltip, Scrollbar } from "../../shared/components";
 import {
   BrushIcon,
@@ -599,46 +600,45 @@ function SpriteEditorMain() {
       />
 
       {/* Header Slot */}
-      <HeaderSlot>
-        <h1 className="text-sm font-semibold whitespace-nowrap">{t.spriteEditor}</h1>
-        <div className="h-4 w-px bg-border-default" />
-        <input
-          type="text"
-          placeholder={t.projectName}
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          className="w-20 md:w-28 px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs focus:outline-none focus:border-accent-primary"
-        />
-        <SpriteMenuBar
-          onNew={handleNew}
-          onLoad={() => setIsProjectListOpen(true)}
-          onSave={saveProject}
-          onSaveAs={saveProjectAs}
-          onImportImage={() => imageInputRef.current?.click()}
-          onImportSheet={() => setIsSpriteSheetImportOpen(true)}
-          onImportVideo={() => setIsVideoImportOpen(true)}
-          onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
-          onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
-          onResetLayout={resetLayout}
-          isPreviewOpen={isPreviewOpen}
-          isFrameEditOpen={isFrameEditOpen}
-          canSave={frames.length > 0 && frames.some((f) => f.imageData)}
-          translations={{
-            file: t.file,
-            window: t.window,
-            new: t.new,
-            load: t.load,
-            save: t.save,
-            saveAs: t.saveAs,
-            importImage: t.importImage,
-            importSheet: t.importSheet,
-            importVideo: t.importVideo,
-            preview: t.animation,
-            frameEdit: t.frameWindow,
-            resetLayout: t.resetLayout,
-          }}
-        />
-      </HeaderSlot>
+      <HeaderContent
+        title={t.spriteEditor}
+        menuBar={
+          <SpriteMenuBar
+            onNew={handleNew}
+            onLoad={() => setIsProjectListOpen(true)}
+            onSave={saveProject}
+            onSaveAs={saveProjectAs}
+            onImportImage={() => imageInputRef.current?.click()}
+            onImportSheet={() => setIsSpriteSheetImportOpen(true)}
+            onImportVideo={() => setIsVideoImportOpen(true)}
+            onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
+            onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
+            onResetLayout={resetLayout}
+            isPreviewOpen={isPreviewOpen}
+            isFrameEditOpen={isFrameEditOpen}
+            canSave={frames.length > 0 && frames.some((f) => f.imageData)}
+            translations={{
+              file: t.file,
+              window: t.window,
+              new: t.new,
+              load: t.load,
+              save: t.save,
+              saveAs: t.saveAs,
+              importImage: t.importImage,
+              importSheet: t.importSheet,
+              importVideo: t.importVideo,
+              preview: t.animation,
+              frameEdit: t.frameWindow,
+              resetLayout: t.resetLayout,
+            }}
+          />
+        }
+        projectName={{
+          value: projectName,
+          onChange: setProjectName,
+          placeholder: t.projectName,
+        }}
+      />
 
       {/* Top Toolbar */}
       {/* Top Toolbar */}
