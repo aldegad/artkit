@@ -201,7 +201,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         ...prev,
         project: {
           ...prev.project,
-          duration: Math.max(maxEndTime, 10), // Minimum 10 seconds
+          duration: Math.max(maxEndTime, 1), // Minimum 1 second
         },
       };
     });

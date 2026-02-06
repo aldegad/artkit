@@ -65,7 +65,7 @@ function calculateProjectDuration(clips: Clip[]): number {
     (max, clip) => Math.max(max, clip.startTime + clip.duration),
     0
   );
-  return Math.max(maxEnd, 10);
+  return Math.max(maxEnd, 1);
 }
 
 export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {

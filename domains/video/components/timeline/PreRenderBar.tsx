@@ -47,7 +47,7 @@ export function PreRenderBar() {
     if (totalFrames <= 0) return;
 
     const { zoom, scrollX } = viewState;
-    const duration = project.duration || 10;
+    const duration = project.duration || 1;
     // Draw uncached background for the visible duration range
     const visibleStartTime = scrollX;
     const visibleEndTime = scrollX + w / zoom;
