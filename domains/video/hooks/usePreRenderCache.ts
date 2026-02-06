@@ -169,11 +169,12 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
-    // Bump generation — any older loop will see the mismatch and exit
+    // If already running, don't interfere — let the existing loop continue
+    if (isPreRenderingRef.current) return;
+
+    // Bump generation — any older (zombie) loop will see the mismatch and exit
     renderGeneration++;
     const myGeneration = renderGeneration;
-
-    if (isPreRenderingRef.current) return;
     isPreRenderingRef.current = true;
 
     // Init offscreen canvases
