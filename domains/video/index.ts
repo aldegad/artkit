@@ -10,8 +10,6 @@ export type {
   TimelineDragType,
   TimelineDragState,
   TimelineSelection,
-  MaskKeyframe,
-  MaskEasing,
   MaskData,
   MaskBrushSettings,
   AssetReference,

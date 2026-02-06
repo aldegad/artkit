@@ -30,8 +30,6 @@ export { INITIAL_TIMELINE_VIEW, INITIAL_TIMELINE_SELECTION } from "./timeline";
 
 // Mask types
 export type {
-  MaskKeyframe,
-  MaskEasing,
   MaskData,
   MaskBrushSettings,
 } from "./mask";

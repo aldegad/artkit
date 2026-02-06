@@ -1,7 +1,6 @@
 "use client";
 
 import { useMask } from "../../contexts/MaskContext";
-import { useVideoState } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { cn } from "@/shared/utils/cn";
 import { MASK_BRUSH } from "../../constants";
@@ -17,26 +16,9 @@ export function MaskControls({ className }: MaskControlsProps) {
     setBrushHardness,
     setBrushMode,
     isEditingMask,
-    endMaskEdit,
-    addKeyframe,
-    activeMaskId,
-    masks,
   } = useMask();
 
-  const { getMaskDataUrl, clearMask, fillMask } = useMaskTool();
-  const { playback } = useVideoState();
-
-  const handleSaveKeyframe = () => {
-    if (!activeMaskId) return;
-    const mask = masks.get(activeMaskId);
-    if (!mask) return;
-    const dataUrl = getMaskDataUrl();
-    if (dataUrl) {
-      // Convert absolute time to mask-local time
-      const localTime = playback.currentTime - mask.startTime;
-      addKeyframe(activeMaskId, localTime, dataUrl);
-    }
-  };
+  const { clearMask, fillMask } = useMaskTool();
 
   if (!isEditingMask) {
     return null;
@@ -51,13 +33,6 @@ export function MaskControls({ className }: MaskControlsProps) {
     >
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium">Mask Brush</h3>
-        <button
-          onClick={endMaskEdit}
-          className="text-xs text-text-secondary hover:text-text-primary"
-          title="Finish mask editing"
-        >
-          Done
-        </button>
       </div>
 
       {/* Brush Mode */}
@@ -135,13 +110,6 @@ export function MaskControls({ className }: MaskControlsProps) {
           title="Clear entire mask (make all transparent)"
         >
           Clear
-        </button>
-        <button
-          onClick={handleSaveKeyframe}
-          className="flex-1 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded transition-colors"
-          title="Save current mask as keyframe"
-        >
-          Save
         </button>
       </div>
     </div>

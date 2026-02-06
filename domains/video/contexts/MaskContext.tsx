@@ -10,13 +10,11 @@ import {
 } from "react";
 import {
   MaskData,
-  MaskKeyframe,
   MaskBrushSettings,
   DEFAULT_MASK_BRUSH,
   createMaskData,
 } from "../types";
 import { Size } from "@/shared/types";
-import { applyEasing } from "../utils/maskStorage";
 
 interface MaskContextValue {
   // Current mask being edited
@@ -39,24 +37,17 @@ interface MaskContextValue {
   selectMask: (maskId: string) => void;
   deselectMask: () => void;
   startMaskEdit: (trackId: string, canvasSize: Size, currentTime: number) => string;
+  startMaskEditById: (maskId: string) => void;
   endMaskEdit: () => void;
+  saveMaskData: () => void;
   addMask: (trackId: string, size: Size, startTime: number, duration: number) => string;
   deleteMask: (maskId: string) => void;
   updateMaskTime: (maskId: string, startTime: number, duration: number) => void;
   getMasksForTrack: (trackId: string) => MaskData[];
   getMaskAtTimeForTrack: (trackId: string, time: number) => string | null;
 
-  // Keyframe operations
-  addKeyframe: (maskId: string, time: number, maskData: string) => void;
-  removeKeyframe: (maskId: string, keyframeId: string) => void;
-  updateKeyframe: (maskId: string, keyframeId: string, updates: Partial<MaskKeyframe>) => void;
-
-  // Get interpolated mask at time (relative to mask start)
-  getMaskAtTime: (maskId: string, localTime: number) => string | null;
-
   // Refs for drawing
   maskCanvasRef: React.RefObject<HTMLCanvasElement | null>;
-  tempCanvasRef: React.RefObject<HTMLCanvasElement | null>;
 }
 
 const MaskContext = createContext<MaskContextValue | null>(null);
@@ -69,8 +60,6 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [brushSettings, setBrushSettingsState] = useState<MaskBrushSettings>(DEFAULT_MASK_BRUSH);
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const maskImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   // Brush settings
   const setBrushSettings = useCallback((settings: Partial<MaskBrushSettings>) => {
@@ -108,7 +97,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   // Deselect mask
   const deselectMask = useCallback(() => {
-    if (isEditingMask) return; // don't deselect while editing
+    if (isEditingMask) return;
     setActiveMaskId(null);
     setActiveTrackId(null);
   }, [isEditingMask]);
@@ -163,10 +152,55 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     [masks]
   );
 
-  // Start editing a mask
+  // Helper: load mask image data onto canvas (handles async image loading)
+  const loadMaskOntoCanvas = useCallback(
+    (maskDataUrl: string, width: number, height: number) => {
+      if (!maskCanvasRef.current) return;
+      const ctx = maskCanvasRef.current.getContext("2d");
+      if (!ctx) return;
+
+      const img = new Image();
+      img.onload = () => {
+        if (!maskCanvasRef.current) return;
+        const c = maskCanvasRef.current.getContext("2d");
+        if (!c) return;
+        c.clearRect(0, 0, width, height);
+        c.drawImage(img, 0, 0, width, height);
+      };
+      img.src = maskDataUrl;
+    },
+    []
+  );
+
+  // Save current canvas state back to mask data
+  const saveMaskData = useCallback(() => {
+    if (!activeMaskId || !maskCanvasRef.current) return;
+    const dataUrl = maskCanvasRef.current.toDataURL("image/png");
+    setMasks((prev) => {
+      const mask = prev.get(activeMaskId);
+      if (!mask) return prev;
+      const next = new Map(prev);
+      next.set(activeMaskId, { ...mask, maskData: dataUrl });
+      return next;
+    });
+  }, [activeMaskId]);
+
+  // Start editing a mask (find existing or create new)
   const startMaskEdit = useCallback(
     (trackId: string, canvasSize: Size, currentTime: number): string => {
-      // Find existing mask at current time on this track, or create new one
+      // Save current mask before switching
+      if (activeMaskId && maskCanvasRef.current) {
+        const dataUrl = maskCanvasRef.current.toDataURL("image/png");
+        setMasks((prev) => {
+          const mask = prev.get(activeMaskId);
+          if (!mask) return prev;
+          const next = new Map(prev);
+          next.set(activeMaskId, { ...mask, maskData: dataUrl });
+          return next;
+        });
+      }
+
+      // Find existing mask at current time on this track
       let mask: MaskData | null = null;
       for (const m of masks.values()) {
         if (m.trackId === trackId && currentTime >= m.startTime && currentTime < m.startTime + m.duration) {
@@ -176,7 +210,6 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       }
 
       if (!mask) {
-        // Create new mask at current time with 5s default duration
         const maskId = addMask(trackId, canvasSize, currentTime, 5);
         mask = { ...createMaskData(trackId, canvasSize, currentTime, 5), id: maskId };
       }
@@ -191,190 +224,94 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         maskCanvasRef.current.height = canvasSize.height;
         const ctx = maskCanvasRef.current.getContext("2d");
         if (ctx) {
-          // Start fully transparent (alpha=0) — clip invisible until painted
           ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-
-          // Load existing keyframe data if available
-          const localTime = currentTime - mask.startTime;
-          const existingData = getMaskAtTimeInternal(mask, localTime);
-          if (existingData) {
-            const img = new Image();
-            img.onload = () => {
-              ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-              ctx.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
-            };
-            img.src = existingData;
+          // Load existing mask data
+          if (mask.maskData) {
+            loadMaskOntoCanvas(mask.maskData, canvasSize.width, canvasSize.height);
           }
         }
       }
 
       return mask.id;
     },
-    [masks, addMask]
+    [masks, addMask, activeMaskId, loadMaskOntoCanvas]
   );
 
-  // End mask editing
+  // Start editing a specific mask by ID (e.g., clicking mask clip in timeline)
+  const startMaskEditById = useCallback(
+    (maskId: string) => {
+      const mask = masks.get(maskId);
+      if (!mask) return;
+
+      // Already editing this mask - no-op
+      if (activeMaskId === maskId && isEditingMask) return;
+
+      // Save current mask before switching
+      if (activeMaskId && activeMaskId !== maskId && maskCanvasRef.current) {
+        const dataUrl = maskCanvasRef.current.toDataURL("image/png");
+        setMasks((prev) => {
+          const m = prev.get(activeMaskId);
+          if (!m) return prev;
+          const next = new Map(prev);
+          next.set(activeMaskId, { ...m, maskData: dataUrl });
+          return next;
+        });
+      }
+
+      setActiveMaskId(maskId);
+      setActiveTrackId(mask.trackId);
+      setIsEditingMask(true);
+
+      // Initialize mask canvas
+      if (maskCanvasRef.current) {
+        maskCanvasRef.current.width = mask.size.width;
+        maskCanvasRef.current.height = mask.size.height;
+        const ctx = maskCanvasRef.current.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, mask.size.width, mask.size.height);
+          // Load existing mask data
+          if (mask.maskData) {
+            loadMaskOntoCanvas(mask.maskData, mask.size.width, mask.size.height);
+          }
+        }
+      }
+    },
+    [masks, activeMaskId, isEditingMask, loadMaskOntoCanvas]
+  );
+
+  // End mask editing (auto-saves current canvas state)
   const endMaskEdit = useCallback(() => {
+    // Auto-save before ending
+    if (activeMaskId && maskCanvasRef.current) {
+      const dataUrl = maskCanvasRef.current.toDataURL("image/png");
+      setMasks((prev) => {
+        const mask = prev.get(activeMaskId);
+        if (!mask) return prev;
+        const next = new Map(prev);
+        next.set(activeMaskId, { ...mask, maskData: dataUrl });
+        return next;
+      });
+    }
     setActiveMaskId(null);
     setActiveTrackId(null);
     setIsEditingMask(false);
-  }, []);
-
-  // Add a keyframe (time is relative to mask start)
-  const addKeyframe = useCallback(
-    (maskId: string, time: number, maskData: string) => {
-      setMasks((prev) => {
-        const mask = prev.get(maskId);
-        if (!mask) return prev;
-
-        const keyframe: MaskKeyframe = {
-          id: crypto.randomUUID(),
-          time,
-          maskData,
-          easing: "linear",
-        };
-
-        const keyframes = mask.keyframes || [];
-        // Remove existing keyframe at same time
-        const filtered = keyframes.filter((k) => Math.abs(k.time - time) > 0.01);
-        // Add new keyframe and sort
-        const updated = [...filtered, keyframe].sort((a, b) => a.time - b.time);
-
-        const next = new Map(prev);
-        next.set(maskId, { ...mask, keyframes: updated });
-        return next;
-      });
-    },
-    []
-  );
-
-  // Remove a keyframe
-  const removeKeyframe = useCallback((maskId: string, keyframeId: string) => {
-    setMasks((prev) => {
-      const mask = prev.get(maskId);
-      if (!mask) return prev;
-
-      const next = new Map(prev);
-      next.set(maskId, {
-        ...mask,
-        keyframes: mask.keyframes.filter((k) => k.id !== keyframeId),
-      });
-      return next;
-    });
-  }, []);
-
-  // Update a keyframe
-  const updateKeyframe = useCallback(
-    (maskId: string, keyframeId: string, updates: Partial<MaskKeyframe>) => {
-      setMasks((prev) => {
-        const mask = prev.get(maskId);
-        if (!mask) return prev;
-
-        const next = new Map(prev);
-        next.set(maskId, {
-          ...mask,
-          keyframes: mask.keyframes.map((k) =>
-            k.id === keyframeId ? { ...k, ...updates } : k
-          ),
-        });
-        return next;
-      });
-    },
-    []
-  );
-
-  // Internal helper: get interpolated mask at local time
-  function getMaskAtTimeInternal(mask: MaskData, localTime: number): string | null {
-    if (!mask.keyframes || mask.keyframes.length === 0) return null;
-
-    const keyframes = mask.keyframes;
-
-    // Exact match
-    const exact = keyframes.find((k) => Math.abs(k.time - localTime) < 0.01);
-    if (exact) return exact.maskData;
-
-    // Before first keyframe
-    if (localTime < keyframes[0].time) return keyframes[0].maskData;
-
-    // After last keyframe
-    if (localTime > keyframes[keyframes.length - 1].time) return keyframes[keyframes.length - 1].maskData;
-
-    // Find surrounding keyframes
-    let before = keyframes[0];
-    let after = keyframes[keyframes.length - 1];
-
-    for (let i = 0; i < keyframes.length - 1; i++) {
-      if (keyframes[i].time <= localTime && keyframes[i + 1].time >= localTime) {
-        before = keyframes[i];
-        after = keyframes[i + 1];
-        break;
-      }
-    }
-
-    const timeRange = Math.max(after.time - before.time, 0.0001);
-    const linearT = Math.max(0, Math.min(1, (localTime - before.time) / timeRange));
-    const easedT = applyEasing(linearT, after.easing);
-
-    if (easedT <= 0) return before.maskData;
-    if (easedT >= 1) return after.maskData;
-
-    // Blend
-    const getCachedImage = (dataUrl: string): HTMLImageElement | null => {
-      const cached = maskImageCacheRef.current.get(dataUrl);
-      if (cached) return cached.complete ? cached : null;
-      const img = new Image();
-      img.src = dataUrl;
-      maskImageCacheRef.current.set(dataUrl, img);
-      return null;
-    };
-
-    const beforeImage = getCachedImage(before.maskData);
-    const afterImage = getCachedImage(after.maskData);
-    if (!beforeImage || !afterImage) {
-      return easedT < 0.5 ? before.maskData : after.maskData;
-    }
-
-    const blendCanvas = tempCanvasRef.current || document.createElement("canvas");
-    blendCanvas.width = mask.size.width;
-    blendCanvas.height = mask.size.height;
-
-    const ctx = blendCanvas.getContext("2d");
-    if (!ctx) return easedT < 0.5 ? before.maskData : after.maskData;
-
-    ctx.clearRect(0, 0, blendCanvas.width, blendCanvas.height);
-    ctx.globalAlpha = 1;
-    ctx.drawImage(beforeImage, 0, 0, blendCanvas.width, blendCanvas.height);
-    ctx.globalAlpha = easedT;
-    ctx.drawImage(afterImage, 0, 0, blendCanvas.width, blendCanvas.height);
-    ctx.globalAlpha = 1;
-
-    return blendCanvas.toDataURL("image/png");
-  }
-
-  // Public: get interpolated mask at local time (relative to mask start)
-  const getMaskAtTime = useCallback(
-    (maskId: string, localTime: number): string | null => {
-      const mask = masks.get(maskId);
-      if (!mask) return null;
-      return getMaskAtTimeInternal(mask, localTime);
-    },
-    [masks]
-  );
+  }, [activeMaskId]);
 
   // Get mask data for a track at an absolute timeline time
   const getMaskAtTimeForTrack = useCallback(
     (trackId: string, time: number): string | null => {
       for (const mask of masks.values()) {
         if (mask.trackId !== trackId) continue;
-        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
 
-        // Currently editing this mask - use live canvas
+        // Currently editing this mask - always show live canvas
         if (isEditingMask && activeMaskId === mask.id && maskCanvasRef.current) {
-          return "__live_canvas__"; // Signal to use maskCanvasRef directly
+          return "__live_canvas__";
         }
 
-        const localTime = time - mask.startTime;
-        return getMaskAtTimeInternal(mask, localTime);
+        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
+
+        // Return saved mask data
+        return mask.maskData;
       }
       return null;
     },
@@ -395,25 +332,21 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     selectMask,
     deselectMask,
     startMaskEdit,
+    startMaskEditById,
     endMaskEdit,
+    saveMaskData,
     addMask,
     deleteMask,
     updateMaskTime,
     getMasksForTrack,
     getMaskAtTimeForTrack,
-    addKeyframe,
-    removeKeyframe,
-    updateKeyframe,
-    getMaskAtTime,
     maskCanvasRef,
-    tempCanvasRef,
   };
 
   return (
     <MaskContext.Provider value={value}>
-      {/* Hidden canvases for mask editing */}
+      {/* Hidden canvas for mask editing */}
       <canvas ref={maskCanvasRef} style={{ display: "none" }} />
-      <canvas ref={tempCanvasRef} style={{ display: "none" }} />
       {children}
     </MaskContext.Provider>
   );

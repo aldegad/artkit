@@ -1,21 +1,10 @@
 import { Size } from "@/shared/types";
 
 /**
- * Mask keyframe for interpolation
- */
-export interface MaskKeyframe {
-  id: string;
-  time: number; // Keyframe time relative to mask start (seconds)
-  maskData: string; // Base64 encoded mask
-  easing: MaskEasing;
-}
-
-export type MaskEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out";
-
-/**
  * Track-level mask data with independent time range.
  * Lives on a track's mask lane and can span multiple clips.
  * White = visible, Black = transparent (reveals below).
+ * Each mask stores a single painted area (base64 image).
  */
 export interface MaskData {
   id: string;
@@ -23,7 +12,7 @@ export interface MaskData {
   startTime: number; // Timeline start time (seconds)
   duration: number; // Mask duration (seconds)
   size: Size; // Mask canvas size (= project canvasSize)
-  keyframes: MaskKeyframe[];
+  maskData: string | null; // Base64 encoded mask image (single area)
 }
 
 /**
@@ -41,7 +30,7 @@ export function createMaskData(
     size,
     startTime,
     duration,
-    keyframes: [],
+    maskData: null,
   };
 }
 
