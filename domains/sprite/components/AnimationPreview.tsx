@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
+import { ImageDropZone } from "../../../shared/components";
 import { compositeFrame } from "../utils/compositor";
 
 // ============================================
@@ -13,7 +14,7 @@ export default function AnimationPreviewContent() {
   const {
     tracks, fps, setFps, toolMode, getMaxFrameCount,
     addTrack, pushHistory,
-    setIsSpriteSheetImportOpen, setPendingVideoFile, setIsVideoImportOpen,
+    setPendingVideoFile, setIsVideoImportOpen,
   } = useEditor();
   const { t } = useLanguage();
 
@@ -32,7 +33,6 @@ export default function AnimationPreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const importInputRef = useRef<HTMLInputElement>(null);
 
   const maxFrameCount = getMaxFrameCount();
 
@@ -120,16 +120,14 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
-  // Handle import input (click-to-browse)
-  const handleImportInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  // Handle file select from ImageDropZone (click-to-browse or drag-drop on empty state)
+  const handleFileSelect = useCallback((files: File[]) => {
     if (files.length === 0) return;
 
     const videoFile = files.find((f) => f.type.startsWith("video/"));
     if (videoFile) {
       setPendingVideoFile(videoFile);
       setIsVideoImportOpen(true);
-      e.target.value = "";
       return;
     }
 
@@ -160,7 +158,6 @@ export default function AnimationPreviewContent() {
         addTrack("Image Import", newFrames);
       });
     }
-    e.target.value = "";
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
   // Wheel zoom - 마우스 커서 위치 기준 확대/축소
@@ -349,223 +346,204 @@ export default function AnimationPreviewContent() {
     return "default";
   };
 
-  return (
-    <div
-      className="flex flex-col h-full bg-surface-primary relative"
-      onDragOver={handleFileDragOver}
-      onDragLeave={handleFileDragLeave}
-      onDrop={handleFileDrop}
-    >
-      {/* Hidden file input for click-to-browse */}
-      <input
-        ref={importInputRef}
-        type="file"
-        accept="image/*,video/*"
-        multiple
-        onChange={handleImportInput}
-        className="hidden"
-      />
+  const hasContent = maxFrameCount > 0;
 
-      {/* Drag overlay */}
-      {isFileDragOver && (
-        <div className="absolute inset-0 z-20 bg-accent-primary/10 border-2 border-dashed border-accent-primary rounded-lg flex items-center justify-center pointer-events-none">
-          <div className="bg-surface-primary/90 px-6 py-4 rounded-xl text-center">
-            <p className="text-lg text-accent-primary font-medium">
-              {t.dropMediaHere}
-            </p>
-            <p className="text-sm text-text-tertiary mt-1">
-              {t.supportedFormats}
-            </p>
+  return (
+    <div className="flex flex-col h-full bg-surface-primary">
+      {!hasContent ? (
+        <ImageDropZone
+          variant="sprite"
+          accept="image/*,video/*"
+          onFileSelect={handleFileSelect}
+        />
+      ) : (
+        <div
+          className="flex-1 flex flex-col min-h-0 relative"
+          onDragOver={handleFileDragOver}
+          onDragLeave={handleFileDragLeave}
+          onDrop={handleFileDrop}
+        >
+          {/* Preview area */}
+          <div
+            ref={containerRef}
+            className={`flex-1 overflow-hidden relative ${bgType === "checkerboard" ? "checkerboard" : ""}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{
+              cursor: getCursor(),
+              backgroundColor: bgType === "solid" ? bgColor : undefined,
+            }}
+          >
+            {/* Background image */}
+            {bgType === "image" && bgImage && (
+              <img
+                src={bgImage}
+                alt="background"
+                className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              />
+            )}
+            {compositedDataUrl ? (
+              <canvas
+                ref={canvasRef}
+                className="absolute border border-border-default"
+                style={{
+                  cursor: getCursor(),
+                  pointerEvents: isHandMode ? "none" : "auto",
+                  left: "50%",
+                  top: "50%",
+                  transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
+                }}
+              />
+            ) : null}
+          </div>
+
+          {/* Drop overlay */}
+          {isFileDragOver && (
+            <div className="absolute inset-0 z-20 bg-accent-primary/10 border-2 border-dashed border-accent-primary rounded-lg flex items-center justify-center pointer-events-none">
+              <div className="bg-surface-primary/90 px-6 py-4 rounded-xl text-center">
+                <p className="text-lg text-accent-primary font-medium">
+                  {t.dropMediaHere}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Control area */}
+          <div className="p-3 border-t border-border-default space-y-3">
+            {/* Playback controls */}
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={handlePrev}
+                className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
+              >
+                ◀
+              </button>
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
+                  isPlaying
+                    ? "bg-accent-danger hover:bg-accent-danger-hover"
+                    : "bg-accent-primary hover:bg-accent-primary-hover"
+                }`}
+              >
+                {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
+              </button>
+              <button
+                onClick={handleNext}
+                className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
+              >
+                ▶
+              </button>
+            </div>
+
+            {/* FPS & Scale controls */}
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-text-secondary whitespace-nowrap">FPS:</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="30"
+                  value={fps}
+                  onChange={(e) => setFps(Number(e.target.value))}
+                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="w-8 text-center text-text-primary">{fps}</span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-text-secondary whitespace-nowrap">{t.scale}:</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="20"
+                  step="0.5"
+                  value={previewScale}
+                  onChange={(e) => setPreviewScale(Number(e.target.value))}
+                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="w-8 text-center text-text-primary">{previewScale}x</span>
+              </div>
+            </div>
+
+            {/* Background selector */}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-text-secondary whitespace-nowrap">{t.background}:</span>
+              <button
+                onClick={() => setBgType("checkerboard")}
+                className={`w-6 h-6 rounded-lg border-2 checkerboard transition-colors ${
+                  bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
+                }`}
+                title={t.transparent}
+              />
+              {presetColors.map(({ color, label }) => (
+                <button
+                  key={color}
+                  onClick={() => {
+                    setBgType("solid");
+                    setBgColor(color);
+                  }}
+                  className={`w-6 h-6 rounded-lg border-2 transition-colors ${
+                    bgType === "solid" && bgColor === color
+                      ? "border-accent-primary"
+                      : "border-border-default"
+                  }`}
+                  style={{ backgroundColor: color }}
+                  title={label}
+                />
+              ))}
+              <input
+                type="color"
+                value={bgColor}
+                onChange={(e) => {
+                  setBgType("solid");
+                  setBgColor(e.target.value);
+                }}
+                className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
+                title={t.customColor}
+              />
+              <div className="border-l border-border-default h-4 mx-1" />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleBgImageUpload}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className={`px-2 py-0.5 rounded-lg border-2 text-xs transition-colors ${
+                  bgType === "image"
+                    ? "border-accent-primary bg-accent-primary/20"
+                    : "border-border-default hover:bg-interactive-hover"
+                }`}
+                title={t.uploadBgImage}
+              >
+                {t.image}
+              </button>
+              {bgType === "image" && bgImage && (
+                <button
+                  onClick={() => {
+                    setBgImage(null);
+                    setBgType("checkerboard");
+                  }}
+                  className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-xs text-text-secondary transition-colors"
+                  title={t.removeBgImage}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Frame info */}
+            <div className="text-center text-xs text-text-tertiary">
+              {`${t.frame} ${currentFrameIndex + 1} / ${maxFrameCount}`}
+            </div>
           </div>
         </div>
       )}
-
-      {/* Preview area */}
-      <div
-        ref={containerRef}
-        className={`flex-1 overflow-hidden relative ${bgType === "checkerboard" ? "checkerboard" : ""}`}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        style={{
-          cursor: getCursor(),
-          backgroundColor: bgType === "solid" ? bgColor : undefined,
-        }}
-      >
-        {/* Background image */}
-        {bgType === "image" && bgImage && (
-          <img
-            src={bgImage}
-            alt="background"
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-          />
-        )}
-        {maxFrameCount > 0 && compositedDataUrl ? (
-          <canvas
-            ref={canvasRef}
-            className="absolute border border-border-default"
-            style={{
-              cursor: getCursor(),
-              pointerEvents: isHandMode ? "none" : "auto",
-              left: "50%",
-              top: "50%",
-              transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
-            }}
-          />
-        ) : (
-          <div
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3 cursor-pointer"
-            onClick={() => importInputRef.current?.click()}
-          >
-            <svg className="w-12 h-12 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-            </svg>
-            <div className="text-text-tertiary text-sm text-center">
-              <p>{t.dropOrClickToImport}</p>
-              <p className="text-xs mt-1 text-text-tertiary/60">{t.supportedFormats}</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Control area */}
-      <div className="p-3 border-t border-border-default space-y-3">
-        {/* Playback controls */}
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={handlePrev}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
-            disabled={maxFrameCount === 0}
-          >
-            ◀
-          </button>
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
-              isPlaying
-                ? "bg-accent-danger hover:bg-accent-danger-hover"
-                : "bg-accent-primary hover:bg-accent-primary-hover"
-            }`}
-            disabled={maxFrameCount === 0}
-          >
-            {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
-          </button>
-          <button
-            onClick={handleNext}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
-            disabled={maxFrameCount === 0}
-          >
-            ▶
-          </button>
-        </div>
-
-        {/* FPS & Scale controls */}
-        <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-text-secondary whitespace-nowrap">FPS:</span>
-            <input
-              type="range"
-              min="1"
-              max="30"
-              value={fps}
-              onChange={(e) => setFps(Number(e.target.value))}
-              className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-            />
-            <span className="w-8 text-center text-text-primary">{fps}</span>
-          </div>
-
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-text-secondary whitespace-nowrap">{t.scale}:</span>
-            <input
-              type="range"
-              min="1"
-              max="20"
-              step="0.5"
-              value={previewScale}
-              onChange={(e) => setPreviewScale(Number(e.target.value))}
-              className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-            />
-            <span className="w-8 text-center text-text-primary">{previewScale}x</span>
-          </div>
-        </div>
-
-        {/* Background selector */}
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-text-secondary whitespace-nowrap">{t.background}:</span>
-          <button
-            onClick={() => setBgType("checkerboard")}
-            className={`w-6 h-6 rounded-lg border-2 checkerboard transition-colors ${
-              bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
-            }`}
-            title={t.transparent}
-          />
-          {presetColors.map(({ color, label }) => (
-            <button
-              key={color}
-              onClick={() => {
-                setBgType("solid");
-                setBgColor(color);
-              }}
-              className={`w-6 h-6 rounded-lg border-2 transition-colors ${
-                bgType === "solid" && bgColor === color
-                  ? "border-accent-primary"
-                  : "border-border-default"
-              }`}
-              style={{ backgroundColor: color }}
-              title={label}
-            />
-          ))}
-          <input
-            type="color"
-            value={bgColor}
-            onChange={(e) => {
-              setBgType("solid");
-              setBgColor(e.target.value);
-            }}
-            className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
-            title={t.customColor}
-          />
-          <div className="border-l border-border-default h-4 mx-1" />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleBgImageUpload}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className={`px-2 py-0.5 rounded-lg border-2 text-xs transition-colors ${
-              bgType === "image"
-                ? "border-accent-primary bg-accent-primary/20"
-                : "border-border-default hover:bg-interactive-hover"
-            }`}
-            title={t.uploadBgImage}
-          >
-            {t.image}
-          </button>
-          {bgType === "image" && bgImage && (
-            <button
-              onClick={() => {
-                setBgImage(null);
-                setBgType("checkerboard");
-              }}
-              className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-xs text-text-secondary transition-colors"
-              title={t.removeBgImage}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        {/* Frame info */}
-        <div className="text-center text-xs text-text-tertiary">
-          {maxFrameCount > 0
-            ? `${t.frame} ${currentFrameIndex + 1} / ${maxFrameCount}`
-            : t.noFrames}
-        </div>
-      </div>
     </div>
   );
 }

@@ -54,7 +54,7 @@ const variantIcons: Record<DropZoneVariant, React.ReactNode> = {
 };
 
 const variantMultiple: Record<DropZoneVariant, boolean> = {
-  sprite: false,
+  sprite: true,
   editor: false,
   converter: true,
   video: true,
