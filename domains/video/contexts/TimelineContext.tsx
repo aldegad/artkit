@@ -186,6 +186,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     toolMode,
     selectedClipIds,
     playback,
+    currentTimeRef,
     setProject,
     setProjectName,
     selectClips,
@@ -342,7 +343,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     loadAutosave();
   }, [setProject, setProjectName, setToolMode, selectClips, syncHistoryFlags]);
 
-  // Debounced autosave on state change
+  // Debounced autosave on state change — currentTime read from ref to avoid 60fps thrashing
   useEffect(() => {
     if (!isInitializedRef.current) return;
 
@@ -359,7 +360,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         clips,
         masks,
         timelineView: viewState,
-        currentTime: playback.currentTime,
+        currentTime: currentTimeRef.current,
         toolMode,
         selectedClipIds,
       }).catch((error) => {
@@ -379,10 +380,32 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     clips,
     masks,
     viewState,
-    playback.currentTime,
     toolMode,
     selectedClipIds,
+    currentTimeRef,
   ]);
+
+  // Save once when playback stops (to persist final currentTime)
+  const prevPlayingRef = useRef(false);
+  useEffect(() => {
+    if (prevPlayingRef.current && !playback.isPlaying) {
+      // Playback just stopped — save current time
+      saveVideoAutosave({
+        project,
+        projectName,
+        tracks,
+        clips,
+        masks,
+        timelineView: viewState,
+        currentTime: currentTimeRef.current,
+        toolMode,
+        selectedClipIds,
+      }).catch((error) => {
+        console.error("Failed to autosave on pause:", error);
+      });
+    }
+    prevPlayingRef.current = playback.isPlaying;
+  }, [playback.isPlaying, project, projectName, tracks, clips, masks, viewState, toolMode, selectedClipIds, currentTimeRef]);
 
   // Keep project.timeline data synchronized with TimelineContext state.
   useEffect(() => {

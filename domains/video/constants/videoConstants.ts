@@ -46,6 +46,16 @@ export const PLAYBACK = {
   MAX_RATE: 4,
   DEFAULT_RATE: 1,
   FRAME_STEP: 1 / 30, // 30fps
+  SYNC_INTERVAL_MS: 100, // media sync interval during playback
+  SEEK_DRIFT_THRESHOLD: 0.15, // seconds: re-seek when drift exceeds this
+  TIME_DISPLAY_THROTTLE_MS: 100, // throttle for time display updates
+} as const;
+
+// Buffer constants
+export const BUFFER = {
+  CRITICAL_THRESHOLD: 0.5, // seconds: pause when less than this buffered
+  RESUME_THRESHOLD: 2.0, // seconds: resume when this much is buffered
+  CHECK_INTERVAL_MS: 250, // how often to check buffer state
 } as const;
 
 // UI constants

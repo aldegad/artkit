@@ -1,8 +1,10 @@
 "use client";
 
 import { useVideoState } from "../../contexts";
+import { usePlaybackTime } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon } from "@/shared/components/icons";
+import { PLAYBACK } from "../../constants";
 
 interface PreviewControlsProps {
   className?: string;
@@ -17,6 +19,9 @@ export function PreviewControls({ className }: PreviewControlsProps) {
     stepBackward,
     project,
   } = useVideoState();
+
+  // Throttled time for display — 10fps is enough for human-readable text
+  const displayTime = usePlaybackTime(PLAYBACK.TIME_DISPLAY_THROTTLE_MS);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -34,7 +39,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
     >
       {/* Time display */}
       <div className="font-mono text-xs text-text-secondary min-w-[68px]">
-        {formatTime(playback.currentTime)}
+        {formatTime(displayTime)}
       </div>
 
       {/* Transport controls */}
