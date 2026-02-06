@@ -5,6 +5,7 @@ import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLayout } from "../contexts/LayoutContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar } from "../../../shared/components";
+import { CloseIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 
 export default function FrameStrip() {
@@ -245,7 +246,7 @@ export default function FrameStrip() {
       </div>
 
       {/* Frame strip */}
-      <Scrollbar className="flex-1">
+      <Scrollbar className="flex-1" overflow={{ x: "hidden", y: "scroll" }}>
         <div
           className={`p-2 min-h-full transition-colors ${
             isFileDragOver ? "bg-accent-primary/10 ring-2 ring-accent-primary ring-inset" : ""
@@ -254,9 +255,9 @@ export default function FrameStrip() {
           onDragLeave={handleFileDragLeave}
           onDrop={handleFileDrop}
         >
-          <div className="flex items-start gap-2 min-h-full">
+          <div className="grid gap-2 min-h-full" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))" }}>
             {frames.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-xs h-24 text-text-tertiary">
+              <div className="col-span-full flex flex-col items-center justify-center text-xs h-24 text-text-tertiary">
                 {isFileDragOver ? (
                   <span className="text-accent-primary font-medium">Drop images here</span>
                 ) : (
@@ -285,7 +286,7 @@ export default function FrameStrip() {
                     openFloatingWindow("frame-edit", { x: 150, y: 150 });
                   }}
                   className={`
-                    relative shrink-0 rounded-lg border-2 transition-all
+                    relative rounded-lg border-2 transition-all
                     ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
                     ${idx === currentFrameIndex ? "border-accent-primary shadow-sm" : "border-border-default"}
                     ${dragOverIndex === idx ? "border-accent-primary! scale-105" : ""}
@@ -307,14 +308,14 @@ export default function FrameStrip() {
                       e.stopPropagation();
                       deleteFrame(frame.id);
                     }}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-accent-danger hover:bg-accent-danger-hover rounded-full flex items-center justify-center text-[9px] z-10 text-white transition-all hover:scale-110"
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-accent-danger hover:bg-accent-danger-hover rounded-full flex items-center justify-center z-10 text-white transition-all hover:scale-110"
                     title={t.deleteFrame}
                   >
-                    ×
+                    <CloseIcon className="w-2.5 h-2.5" />
                   </button>
 
                   {/* Frame image */}
-                  <div className="checkerboard w-[80px] h-[64px] rounded flex items-center justify-center overflow-hidden">
+                  <div className="checkerboard aspect-5/4 rounded flex items-center justify-center overflow-hidden">
                     {frame.imageData && (
                       <img
                         src={frame.imageData}
