@@ -8,10 +8,21 @@ import {
   RefObject,
 } from "react";
 
+// Imperative API exposed by PreviewCanvas for toolbar zoom controls
+export interface PreviewViewportAPI {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitToContainer: () => void;
+  getZoom: () => number;
+  setZoom: (z: number) => void;
+  onZoomChange: (cb: (zoom: number) => void) => () => void;
+}
+
 interface VideoRefsContextValue {
   // Preview canvas
   previewCanvasRef: RefObject<HTMLCanvasElement | null>;
   previewContainerRef: RefObject<HTMLDivElement | null>;
+  previewViewportRef: RefObject<PreviewViewportAPI | null>;
 
   // Timeline canvas
   timelineCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -35,6 +46,7 @@ const VideoRefsContext = createContext<VideoRefsContextValue | null>(null);
 export function VideoRefsProvider({ children }: { children: ReactNode }) {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewViewportRef = useRef<PreviewViewportAPI | null>(null);
   const timelineCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -45,6 +57,7 @@ export function VideoRefsProvider({ children }: { children: ReactNode }) {
   const value: VideoRefsContextValue = {
     previewCanvasRef,
     previewContainerRef,
+    previewViewportRef,
     timelineCanvasRef,
     timelineContainerRef,
     maskCanvasRef,

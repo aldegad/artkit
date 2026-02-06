@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "../../shared/contexts";
 import { HeaderContent } from "../../shared/components";
+import { ZoomInIcon, ZoomOutIcon } from "../../shared/components/icons";
 import { downloadBlob } from "../../shared/utils";
 import {
   VideoStateProvider,
@@ -147,7 +148,7 @@ function VideoEditorContent() {
     canvasExpandMode,
     setCanvasExpandMode,
   } = useVideoState();
-  const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const { previewCanvasRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
     tracks,
     clips,
@@ -911,6 +912,39 @@ function VideoEditorContent() {
     setScrollX(0);
   }, [project.duration, setZoom, setScrollX]);
 
+  // Preview zoom (synced from PreviewCanvas viewport)
+  const [previewZoom, setPreviewZoom] = useState(1);
+  useEffect(() => {
+    const api = previewViewportRef.current;
+    if (!api) return;
+    return api.onZoomChange((z) => setPreviewZoom(z));
+  }, [previewViewportRef]);
+
+  const handlePreviewZoomIn = useCallback(() => {
+    previewViewportRef.current?.zoomIn();
+  }, [previewViewportRef]);
+
+  const handlePreviewZoomOut = useCallback(() => {
+    previewViewportRef.current?.zoomOut();
+  }, [previewViewportRef]);
+
+  const handlePreviewFit = useCallback(() => {
+    previewViewportRef.current?.fitToContainer();
+  }, [previewViewportRef]);
+
+  // Canvas size adjustment
+  const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
+  const [isEditingCanvasSize, setIsEditingCanvasSize] = useState(false);
+
+  const handleCanvasSizeSubmit = useCallback(() => {
+    const w = parseInt(canvasSizeInput.w, 10);
+    const h = parseInt(canvasSizeInput.h, 10);
+    if (w > 0 && h > 0 && w <= 7680 && h <= 7680) {
+      setProject({ ...project, canvasSize: { width: w, height: h } });
+    }
+    setIsEditingCanvasSize(false);
+  }, [canvasSizeInput, setProject, project]);
+
   const handleToggleTimeline = useCallback(() => {
     const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
     if (timelineWindow) {
@@ -1341,6 +1375,84 @@ function VideoEditorContent() {
             </div>
           </>
         )}
+
+        {/* Spacer */}
+        <div className="flex-1 min-w-0" />
+
+        {/* Canvas size */}
+        <div className="flex items-center gap-1 shrink-0">
+          {isEditingCanvasSize ? (
+            <form
+              className="flex items-center gap-0.5"
+              onSubmit={(e) => { e.preventDefault(); handleCanvasSizeSubmit(); }}
+            >
+              <input
+                type="number"
+                defaultValue={project.canvasSize.width}
+                onChange={(e) => setCanvasSizeInput((p) => ({ ...p, w: e.target.value }))}
+                onFocus={(e) => e.target.select()}
+                autoFocus
+                className="w-14 px-1 py-0.5 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary text-center focus:outline-none focus:border-accent-primary"
+                min={1}
+                max={7680}
+              />
+              <span className="text-xs text-text-quaternary">x</span>
+              <input
+                type="number"
+                defaultValue={project.canvasSize.height}
+                onChange={(e) => setCanvasSizeInput((p) => ({ ...p, h: e.target.value }))}
+                onFocus={(e) => e.target.select()}
+                className="w-14 px-1 py-0.5 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary text-center focus:outline-none focus:border-accent-primary"
+                min={1}
+                max={7680}
+              />
+              <button type="submit" className="px-1.5 py-0.5 text-[10px] rounded bg-accent-primary text-white hover:bg-accent-hover transition-colors">
+                OK
+              </button>
+              <button type="button" onClick={() => setIsEditingCanvasSize(false)} className="px-1.5 py-0.5 text-[10px] rounded bg-surface-tertiary text-text-secondary hover:bg-interactive-hover transition-colors">
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => {
+                setCanvasSizeInput({ w: String(project.canvasSize.width), h: String(project.canvasSize.height) });
+                setIsEditingCanvasSize(true);
+              }}
+              className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+              title="Change canvas size"
+            >
+              {project.canvasSize.width}x{project.canvasSize.height}
+            </button>
+          )}
+        </div>
+
+        <div className="h-4 w-px bg-border-default" />
+
+        {/* Preview zoom controls */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={handlePreviewZoomOut}
+            className="p-1 hover:bg-interactive-hover rounded transition-colors text-text-secondary hover:text-text-primary"
+            title="Zoom out preview"
+          >
+            <ZoomOutIcon className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handlePreviewFit}
+            className="px-1 py-0.5 text-xs text-text-secondary hover:text-text-primary hover:bg-interactive-hover rounded transition-colors min-w-[40px] text-center"
+            title="Fit to screen"
+          >
+            {Math.round(previewZoom * 100)}%
+          </button>
+          <button
+            onClick={handlePreviewZoomIn}
+            className="p-1 hover:bg-interactive-hover rounded transition-colors text-text-secondary hover:text-text-primary"
+            title="Zoom in preview"
+          >
+            <ZoomInIcon className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Main Content (shared docking/split system) */}

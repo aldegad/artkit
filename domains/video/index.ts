@@ -42,6 +42,7 @@ export {
   useVideoState,
   VideoRefsProvider,
   useVideoRefs,
+  type PreviewViewportAPI,
   TimelineProvider,
   useTimeline,
   MaskProvider,
