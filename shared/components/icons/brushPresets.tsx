@@ -36,7 +36,7 @@ export const DefaultBrushPresetIcon: React.FC<IconProps> = ({ className = "w-4 h
 
 export const MagicWandIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 4l-1 1 4 4 1-1a1.414 1.414 0 00-4-4zM12.5 6.5L3 16v4h4l9.5-9.5-4-4z" />
-    <path strokeWidth={2} d="M7 2v3M5.5 3.5h3M17 12v3M15.5 13.5h3M3 7v2M2 8h2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 4l-1 1 4 4 1-1a2 2 0 00-4-4zM12.5 6.5L3 16v4h4l9.5-9.5-4-4z" />
+    <path strokeLinecap="round" strokeWidth={2} d="M8 1v4M6 3h4M20 11v4M18 13h4M3 7v3M1.5 8.5h3" />
   </svg>
 );

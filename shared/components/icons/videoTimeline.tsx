@@ -1,80 +1,85 @@
 import React from "react";
 import { IconProps } from "./types";
 
-// 16x16 viewBox, fill-based icons for video timeline
+// All icons: 24x24 viewBox, stroke-based to match other icons
+
 export const AddVideoTrackIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 3h8v10H2V3zm10 2l4-2v10l-4-2V5z" />
-    <path d="M8 1h1v3h3v1H9v3H8V5H5V4h3V1z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <rect x="2" y="6" width="13" height="12" rx="2" strokeWidth={2} />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l5-3v10l-5-3" />
+    <path strokeLinecap="round" strokeWidth={2} d="M21 3v4m-2-2h4" />
   </svg>
 );
 
 export const AddAudioTrackIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8z" />
-    <path d="M11 1h1v2h2v1h-2v2h-1V4H9V3h2V1z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.54 8.46a5 5 0 010 7.07" />
+    <path strokeLinecap="round" strokeWidth={2} d="M21 3v4m-2-2h4" />
   </svg>
 );
 
 export const SnapIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <rect x="3.5" y="2" width="1" height="12" />
-    <rect x="11.5" y="2" width="1" height="12" />
-    <rect x="2" y="7.5" width="12" height="1" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17V9a5 5 0 0110 0v8" />
+    <path strokeLinecap="round" strokeWidth={2} d="M5 13h4m6 0h4M5 17h4m6 0h4" />
   </svg>
 );
 
 export const TimelineZoomInIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <rect x="7.5" y="3" width="1" height="10" />
-    <rect x="3" y="7.5" width="10" height="1" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
   </svg>
 );
 
 export const TimelineZoomOutIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <rect x="3" y="7.5" width="10" height="1" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
   </svg>
 );
 
 export const VideoClipIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 3h8v10H2V3zm10 2l4-2v10l-4-2V5z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <rect x="2" y="6" width="13" height="12" rx="2" strokeWidth={2} />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l5-3v10l-5-3" />
   </svg>
 );
 
 export const AudioClipIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
   </svg>
 );
 
 export const ImageClipIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <rect x="2" y="2" width="12" height="12" rx="1" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
+    <circle cx="8.5" cy="8.5" r="1.5" strokeWidth={2} />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15l-5-5L5 21" />
   </svg>
 );
 
 export const TrackVisibleIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M8 3C4.5 3 1.5 6 0 8c1.5 2 4.5 5 8 5s6.5-3 8-5c-1.5-2-4.5-5-8-5zm0 8a3 3 0 110-6 3 3 0 010 6z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
   </svg>
 );
 
 export const TrackHiddenIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 2l12 12M8 4c2 0 4 1 5.5 2.5L12 8c-.5-1-1.5-2-4-2-1 0-2 .3-2.5.8L4 5.3C5 4.5 6.5 4 8 4zM3.5 6.5L5 8c.5 1 1.5 2 3 2 .5 0 1-.1 1.5-.3l1.5 1.5c-1 .5-2 .8-3 .8-3.5 0-6.5-3-8-5 .5-.7 1.2-1.5 2-2.2l1.5 1.7z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
   </svg>
 );
 
 export const TrackMutedIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6m0-6l6 6" />
   </svg>
 );
 
 export const TrackUnmutedIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
   </svg>
 );
