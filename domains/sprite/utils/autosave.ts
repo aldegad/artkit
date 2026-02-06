@@ -3,7 +3,7 @@
 // ============================================
 
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
-import { Point, Size, SpriteFrame } from "../types";
+import { Point, Size, SpriteFrame, SpriteTrack } from "../types";
 
 export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -11,7 +11,8 @@ export const AUTOSAVE_DEBOUNCE_MS = 1000;
 export interface AutosaveData extends BaseAutosaveData {
   imageSrc: string | null;
   imageSize: Size;
-  frames: SpriteFrame[];
+  frames: SpriteFrame[]; // V1 legacy - kept for migration
+  tracks?: SpriteTrack[]; // V2 multi-track
   nextFrameId: number;
   fps: number;
   currentFrameIndex: number;
@@ -19,6 +20,7 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
+  version?: number; // 1 = flat frames, 2 = multi-track
 }
 
 // Create autosave storage using shared abstraction

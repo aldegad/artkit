@@ -22,6 +22,17 @@ export interface SpriteFrame {
   offset: Point;
 }
 
+export interface SpriteTrack {
+  id: string;
+  name: string;
+  frames: SpriteFrame[];
+  visible: boolean;
+  locked: boolean;
+  opacity: number; // 0-100
+  zIndex: number; // higher = rendered on top
+  loop: boolean; // loop when shorter than longest track
+}
+
 export type SpriteToolMode = "pen" | "select" | "hand";
 
 export type TimelineMode = "reorder" | "offset";
@@ -42,11 +53,13 @@ export interface SavedSpriteProject {
   name: string;
   imageSrc: string;
   imageSize: Size;
-  frames: SpriteFrame[];
+  frames: SpriteFrame[]; // V1 legacy - kept for migration
+  tracks?: SpriteTrack[]; // V2 multi-track
   nextFrameId: number;
   fps: number;
   savedAt: number;
   viewState?: ViewState;
+  version?: number; // 1 = flat frames, 2 = multi-track
 }
 
 // Docking types are defined in layout.ts and re-exported above

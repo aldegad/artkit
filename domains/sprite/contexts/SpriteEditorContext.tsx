@@ -3,9 +3,11 @@
 import { createContext, useContext, useRef, useEffect, ReactNode, useCallback } from "react";
 import { SpriteFrame } from "../types";
 import { AUTOSAVE_DEBOUNCE_MS, loadAutosaveData, saveAutosaveData, clearAutosaveData } from "../utils/autosave";
+import { ensureV2Format } from "../utils/migration";
 import { deepCopyFrame } from "../utils/frameUtils";
 import {
   useSpriteFrameStore,
+  useSpriteTrackStore,
   useSpriteViewportStore,
   useSpriteToolStore,
   useSpriteDragStore,
@@ -54,6 +56,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // Get store states for autosave
   const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const uiStore = useSpriteUIStore();
 
@@ -62,13 +65,21 @@ export function EditorProvider({ children }: EditorProviderProps) {
     const loadData = async () => {
       const data = await loadAutosaveData();
       if (data) {
-        // Restore frame state
+        // Restore frame state (legacy compatibility)
         if (data.imageSrc) frameStore.setImageSrc(data.imageSrc);
         if (data.imageSize) frameStore.setImageSize(data.imageSize);
         if (data.frames && data.frames.length > 0) frameStore.setFrames(data.frames);
         if (data.nextFrameId) frameStore.setNextFrameId(data.nextFrameId);
         if (data.fps) frameStore.setFps(data.fps);
         if (data.currentFrameIndex !== undefined) frameStore.setCurrentFrameIndex(data.currentFrameIndex);
+
+        // Restore track state (V2 with migration)
+        const { tracks, nextFrameId } = ensureV2Format(data);
+        if (tracks.length > 0) {
+          trackStore.restoreTracks(tracks, nextFrameId);
+        }
+        if (data.fps) trackStore.setFps(data.fps);
+        if (data.currentFrameIndex !== undefined) trackStore.setCurrentFrameIndex(data.currentFrameIndex);
 
         // Restore viewport state
         if (data.zoom) viewportStore.setZoom(data.zoom);
@@ -100,6 +111,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         imageSrc: frameStore.imageSrc,
         imageSize: frameStore.imageSize,
         frames: frameStore.frames,
+        tracks: trackStore.tracks,
         nextFrameId: frameStore.nextFrameId,
         fps: frameStore.fps,
         currentFrameIndex: frameStore.currentFrameIndex,
@@ -107,6 +119,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         pan: viewportStore.pan,
         scale: viewportStore.scale,
         projectName: uiStore.projectName,
+        version: 2,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -122,6 +135,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     frameStore.nextFrameId,
     frameStore.fps,
     frameStore.currentFrameIndex,
+    trackStore.tracks,
     viewportStore.zoom,
     viewportStore.pan,
     viewportStore.scale,
@@ -160,6 +174,7 @@ export function useEditorRefs(): EditorRefsContextValue {
 export function useEditor() {
   const refs = useEditorRefs();
   const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
@@ -168,13 +183,14 @@ export function useEditor() {
   // New project function
   const newProject = useCallback(() => {
     frameStore.reset();
+    trackStore.reset();
     viewportStore.reset();
     toolStore.reset();
     dragStore.reset();
     uiStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
+  }, [frameStore, trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
   // Copy/Paste functions
   const copyFrame = useCallback(() => {
@@ -318,6 +334,23 @@ export function useEditor() {
     // Refs
     ...refs,
 
+    // Tracks (V2 multi-track)
+    tracks: trackStore.tracks,
+    activeTrackId: trackStore.activeTrackId,
+    setActiveTrackId: trackStore.setActiveTrackId,
+    addTrack: trackStore.addTrack,
+    removeTrack: trackStore.removeTrack,
+    updateTrack: trackStore.updateTrack,
+    reorderTracks: trackStore.reorderTracks,
+    addFramesToTrack: trackStore.addFramesToTrack,
+    removeFrameFromTrack: trackStore.removeFrame,
+    updateFrameInTrack: trackStore.updateFrame,
+    reorderFramesInTrack: trackStore.reorderFrames,
+    getActiveTrack: trackStore.getActiveTrack,
+    getActiveTrackFrames: trackStore.getActiveTrackFrames,
+    getMaxFrameCount: trackStore.getMaxFrameCount,
+    restoreTracks: trackStore.restoreTracks,
+
     // Computed
     getTransformParams: viewportStore.getTransformParams,
   };
@@ -457,9 +490,31 @@ export function useEditorHistory() {
   };
 }
 
+export function useEditorTracks() {
+  const store = useSpriteTrackStore();
+  return {
+    tracks: store.tracks,
+    activeTrackId: store.activeTrackId,
+    setActiveTrackId: store.setActiveTrackId,
+    addTrack: store.addTrack,
+    removeTrack: store.removeTrack,
+    updateTrack: store.updateTrack,
+    reorderTracks: store.reorderTracks,
+    addFramesToTrack: store.addFramesToTrack,
+    removeFrame: store.removeFrame,
+    updateFrame: store.updateFrame,
+    reorderFrames: store.reorderFrames,
+    getActiveTrack: store.getActiveTrack,
+    getActiveTrackFrames: store.getActiveTrackFrames,
+    getMaxFrameCount: store.getMaxFrameCount,
+    restoreTracks: store.restoreTracks,
+  };
+}
+
 export function useEditorProject() {
   const uiStore = useSpriteUIStore();
   const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
@@ -467,13 +522,14 @@ export function useEditorProject() {
 
   const newProject = useCallback(() => {
     frameStore.reset();
+    trackStore.reset();
     viewportStore.reset();
     toolStore.reset();
     dragStore.reset();
     uiStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
+  }, [frameStore, trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
   return {
     projectName: uiStore.projectName,
