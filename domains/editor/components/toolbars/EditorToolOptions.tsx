@@ -162,18 +162,16 @@ export function EditorToolOptions({
           )}
 
           {(toolMode === "brush" || toolMode === "eraser") && (
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-secondary">{t.hardness}:</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={brushHardness}
-                onChange={(e) => setBrushHardness(parseInt(e.target.value))}
-                className="w-14 accent-accent-primary"
-              />
-              <span className="text-xs text-text-tertiary w-6">{brushHardness}%</span>
-            </div>
+            <NumberScrubber
+              value={brushHardness}
+              onChange={(v) => setBrushHardness(Math.round(v))}
+              min={0}
+              max={100}
+              step={1}
+              label={`${t.hardness}:`}
+              format={(v) => `${Math.round(v)}%`}
+              size="sm"
+            />
           )}
 
           {(toolMode === "brush" || toolMode === "fill") && (

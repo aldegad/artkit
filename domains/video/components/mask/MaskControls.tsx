@@ -5,6 +5,7 @@ import { useMaskTool } from "../../hooks/useMaskTool";
 import { cn } from "@/shared/utils/cn";
 import { MASK_BRUSH } from "../../constants";
 import Tooltip from "@/shared/components/Tooltip";
+import { NumberScrubber } from "@/shared/components";
 import {
   BrushIcon,
   EraserIcon,
@@ -97,37 +98,26 @@ export function MaskControls({ className }: MaskControlsProps) {
 
           <div className="w-px h-5 bg-border-default mx-1" />
 
-          {/* Size slider */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-text-tertiary w-5 text-right">
-              {brushSettings.size}
-            </span>
-            <input
-              type="range"
-              min={MASK_BRUSH.MIN_SIZE}
-              max={MASK_BRUSH.MAX_SIZE}
-              value={brushSettings.size}
-              onChange={(e) => setBrushSize(Number(e.target.value))}
-              className="w-16 h-1 bg-surface-tertiary rounded-full appearance-none cursor-pointer accent-accent-primary"
-              title="Brush size"
-            />
-          </div>
+          {/* Size */}
+          <NumberScrubber
+            value={brushSettings.size}
+            onChange={setBrushSize}
+            min={MASK_BRUSH.MIN_SIZE}
+            max={MASK_BRUSH.MAX_SIZE}
+            step={1}
+            size="sm"
+          />
 
-          {/* Hardness slider */}
-          <div className="flex items-center gap-1.5 ml-1">
-            <span className="text-[10px] text-text-tertiary w-6 text-right">
-              {brushSettings.hardness}%
-            </span>
-            <input
-              type="range"
-              min={MASK_BRUSH.MIN_HARDNESS}
-              max={MASK_BRUSH.MAX_HARDNESS}
-              value={brushSettings.hardness}
-              onChange={(e) => setBrushHardness(Number(e.target.value))}
-              className="w-16 h-1 bg-surface-tertiary rounded-full appearance-none cursor-pointer accent-accent-primary"
-              title="Brush hardness"
-            />
-          </div>
+          {/* Hardness */}
+          <NumberScrubber
+            value={brushSettings.hardness}
+            onChange={setBrushHardness}
+            min={MASK_BRUSH.MIN_HARDNESS}
+            max={MASK_BRUSH.MAX_HARDNESS}
+            step={1}
+            format={(v) => `${Math.round(v)}%`}
+            size="sm"
+          />
 
           <div className="w-px h-5 bg-border-default mx-1" />
 
