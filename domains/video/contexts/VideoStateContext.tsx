@@ -19,6 +19,7 @@ import {
 } from "../types";
 import { PLAYBACK } from "../constants";
 import { playbackTick } from "../utils/playbackTick";
+import type { AspectRatio } from "@/domains/editor/types";
 
 interface VideoState {
   // Project
@@ -41,6 +42,8 @@ interface VideoState {
   // Crop
   cropArea: { x: number; y: number; width: number; height: number } | null;
   canvasExpandMode: boolean;
+  cropAspectRatio: AspectRatio;
+  lockCropAspect: boolean;
 }
 
 interface VideoStateContextValue extends VideoState {
@@ -75,6 +78,8 @@ interface VideoStateContextValue extends VideoState {
   // Crop actions
   setCropArea: (area: { x: number; y: number; width: number; height: number } | null) => void;
   setCanvasExpandMode: (enabled: boolean) => void;
+  setCropAspectRatio: (ratio: AspectRatio) => void;
+  setLockCropAspect: (locked: boolean) => void;
 
   // Refs for high-frequency access
   currentTimeRef: React.RefObject<number>;
@@ -98,6 +103,8 @@ const initialState: VideoState = {
   showAssetLibrary: false,
   cropArea: null,
   canvasExpandMode: false,
+  cropAspectRatio: "free" as AspectRatio,
+  lockCropAspect: false,
 };
 
 export function VideoStateProvider({ children }: { children: ReactNode }) {
@@ -343,6 +350,14 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, canvasExpandMode: enabled }));
   }, []);
 
+  const setCropAspectRatio = useCallback((ratio: AspectRatio) => {
+    setState((prev) => ({ ...prev, cropAspectRatio: ratio }));
+  }, []);
+
+  const setLockCropAspect = useCallback((locked: boolean) => {
+    setState((prev) => ({ ...prev, lockCropAspect: locked }));
+  }, []);
+
   const value: VideoStateContextValue = {
     ...state,
     setProject,
@@ -365,6 +380,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setShowAssetLibrary,
     setCropArea,
     setCanvasExpandMode,
+    setCropAspectRatio,
+    setLockCropAspect,
     currentTimeRef,
     isPlayingRef,
     clipboardRef,
