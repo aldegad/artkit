@@ -55,7 +55,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
             ? "bg-accent/20 text-accent"
             : "hover:bg-surface-tertiary text-text-secondary"
         )}
-        title={viewState.snapEnabled ? "Snap On" : "Snap Off"}
+        title={viewState.snapEnabled ? "Snap: ON - Clips snap to edges" : "Snap: OFF - Free positioning"}
       >
         <SnapIcon />
       </button>

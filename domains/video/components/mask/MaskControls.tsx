@@ -48,6 +48,7 @@ export function MaskControls({ className }: MaskControlsProps) {
         <button
           onClick={endMaskEdit}
           className="text-xs text-text-secondary hover:text-text-primary"
+          title="Finish mask editing"
         >
           Done
         </button>
@@ -63,6 +64,7 @@ export function MaskControls({ className }: MaskControlsProps) {
               ? "bg-accent text-white"
               : "bg-surface-tertiary hover:bg-surface-tertiary/80"
           )}
+          title="Paint to reveal mask area (white = visible)"
         >
           Paint
         </button>
@@ -74,6 +76,7 @@ export function MaskControls({ className }: MaskControlsProps) {
               ? "bg-accent text-white"
               : "bg-surface-tertiary hover:bg-surface-tertiary/80"
           )}
+          title="Erase mask area (black = transparent)"
         >
           Erase
         </button>
@@ -116,18 +119,21 @@ export function MaskControls({ className }: MaskControlsProps) {
         <button
           onClick={fillMask}
           className="flex-1 py-1.5 text-xs bg-surface-tertiary hover:bg-surface-tertiary/80 rounded transition-colors"
+          title="Fill entire mask (make all visible)"
         >
           Fill
         </button>
         <button
           onClick={clearMask}
           className="flex-1 py-1.5 text-xs bg-surface-tertiary hover:bg-surface-tertiary/80 rounded transition-colors"
+          title="Clear entire mask (make all transparent)"
         >
           Clear
         </button>
         <button
           onClick={handleSaveKeyframe}
           className="flex-1 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded transition-colors"
+          title="Save current mask as keyframe"
         >
           Save
         </button>

@@ -1,23 +1,45 @@
-import React from "react";
+import React, { useId } from "react";
 import { IconProps } from "./types";
 
 // All icons: 24x24 viewBox, stroke-based to match other icons
 
-export const AddVideoTrackIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-    <rect x="2" y="6" width="13" height="12" rx="2" strokeWidth={2} />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l5-3v10l-5-3" />
-    <path strokeLinecap="round" strokeWidth={2} d="M21 3v4m-2-2h4" />
-  </svg>
-);
+export const AddVideoTrackIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => {
+  const id = useId();
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <defs>
+        <mask id={`${id}-v`}>
+          <rect width="24" height="24" fill="white" />
+          <circle cx="19" cy="5" r="5.5" fill="black" />
+        </mask>
+      </defs>
+      <g mask={`url(#${id}-v)`}>
+        <rect x="2" y="6" width="13" height="12" rx="2" strokeWidth={2} />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l5-3v10l-5-3" />
+      </g>
+      <path strokeLinecap="round" strokeWidth={2.5} d="M19 2v6M16 5h6" />
+    </svg>
+  );
+};
 
-export const AddAudioTrackIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.54 8.46a5 5 0 010 7.07" />
-    <path strokeLinecap="round" strokeWidth={2} d="M21 3v4m-2-2h4" />
-  </svg>
-);
+export const AddAudioTrackIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => {
+  const id = useId();
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <defs>
+        <mask id={`${id}-a`}>
+          <rect width="24" height="24" fill="white" />
+          <circle cx="19" cy="5" r="5.5" fill="black" />
+        </mask>
+      </defs>
+      <g mask={`url(#${id}-a)`}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.54 8.46a5 5 0 010 7.07" />
+      </g>
+      <path strokeLinecap="round" strokeWidth={2.5} d="M19 2v6M16 5h6" />
+    </svg>
+  );
+};
 
 export const SnapIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
