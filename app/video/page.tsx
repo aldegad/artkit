@@ -1194,9 +1194,13 @@ function VideoEditorContent() {
           translations={menuTranslations}
         />
         <div className="h-4 w-px bg-border-default mx-2" />
-        <span className="text-sm text-text-secondary truncate max-w-[200px]">
-          {projectName}
-        </span>
+        <input
+          type="text"
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          className="px-2 py-0.5 bg-surface-secondary border border-border-default rounded text-xs w-16 md:w-24 focus:outline-none focus:border-accent-primary"
+          placeholder={t.projectName}
+        />
         <span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
           ({project.canvasSize.width}x{project.canvasSize.height})
         </span>
