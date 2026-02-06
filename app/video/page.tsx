@@ -169,8 +169,9 @@ function VideoEditorContent() {
     clearHistory,
     canUndo,
     canRedo,
+    isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, masks: masksMap } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, restoreMasks, masks: masksMap } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -240,6 +241,16 @@ function VideoEditorContent() {
       clearVideoPanelComponents();
     };
   }, []);
+
+  // Restore masks from autosave into MaskContext after autosave finishes loading
+  const masksRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!isAutosaveInitialized || masksRestoredRef.current) return;
+    masksRestoredRef.current = true;
+    if (project.masks && project.masks.length > 0) {
+      restoreMasks(project.masks);
+    }
+  }, [isAutosaveInitialized, project.masks, restoreMasks]);
 
   // Load saved projects when storage provider changes
   useEffect(() => {
@@ -483,6 +494,7 @@ function VideoEditorContent() {
       });
       restoreTracks(loadedProject.tracks);
       restoreClips(normalizedClips);
+      restoreMasks(loadedProject.masks || []);
 
       if (loaded.timelineView) {
         setViewState(loaded.timelineView);
@@ -504,7 +516,7 @@ function VideoEditorContent() {
       setIsLoadingProject(false);
       setLoadProgress(null);
     }
-  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, setViewState, seek, selectClips, clearHistory]);
+  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, selectClips, clearHistory]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;
@@ -1417,6 +1429,7 @@ function VideoEditorContent() {
             });
             restoreTracks(loadedTracks);
             restoreClips(normalizedClips);
+            restoreMasks(loadedProject.masks || []);
 
             if (parsed.timelineView) {
               setViewState(parsed.timelineView);
