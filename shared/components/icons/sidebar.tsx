@@ -73,22 +73,21 @@ export const SidebarIconsIcon: React.FC<IconProps> = ({ className = "w-5 h-5" })
 
 export const ArtkitIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* A - 붓 터치 왼쪽 다리 (곡선 끝 = 브러시 느낌) */}
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.5 3L4.5 17c-.5 1-1 2-1.5 2.5" />
-    {/* A - 오른쪽 다리 */}
-    <path strokeLinecap="round" strokeWidth={1.5} d="M8.5 3L11 20" opacity={0.5} />
+    {/* A - 왼쪽 다리 (붓 터치: 아래에서 곡선으로 휘어짐) */}
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
+      d="M9 3L5 17c-.3 1-1 2-1.8 2.3" />
+    {/* A - 오른쪽 다리 (반투명) */}
+    <path strokeLinecap="round" strokeWidth={2} d="M9 3l2.5 17" opacity={0.5} />
     {/* A - 가로줄 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M5.5 14h4.5" />
-    {/* K - 세로줄 */}
-    <path strokeLinecap="round" strokeWidth={2.5} d="M14.5 20V3" />
-    {/* K - 위쪽 대각선 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M14.5 12l5-5.5" />
-    {/* K - 아래쪽 대각선 */}
-    <path strokeLinecap="round" strokeWidth={1.5} d="M16 10l3.5 10" opacity={0.5} />
-    {/* 물감 점들 (AK 주위를 팔레트처럼 두르는 호) */}
-    <circle cx="1.5" cy="2" r="1.2" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="1" r="1" fill="currentColor" stroke="none" />
-    <circle cx="20.5" cy="5.5" r="1.3" fill="currentColor" stroke="none" />
-    <circle cx="22" cy="13" r="1" fill="currentColor" stroke="none" />
+    <path strokeLinecap="round" strokeWidth={1.8} d="M6 14.5h5" />
+    {/* K - 세로줄 (굵게) */}
+    <path strokeLinecap="round" strokeWidth={2.5} d="M15 20V3" />
+    {/* K - 위쪽 대각선 (음표 줄기) */}
+    <path strokeLinecap="round" strokeWidth={1.8} d="M15 12l5.5-6" />
+    {/* 음표 머리 (기울어진 타원 — ArtkitLogo 시그니처) */}
+    <ellipse cx="21" cy="5.5" rx="2" ry="1.3" fill="currentColor" stroke="none"
+      transform="rotate(-25 21 5.5)" />
+    {/* K - 아래쪽 대각선 (반투명) */}
+    <path strokeLinecap="round" strokeWidth={2} d="M16.5 10.5L20 20" opacity={0.5} />
   </svg>
 );
