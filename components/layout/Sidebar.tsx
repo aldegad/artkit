@@ -22,16 +22,16 @@ const tools: Tool[] = [
     icon: <SidebarEditorIcon />,
   },
   {
+    id: "video",
+    nameKey: "videoEditor",
+    path: "/video",
+    icon: <SidebarVideoIcon />,
+  },
+  {
     id: "sprite",
     nameKey: "spriteEditor",
     path: "/sprite",
     icon: <SidebarSpriteIcon />,
-  },
-  {
-    id: "converter",
-    nameKey: "imageConverter",
-    path: "/converter",
-    icon: <SidebarConverterIcon />,
   },
   {
     id: "sound",
@@ -40,10 +40,10 @@ const tools: Tool[] = [
     icon: <SidebarSoundIcon />,
   },
   {
-    id: "video",
-    nameKey: "videoEditor",
-    path: "/video",
-    icon: <SidebarVideoIcon />,
+    id: "converter",
+    nameKey: "imageConverter",
+    path: "/converter",
+    icon: <SidebarConverterIcon />,
   },
   {
     id: "icons",
