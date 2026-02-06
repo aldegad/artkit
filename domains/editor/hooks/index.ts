@@ -4,6 +4,7 @@
 
 export { useLayerManagement } from "./useLayerManagement";
 export { useHistory } from "./useHistory";
+export type { HistoryAdapter } from "./useHistory";
 export { useBrushTool } from "./useBrushTool";
 export { useCanvasInput } from "./useCanvasInput";
 export type {

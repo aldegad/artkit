@@ -8,6 +8,7 @@ import {
   OutputFormat,
   SavedImageProject,
   UnifiedLayer,
+  HistoryAdapter,
   Point,
   GuideOrientation,
   createPaintLayer,
@@ -135,6 +136,28 @@ function EditorDockableArea() {
 
 type ToolMode = EditorToolMode;
 
+interface LayerCanvasHistoryState {
+  layerId: string;
+  width: number;
+  height: number;
+  imageData: ImageData;
+}
+
+interface EditorHistorySnapshot {
+  layers: UnifiedLayer[];
+  activeLayerId: string | null;
+  selectedLayerIds: string[];
+  canvases: LayerCanvasHistoryState[];
+}
+
+function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
+  return {
+    ...layer,
+    position: layer.position ? { ...layer.position } : undefined,
+    originalSize: layer.originalSize ? { ...layer.originalSize } : undefined,
+  };
+}
+
 // Main export - wraps with all providers
 export default function ImageEditor() {
   return (
@@ -222,9 +245,12 @@ function ImageEditorContent() {
     editCanvasRef,
   } = useEditorRefs();
 
+  const historyAdapterRef = useRef<HistoryAdapter<EditorHistorySnapshot> | null>(null);
+
   // Undo/Redo history - using extracted hook
-  const { saveToHistory, undo, redo, clearHistory, historyRef, historyIndexRef } = useHistory({
+  const { saveToHistory, undo, redo, clearHistory } = useHistory({
     editCanvasRef,
+    historyAdapterRef,
     maxHistory: 50,
   });
 
@@ -303,6 +329,70 @@ function ImageEditorContent() {
       minOneLayerRequired: t.minOneLayerRequired,
     },
   });
+
+  const captureEditorHistorySnapshot = useCallback((): EditorHistorySnapshot => {
+    const canvases: LayerCanvasHistoryState[] = [];
+
+    for (const layer of layers) {
+      const canvas = layerCanvasesRef.current.get(layer.id);
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) continue;
+
+      canvases.push({
+        layerId: layer.id,
+        width: canvas.width,
+        height: canvas.height,
+        imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+      });
+    }
+
+    return {
+      layers: layers.map(cloneLayerForHistory),
+      activeLayerId,
+      selectedLayerIds: [...selectedLayerIds],
+      canvases,
+    };
+  }, [layers, activeLayerId, selectedLayerIds, layerCanvasesRef]);
+
+  const applyEditorHistorySnapshot = useCallback(
+    (snapshot: EditorHistorySnapshot) => {
+      const canvasMap = layerCanvasesRef.current;
+      canvasMap.clear();
+
+      snapshot.canvases.forEach((canvasState) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvasState.width;
+        canvas.height = canvasState.height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.putImageData(canvasState.imageData, 0, 0);
+        }
+        canvasMap.set(canvasState.layerId, canvas);
+      });
+
+      snapshot.layers.forEach((layer) => {
+        if (canvasMap.has(layer.id)) return;
+
+        const fallbackCanvas = document.createElement("canvas");
+        fallbackCanvas.width = Math.max(1, layer.originalSize?.width || canvasSize.width || 1);
+        fallbackCanvas.height = Math.max(1, layer.originalSize?.height || canvasSize.height || 1);
+        canvasMap.set(layer.id, fallbackCanvas);
+      });
+
+      const restoredLayers = snapshot.layers.map(cloneLayerForHistory);
+      const restoredLayerIds = new Set(restoredLayers.map((layer) => layer.id));
+      const nextActiveLayerId =
+        snapshot.activeLayerId && restoredLayerIds.has(snapshot.activeLayerId)
+          ? snapshot.activeLayerId
+          : restoredLayers[0]?.id || null;
+
+      setLayers(restoredLayers);
+      setActiveLayerId(nextActiveLayerId);
+      setSelectedLayerIds(snapshot.selectedLayerIds.filter((layerId) => restoredLayerIds.has(layerId)));
+      editCanvasRef.current = nextActiveLayerId ? canvasMap.get(nextActiveLayerId) || null : null;
+    },
+    [layerCanvasesRef, canvasSize.width, canvasSize.height, setLayers, setActiveLayerId, setSelectedLayerIds, editCanvasRef]
+  );
 
   // Create layer context value for EditorLayersProvider
   const layerContextValue = useMemo(
@@ -517,23 +607,6 @@ function ImageEditorContent() {
     setShowTransformDiscardConfirm(false);
   }, []);
 
-  // Keyboard shortcuts - using extracted hook (gets state, setters, and refs from context)
-  useKeyboardShortcuts({
-    setIsAltPressed,
-    setBrushSize,
-    undo,
-    redo,
-    selection,
-    setSelection,
-    clipboardRef,
-    floatingLayerRef,
-    isTransformActive: transformState.isActive,
-    cancelTransform,
-    getDisplayDimensions,
-    saveToHistory,
-    onToolModeChange: handleToolModeChange,
-  });
-
   // ============================================
   // Fill Function
   // ============================================
@@ -665,6 +738,38 @@ function ImageEditorContent() {
     activeSnapSources: transformSnapSources,
     guideDragPreview,
     getDisplayDimensions,
+  });
+
+  const handleUndo = useCallback(() => {
+    undo();
+    requestRender();
+  }, [undo, requestRender]);
+
+  const handleRedo = useCallback(() => {
+    redo();
+    requestRender();
+  }, [redo, requestRender]);
+
+  historyAdapterRef.current = {
+    captureState: captureEditorHistorySnapshot,
+    applyState: applyEditorHistorySnapshot,
+  };
+
+  // Keyboard shortcuts - using extracted hook (gets state, setters, and refs from context)
+  useKeyboardShortcuts({
+    setIsAltPressed,
+    setBrushSize,
+    undo: handleUndo,
+    redo: handleRedo,
+    selection,
+    setSelection,
+    clipboardRef,
+    floatingLayerRef,
+    isTransformActive: transformState.isActive,
+    cancelTransform,
+    getDisplayDimensions,
+    saveToHistory,
+    onToolModeChange: handleToolModeChange,
   });
 
   // Re-render canvas when showRulers changes (container size changes due to ruler visibility)
@@ -1485,8 +1590,7 @@ function ImageEditorContent() {
     setCropArea(null);
     setSelection(null);
     setStampSource(null);
-    historyRef.current = [];
-    historyIndexRef.current = -1;
+    clearHistory();
     layerCanvasesRef.current.clear();
     editCanvasRef.current = null;
     imageRef.current = null;
@@ -1638,8 +1742,7 @@ function ImageEditorContent() {
     // Reset refs
     imageRef.current = null;
     editCanvasRef.current = null;
-    historyRef.current = [];
-    historyIndexRef.current = -1;
+    clearHistory();
   }, [layers.length, t]);
 
   const toolButtons: {
@@ -1996,7 +2099,7 @@ function ImageEditorContent() {
           <div className="flex items-center gap-0.5">
             <Tooltip content={`${t.undo} (Ctrl+Z)`}>
               <button
-                onClick={() => { undo(); requestRender(); }}
+                onClick={handleUndo}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2011,7 +2114,7 @@ function ImageEditorContent() {
             </Tooltip>
             <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
               <button
-                onClick={() => { redo(); requestRender(); }}
+                onClick={handleRedo}
                 className="p-1 hover:bg-interactive-hover rounded transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
