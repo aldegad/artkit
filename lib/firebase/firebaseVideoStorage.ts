@@ -555,7 +555,7 @@ export async function getVideoProjectFromFirebase(
     project: projectData,
     timelineView: data.timelineView,
     currentTime: data.currentTime,
-    savedAt: data.updatedAt.toMillis(),
+    savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
     thumbnailUrl: data.thumbnailUrl,
   };
 }
@@ -591,7 +591,7 @@ export async function getAllVideoProjectsFromFirebase(
       },
       timelineView: data.timelineView,
       currentTime: data.currentTime,
-      savedAt: data.updatedAt.toMillis(),
+      savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
       thumbnailUrl: data.thumbnailUrl,
     });
   }
