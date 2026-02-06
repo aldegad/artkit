@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { SpriteFrame, Point } from "../types";
 import { getCanvasColorsSync } from "@/hooks";
+import { Modal } from "../../../shared/components";
 
 interface SpriteSheetImportModalProps {
   isOpen: boolean;
@@ -334,24 +335,34 @@ export default function SpriteSheetImportModal({
 
   const selectedCount = cells.filter((c) => c.selected).length;
 
-  if (!isOpen) return null;
+  const footerContent = imageSrc ? (
+    <div className="flex items-center justify-end gap-2">
+      <button
+        onClick={handleClose}
+        className="px-4 py-2 bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default rounded-lg text-sm transition-colors"
+      >
+        취소
+      </button>
+      <button
+        onClick={handleImport}
+        disabled={selectedCount === 0}
+        className="px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+      >
+        {selectedCount}개 프레임 가져오기
+      </button>
+    </div>
+  ) : undefined;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-primary border border-border-default rounded-xl w-[600px] max-h-[90vh] flex flex-col shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-          <h2 className="text-lg font-semibold text-text-primary">스프라이트 시트 가져오기</h2>
-          <button
-            onClick={handleClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="스프라이트 시트 가져오기"
+      width="600px"
+      maxHeight="90vh"
+      contentClassName="flex-1 overflow-y-auto p-4 space-y-4"
+      footer={footerContent}
+    >
           {/* File upload area */}
           {!imageSrc ? (
             <div
@@ -477,27 +488,6 @@ export default function SpriteSheetImportModal({
               </p>
             </>
           )}
-        </div>
-
-        {/* Footer */}
-        {imageSrc && (
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border-default">
-            <button
-              onClick={handleClose}
-              className="px-4 py-2 bg-surface-secondary hover:bg-surface-tertiary text-text-primary border border-border-default rounded-lg text-sm transition-colors"
-            >
-              취소
-            </button>
-            <button
-              onClick={handleImport}
-              disabled={selectedCount === 0}
-              className="px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
-            >
-              {selectedCount}개 프레임 가져오기
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { Select } from "./Select";
+import { Modal } from "./Modal";
 
 // ============================================
 // Types
@@ -59,45 +59,48 @@ export function ExportModal({
     onClose();
   }, [fileName, format, quality, useBgColor, bgColor, onExport, onClose]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
         handleExport();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
       }
-    },
-    [handleExport, onClose],
-  );
-
-  if (!isOpen) return null;
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, handleExport]);
 
   const ext = format === "jpeg" ? "jpg" : format;
   const fileSuffix = mode === "layers" ? ".zip" : `.${ext}`;
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onKeyDown={handleKeyDown}>
-      <div
-        className="bg-surface-primary border border-border-default rounded-lg shadow-xl w-[360px]"
-        onClick={(e) => e.stopPropagation()}
+  const footerContent = (
+    <div className="flex justify-end gap-2">
+      <button
+        onClick={onClose}
+        className="px-3 py-1.5 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
-          <h3 className="text-sm font-semibold">{t.export}</h3>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-interactive-hover text-text-tertiary"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        {t.cancel}
+      </button>
+      <button
+        onClick={handleExport}
+        disabled={!fileName.trim()}
+        className="px-3 py-1.5 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors disabled:opacity-50"
+      >
+        {t.export}
+      </button>
+    </div>
+  );
 
-        {/* Content */}
-        <div className="px-4 py-3 flex flex-col gap-3">
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t.export}
+      width="360px"
+      contentClassName="px-4 py-3 flex flex-col gap-3"
+      footer={footerContent}
+    >
           {/* File name */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">{t.fileName}</label>
@@ -183,26 +186,6 @@ export function ExportModal({
               </label>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border-default">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
-          >
-            {t.cancel}
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={!fileName.trim()}
-            className="px-3 py-1.5 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors disabled:opacity-50"
-          >
-            {t.export}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

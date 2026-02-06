@@ -1,7 +1,7 @@
 "use client";
 
 import { SavedVideoProject } from "../types";
-import { Scrollbar } from "../../../shared/components";
+import { Modal, Scrollbar } from "../../../shared/components";
 import { formatBytes } from "../../../utils/storage";
 import { DeleteIcon } from "@/shared/components/icons";
 import { type SaveLoadProgress } from "../../../lib/firebase/firebaseVideoStorage";
@@ -63,43 +63,51 @@ export default function VideoProjectListModal({
   loadProgress,
   translations: t,
 }: VideoProjectListModalProps) {
-  if (!isOpen) return null;
+  const titleContent = (
+    <div className="flex items-center gap-3">
+      <h2 className="font-semibold">{t.savedProjects}</h2>
+      {storageInfo.quota > 0 && (
+        <div className="flex items-center gap-2 text-xs text-text-tertiary">
+          <span>
+            {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
+          </span>
+          <div className="w-16 h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                storageInfo.percentage > 80
+                  ? "bg-accent-danger"
+                  : "bg-accent-primary"
+              }`}
+              style={{
+                width: `${Math.min(storageInfo.percentage, 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const footerContent = onImportFile ? (
+    <button
+      onClick={onImportFile}
+      disabled={isLoading}
+      className="text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+    >
+      {t.importFile || "Import from file..."}
+    </button>
+  ) : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-surface-primary border border-border-default rounded-lg shadow-xl w-[480px] max-h-[80vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-          <div className="flex items-center gap-3">
-            <h2 className="font-semibold">{t.savedProjects}</h2>
-            {storageInfo.quota > 0 && (
-              <div className="flex items-center gap-2 text-xs text-text-tertiary">
-                <span>
-                  {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
-                </span>
-                <div className="w-16 h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      storageInfo.percentage > 80
-                        ? "bg-accent-danger"
-                        : "bg-accent-primary"
-                    }`}
-                    style={{
-                      width: `${Math.min(storageInfo.percentage, 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-          >
-            ×
-          </button>
-        </div>
-
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={titleContent}
+      width="480px"
+      maxHeight="80vh"
+      contentClassName="flex-1 flex flex-col min-h-0"
+      footer={footerContent}
+    >
         {/* Loading overlay */}
         {isLoading && (
           <div className="px-4 py-2 border-b border-border-default bg-surface-secondary">
@@ -188,19 +196,6 @@ export default function VideoProjectListModal({
           )}
         </Scrollbar>
 
-        {/* Footer with import button */}
-        {onImportFile && (
-          <div className="px-4 py-3 border-t border-border-default">
-            <button
-              onClick={onImportFile}
-              disabled={isLoading}
-              className="text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-            >
-              {t.importFile || "Import from file..."}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+    </Modal>
   );
 }

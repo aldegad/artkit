@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { SpriteFrame } from "../types";
-import { SpinnerIcon } from "../../../shared/components";
+import { Modal, SpinnerIcon } from "../../../shared/components";
 
 // ============================================
 // Types
@@ -89,10 +89,10 @@ export default function VideoImportModal({
   }, [isOpen, initialFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Extraction settings
-  const [extractionMode, setExtractionMode] = useState<"nth" | "interval">("interval");
-  const [nthFrame, setNthFrame] = useState(5);
+  const [extractionMode, setExtractionMode] = useState<"nth" | "interval">("nth");
+  const [nthFrame, setNthFrame] = useState(1);
   const [timeInterval, setTimeInterval] = useState(0.1);
-  const [maxFrames, setMaxFrames] = useState(100);
+  const [maxFrames, setMaxFrames] = useState(0);
 
   // Extracted frames state
   const [extractedFrames, setExtractedFrames] = useState<ExtractedFrame[]>([]);
@@ -139,17 +139,18 @@ export default function VideoImportModal({
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d")!;
 
-    // Calculate frame times based on mode
+    // Calculate frame times based on mode (maxFrames === 0 means unlimited)
     const times: number[] = [];
+    const limit = maxFrames > 0 ? maxFrames : Infinity;
     if (extractionMode === "nth") {
       // Estimate video frame rate (default 30fps)
       const estimatedFPS = 30;
       const frameDuration = 1 / estimatedFPS;
-      for (let t = 0; t < video.duration && times.length < maxFrames; t += frameDuration * nthFrame) {
+      for (let t = 0; t < video.duration && times.length < limit; t += frameDuration * nthFrame) {
         times.push(t);
       }
     } else {
-      for (let t = 0; t < video.duration && times.length < maxFrames; t += timeInterval) {
+      for (let t = 0; t < video.duration && times.length < limit; t += timeInterval) {
         times.push(t);
       }
     }
@@ -236,24 +237,37 @@ export default function VideoImportModal({
     onClose();
   }, [videoSrc, onClose]);
 
-  if (!isOpen) return null;
+  const footerContent = (
+    <div className="flex items-center justify-between">
+      <div className="text-sm text-text-secondary">
+        {selectedFrameIndices.size} {t.framesSelected}
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={handleClose}
+          className="px-4 py-2 bg-surface-secondary hover:bg-surface-tertiary text-text-primary rounded-lg text-sm transition-colors"
+        >
+          {t.cancel}
+        </button>
+        <button
+          onClick={handleImport}
+          disabled={selectedFrameIndices.size === 0}
+          className="px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary text-white rounded-lg text-sm font-medium transition-colors"
+        >
+          {t.importSelected}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-primary border border-border-default rounded-xl w-[800px] max-h-[85vh] flex flex-col shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-          <h2 className="text-lg font-semibold text-text-primary">{t.videoImport}</h2>
-          <button
-            onClick={handleClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0 p-4 gap-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={t.videoImport}
+      width="800px"
+      footer={footerContent}
+    >
           {/* Video Selection / Preview */}
           {!videoSrc ? (
             <label className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-border-default rounded-xl cursor-pointer hover:border-accent-primary hover:bg-surface-secondary transition-colors">
@@ -340,17 +354,20 @@ export default function VideoImportModal({
                     </div>
                   )}
 
-                  {/* Max frames */}
+                  {/* Max frames (0 = unlimited) */}
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-text-secondary">{t.maxFrames}:</span>
                     <input
                       type="number"
-                      min={1}
-                      max={500}
+                      min={0}
+                      max={9999}
                       value={maxFrames}
-                      onChange={(e) => setMaxFrames(Math.max(1, parseInt(e.target.value) || 100))}
+                      onChange={(e) => setMaxFrames(Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-20 px-2 py-1 bg-surface-primary border border-border-default rounded text-sm"
                     />
+                    {maxFrames === 0 && (
+                      <span className="text-sm text-text-tertiary">∞</span>
+                    )}
                   </div>
 
                   {/* Extract button */}
@@ -435,30 +452,6 @@ export default function VideoImportModal({
               {t.noFramesExtracted}
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border-default">
-          <div className="text-sm text-text-secondary">
-            {selectedFrameIndices.size} {t.framesSelected}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleClose}
-              className="px-4 py-2 bg-surface-secondary hover:bg-surface-tertiary text-text-primary rounded-lg text-sm transition-colors"
-            >
-              {t.cancel}
-            </button>
-            <button
-              onClick={handleImport}
-              disabled={selectedFrameIndices.size === 0}
-              className="px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              {t.importSelected}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
