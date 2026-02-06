@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import {
   EditorProvider,
   useEditor,
+  useLayout,
   LayoutProvider,
   SplitView,
   SpriteSheetImportModal,
@@ -93,6 +94,7 @@ function SpriteEditorMain() {
     addTrack,
     restoreTracks,
   } = useEditor();
+  const { resetLayout } = useLayout();
 
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
@@ -659,6 +661,7 @@ function SpriteEditorMain() {
           onImportVideo={() => setIsVideoImportOpen(true)}
           onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
           onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
+          onResetLayout={resetLayout}
           isPreviewOpen={isPreviewOpen}
           isFrameEditOpen={isFrameEditOpen}
           canSave={frames.length > 0 && frames.some((f) => f.imageData)}
@@ -674,6 +677,7 @@ function SpriteEditorMain() {
             importVideo: t.importVideo,
             preview: t.animation,
             frameEdit: t.frameWindow,
+            resetLayout: t.resetLayout,
           }}
         />
       </HeaderSlot>

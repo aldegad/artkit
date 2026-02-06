@@ -77,4 +77,6 @@ export interface LayoutContextValue {
   // Snap info update
   updateFloatingWindowSnap: (windowId: string, snapInfo: SnapInfo | undefined) => void;
   updateFloatingWindowMinimizedPosition: (windowId: string, position: { x: number; y: number } | undefined) => void;
+  // Reset layout
+  resetLayout: () => void;
 }
