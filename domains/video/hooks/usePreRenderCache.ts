@@ -181,6 +181,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
+    console.warn(`[PreRender] startPreRender called, isRunning=${isPreRenderingRef.current}, gen=${renderGeneration}`);
     // If already running, don't interfere — let the existing loop continue
     if (isPreRenderingRef.current) return;
 
@@ -232,10 +233,16 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       if (queue.length >= PRE_RENDER.MAX_FRAMES) break;
     }
 
+    console.warn(`[PreRender] START gen=${myGeneration} queue=${queue.length} playhead=${playheadFrame} cached=${cachedFrameSet.size}`);
+    let _dbgProcessed = 0;
+    let _dbgCached = 0;
+    let _dbgSkipped = 0;
+    let _dbgExitReason = "done";
+
     for (const frameIdx of queue) {
       // Check if this loop instance is still the active one
-      if (myGeneration !== renderGeneration) break;
-      if (frameCache.size >= PRE_RENDER.MAX_FRAMES) break;
+      if (myGeneration !== renderGeneration) { _dbgExitReason = `gen-mismatch(my=${myGeneration},cur=${renderGeneration})`; break; }
+      if (frameCache.size >= PRE_RENDER.MAX_FRAMES) { _dbgExitReason = "max-frames"; break; }
       if (cachedFrameSet.has(frameIdx)) continue;
 
       const time = frameIndexToTime(frameIdx);
@@ -258,7 +265,8 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       if (seekPromises.length > 0) {
         const results = await Promise.all(seekPromises);
         if (results.some((r) => !r)) {
-          // Some seeks failed, skip this frame
+          _dbgSkipped++;
+          console.warn(`[PreRender] frame=${frameIdx} SEEK-FAILED`);
           await new Promise((r) => setTimeout(r, PRE_RENDER.BATCH_DELAY_MS));
           continue;
         }
@@ -295,8 +303,18 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         await new Promise((r) => setTimeout(r, 30 * (attempt + 1)));
       }
 
+      _dbgProcessed++;
       // Skip caching partial/incomplete frames after all retries exhausted.
       if (!fullyRendered) {
+        _dbgSkipped++;
+        // Log WHY it failed — check readyState of video elements at this time
+        for (const track of currentTracks) {
+          if (!track.visible) continue;
+          const clip = getClipAtTimeRef.current(track.id, time);
+          if (!clip || !clip.visible || clip.type !== "video") continue;
+          const videoEl = videoElementsRef.current.get(clip.sourceUrl);
+          console.warn(`[PreRender] frame=${frameIdx} RENDER-FAILED video readyState=${videoEl?.readyState} currentTime=${videoEl?.currentTime?.toFixed(3)} target=${time.toFixed(3)}`);
+        }
         await new Promise((r) => setTimeout(r, PRE_RENDER.BATCH_DELAY_MS));
         continue;
       }
@@ -311,6 +329,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         }
         frameCache.set(frameIdx, bitmap);
         cachedFrameSet.add(frameIdx);
+        _dbgCached++;
         emitCacheStatus();
       } catch {
         // createImageBitmap can fail if canvas is empty or invalid
@@ -319,6 +338,8 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       // Yield to UI
       await new Promise((r) => setTimeout(r, PRE_RENDER.BATCH_DELAY_MS));
     }
+
+    console.warn(`[PreRender] END exit=${_dbgExitReason} processed=${_dbgProcessed} cached=${_dbgCached} skipped=${_dbgSkipped} totalCached=${cachedFrameSet.size}`);
 
     // Only reset flag if we're still the active generation
     if (myGeneration === renderGeneration) {
@@ -334,11 +355,13 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Start/stop pre-rendering based on playback state
   useEffect(() => {
+    console.warn(`[PreRender][effect:playstate] isPlaying=${isPlaying}`);
     if (isPlaying) {
       stopPreRender();
     } else {
       // Small delay before starting pre-render (let scrubbing settle)
       const timer = setTimeout(() => {
+        console.warn(`[PreRender][effect:playstate] timer fired, isRunning=${isPreRenderingRef.current}`);
         if (!isPreRenderingRef.current) {
           startPreRender();
         }
@@ -363,6 +386,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   // with the preview canvas, and re-prioritizes caching near the new playhead.
   useEffect(() => {
     if (isPlaying) return;
+    console.warn(`[PreRender][effect:seek] currentTime=${currentTime.toFixed(3)}`);
     // Stop current pre-render (releases video elements for preview canvas)
     stopPreRender();
     // Debounce: restart after scrubbing settles
