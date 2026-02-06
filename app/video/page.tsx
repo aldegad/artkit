@@ -169,6 +169,7 @@ function VideoEditorContent() {
   const [cropOverlaySize, setCropOverlaySize] = useState({ width: 0, height: 0 });
   const [cropExpandMode, setCropExpandMode] = useState(false);
   const audioHistorySavedRef = useRef(false);
+  const transformHistorySavedRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -238,6 +239,7 @@ function VideoEditorContent() {
   const selectedClip = selectedClipIds.length > 0
     ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
     : null;
+  const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
 
   const buildSavedProject = useCallback(
@@ -967,6 +969,30 @@ function VideoEditorContent() {
     audioHistorySavedRef.current = false;
   }, []);
 
+  const beginTransformAdjustment = useCallback(() => {
+    if (transformHistorySavedRef.current) return;
+    saveToHistory();
+    transformHistorySavedRef.current = true;
+  }, [saveToHistory]);
+
+  const endTransformAdjustment = useCallback(() => {
+    transformHistorySavedRef.current = false;
+  }, []);
+
+  const handleSelectedVisualScaleChange = useCallback((scalePercent: number) => {
+    if (!selectedVisualClip) return;
+    updateClip(selectedVisualClip.id, {
+      scale: Math.max(0.05, Math.min(10, scalePercent / 100)),
+    });
+  }, [selectedVisualClip, updateClip]);
+
+  const handleSelectedVisualRotationChange = useCallback((rotation: number) => {
+    if (!selectedVisualClip) return;
+    updateClip(selectedVisualClip.id, {
+      rotation: Math.max(-180, Math.min(180, rotation)),
+    });
+  }, [selectedVisualClip, updateClip]);
+
   const handleToggleSelectedClipMute = useCallback(() => {
     if (!selectedAudioClip) return;
     saveToHistory();
@@ -1359,6 +1385,47 @@ function VideoEditorContent() {
               >
                 Apply
               </button>
+            </div>
+          </>
+        )}
+
+        {selectedVisualClip && toolMode !== "crop" && (
+          <>
+            <div className="h-4 w-px bg-border-default mx-1" />
+            <div className="flex items-center gap-2 min-w-[300px]">
+              <span className="text-xs text-text-secondary w-8">Scale</span>
+              <input
+                type="range"
+                min={10}
+                max={400}
+                value={Math.round((selectedVisualClip.scale ?? 1) * 100)}
+                onMouseDown={beginTransformAdjustment}
+                onTouchStart={beginTransformAdjustment}
+                onMouseUp={endTransformAdjustment}
+                onTouchEnd={endTransformAdjustment}
+                onChange={(e) => handleSelectedVisualScaleChange(Number(e.target.value))}
+                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs text-text-secondary w-10 text-right">
+                {Math.round((selectedVisualClip.scale ?? 1) * 100)}%
+              </span>
+
+              <span className="text-xs text-text-secondary w-7">Rot</span>
+              <input
+                type="range"
+                min={-180}
+                max={180}
+                value={Math.round(selectedVisualClip.rotation ?? 0)}
+                onMouseDown={beginTransformAdjustment}
+                onTouchStart={beginTransformAdjustment}
+                onMouseUp={endTransformAdjustment}
+                onTouchEnd={endTransformAdjustment}
+                onChange={(e) => handleSelectedVisualRotationChange(Number(e.target.value))}
+                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs text-text-secondary w-10 text-right">
+                {Math.round(selectedVisualClip.rotation ?? 0)}deg
+              </span>
             </div>
           </>
         )}
