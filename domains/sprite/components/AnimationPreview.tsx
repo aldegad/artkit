@@ -33,8 +33,15 @@ export default function AnimationPreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewScaleRef = useRef(previewScale);
+  const panRef = useRef(pan);
+
+  // Sync refs with state for synchronous access in event handlers
+  useEffect(() => { previewScaleRef.current = previewScale; }, [previewScale]);
+  useEffect(() => { panRef.current = pan; }, [pan]);
 
   const maxFrameCount = getMaxFrameCount();
+  const hasContent = maxFrameCount > 0;
 
   // Preset colors for quick selection
   const presetColors = [
@@ -160,7 +167,7 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
-  // Wheel zoom - 마우스 커서 위치 기준 확대/축소
+  // Wheel zoom - 마우스 커서 위치 기준 확대/축소 (uses refs for synchronous state)
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       e.preventDefault();
@@ -168,6 +175,9 @@ export default function AnimationPreviewContent() {
       const container = containerRef.current;
       const canvas = canvasRef.current;
       if (!container || !canvas) return;
+
+      const currentScale = previewScaleRef.current;
+      const currentPan = panRef.current;
 
       const containerRect = container.getBoundingClientRect();
       const mouseX = e.clientX - containerRect.left;
@@ -179,33 +189,37 @@ export default function AnimationPreviewContent() {
       const canvasHeight = canvas.height;
 
       // Calculate image coordinates under cursor (before zoom)
-      const canvasTopLeftX = containerWidth / 2 + pan.x - canvasWidth / 2;
-      const canvasTopLeftY = containerHeight / 2 + pan.y - canvasHeight / 2;
+      const canvasTopLeftX = containerWidth / 2 + currentPan.x - canvasWidth / 2;
+      const canvasTopLeftY = containerHeight / 2 + currentPan.y - canvasHeight / 2;
 
-      const imageX = (mouseX - canvasTopLeftX) / previewScale;
-      const imageY = (mouseY - canvasTopLeftY) / previewScale;
+      const imageX = (mouseX - canvasTopLeftX) / currentScale;
+      const imageY = (mouseY - canvasTopLeftY) / currentScale;
 
       // Calculate new scale
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.max(1, Math.min(20, previewScale * delta));
+      const newScale = Math.max(1, Math.min(20, currentScale * delta));
 
-      if (newScale === previewScale) return;
+      if (newScale === currentScale) return;
 
       // New canvas size
-      const newCanvasWidth = (canvasWidth / previewScale) * newScale;
-      const newCanvasHeight = (canvasHeight / previewScale) * newScale;
+      const newCanvasWidth = (canvasWidth / currentScale) * newScale;
+      const newCanvasHeight = (canvasHeight / currentScale) * newScale;
 
       // Calculate new pan to keep image point under cursor
       const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newScale;
       const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newScale;
 
+      // Update refs synchronously for fast consecutive events
+      previewScaleRef.current = newScale;
+      panRef.current = { x: newPanX, y: newPanY };
+
       setPreviewScale(newScale);
       setPan({ x: newPanX, y: newPanY });
     },
-    [pan, previewScale],
+    [],
   );
 
-  // Register wheel event
+  // Register wheel event - include hasContent to re-attach when container appears
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -214,7 +228,7 @@ export default function AnimationPreviewContent() {
     return () => {
       container.removeEventListener("wheel", handleWheel);
     };
-  }, [handleWheel]);
+  }, [handleWheel, hasContent]);
 
   // Animation playback
   useEffect(() => {
@@ -345,8 +359,6 @@ export default function AnimationPreviewContent() {
     }
     return "default";
   };
-
-  const hasContent = maxFrameCount > 0;
 
   return (
     <div className="flex flex-col h-full bg-surface-primary">
