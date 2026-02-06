@@ -1042,12 +1042,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [invalidateCssCache]);
 
   // Re-render when viewport changes (zoom/pan)
+  const { onViewportChange: onVideoViewportChange } = viewport;
   useEffect(() => {
-    return viewport.onViewportChange(() => {
+    return onVideoViewportChange((state) => {
+      console.log("[Video Viewport] change:", { zoom: state.zoom, pan: state.pan });
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
     });
-  }, [viewport]);
+  }, [onVideoViewportChange]);
 
   // Handle resize — recalculate fit scale via viewport, then re-render
   useEffect(() => {

@@ -89,10 +89,10 @@ export default function AnimationPreviewContent() {
     tracks, fps, toolMode, getMaxFrameCount,
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
+    isPlaying, setIsPlaying,
   } = useEditor();
   const { t } = useLanguage();
 
-  const [isPlaying, setIsPlaying] = useState(true);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
@@ -507,125 +507,125 @@ export default function AnimationPreviewContent() {
 
           {/* Control area */}
           <div className="px-2 py-1.5 border-t border-border-default">
-            <div className="flex items-center gap-1.5">
-              {/* Frame indicator (editable) */}
-              <FrameIndicator
-                currentIndex={currentFrameIndex}
-                maxCount={maxFrameCount}
-                onChange={setCurrentFrameIndex}
-              />
-
-              {/* Transport controls */}
-              <button
-                onClick={handlePrev}
-                className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <StepBackwardIcon />
-              </button>
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
-              >
-                {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={handleNext}
-                className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <StepForwardIcon />
-              </button>
-
-              {/* Background popover */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleBgImageUpload}
-                className="hidden"
-              />
-              <Popover
-                trigger={
-                  <button
-                    className={`p-1.5 rounded transition-colors ${
-                      bgType !== "checkerboard"
-                        ? "bg-accent/20 text-accent hover:bg-accent/30"
-                        : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
-                    }`}
-                    title={t.background}
-                  >
-                    <BackgroundPatternIcon />
-                  </button>
-                }
-                align="start"
-                side="top"
-              >
-                <div className="p-3 space-y-2 min-w-[200px]">
-                  <div className="text-xs text-text-secondary font-medium">{t.background}</div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="relative flex items-center">
+              {/* Left: Frame indicator + Background */}
+              <div className="flex items-center gap-1.5">
+                <FrameIndicator
+                  currentIndex={currentFrameIndex}
+                  maxCount={maxFrameCount}
+                  onChange={setCurrentFrameIndex}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBgImageUpload}
+                  className="hidden"
+                />
+                <Popover
+                  trigger={
                     <button
-                      onClick={() => setBgType("checkerboard")}
-                      className={`w-6 h-6 rounded border-2 checkerboard transition-colors ${
-                        bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
+                      className={`p-1.5 rounded transition-colors ${
+                        bgType !== "checkerboard"
+                          ? "bg-accent/20 text-accent hover:bg-accent/30"
+                          : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
                       }`}
-                      title={t.transparent}
-                    />
-                    {presetColors.map(({ color, label }) => (
-                      <button
-                        key={color}
-                        onClick={() => {
-                          setBgType("solid");
-                          setBgColor(color);
-                        }}
-                        className={`w-6 h-6 rounded border-2 transition-colors ${
-                          bgType === "solid" && bgColor === color
-                            ? "border-accent-primary"
-                            : "border-border-default"
-                        }`}
-                        style={{ backgroundColor: color }}
-                        title={label}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      value={bgColor}
-                      onChange={(e) => {
-                        setBgType("solid");
-                        setBgColor(e.target.value);
-                      }}
-                      className="w-6 h-6 rounded cursor-pointer border-0 p-0"
-                      title={t.customColor}
-                    />
-                  </div>
-                  <div className="border-t border-border-default pt-2">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`w-full px-2 py-1.5 rounded text-xs text-left transition-colors ${
-                        bgType === "image"
-                          ? "bg-accent-primary/10 text-accent-primary"
-                          : "hover:bg-interactive-hover text-text-secondary"
-                      }`}
+                      title={t.background}
                     >
-                      {t.uploadBgImage}
+                      <BackgroundPatternIcon />
                     </button>
-                    {bgType === "image" && bgImage && (
+                  }
+                  align="start"
+                  side="top"
+                >
+                  <div className="p-3 space-y-2 min-w-[200px]">
+                    <div className="text-xs text-text-secondary font-medium">{t.background}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
-                        onClick={() => {
-                          setBgImage(null);
-                          setBgType("checkerboard");
+                        onClick={() => setBgType("checkerboard")}
+                        className={`w-6 h-6 rounded border-2 checkerboard transition-colors ${
+                          bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
+                        }`}
+                        title={t.transparent}
+                      />
+                      {presetColors.map(({ color, label }) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setBgType("solid");
+                            setBgColor(color);
+                          }}
+                          className={`w-6 h-6 rounded border-2 transition-colors ${
+                            bgType === "solid" && bgColor === color
+                              ? "border-accent-primary"
+                              : "border-border-default"
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={label}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={bgColor}
+                        onChange={(e) => {
+                          setBgType("solid");
+                          setBgColor(e.target.value);
                         }}
-                        className="w-full px-2 py-1 rounded text-xs text-left text-accent-danger hover:bg-interactive-hover transition-colors mt-1"
+                        className="w-6 h-6 rounded cursor-pointer border-0 p-0"
+                        title={t.customColor}
+                      />
+                    </div>
+                    <div className="border-t border-border-default pt-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`w-full px-2 py-1.5 rounded text-xs text-left transition-colors ${
+                          bgType === "image"
+                            ? "bg-accent-primary/10 text-accent-primary"
+                            : "hover:bg-interactive-hover text-text-secondary"
+                        }`}
                       >
-                        {t.removeBgImage}
+                        {t.uploadBgImage}
                       </button>
-                    )}
+                      {bgType === "image" && bgImage && (
+                        <button
+                          onClick={() => {
+                            setBgImage(null);
+                            setBgType("checkerboard");
+                          }}
+                          className="w-full px-2 py-1 rounded text-xs text-left text-accent-danger hover:bg-interactive-hover transition-colors mt-1"
+                        >
+                          {t.removeBgImage}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Popover>
+                </Popover>
+              </div>
 
-              <div className="flex-1" />
+              {/* Center: Transport controls (absolute center) */}
+              <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
+                <button
+                  onClick={handlePrev}
+                  className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <StepBackwardIcon />
+                </button>
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
+                >
+                  {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={handleNext}
+                  className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <StepForwardIcon />
+                </button>
+              </div>
 
-              {/* Zoom controls */}
-              <div className="flex items-center gap-1">
+              {/* Right: Zoom controls */}
+              <div className="ml-auto flex items-center gap-1">
                 <button
                   onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
