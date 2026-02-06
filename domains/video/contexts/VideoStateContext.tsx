@@ -15,6 +15,7 @@ import {
   PlaybackState,
   INITIAL_PLAYBACK_STATE,
   createVideoProject,
+  ClipboardData,
 } from "../types";
 import { PLAYBACK } from "../constants";
 
@@ -68,6 +69,11 @@ interface VideoStateContextValue extends VideoState {
   // Refs for high-frequency access
   currentTimeRef: React.RefObject<number>;
   isPlayingRef: React.RefObject<boolean>;
+
+  // Clipboard
+  clipboardRef: React.RefObject<ClipboardData | null>;
+  hasClipboard: boolean;
+  setHasClipboard: (has: boolean) => void;
 }
 
 const VideoStateContext = createContext<VideoStateContextValue | null>(null);
@@ -88,6 +94,10 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   // Refs for high-frequency access (playback loop)
   const currentTimeRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(false);
+
+  // Clipboard
+  const clipboardRef = useRef<ClipboardData | null>(null);
+  const [hasClipboard, setHasClipboard] = useState(false);
   const lastFrameTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -316,6 +326,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setShowAssetLibrary,
     currentTimeRef,
     isPlayingRef,
+    clipboardRef,
+    hasClipboard,
+    setHasClipboard,
   };
 
   return (

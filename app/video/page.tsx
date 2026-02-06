@@ -29,12 +29,18 @@ function VideoEditorContent() {
     toolMode,
     setToolMode,
     selectedClipIds,
+    selectClips,
+    deselectAll,
     togglePlay,
     stop,
     stepForward,
     stepBackward,
+    playback,
+    clipboardRef,
+    hasClipboard,
+    setHasClipboard,
   } = useVideoState();
-  const { clips, duplicateClip } = useTimeline();
+  const { clips, removeClip, addClips } = useTimeline();
   const { isEditingMask, startMaskEdit } = useMask();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,34 +89,63 @@ function VideoEditorContent() {
     console.log("Redo");
   }, []);
 
-  const handleCut = useCallback(() => {
-    // TODO: implement cut
-    console.log("Cut");
-  }, []);
-
   const handleCopy = useCallback(() => {
-    // TODO: implement copy
-    console.log("Copy");
-  }, []);
+    if (selectedClipIds.length === 0) return;
+    const selectedClips = clips.filter((c) => selectedClipIds.includes(c.id));
+    if (selectedClips.length === 0) return;
+
+    clipboardRef.current = {
+      clips: selectedClips.map((c) => ({ ...c })),
+      mode: "copy",
+      sourceTime: playback.currentTime,
+    };
+    setHasClipboard(true);
+  }, [selectedClipIds, clips, playback.currentTime, clipboardRef, setHasClipboard]);
+
+  const handleCut = useCallback(() => {
+    if (selectedClipIds.length === 0) return;
+    const selectedClips = clips.filter((c) => selectedClipIds.includes(c.id));
+    if (selectedClips.length === 0) return;
+
+    clipboardRef.current = {
+      clips: selectedClips.map((c) => ({ ...c })),
+      mode: "cut",
+      sourceTime: playback.currentTime,
+    };
+    setHasClipboard(true);
+
+    selectedClipIds.forEach((id) => removeClip(id));
+    deselectAll();
+  }, [selectedClipIds, clips, playback.currentTime, clipboardRef, setHasClipboard, removeClip, deselectAll]);
 
   const handlePaste = useCallback(() => {
-    // TODO: implement paste
-    console.log("Paste");
-  }, []);
+    const clipboard = clipboardRef.current;
+    if (!clipboard || clipboard.clips.length === 0) return;
+
+    const currentTime = playback.currentTime;
+    const earliestStart = Math.min(...clipboard.clips.map((c) => c.startTime));
+    const timeOffset = currentTime - earliestStart;
+
+    const newClips = clipboard.clips.map((clipData) => ({
+      ...clipData,
+      id: crypto.randomUUID(),
+      startTime: Math.max(0, clipData.startTime + timeOffset),
+    }));
+
+    addClips(newClips);
+    selectClips(newClips.map((c) => c.id));
+
+    if (clipboard.mode === "cut") {
+      clipboardRef.current = null;
+      setHasClipboard(false);
+    }
+  }, [playback.currentTime, clipboardRef, setHasClipboard, addClips, selectClips]);
 
   const handleDelete = useCallback(() => {
-    // TODO: implement delete selected clips
-    console.log("Delete");
-  }, []);
-
-  const handleDuplicate = useCallback(() => {
-    if (selectedClipIds.length > 0) {
-      // Duplicate each selected clip to a new track
-      selectedClipIds.forEach((clipId) => {
-        duplicateClip(clipId);
-      });
-    }
-  }, [selectedClipIds, duplicateClip]);
+    if (selectedClipIds.length === 0) return;
+    selectedClipIds.forEach((id) => removeClip(id));
+    deselectAll();
+  }, [selectedClipIds, removeClip, deselectAll]);
 
   // View menu handlers
   const handleZoomIn = useCallback(() => {
@@ -148,24 +183,40 @@ function VideoEditorContent() {
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return;
 
+    const isCmd = e.metaKey || e.ctrlKey;
+
     switch (e.key.toLowerCase()) {
       case " ":
         e.preventDefault();
         togglePlay();
         break;
       case "v":
-        setToolMode("select");
-        break;
-      case "t":
-        setToolMode("trim");
+        if (isCmd) {
+          e.preventDefault();
+          handlePaste();
+        } else {
+          setToolMode("select");
+        }
         break;
       case "c":
-        if (!e.metaKey && !e.ctrlKey) {
+        if (isCmd) {
+          e.preventDefault();
+          handleCopy();
+        } else {
           setToolMode("razor");
         }
         break;
+      case "x":
+        if (isCmd) {
+          e.preventDefault();
+          handleCut();
+        }
+        break;
+      case "t":
+        if (!isCmd) setToolMode("trim");
+        break;
       case "m":
-        handleToolModeChange("mask");
+        if (!isCmd) handleToolModeChange("mask");
         break;
       case "arrowleft":
         stepBackward();
@@ -173,14 +224,13 @@ function VideoEditorContent() {
       case "arrowright":
         stepForward();
         break;
-      case "d":
-        if (e.shiftKey) {
-          e.preventDefault();
-          handleDuplicate();
-        }
+      case "delete":
+      case "backspace":
+        e.preventDefault();
+        handleDelete();
         break;
     }
-  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward, handleDuplicate]);
+  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward, handleCopy, handleCut, handlePaste, handleDelete]);
 
   const menuTranslations = {
     file: t.file,
@@ -240,6 +290,7 @@ function VideoEditorContent() {
           onPaste={handlePaste}
           onDelete={handleDelete}
           hasSelection={selectedClipIds.length > 0}
+          hasClipboard={hasClipboard}
           onZoomIn={handleZoomIn}
           onZoomOut={handleZoomOut}
           onFitToScreen={handleFitToScreen}
@@ -308,34 +359,6 @@ function VideoEditorContent() {
               <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 3L10 8L2 13V3Z" />
                 <rect x="12" y="3" width="2" height="10" />
-              </svg>
-            </button>
-          </Tooltip>
-        </div>
-
-        {/* Clip Actions */}
-        <div className="flex items-center gap-1 ml-auto">
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.duplicate}</span>
-                <span className="text-text-tertiary text-[11px]">{t.duplicateDesc}</span>
-              </div>
-            }
-            shortcut="Shift+D"
-          >
-            <button
-              onClick={handleDuplicate}
-              disabled={selectedClipIds.length === 0}
-              className={`p-1.5 rounded transition-colors ${
-                selectedClipIds.length > 0
-                  ? "hover:bg-interactive-hover text-text-secondary hover:text-text-primary"
-                  : "text-text-tertiary cursor-not-allowed"
-              }`}
-            >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="5" y="5" width="8" height="8" rx="1" />
-                <path d="M3 11V3a1 1 0 011-1h8" />
               </svg>
             </button>
           </Tooltip>

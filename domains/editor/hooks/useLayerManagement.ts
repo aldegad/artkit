@@ -439,21 +439,20 @@ export function useLayerManagement(
 
     // Copy the layer canvas
     const srcCanvas = layerCanvasesRef.current.get(layerId);
+    const newCanvas = document.createElement("canvas");
     if (srcCanvas) {
-      const newCanvas = document.createElement("canvas");
       newCanvas.width = srcCanvas.width;
       newCanvas.height = srcCanvas.height;
       const ctx = newCanvas.getContext("2d");
       if (ctx) ctx.drawImage(srcCanvas, 0, 0);
-      layerCanvasesRef.current.set(newLayer.id, newCanvas);
     } else {
       // Fallback: create empty canvas with display dimensions
       const { width, height } = getDisplayDimensions();
-      const newCanvas = document.createElement("canvas");
       newCanvas.width = layer.originalSize?.width || width;
       newCanvas.height = layer.originalSize?.height || height;
-      layerCanvasesRef.current.set(newLayer.id, newCanvas);
     }
+    layerCanvasesRef.current.set(newLayer.id, newCanvas);
+    editCanvasRef.current = newCanvas;
 
     setLayers(prev => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);

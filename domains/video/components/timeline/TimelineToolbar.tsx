@@ -1,6 +1,6 @@
 "use client";
 
-import { useTimeline, useVideoState } from "../../contexts";
+import { useTimeline } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { TIMELINE } from "../../constants";
 
@@ -10,7 +10,6 @@ interface TimelineToolbarProps {
 
 export function TimelineToolbar({ className }: TimelineToolbarProps) {
   const { viewState, setZoom, toggleSnap, addTrack } = useTimeline();
-  const { toolMode, setToolMode } = useVideoState();
 
   const handleZoomIn = () => {
     setZoom(Math.min(viewState.zoom * 1.5, TIMELINE.MAX_ZOOM));
@@ -27,56 +26,6 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         className
       )}
     >
-      {/* Tool selection */}
-      <div className="flex items-center gap-1 mr-2">
-        <button
-          onClick={() => setToolMode("select")}
-          className={cn(
-            "p-1.5 rounded transition-colors",
-            toolMode === "select"
-              ? "bg-accent text-white"
-              : "hover:bg-surface-tertiary text-text-secondary"
-          )}
-          title="Select Tool (V)"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 2l10 4-4 1.5L6.5 12 2 2z" />
-          </svg>
-        </button>
-
-        <button
-          onClick={() => setToolMode("trim")}
-          className={cn(
-            "p-1.5 rounded transition-colors",
-            toolMode === "trim"
-              ? "bg-accent text-white"
-              : "hover:bg-surface-tertiary text-text-secondary"
-          )}
-          title="Trim Tool (T)"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 4h12v2H2V4zm0 6h12v2H2v-2z" />
-          </svg>
-        </button>
-
-        <button
-          onClick={() => setToolMode("razor")}
-          className={cn(
-            "p-1.5 rounded transition-colors",
-            toolMode === "razor"
-              ? "bg-accent text-white"
-              : "hover:bg-surface-tertiary text-text-secondary"
-          )}
-          title="Razor Tool (C)"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 2v12M4 6l4-4 4 4" />
-          </svg>
-        </button>
-      </div>
-
-      <div className="w-px h-4 bg-border" />
-
       {/* Add track */}
       <button
         onClick={() => addTrack()}

@@ -58,6 +58,15 @@ export interface ImageClip extends BaseClip {
 export type Clip = VideoClip | ImageClip;
 
 /**
+ * Clipboard data for copy/cut operations
+ */
+export interface ClipboardData {
+  clips: Clip[];
+  mode: "copy" | "cut";
+  sourceTime: number;
+}
+
+/**
  * Create a new video clip
  */
 export function createVideoClip(
