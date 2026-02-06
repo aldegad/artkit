@@ -84,6 +84,9 @@ export function EditorProvider({ children }: EditorProviderProps) {
         if (data.frameEditZoom) viewportStore.setFrameEditZoom(data.frameEditZoom);
         if (data.frameEditPan) viewportStore.setFrameEditPan(data.frameEditPan);
 
+        // Restore animation state
+        if (data.isPlaying !== undefined) trackStore.setIsPlaying(data.isPlaying);
+
         // Restore UI state
         if (data.projectName) uiStore.setProjectName(data.projectName);
       }
@@ -113,6 +116,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         nextFrameId: trackStore.nextFrameId,
         fps: trackStore.fps,
         currentFrameIndex: trackStore.currentFrameIndex,
+        isPlaying: trackStore.isPlaying,
         zoom: viewportStore.zoom,
         pan: viewportStore.pan,
         scale: viewportStore.scale,
@@ -136,6 +140,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     trackStore.nextFrameId,
     trackStore.fps,
     trackStore.currentFrameIndex,
+    trackStore.isPlaying,
     viewportStore.zoom,
     viewportStore.pan,
     viewportStore.scale,
@@ -166,6 +171,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
             nextFrameId: ts.nextFrameId,
             fps: ts.fps,
             currentFrameIndex: ts.currentFrameIndex,
+            isPlaying: ts.isPlaying,
             zoom: vs.zoom,
             pan: vs.pan,
             scale: vs.scale,

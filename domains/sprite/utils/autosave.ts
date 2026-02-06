@@ -20,6 +20,7 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
+  isPlaying?: boolean;
   // Per-panel viewport state (added later, optional for backwards compat)
   animPreviewZoom?: number;
   animPreviewPan?: Point;
