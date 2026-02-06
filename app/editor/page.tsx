@@ -181,7 +181,6 @@ function ImageEditorContent() {
       zoom,
       pan,
       isSpacePressed,
-      isPanLocked,
       projectName,
       currentProjectId,
       savedProjects,
@@ -564,9 +563,9 @@ function ImageEditorContent() {
 
   // Check if in active tool mode (considering space key for temporary hand tool)
   const getActiveToolMode = useCallback(() => {
-    if (isPanLocked || isSpacePressed) return "hand";
+    if (isSpacePressed) return "hand";
     return toolMode;
-  }, [isPanLocked, isSpacePressed, toolMode]);
+  }, [isSpacePressed, toolMode]);
 
   // Get active layer's position for coordinate conversion (brush drawing)
   const activeLayerPosition = useMemo(() => {
@@ -2221,12 +2220,8 @@ function ImageEditorContent() {
       {/* Main Content Area with Docking System */}
       <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
         <EditorDockableArea />
-        {/* Mobile Pan Mode Toggle - floating button */}
-        {layers.length > 0 && (
-          <div className="absolute bottom-4 right-4 z-50 md:hidden">
-            <PanModeToggle />
-          </div>
-        )}
+        {/* Mobile Pan Mode Toggle - draggable floating button */}
+        {layers.length > 0 && <PanModeToggle />}
       </div>
 
       {/* Background Removal Modals */}
