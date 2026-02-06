@@ -92,6 +92,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         format={(v) => `${Math.round(v)}px/s`}
         valueWidth="min-w-[60px]"
         size="sm"
+        variant="zoom"
       />
     </div>
   );
