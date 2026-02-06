@@ -29,6 +29,7 @@ import {
   VideoTimelinePanelContent,
   clearVideoAutosave,
   saveMediaBlob,
+  loadMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
@@ -503,18 +504,33 @@ function VideoEditorContent() {
 
       const loadedProject = loaded.project;
       const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
-      const loadedDuration = calculateProjectDuration(normalizedClips);
+
+      // Restore media blobs from IndexedDB and create new blob URLs
+      const restoredClips: Clip[] = [];
+      for (const clip of normalizedClips) {
+        const blob = await loadMediaBlob(clip.id);
+        if (blob) {
+          const newUrl = URL.createObjectURL(blob);
+          restoredClips.push({ ...clip, sourceUrl: newUrl });
+        } else if (!clip.sourceUrl.startsWith("blob:")) {
+          // Non-blob URL (e.g., remote URL), keep as is
+          restoredClips.push(clip);
+        }
+        // Skip clips with invalid blob URLs (no stored blob)
+      }
+
+      const loadedDuration = calculateProjectDuration(restoredClips);
 
       setProjectName(loaded.name);
       setProject({
         ...loadedProject,
         name: loaded.name,
         tracks: loadedProject.tracks,
-        clips: normalizedClips,
+        clips: restoredClips,
         duration: loadedDuration,
       });
       restoreTracks(loadedProject.tracks);
-      restoreClips(normalizedClips);
+      restoreClips(restoredClips);
       restoreMasks(loadedProject.masks || []);
 
       if (loaded.timelineView) {
