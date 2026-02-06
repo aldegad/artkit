@@ -68,6 +68,7 @@ interface TimelineContextValue {
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
   duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
+  addClips: (newClips: Clip[]) => void;
   restoreClips: (clips: Clip[]) => void;
 
   // Queries
@@ -424,6 +425,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return newClip.id;
   }, [clips, tracks, updateProjectDuration]);
 
+  // Add pre-formed clips (for paste)
+  const addClips = useCallback((newClips: Clip[]) => {
+    setClips((prev) => [...prev, ...newClips]);
+    updateProjectDuration();
+  }, [updateProjectDuration]);
+
   // Queries
   const getClipAtTime = useCallback(
     (trackId: string, time: number): Clip | null => {
@@ -477,6 +484,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     trimClipStart,
     trimClipEnd,
     duplicateClip,
+    addClips,
     restoreClips,
     getClipAtTime,
     getClipsInTrack,
