@@ -3,13 +3,14 @@ import { IconProps } from "./types";
 
 export const SidebarEditorIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* 뒤쪽 레이어 */}
-    <rect x="6" y="3" width="15" height="15" rx="2" strokeWidth={2} opacity={0.4} />
+    {/* 뒤쪽 레이어 (편집기=레이어 개념) */}
+    <rect x="6" y="2" width="16" height="16" rx="2" strokeWidth={2} opacity={0.35} />
     {/* 앞쪽 캔버스 */}
-    <rect x="3" y="6" width="15" height="15" rx="2" strokeWidth={2} />
-    {/* 브러시 스트로크 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M7 17l8-8" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9l2-2" />
+    <rect x="2" y="6" width="16" height="16" rx="2" strokeWidth={2} />
+    {/* 태양 (사진/이미지 직관적 인식) */}
+    <circle cx="7" cy="11" r="1.5" fill="currentColor" stroke="none" />
+    {/* 산 풍경 (이미지 편집기의 보편적 메타포) */}
+    <path d="M2 20l5-5 3 2.5 5-6 3 4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -20,10 +21,10 @@ export const SidebarSpriteIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }
     {/* 프레임 구분선 */}
     <line x1="9" y1="5" x2="9" y2="19" strokeWidth={1.5} />
     <line x1="15" y1="5" x2="15" y2="19" strokeWidth={1.5} />
-    {/* 애니메이션 동작 표현 (위치 변화하는 점) */}
-    <circle cx="5.5" cy="14" r="1.5" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="10" r="1.5" fill="currentColor" stroke="none" />
-    <circle cx="18.5" cy="14" r="1.5" fill="currentColor" stroke="none" />
+    {/* 모션 트레일 (투명도 변화로 움직임 표현) */}
+    <circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none" opacity={0.25} />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" opacity={0.55} />
+    <circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
   </svg>
 );
 
@@ -52,12 +53,11 @@ export const SidebarVideoIcon: React.FC<IconProps> = ({ className = "w-5 h-5" })
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     {/* 클래퍼보드 */}
     <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
-    {/* 클래퍼 영역 구분선 */}
+    {/* 클래퍼 구분선 */}
     <line x1="3" y1="10" x2="21" y2="10" strokeWidth={2} />
-    {/* 클래퍼 줄무늬 */}
-    <line x1="8" y1="3" x2="6" y2="10" strokeWidth={1.5} />
-    <line x1="13" y1="3" x2="11" y2="10" strokeWidth={1.5} />
-    <line x1="18" y1="3" x2="16" y2="10" strokeWidth={1.5} />
+    {/* 줄무늬 2개 (굵게, 20px에서도 선명) */}
+    <line x1="9" y1="3" x2="7" y2="10" strokeWidth={2} />
+    <line x1="16" y1="3" x2="14" y2="10" strokeWidth={2} />
   </svg>
 );
 
@@ -76,19 +76,13 @@ export const SidebarIconsIcon: React.FC<IconProps> = ({ className = "w-5 h-5" })
 
 export const ArtkitIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* A - 브러시 스트로크 왼쪽 다리 */}
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 3L4 17c-.5 1.5-1.5 2.5-2 2.5" />
-    {/* A - 오른쪽 다리 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M8 3l3 17" />
-    {/* A - 가로줄 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M5 14h5" />
-    {/* K - 세로줄 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M14 20V3" />
-    {/* K - 위쪽 대각선 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M14 11l6-6" />
-    {/* 음표 머리 */}
-    <ellipse cx="20.5" cy="4.5" rx="1.5" ry="1" fill="currentColor" stroke="none" transform="rotate(-20 20.5 4.5)" />
-    {/* K - 아래쪽 대각선 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M15.5 9.5L19 20" />
+    {/* 팔레트 외형 */}
+    <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1 0 1.7-.8 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H17c2.8 0 5-2.2 5-5 0-5.5-4.5-9.3-10-9.3z" />
+    {/* 물감 방울들 */}
+    <circle cx="7.5" cy="11.5" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="7.5" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="5.5" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="16" cy="8" r="1.3" fill="currentColor" stroke="none" />
   </svg>
 );
