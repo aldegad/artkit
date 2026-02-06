@@ -267,26 +267,35 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       // Check again after async wait
       if (myGeneration !== renderGeneration) break;
 
-      // Render composite frame to offscreen canvas
-      oscCtx.clearRect(0, 0, cacheW, cacheH);
+      // Render composite frame to offscreen canvas (with retry for transient failures)
+      let fullyRendered = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (myGeneration !== renderGeneration) break;
 
-      const fullyRendered = renderCompositeFrame(oscCtx, {
-        time,
-        tracks: currentTracks,
-        getClipAtTime: getClipAtTimeRef.current,
-        getMaskAtTimeForTrack: getMaskAtTimeForTrackRef.current,
-        videoElements: videoElementsRef.current,
-        imageCache: imageCacheRef.current,
-        maskImageCache: maskImageCacheRef.current,
-        maskTempCanvas: maskTempCanvasRef.current!,
-        projectSize: projectSizeRef.current,
-        renderRect: { x: 0, y: 0, width: cacheW, height: cacheH },
-        // No live mask canvas for pre-rendering (use saved data only)
-        isPlaying: false,
-      });
+        oscCtx.clearRect(0, 0, cacheW, cacheH);
+        fullyRendered = renderCompositeFrame(oscCtx, {
+          time,
+          tracks: currentTracks,
+          getClipAtTime: getClipAtTimeRef.current,
+          getMaskAtTimeForTrack: getMaskAtTimeForTrackRef.current,
+          videoElements: videoElementsRef.current,
+          imageCache: imageCacheRef.current,
+          maskImageCache: maskImageCacheRef.current,
+          maskTempCanvas: maskTempCanvasRef.current!,
+          projectSize: projectSizeRef.current,
+          renderRect: { x: 0, y: 0, width: cacheW, height: cacheH },
+          // No live mask canvas for pre-rendering (use saved data only)
+          isPlaying: false,
+          // Skip redundant video seek check — waitForSeek already verified positioning
+          preSeekVerified: true,
+        });
 
-      // Skip caching partial/incomplete frames (e.g. seek not settled yet).
-      // Otherwise a transient black/empty render can become "sticky" in cache.
+        if (fullyRendered) break;
+        // Wait briefly for video readyState / image loading to settle before retry
+        await new Promise((r) => setTimeout(r, 30 * (attempt + 1)));
+      }
+
+      // Skip caching partial/incomplete frames after all retries exhausted.
       if (!fullyRendered) {
         await new Promise((r) => setTimeout(r, PRE_RENDER.BATCH_DELAY_MS));
         continue;
