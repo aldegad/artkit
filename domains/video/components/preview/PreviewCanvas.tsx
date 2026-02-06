@@ -13,8 +13,10 @@ import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import {
   getRectHandleAtPosition,
   resizeRectByHandle,
+  createRectFromDrag,
   type RectHandle,
 } from "@/domains/editor/utils/rectTransform";
+import { ASPECT_RATIO_VALUES } from "@/domains/editor/types";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -31,6 +33,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cropArea,
     setCropArea,
     canvasExpandMode,
+    cropAspectRatio,
+    lockCropAspect,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -872,12 +876,21 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
       if (cropDragRef.current.mode === "create") {
         const start = cropDragRef.current.pointerStart;
-        const nextArea = {
-          x: Math.round(Math.min(start.x, point.x)),
-          y: Math.round(Math.min(start.y, point.y)),
-          width: Math.max(1, Math.round(Math.abs(point.x - start.x))),
-          height: Math.max(1, Math.round(Math.abs(point.y - start.y))),
+        const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
+        const clampedPos = canvasExpandMode ? point : {
+          x: Math.max(0, Math.min(Math.round(point.x), project.canvasSize.width)),
+          y: Math.max(0, Math.min(Math.round(point.y), project.canvasSize.height)),
         };
+        const nextArea = createRectFromDrag(start, clampedPos, {
+          keepAspect: Boolean(ratioValue),
+          targetAspect: ratioValue ?? undefined,
+          round: true,
+          bounds: canvasExpandMode ? undefined : {
+            minX: 0, minY: 0,
+            maxX: project.canvasSize.width,
+            maxY: project.canvasSize.height,
+          },
+        });
         setCropArea(nextArea);
         return;
       }
@@ -907,12 +920,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const orig = originalCropAreaRef.current;
         const dx = point.x - cropDragRef.current.pointerStart.x;
         const dy = point.y - cropDragRef.current.pointerStart.y;
+        const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
+        const originalAspect = orig.width / orig.height;
+        const effectiveRatio = ratioValue || (lockCropAspect ? originalAspect : null);
 
         let newArea = resizeRectByHandle(
           orig,
           cropDragRef.current.resizeHandle,
           { dx, dy },
-          { minWidth: 10, minHeight: 10 }
+          {
+            minWidth: 10,
+            minHeight: 10,
+            keepAspect: Boolean(effectiveRatio),
+            targetAspect: effectiveRatio ?? undefined,
+          }
         );
 
         if (!canvasExpandMode) {
