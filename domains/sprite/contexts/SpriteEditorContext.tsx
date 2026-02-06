@@ -78,6 +78,12 @@ export function EditorProvider({ children }: EditorProviderProps) {
         if (data.pan) viewportStore.setPan(data.pan);
         if (data.scale) viewportStore.setScale(data.scale);
 
+        // Restore per-panel viewport state
+        if (data.animPreviewZoom) viewportStore.setAnimPreviewZoom(data.animPreviewZoom);
+        if (data.animPreviewPan) viewportStore.setAnimPreviewPan(data.animPreviewPan);
+        if (data.frameEditZoom) viewportStore.setFrameEditZoom(data.frameEditZoom);
+        if (data.frameEditPan) viewportStore.setFrameEditPan(data.frameEditPan);
+
         // Restore UI state
         if (data.projectName) uiStore.setProjectName(data.projectName);
       }
@@ -109,6 +115,10 @@ export function EditorProvider({ children }: EditorProviderProps) {
         pan: viewportStore.pan,
         scale: viewportStore.scale,
         projectName: uiStore.projectName,
+        animPreviewZoom: viewportStore.animPreviewZoom,
+        animPreviewPan: viewportStore.animPreviewPan,
+        frameEditZoom: viewportStore.frameEditZoom,
+        frameEditPan: viewportStore.frameEditPan,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -127,6 +137,10 @@ export function EditorProvider({ children }: EditorProviderProps) {
     viewportStore.zoom,
     viewportStore.pan,
     viewportStore.scale,
+    viewportStore.animPreviewZoom,
+    viewportStore.animPreviewPan,
+    viewportStore.frameEditZoom,
+    viewportStore.frameEditPan,
     uiStore.projectName,
   ]);
 

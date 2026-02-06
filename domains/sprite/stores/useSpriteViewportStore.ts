@@ -13,12 +13,24 @@ interface SpriteViewportStore {
   canvasHeight: number;
   isCanvasCollapsed: boolean;
 
+  // Animation preview viewport
+  animPreviewZoom: number;
+  animPreviewPan: Point;
+
+  // Frame edit viewport
+  frameEditZoom: number;
+  frameEditPan: Point;
+
   // Actions
   setZoom: (zoom: number | ((prev: number) => number)) => void;
   setPan: (pan: Point | ((prev: Point) => Point)) => void;
   setScale: (scale: number) => void;
   setCanvasHeight: (height: number | ((prev: number) => number)) => void;
   setIsCanvasCollapsed: (collapsed: boolean) => void;
+  setAnimPreviewZoom: (zoom: number) => void;
+  setAnimPreviewPan: (pan: Point) => void;
+  setFrameEditZoom: (zoom: number) => void;
+  setFrameEditPan: (pan: Point) => void;
 
   // Computed
   getTransformParams: () => { scale: number; zoom: number; pan: Point };
@@ -38,6 +50,10 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
   scale: 1,
   canvasHeight: 400,
   isCanvasCollapsed: false,
+  animPreviewZoom: 0,
+  animPreviewPan: { x: 0, y: 0 },
+  frameEditZoom: 0,
+  frameEditPan: { x: 0, y: 0 },
 
   // Actions
   setZoom: (zoomOrFn) =>
@@ -59,6 +75,11 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
 
   setIsCanvasCollapsed: (collapsed) => set({ isCanvasCollapsed: collapsed }),
 
+  setAnimPreviewZoom: (zoom) => set({ animPreviewZoom: zoom }),
+  setAnimPreviewPan: (pan) => set({ animPreviewPan: pan }),
+  setFrameEditZoom: (zoom) => set({ frameEditZoom: zoom }),
+  setFrameEditPan: (pan) => set({ frameEditPan: pan }),
+
   // Computed
   getTransformParams: () => {
     const { scale, zoom, pan } = get();
@@ -73,5 +94,9 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
       scale: 1,
       canvasHeight: 400,
       isCanvasCollapsed: false,
+      animPreviewZoom: 0,
+      animPreviewPan: { x: 0, y: 0 },
+      frameEditZoom: 0,
+      frameEditPan: { x: 0, y: 0 },
     }),
 }));
