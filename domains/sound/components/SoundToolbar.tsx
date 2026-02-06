@@ -4,7 +4,8 @@ import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { useLanguage } from "@/shared/contexts/LanguageContext";
 import { SoundToolMode } from "../types";
 import { cn } from "@/shared/utils/cn";
-import { CursorIcon, RazorToolIcon, ZoomSearchIcon, MinusIcon, PlusIcon, CloseIcon } from "@/shared/components/icons";
+import { CursorIcon, RazorToolIcon, ZoomSearchIcon, CloseIcon } from "@/shared/components/icons";
+import { NumberScrubber } from "@/shared/components";
 
 interface ToolButtonProps {
   mode: SoundToolMode;
@@ -73,23 +74,15 @@ export function SoundToolbar() {
 
       {/* Zoom Controls */}
       <div className="flex items-center gap-2 px-3 border-l border-gray-700">
-        <button
-          onClick={() => setZoom(zoom / 1.5)}
-          disabled={zoom <= 1}
-          className="p-1 rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          title={t.zoomOut}
-        >
-          <MinusIcon />
-        </button>
-        <span className="text-xs text-gray-400 w-12 text-center">{Math.round(zoom * 100)}%</span>
-        <button
-          onClick={() => setZoom(zoom * 1.5)}
-          disabled={zoom >= 100}
-          className="p-1 rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          title={t.zoomIn}
-        >
-          <PlusIcon />
-        </button>
+        <NumberScrubber
+          value={zoom}
+          onChange={setZoom}
+          min={1}
+          max={100}
+          step={{ multiply: 1.5 }}
+          format={(v) => `${Math.round(v * 100)}%`}
+          size="sm"
+        />
         <button
           onClick={() => setZoom(1)}
           className="p-1 rounded hover:bg-gray-700 text-xs text-gray-400"

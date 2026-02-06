@@ -2,8 +2,9 @@
 
 import { useTimeline } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
-import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, SnapOffIcon, TimelineZoomOutIcon, TimelineZoomInIcon } from "@/shared/components/icons";
+import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, SnapOffIcon } from "@/shared/components/icons";
 import Tooltip from "@/shared/components/Tooltip";
+import { NumberScrubber } from "@/shared/components";
 import { TIMELINE } from "../../constants";
 
 interface TimelineToolbarProps {
@@ -12,14 +13,6 @@ interface TimelineToolbarProps {
 
 export function TimelineToolbar({ className }: TimelineToolbarProps) {
   const { viewState, setZoom, toggleSnap, addTrack } = useTimeline();
-
-  const handleZoomIn = () => {
-    setZoom(Math.min(viewState.zoom * 1.5, TIMELINE.MAX_ZOOM));
-  };
-
-  const handleZoomOut = () => {
-    setZoom(Math.max(viewState.zoom / 1.5, TIMELINE.MIN_ZOOM));
-  };
 
   return (
     <div
@@ -90,29 +83,16 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
       <div className="flex-1" />
 
       {/* Zoom controls */}
-      <div className="flex items-center gap-1">
-        <Tooltip content="Zoom Out">
-          <button
-            onClick={handleZoomOut}
-            className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-          >
-            <TimelineZoomOutIcon />
-          </button>
-        </Tooltip>
-
-        <span className="text-xs text-text-secondary min-w-[60px] text-center">
-          {Math.round(viewState.zoom)}px/s
-        </span>
-
-        <Tooltip content="Zoom In">
-          <button
-            onClick={handleZoomIn}
-            className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-          >
-            <TimelineZoomInIcon />
-          </button>
-        </Tooltip>
-      </div>
+      <NumberScrubber
+        value={viewState.zoom}
+        onChange={setZoom}
+        min={TIMELINE.MIN_ZOOM}
+        max={TIMELINE.MAX_ZOOM}
+        step={{ multiply: 1.5 }}
+        format={(v) => `${Math.round(v)}px/s`}
+        valueWidth="min-w-[60px]"
+        size="sm"
+      />
     </div>
   );
 }

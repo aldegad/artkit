@@ -3,7 +3,7 @@
 import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS } from "../../types";
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
-import { Select, Scrollbar } from "../../../../shared/components";
+import { Select, Scrollbar, NumberScrubber } from "../../../../shared/components";
 import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, CanvasExpandIcon } from "@/shared/components/icons";
 
 // ============================================
@@ -149,31 +149,16 @@ export function EditorToolOptions({
 
           {/* Size control - not for fill tool */}
           {toolMode !== "fill" && (
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-secondary">{t.size}:</span>
-              <button
-                onClick={() => setBrushSize((s) => Math.max(1, s - 1))}
-                className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-              >
-                -
-              </button>
-              <input
-                type="number"
-                value={brushSize}
-                onChange={(e) =>
-                  setBrushSize(Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))
-                }
-                className="w-10 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                min={1}
-                max={200}
-              />
-              <button
-                onClick={() => setBrushSize((s) => Math.min(200, s + 1))}
-                className="w-5 h-5 flex items-center justify-center hover:bg-interactive-hover rounded text-xs"
-              >
-                +
-              </button>
-            </div>
+            <NumberScrubber
+              value={brushSize}
+              onChange={(v) => setBrushSize(Math.round(v))}
+              min={1}
+              max={200}
+              step={1}
+              label={`${t.size}:`}
+              size="sm"
+              editable
+            />
           )}
 
           {(toolMode === "brush" || toolMode === "eraser") && (
