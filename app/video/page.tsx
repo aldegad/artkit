@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "../../shared/contexts";
-import { HeaderContent } from "../../shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay } from "../../shared/components";
 import { ZoomInIcon, ZoomOutIcon } from "../../shared/components/icons";
 import { downloadBlob } from "../../shared/utils";
 import {
@@ -211,6 +211,7 @@ function VideoEditorContent() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [loadProgress, setLoadProgress] = useState<SaveLoadProgress | null>(null);
+  const [saveCount, setSaveCount] = useState(0);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
 
@@ -468,6 +469,7 @@ function VideoEditorContent() {
   const handleSave = useCallback(async () => {
     try {
       await saveProject();
+      setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Failed to save project:", error);
       alert(`Save failed: ${(error as Error).message}`);
@@ -482,6 +484,7 @@ function VideoEditorContent() {
     setProjectName(nextName);
     try {
       await saveAsProject(nextName);
+      setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Failed to save project:", error);
       alert(`Save failed: ${(error as Error).message}`);
@@ -1157,8 +1160,21 @@ function VideoEditorContent() {
 
   return (
     <div
-      className="h-full bg-background text-text-primary flex flex-col overflow-hidden"
+      className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative"
     >
+      {/* Loading overlay during autosave restore */}
+      <LoadingOverlay isLoading={!isAutosaveInitialized} message={t.loading || "Loading..."} />
+
+      {/* Save toast notification (for non-cloud saves without progress indicator) */}
+      {!saveProgress && (
+        <SaveToast
+          isSaving={isSaving}
+          saveCount={saveCount}
+          savingLabel={t.saving || "Saving…"}
+          savedLabel={t.saved || "Saved"}
+        />
+      )}
+
       {/* Header Slot - Menu Bar + Project Info */}
       <HeaderContent
         title={t.videoEditor}
