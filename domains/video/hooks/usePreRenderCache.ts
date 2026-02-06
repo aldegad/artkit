@@ -104,6 +104,7 @@ interface UsePreRenderCacheParams {
   projectSize: Size;
   projectDuration: number;
   isPlaying: boolean;
+  currentTime: number;
   currentTimeRef: React.RefObject<number>;
 }
 
@@ -120,6 +121,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     projectSize,
     projectDuration,
     isPlaying,
+    currentTime,
     currentTimeRef,
   } = params;
 
@@ -319,6 +321,20 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       return () => clearTimeout(timer);
     }
   }, [tracks, clips, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender]);
+
+  // Restart pre-render from new position when user seeks while paused.
+  // This stops the pre-render loop from fighting over video elements
+  // with the preview canvas, and re-prioritizes caching near the new playhead.
+  useEffect(() => {
+    if (isPlaying) return;
+    // Stop current pre-render (releases video elements for preview canvas)
+    stopPreRender();
+    // Debounce: restart after scrubbing settles
+    const timer = setTimeout(() => {
+      startPreRender();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [currentTime, isPlaying, stopPreRender, startPreRender]);
 
   // Get cached frame for a given time
   const getCachedFrame = useCallback((time: number): ImageBitmap | null => {
