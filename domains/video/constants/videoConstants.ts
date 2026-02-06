@@ -37,6 +37,9 @@ export const MASK_BRUSH = {
   DEFAULT_OPACITY: 100,
 } as const;
 
+// Mask lane height in timeline
+export const MASK_LANE_HEIGHT = 20;
+
 // Playback constants
 export const PLAYBACK = {
   MIN_RATE: 0.25,

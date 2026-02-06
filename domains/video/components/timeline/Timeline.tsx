@@ -10,7 +10,7 @@ import { TimelineToolbar } from "./TimelineToolbar";
 import { cn } from "@/shared/utils/cn";
 import { TrackVisibleIcon, TrackHiddenIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon } from "@/shared/components/icons";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
-import { TIMELINE } from "../../constants";
+import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
 
 interface TimelineProps {
   className?: string;
@@ -44,8 +44,11 @@ export function Timeline({ className }: TimelineProps) {
   const [isHeaderResizing, setIsHeaderResizing] = useState(false);
   const resizeStartRef = useRef({ x: 0, width: 180 });
 
-  // Calculate total tracks height
-  const totalTracksHeight = tracks.reduce((sum, t) => sum + t.height, 0);
+  // Calculate total tracks height (including mask lanes)
+  const totalTracksHeight = tracks.reduce((sum, t) => {
+    const hasMasks = getMasksForTrack(t.id).length > 0;
+    return sum + t.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
+  }, 0);
 
   const headerWidthStyle = { width: trackHeaderWidth };
   const headerWidthPx = `${trackHeaderWidth}px`;
@@ -211,77 +214,81 @@ export function Timeline({ className }: TimelineProps) {
         <div className="flex overflow-hidden" style={{ height: `calc(100% - 16px)` }}>
           {/* Track headers */}
           <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
-            {tracks.map((track) => (
-              <div
-                key={track.id}
-                className="flex items-center px-2 border-b border-border-default"
-                style={{ height: track.height }}
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData("text/plain", track.id);
-                  event.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const fromTrackId = event.dataTransfer.getData("text/plain");
-                  handleTrackDrop(fromTrackId, track.id);
-                }}
-              >
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  {/* Visibility toggle */}
-                  <button
-                    onClick={() => updateTrack(track.id, { visible: !track.visible })}
-                    className={cn(
-                      "p-1 rounded hover:bg-surface-tertiary",
-                      track.visible ? "text-text-primary" : "text-text-tertiary"
-                    )}
-                    title={track.visible ? "Hide track" : "Show track"}
-                  >
-                    {track.visible ? (
-                      <TrackVisibleIcon className="w-3 h-3" />
-                    ) : (
-                      <TrackHiddenIcon className="w-3 h-3" />
-                    )}
-                  </button>
+            {tracks.map((track) => {
+              const trackMasks = getMasksForTrack(track.id);
+              const headerHeight = track.height + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
+              return (
+                <div
+                  key={track.id}
+                  className="flex items-center px-2 border-b border-border-default"
+                  style={{ height: headerHeight }}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/plain", track.id);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const fromTrackId = event.dataTransfer.getData("text/plain");
+                    handleTrackDrop(fromTrackId, track.id);
+                  }}
+                >
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    {/* Visibility toggle */}
+                    <button
+                      onClick={() => updateTrack(track.id, { visible: !track.visible })}
+                      className={cn(
+                        "p-1 rounded hover:bg-surface-tertiary",
+                        track.visible ? "text-text-primary" : "text-text-tertiary"
+                      )}
+                      title={track.visible ? "Hide track" : "Show track"}
+                    >
+                      {track.visible ? (
+                        <TrackVisibleIcon className="w-3 h-3" />
+                      ) : (
+                        <TrackHiddenIcon className="w-3 h-3" />
+                      )}
+                    </button>
 
-                  {/* Audio mute toggle */}
-                  <button
-                    onClick={() => updateTrack(track.id, { muted: !track.muted })}
-                    className={cn(
-                      "p-1 rounded hover:bg-surface-tertiary",
-                      track.muted ? "text-text-tertiary" : "text-text-primary"
-                    )}
-                    title={track.muted ? "Unmute track" : "Mute track"}
-                  >
-                    {track.muted ? (
-                      <TrackMutedIcon className="w-3 h-3" />
-                    ) : (
-                      <TrackUnmutedIcon className="w-3 h-3" />
-                    )}
-                  </button>
+                    {/* Audio mute toggle */}
+                    <button
+                      onClick={() => updateTrack(track.id, { muted: !track.muted })}
+                      className={cn(
+                        "p-1 rounded hover:bg-surface-tertiary",
+                        track.muted ? "text-text-tertiary" : "text-text-primary"
+                      )}
+                      title={track.muted ? "Unmute track" : "Mute track"}
+                    >
+                      {track.muted ? (
+                        <TrackMutedIcon className="w-3 h-3" />
+                      ) : (
+                        <TrackUnmutedIcon className="w-3 h-3" />
+                      )}
+                    </button>
 
-                  {/* Track name */}
-                  <span className="text-xs text-text-secondary truncate">
-                    {track.name}
-                  </span>
+                    {/* Track name */}
+                    <span className="text-xs text-text-secondary truncate">
+                      {track.name}
+                    </span>
 
-                  <button
-                    onClick={() => {
-                      saveToHistory();
-                      removeTrack(track.id);
-                    }}
-                    className="p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
-                    title="Delete track"
-                  >
-                    <DeleteIcon className="w-3 h-3" />
-                  </button>
+                    <button
+                      onClick={() => {
+                        saveToHistory();
+                        removeTrack(track.id);
+                      }}
+                      className="p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                      title="Delete track"
+                    >
+                      <DeleteIcon className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Track header/content resize handle */}

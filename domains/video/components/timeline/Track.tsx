@@ -4,8 +4,7 @@ import { VideoTrack, Clip as ClipType, MaskData } from "../../types";
 import { Clip } from "./Clip";
 import { MaskClip } from "./MaskClip";
 import { cn } from "@/shared/utils/cn";
-
-const MASK_LANE_HEIGHT = 20;
+import { MASK_LANE_HEIGHT } from "../../constants";
 
 interface TrackProps {
   track: VideoTrack;
