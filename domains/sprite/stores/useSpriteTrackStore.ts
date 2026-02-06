@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { SpriteFrame, SpriteTrack } from "../types";
+import { Point, Size, SpriteFrame, SpriteTrack } from "../types";
 import { deepCopyFrames } from "../utils/frameUtils";
 
 // ============================================
@@ -12,6 +12,10 @@ interface TrackHistorySnapshot {
 }
 
 interface SpriteTrackStore {
+  // Image (source image for polygon extraction)
+  imageSrc: string | null;
+  imageSize: Size;
+
   // Tracks
   tracks: SpriteTrack[];
   activeTrackId: string | null;
@@ -22,9 +26,18 @@ interface SpriteTrackStore {
   isPlaying: boolean;
   fps: number;
 
+  // Selection / Pen tool state
+  selectedFrameId: number | null;
+  selectedPointIndex: number | null;
+  currentPoints: Point[];
+
   // History
   canUndo: boolean;
   canRedo: boolean;
+
+  // Image Actions
+  setImageSrc: (src: string | null) => void;
+  setImageSize: (size: Size) => void;
 
   // Track Actions
   addTrack: (name?: string, frames?: SpriteFrame[]) => string;
@@ -33,12 +46,17 @@ interface SpriteTrackStore {
   reorderTracks: (fromIndex: number, toIndex: number) => void;
   setActiveTrackId: (id: string | null) => void;
 
-  // Frame Actions (on active track)
+  // Frame Actions (on specific track)
   addFramesToTrack: (trackId: string, frames: SpriteFrame[]) => void;
   removeFrame: (trackId: string, frameId: number) => void;
   updateFrame: (trackId: string, frameId: number, updates: Partial<SpriteFrame>) => void;
   reorderFrames: (trackId: string, fromIndex: number, toIndex: number) => void;
   setNextFrameId: (id: number | ((prev: number) => number)) => void;
+
+  // Selection / Pen Actions
+  setSelectedFrameId: (id: number | null) => void;
+  setSelectedPointIndex: (index: number | null) => void;
+  setCurrentPoints: (points: Point[] | ((prev: Point[]) => Point[])) => void;
 
   // Playback Actions
   setCurrentFrameIndex: (index: number | ((prev: number) => number)) => void;
@@ -100,14 +118,23 @@ function generateTrackId(): string {
 
 export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
   // Initial State
+  imageSrc: null,
+  imageSize: { width: 0, height: 0 },
   tracks: [],
   activeTrackId: null,
   nextFrameId: 1,
   currentFrameIndex: 0,
   isPlaying: false,
   fps: 12,
+  selectedFrameId: null,
+  selectedPointIndex: null,
+  currentPoints: [],
   canUndo: false,
   canRedo: false,
+
+  // Image Actions
+  setImageSrc: (src) => set({ imageSrc: src }),
+  setImageSize: (size) => set({ imageSize: size }),
 
   // Track Actions
   addTrack: (name, frames) => {
@@ -223,6 +250,18 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
         typeof idOrFn === "function" ? idOrFn(state.nextFrameId) : idOrFn,
     })),
 
+  // Selection / Pen Actions
+  setSelectedFrameId: (id) => set({ selectedFrameId: id }),
+  setSelectedPointIndex: (index) => set({ selectedPointIndex: index }),
+
+  setCurrentPoints: (pointsOrFn) =>
+    set((state) => ({
+      currentPoints:
+        typeof pointsOrFn === "function"
+          ? pointsOrFn(state.currentPoints)
+          : pointsOrFn,
+    })),
+
   // Playback Actions
   setCurrentFrameIndex: (indexOrFn) =>
     set((state) => ({
@@ -330,12 +369,17 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
     hasUnsavedChanges = false;
 
     set({
+      imageSrc: null,
+      imageSize: { width: 0, height: 0 },
       tracks: [],
       activeTrackId: null,
       nextFrameId: 1,
       currentFrameIndex: 0,
       isPlaying: false,
       fps: 12,
+      selectedFrameId: null,
+      selectedPointIndex: null,
+      currentPoints: [],
       canUndo: false,
       canRedo: false,
     });

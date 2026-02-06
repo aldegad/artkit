@@ -20,6 +20,17 @@ export interface SpriteFrame {
   offset: Point;
 }
 
+export interface SpriteTrack {
+  id: string;
+  name: string;
+  frames: SpriteFrame[];
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  zIndex: number;
+  loop: boolean;
+}
+
 export interface ViewState {
   zoom: number;
   pan: Point;
@@ -36,7 +47,7 @@ export interface SavedProject {
   name: string;
   imageSrc: string;
   imageSize: Size;
-  frames: SpriteFrame[];
+  tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
   savedAt: number;
@@ -131,33 +142,6 @@ export interface DockingState {
   activeDropZone: DockPosition | null;
 }
 
-// ============================================
-// Context Types
-// ============================================
-
-export interface EditorState {
-  imageSrc: string | null;
-  imageSize: Size;
-  frames: SpriteFrame[];
-  nextFrameId: number;
-  currentFrameIndex: number;
-  selectedFrameId: number | null;
-  selectedPointIndex: number | null;
-  toolMode: ToolMode;
-  currentPoints: Point[];
-  zoom: number;
-  pan: Point;
-  scale: number;
-  canvasHeight: number;
-  isCanvasCollapsed: boolean;
-  isPlaying: boolean;
-  fps: number;
-  timelineMode: TimelineMode;
-  isBackgroundRemovalMode: boolean;
-  eraserTolerance: number;
-  projectName: string;
-  currentProjectId: string | null;
-}
 
 // ============================================
 // Re-exports from shared types

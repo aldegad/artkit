@@ -3,10 +3,8 @@
 import { createContext, useContext, useRef, useEffect, ReactNode, useCallback } from "react";
 import { SpriteFrame } from "../types";
 import { AUTOSAVE_DEBOUNCE_MS, loadAutosaveData, saveAutosaveData, clearAutosaveData } from "../utils/autosave";
-import { ensureV2Format } from "../utils/migration";
 import { deepCopyFrame } from "../utils/frameUtils";
 import {
-  useSpriteFrameStore,
   useSpriteTrackStore,
   useSpriteViewportStore,
   useSpriteToolStore,
@@ -55,7 +53,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get store states for autosave
-  const frameStore = useSpriteFrameStore();
   const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const uiStore = useSpriteUIStore();
@@ -65,18 +62,13 @@ export function EditorProvider({ children }: EditorProviderProps) {
     const loadData = async () => {
       const data = await loadAutosaveData();
       if (data) {
-        // Restore frame state (legacy compatibility)
-        if (data.imageSrc) frameStore.setImageSrc(data.imageSrc);
-        if (data.imageSize) frameStore.setImageSize(data.imageSize);
-        if (data.frames && data.frames.length > 0) frameStore.setFrames(data.frames);
-        if (data.nextFrameId) frameStore.setNextFrameId(data.nextFrameId);
-        if (data.fps) frameStore.setFps(data.fps);
-        if (data.currentFrameIndex !== undefined) frameStore.setCurrentFrameIndex(data.currentFrameIndex);
+        // Restore image
+        if (data.imageSrc) trackStore.setImageSrc(data.imageSrc);
+        if (data.imageSize) trackStore.setImageSize(data.imageSize);
 
-        // Restore track state (V2 with migration)
-        const { tracks, nextFrameId } = ensureV2Format(data);
-        if (tracks.length > 0) {
-          trackStore.restoreTracks(tracks, nextFrameId);
+        // Restore tracks
+        if (data.tracks && data.tracks.length > 0) {
+          trackStore.restoreTracks(data.tracks, data.nextFrameId ?? 1);
         }
         if (data.fps) trackStore.setFps(data.fps);
         if (data.currentFrameIndex !== undefined) trackStore.setCurrentFrameIndex(data.currentFrameIndex);
@@ -100,26 +92,22 @@ export function EditorProvider({ children }: EditorProviderProps) {
     if (typeof window === "undefined") return;
     if (!isInitializedRef.current) return;
 
-    // Clear previous timeout
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
     }
 
-    // Debounce the save
     autosaveTimeoutRef.current = setTimeout(() => {
       void saveAutosaveData({
-        imageSrc: frameStore.imageSrc,
-        imageSize: frameStore.imageSize,
-        frames: frameStore.frames,
+        imageSrc: trackStore.imageSrc,
+        imageSize: trackStore.imageSize,
         tracks: trackStore.tracks,
-        nextFrameId: frameStore.nextFrameId,
-        fps: frameStore.fps,
-        currentFrameIndex: frameStore.currentFrameIndex,
+        nextFrameId: trackStore.nextFrameId,
+        fps: trackStore.fps,
+        currentFrameIndex: trackStore.currentFrameIndex,
         zoom: viewportStore.zoom,
         pan: viewportStore.pan,
         scale: viewportStore.scale,
         projectName: uiStore.projectName,
-        version: 2,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -129,13 +117,12 @@ export function EditorProvider({ children }: EditorProviderProps) {
       }
     };
   }, [
-    frameStore.imageSrc,
-    frameStore.imageSize,
-    frameStore.frames,
-    frameStore.nextFrameId,
-    frameStore.fps,
-    frameStore.currentFrameIndex,
+    trackStore.imageSrc,
+    trackStore.imageSize,
     trackStore.tracks,
+    trackStore.nextFrameId,
+    trackStore.fps,
+    trackStore.currentFrameIndex,
     viewportStore.zoom,
     viewportStore.pan,
     viewportStore.scale,
@@ -168,21 +155,35 @@ export function useEditorRefs(): EditorRefsContextValue {
 }
 
 // ============================================
-// Legacy useEditor Hook (Backwards Compatibility)
+// Legacy useEditor Hook (Facade over all stores)
 // ============================================
 
 export function useEditor() {
   const refs = useEditorRefs();
-  const frameStore = useSpriteFrameStore();
   const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
   const uiStore = useSpriteUIStore();
 
+  // Shim: frames = active track frames
+  const frames = trackStore.getActiveTrackFrames();
+
+  // Shim: setFrames operates on active track
+  const setFrames = useCallback(
+    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
+      const { activeTrackId } = useSpriteTrackStore.getState();
+      if (!activeTrackId) return;
+      const activeTrack = useSpriteTrackStore.getState().tracks.find((t) => t.id === activeTrackId);
+      if (!activeTrack) return;
+      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
+      trackStore.updateTrack(activeTrackId, { frames: newFrames });
+    },
+    [trackStore],
+  );
+
   // New project function
   const newProject = useCallback(() => {
-    frameStore.reset();
     trackStore.reset();
     viewportStore.reset();
     toolStore.reset();
@@ -190,61 +191,63 @@ export function useEditor() {
     uiStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
+  }, [trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
-  // Copy/Paste functions
+  // Copy/Paste operate on active track frames
   const copyFrame = useCallback(() => {
-    if (frameStore.frames.length === 0) return;
-    const frameToCopy = frameStore.frames[frameStore.currentFrameIndex];
+    if (frames.length === 0) return;
+    const frameToCopy = frames[trackStore.currentFrameIndex];
     if (frameToCopy) {
       uiStore.copyFrame(frameToCopy);
     }
-  }, [frameStore.frames, frameStore.currentFrameIndex, uiStore]);
+  }, [frames, trackStore.currentFrameIndex, uiStore]);
 
   const pasteFrame = useCallback(() => {
     const clipboardFrame = uiStore.getClipboardFrame();
     if (!clipboardFrame) return;
+    const { activeTrackId } = useSpriteTrackStore.getState();
+    if (!activeTrackId) return;
+    const activeTrack = useSpriteTrackStore.getState().tracks.find((t) => t.id === activeTrackId);
+    if (!activeTrack) return;
 
     const newFrame: SpriteFrame = {
       ...deepCopyFrame(clipboardFrame),
-      id: frameStore.nextFrameId,
+      id: trackStore.nextFrameId,
     };
 
-    frameStore.pushHistory();
-    const insertIndex = frameStore.currentFrameIndex + 1;
-    frameStore.setFrames((prev) => {
-      const newFrames = [...prev];
-      newFrames.splice(insertIndex, 0, newFrame);
-      return newFrames;
-    });
-    frameStore.setNextFrameId((prev) => prev + 1);
-    frameStore.setCurrentFrameIndex(insertIndex);
-  }, [uiStore, frameStore]);
+    trackStore.pushHistory();
+    const insertIndex = trackStore.currentFrameIndex + 1;
+    const newFrames = [...activeTrack.frames];
+    newFrames.splice(insertIndex, 0, newFrame);
+    trackStore.updateTrack(activeTrackId, { frames: newFrames });
+    trackStore.setNextFrameId((prev: number) => prev + 1);
+    trackStore.setCurrentFrameIndex(insertIndex);
+  }, [uiStore, trackStore]);
 
   return {
     // Image
-    imageSrc: frameStore.imageSrc,
-    setImageSrc: frameStore.setImageSrc,
-    imageSize: frameStore.imageSize,
-    setImageSize: frameStore.setImageSize,
+    imageSrc: trackStore.imageSrc,
+    setImageSrc: trackStore.setImageSrc,
+    imageSize: trackStore.imageSize,
+    setImageSize: trackStore.setImageSize,
 
-    // Frames
-    frames: frameStore.frames,
-    setFrames: frameStore.setFrames,
-    nextFrameId: frameStore.nextFrameId,
-    setNextFrameId: frameStore.setNextFrameId,
-    currentFrameIndex: frameStore.currentFrameIndex,
-    setCurrentFrameIndex: frameStore.setCurrentFrameIndex,
-    selectedFrameId: frameStore.selectedFrameId,
-    setSelectedFrameId: frameStore.setSelectedFrameId,
-    selectedPointIndex: frameStore.selectedPointIndex,
-    setSelectedPointIndex: frameStore.setSelectedPointIndex,
+    // Frames (shim over active track)
+    frames,
+    setFrames,
+    nextFrameId: trackStore.nextFrameId,
+    setNextFrameId: trackStore.setNextFrameId,
+    currentFrameIndex: trackStore.currentFrameIndex,
+    setCurrentFrameIndex: trackStore.setCurrentFrameIndex,
+    selectedFrameId: trackStore.selectedFrameId,
+    setSelectedFrameId: trackStore.setSelectedFrameId,
+    selectedPointIndex: trackStore.selectedPointIndex,
+    setSelectedPointIndex: trackStore.setSelectedPointIndex,
 
     // Tools
     toolMode: toolStore.toolMode,
     setSpriteToolMode: toolStore.setSpriteToolMode,
-    currentPoints: frameStore.currentPoints,
-    setCurrentPoints: frameStore.setCurrentPoints,
+    currentPoints: trackStore.currentPoints,
+    setCurrentPoints: trackStore.setCurrentPoints,
     isSpacePressed: toolStore.isSpacePressed,
     setIsSpacePressed: toolStore.setIsSpacePressed,
 
@@ -261,10 +264,10 @@ export function useEditor() {
     setIsCanvasCollapsed: viewportStore.setIsCanvasCollapsed,
 
     // Animation
-    isPlaying: frameStore.isPlaying,
-    setIsPlaying: frameStore.setIsPlaying,
-    fps: frameStore.fps,
-    setFps: frameStore.setFps,
+    isPlaying: trackStore.isPlaying,
+    setIsPlaying: trackStore.setIsPlaying,
+    fps: trackStore.fps,
+    setFps: trackStore.setFps,
 
     // Timeline
     timelineMode: toolStore.timelineMode,
@@ -311,11 +314,11 @@ export function useEditor() {
     setBrushSize: toolStore.setBrushSize,
 
     // History (Undo/Redo)
-    canUndo: frameStore.canUndo,
-    canRedo: frameStore.canRedo,
-    undo: frameStore.undo,
-    redo: frameStore.redo,
-    pushHistory: frameStore.pushHistory,
+    canUndo: trackStore.canUndo,
+    canRedo: trackStore.canRedo,
+    undo: trackStore.undo,
+    redo: trackStore.redo,
+    pushHistory: trackStore.pushHistory,
 
     // Project
     projectName: uiStore.projectName,
@@ -361,16 +364,30 @@ export function useEditor() {
 // ============================================
 
 export function useEditorImage() {
-  const { imageSrc, setImageSrc, imageSize, setImageSize } = useSpriteFrameStore();
+  const { imageSrc, setImageSrc, imageSize, setImageSize } = useSpriteTrackStore();
   const { imageRef } = useEditorRefs();
   return { imageSrc, setImageSrc, imageSize, setImageSize, imageRef };
 }
 
 export function useEditorFrames() {
-  const store = useSpriteFrameStore();
+  const store = useSpriteTrackStore();
+  const frames = store.getActiveTrackFrames();
+
+  const setFrames = useCallback(
+    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
+      const { activeTrackId, tracks } = useSpriteTrackStore.getState();
+      if (!activeTrackId) return;
+      const activeTrack = tracks.find((t) => t.id === activeTrackId);
+      if (!activeTrack) return;
+      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
+      store.updateTrack(activeTrackId, { frames: newFrames });
+    },
+    [store],
+  );
+
   return {
-    frames: store.frames,
-    setFrames: store.setFrames,
+    frames,
+    setFrames,
     nextFrameId: store.nextFrameId,
     setNextFrameId: store.setNextFrameId,
     currentFrameIndex: store.currentFrameIndex,
@@ -383,13 +400,13 @@ export function useEditorFrames() {
 }
 
 export function useEditorTools() {
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const toolStore = useSpriteToolStore();
   return {
     toolMode: toolStore.toolMode,
     setSpriteToolMode: toolStore.setSpriteToolMode,
-    currentPoints: frameStore.currentPoints,
-    setCurrentPoints: frameStore.setCurrentPoints,
+    currentPoints: trackStore.currentPoints,
+    setCurrentPoints: trackStore.setCurrentPoints,
     isSpacePressed: toolStore.isSpacePressed,
     setIsSpacePressed: toolStore.setIsSpacePressed,
   };
@@ -413,13 +430,13 @@ export function useEditorViewport() {
 }
 
 export function useEditorAnimation() {
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
   const { animationRef, lastFrameTimeRef } = useEditorRefs();
   return {
-    isPlaying: frameStore.isPlaying,
-    setIsPlaying: frameStore.setIsPlaying,
-    fps: frameStore.fps,
-    setFps: frameStore.setFps,
+    isPlaying: trackStore.isPlaying,
+    setIsPlaying: trackStore.setIsPlaying,
+    fps: trackStore.fps,
+    setFps: trackStore.setFps,
     animationRef,
     lastFrameTimeRef,
   };
@@ -480,7 +497,7 @@ export function useEditorBrush() {
 }
 
 export function useEditorHistory() {
-  const store = useSpriteFrameStore();
+  const store = useSpriteTrackStore();
   return {
     canUndo: store.canUndo,
     canRedo: store.canRedo,
@@ -513,7 +530,6 @@ export function useEditorTracks() {
 
 export function useEditorProject() {
   const uiStore = useSpriteUIStore();
-  const frameStore = useSpriteFrameStore();
   const trackStore = useSpriteTrackStore();
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
@@ -521,7 +537,6 @@ export function useEditorProject() {
   const refs = useEditorRefs();
 
   const newProject = useCallback(() => {
-    frameStore.reset();
     trackStore.reset();
     viewportStore.reset();
     toolStore.reset();
@@ -529,7 +544,7 @@ export function useEditorProject() {
     uiStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
+  }, [trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
   return {
     projectName: uiStore.projectName,
@@ -544,35 +559,39 @@ export function useEditorProject() {
 
 export function useEditorClipboard() {
   const uiStore = useSpriteUIStore();
-  const frameStore = useSpriteFrameStore();
+  const trackStore = useSpriteTrackStore();
+
+  const frames = trackStore.getActiveTrackFrames();
 
   const copyFrame = useCallback(() => {
-    if (frameStore.frames.length === 0) return;
-    const frameToCopy = frameStore.frames[frameStore.currentFrameIndex];
+    if (frames.length === 0) return;
+    const frameToCopy = frames[trackStore.currentFrameIndex];
     if (frameToCopy) {
       uiStore.copyFrame(frameToCopy);
     }
-  }, [frameStore.frames, frameStore.currentFrameIndex, uiStore]);
+  }, [frames, trackStore.currentFrameIndex, uiStore]);
 
   const pasteFrame = useCallback(() => {
     const clipboardFrame = uiStore.getClipboardFrame();
     if (!clipboardFrame) return;
+    const { activeTrackId, tracks } = useSpriteTrackStore.getState();
+    if (!activeTrackId) return;
+    const activeTrack = tracks.find((t) => t.id === activeTrackId);
+    if (!activeTrack) return;
 
     const newFrame: SpriteFrame = {
       ...deepCopyFrame(clipboardFrame),
-      id: frameStore.nextFrameId,
+      id: trackStore.nextFrameId,
     };
 
-    frameStore.pushHistory();
-    const insertIndex = frameStore.currentFrameIndex + 1;
-    frameStore.setFrames((prev) => {
-      const newFrames = [...prev];
-      newFrames.splice(insertIndex, 0, newFrame);
-      return newFrames;
-    });
-    frameStore.setNextFrameId((prev) => prev + 1);
-    frameStore.setCurrentFrameIndex(insertIndex);
-  }, [uiStore, frameStore]);
+    trackStore.pushHistory();
+    const insertIndex = trackStore.currentFrameIndex + 1;
+    const newFrames = [...activeTrack.frames];
+    newFrames.splice(insertIndex, 0, newFrame);
+    trackStore.updateTrack(activeTrackId, { frames: newFrames });
+    trackStore.setNextFrameId((prev: number) => prev + 1);
+    trackStore.setCurrentFrameIndex(insertIndex);
+  }, [uiStore, trackStore]);
 
   return { copyFrame, pasteFrame, clipboardFrame: uiStore.clipboardFrame };
 }

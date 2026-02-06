@@ -53,52 +53,9 @@ export interface SavedSpriteProject {
   name: string;
   imageSrc: string;
   imageSize: Size;
-  frames: SpriteFrame[]; // V1 legacy - kept for migration
-  tracks?: SpriteTrack[]; // V2 multi-track
+  tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
   savedAt: number;
   viewState?: ViewState;
-  version?: number; // 1 = flat frames, 2 = multi-track
-}
-
-// Docking types are defined in layout.ts and re-exported above
-
-// ============================================
-// Editor State (for SpriteEditorContext)
-// ============================================
-
-export interface SpriteEditorState {
-  // Image
-  imageSrc: string | null;
-  imageSize: Size;
-
-  // Frames
-  frames: SpriteFrame[];
-  nextFrameId: number;
-  currentFrameIndex: number;
-  selectedFrameId: number | null;
-  selectedPointIndex: number | null;
-
-  // Tools
-  toolMode: SpriteToolMode;
-  currentPoints: Point[]; // Pen tool points
-
-  // View
-  zoom: number;
-  pan: Point;
-  scale: number;
-  canvasHeight: number;
-  isCanvasCollapsed: boolean;
-
-  // Animation
-  isPlaying: boolean;
-  fps: number;
-
-  // Timeline
-  timelineMode: TimelineMode;
-
-  // Project
-  projectName: string;
-  currentProjectId: string | null;
 }

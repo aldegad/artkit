@@ -11,6 +11,7 @@ import {
   useFrameBackgroundRemoval,
   FrameBackgroundRemovalModals,
 } from "../../domains/sprite";
+import type { SavedSpriteProject } from "../../domains/sprite";
 import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
@@ -46,6 +47,7 @@ function SpriteEditorMain() {
     imageSrc,
     setImageSrc,
     setImageSize,
+    imageSize,
     imageRef,
     setScale,
     setZoom,
@@ -62,6 +64,7 @@ function SpriteEditorMain() {
     selectedPointIndex,
     currentFrameIndex,
     zoom,
+    fps,
     setIsSpacePressed,
     projectName,
     setProjectName,
@@ -85,6 +88,8 @@ function SpriteEditorMain() {
     newProject,
     copyFrame,
     pasteFrame,
+    tracks,
+    restoreTracks,
   } = useEditor();
 
   // Panel visibility states
@@ -298,32 +303,35 @@ function SpriteEditorMain() {
     pushHistory,
   ]);
 
+  // Helper: get all frames across all tracks
+  const allFrames = tracks.flatMap((t) => t.frames);
+  const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
+
   // Save project to IndexedDB (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
-    const hasValidFrames = frames.length > 0 && frames.some((f) => f.imageData);
-    if (!hasValidFrames) {
+    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       alert(t.noFramesToSave);
       return;
     }
 
     const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
-    const saveImageSrc = imageSrc || frames.find((f) => f.imageData)?.imageData || "";
+    const saveImageSrc = imageSrc || firstFrameImage || "";
 
     if (currentProjectId) {
       const updatedProject = {
         id: currentProjectId,
         name,
         imageSrc: saveImageSrc,
-        imageSize: { width: imageRef.current?.width || 0, height: imageRef.current?.height || 0 },
-        frames,
+        imageSize: imageSize,
+        tracks,
         nextFrameId,
-        fps: 12,
+        fps,
         savedAt: Date.now(),
       };
 
       try {
         await saveProjectToDB(updatedProject);
-        setSavedSpriteProjects((prev) =>
+        setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
           prev.map((p) => (p.id === currentProjectId ? updatedProject : p)),
         );
 
@@ -337,20 +345,20 @@ function SpriteEditorMain() {
       }
     } else {
       const newId = Date.now().toString();
-      const newProject = {
+      const newProj = {
         id: newId,
         name,
         imageSrc: saveImageSrc,
-        imageSize: { width: imageRef.current?.width || 0, height: imageRef.current?.height || 0 },
-        frames,
+        imageSize: imageSize,
+        tracks,
         nextFrameId,
-        fps: 12,
+        fps,
         savedAt: Date.now(),
       };
 
       try {
-        await saveProjectToDB(newProject);
-        setSavedSpriteProjects((prev) => [newProject, ...prev]);
+        await saveProjectToDB(newProj);
+        setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
         setCurrentProjectId(newId);
 
         const info = await getStorageInfo();
@@ -365,66 +373,69 @@ function SpriteEditorMain() {
   }, [
     t,
     imageSrc,
-    frames,
+    imageSize,
+    tracks,
+    allFrames,
+    firstFrameImage,
     projectName,
     nextFrameId,
+    fps,
     currentProjectId,
     setSavedSpriteProjects,
     setCurrentProjectId,
-    imageRef,
   ]);
 
   // Save project as new (always create new project)
   const saveProjectAs = useCallback(async () => {
-    // 프레임이 있으면 저장 가능 (imageSrc가 없어도 개별 프레임 imageData로 저장)
-    const hasValidFrames = frames.length > 0 && frames.some((f) => f.imageData);
-    if (!hasValidFrames) {
+    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       alert(t.noFramesToSave);
       return;
     }
 
     const inputName = prompt(t.enterProjectName, projectName || "");
-    if (inputName === null) return; // 취소됨
+    if (inputName === null) return;
 
     const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
     const newId = Date.now().toString();
-    // imageSrc가 없으면 첫 프레임의 imageData 사용
-    const saveImageSrc = imageSrc || frames.find((f) => f.imageData)?.imageData || "";
+    const saveImageSrc = imageSrc || firstFrameImage || "";
 
-    const newProject = {
+    const newProj = {
       id: newId,
       name,
       imageSrc: saveImageSrc,
-      imageSize: { width: imageRef.current?.width || 0, height: imageRef.current?.height || 0 },
-      frames,
+      imageSize: imageSize,
+      tracks,
       nextFrameId,
-      fps: 12,
+      fps,
       savedAt: Date.now(),
     };
 
     try {
-      await saveProjectToDB(newProject);
-      setSavedSpriteProjects((prev) => [newProject, ...prev]);
+      await saveProjectToDB(newProj);
+      setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
       setCurrentProjectId(newId);
       setProjectName(name);
 
       const info = await getStorageInfo();
       setStorageInfo(info);
 
-      alert(`"${name}" ${t.saved} (${formatBytes(JSON.stringify(newProject).length)})`);
+      alert(`"${name}" ${t.saved} (${formatBytes(JSON.stringify(newProj).length)})`);
     } catch (error) {
       console.error("Save failed:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
     }
   }, [
     imageSrc,
-    frames,
+    imageSize,
+    tracks,
+    allFrames,
+    firstFrameImage,
     projectName,
     nextFrameId,
+    fps,
     setSavedSpriteProjects,
     setCurrentProjectId,
     setProjectName,
-    imageRef,
     t,
   ]);
 
@@ -433,10 +444,9 @@ function SpriteEditorMain() {
     (project: (typeof savedProjects)[0]) => {
       setImageSrc(project.imageSrc);
       setImageSize(project.imageSize);
-      setFrames(project.frames);
-      setNextFrameId(project.nextFrameId);
+      restoreTracks(project.tracks, project.nextFrameId);
       setProjectName(project.name);
-      setCurrentProjectId(project.id); // 현재 프로젝트 ID 설정
+      setCurrentProjectId(project.id);
       setCurrentPoints([]);
 
       const img = new Image();
@@ -453,8 +463,7 @@ function SpriteEditorMain() {
     [
       setImageSrc,
       setImageSize,
-      setFrames,
-      setNextFrameId,
+      restoreTracks,
       setProjectName,
       setCurrentProjectId,
       setCurrentPoints,
@@ -944,9 +953,9 @@ function SpriteEditorMain() {
                     >
                       {/* Thumbnail */}
                       <div className="w-16 h-16 bg-surface-tertiary rounded-lg shrink-0 overflow-hidden">
-                        {project.frames[0]?.imageData && (
+                        {project.tracks[0]?.frames[0]?.imageData && (
                           <img
-                            src={project.frames[0].imageData}
+                            src={project.tracks[0].frames[0].imageData}
                             alt=""
                             className="w-full h-full object-contain"
                           />
@@ -957,7 +966,7 @@ function SpriteEditorMain() {
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate text-text-primary">{project.name}</div>
                         <div className="text-xs text-text-secondary">
-                          {project.frames.length} {t.frames} · {project.fps}fps
+                          {project.tracks.length} tracks · {project.tracks.reduce((sum, tr) => sum + tr.frames.length, 0)} {t.frames} · {project.fps}fps
                         </div>
                         <div className="text-xs text-text-tertiary">
                           {new Date(project.savedAt).toLocaleString()}

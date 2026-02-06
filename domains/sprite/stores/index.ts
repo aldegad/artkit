@@ -2,7 +2,6 @@
 // Sprite Stores - Barrel Export
 // ============================================
 
-export { useSpriteFrameStore } from "./useSpriteFrameStore";
 export { useSpriteTrackStore } from "./useSpriteTrackStore";
 export { useSpriteViewportStore } from "./useSpriteViewportStore";
 export { useSpriteToolStore } from "./useSpriteToolStore";

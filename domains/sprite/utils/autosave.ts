@@ -3,7 +3,7 @@
 // ============================================
 
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
-import { Point, Size, SpriteFrame, SpriteTrack } from "../types";
+import { Point, Size, SpriteTrack } from "../types";
 
 export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -11,8 +11,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 1000;
 export interface AutosaveData extends BaseAutosaveData {
   imageSrc: string | null;
   imageSize: Size;
-  frames: SpriteFrame[]; // V1 legacy - kept for migration
-  tracks?: SpriteTrack[]; // V2 multi-track
+  tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
   currentFrameIndex: number;
@@ -20,7 +19,6 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
-  version?: number; // 1 = flat frames, 2 = multi-track
 }
 
 // Create autosave storage using shared abstraction
@@ -28,14 +26,26 @@ const spriteAutosave = createAutosave<AutosaveData>({
   key: AUTOSAVE_KEY,
   dbName: "sprite-autosave-db",
   storeName: "autosave",
-  dbVersion: 1,
+  dbVersion: 2, // Bump version to force fresh DB
 });
 
 /**
  * Load autosave data from IndexedDB
  */
 export async function loadAutosaveData(): Promise<AutosaveData | null> {
-  return spriteAutosave.load();
+  try {
+    const data = await spriteAutosave.load();
+    // If data has no tracks array, it's old format — discard
+    if (data && !Array.isArray(data.tracks)) {
+      await spriteAutosave.clear();
+      return null;
+    }
+    return data;
+  } catch {
+    // Corrupted data — clear and return null
+    await spriteAutosave.clear();
+    return null;
+  }
 }
 
 /**
