@@ -16,7 +16,7 @@ interface PreviewCanvasProps {
 }
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
-  const { previewCanvasRef, previewContainerRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
     playback,
     project,
@@ -76,6 +76,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     viewport.wheelRef(el);
     viewport.pinchRef(el);
   }, [previewContainerRef, viewport]);
+
+  // Expose viewport API to parent (for toolbar zoom controls)
+  useEffect(() => {
+    previewViewportRef.current = {
+      zoomIn: () => viewport.setZoom(viewport.getZoom() * 1.25),
+      zoomOut: () => viewport.setZoom(viewport.getZoom() / 1.25),
+      fitToContainer: () => viewport.fitToContainer(40),
+      getZoom: () => viewport.getZoom(),
+      setZoom: (z) => viewport.setZoom(z),
+      onZoomChange: (cb) => viewport.onViewportChange((s) => cb(s.zoom)),
+    };
+    return () => { previewViewportRef.current = null; };
+  }, [viewport, previewViewportRef]);
 
   const previewGeometryRef = useRef({
     offsetX: 0,
