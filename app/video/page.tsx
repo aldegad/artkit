@@ -4,27 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { downloadBlob, downloadJson } from "../../shared/utils";
 import {
-  createRectFromDrag,
-  getRectHandleAtPosition,
-  resizeRectByHandle,
-  type RectHandle,
-} from "../../domains/editor/utils/rectTransform";
-import {
   VideoStateProvider,
   VideoRefsProvider,
   TimelineProvider,
   MaskProvider,
+  VideoLayoutProvider,
   useVideoState,
   useVideoRefs,
   useTimeline,
   useMask,
-  PreviewCanvas,
-  PreviewControls,
-  Timeline,
-  AssetDropZone,
-  MaskControls,
+  useVideoLayout,
   VideoMenuBar,
   VideoToolbar,
+  VideoSplitContainer,
+  VideoFloatingWindows,
+  registerVideoPanelComponent,
+  clearVideoPanelComponents,
+  VideoPreviewPanelContent,
+  VideoTimelinePanelContent,
   clearVideoAutosave,
   saveMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
@@ -34,17 +31,11 @@ import {
   type Clip,
   type SavedVideoProject,
   type TimelineViewState,
+  type VideoToolMode,
   type VideoTrack,
 } from "../../domains/video";
 import Tooltip from "../../shared/components/Tooltip";
-import {
-  StopIcon,
-  StepBackwardIcon,
-  PlayIcon,
-  StepForwardIcon,
-  TrackMutedIcon,
-  TrackUnmutedIcon,
-} from "../../shared/components/icons";
+import { LayoutNode, isSplitNode, isPanelNode } from "../../types/layout";
 
 interface VideoProjectFile extends Partial<SavedVideoProject> {
   tracks?: VideoTrack[];
@@ -52,13 +43,6 @@ interface VideoProjectFile extends Partial<SavedVideoProject> {
   timelineView?: TimelineViewState;
   currentTime?: number;
   toolMode?: string;
-}
-
-interface VideoCropArea {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 function sanitizeFileName(name: string): string {
@@ -100,6 +84,32 @@ function normalizeLoadedClip(clip: Clip): Clip {
   return clip;
 }
 
+function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | null {
+  if (isPanelNode(node) && node.panelId === panelId) {
+    return node.id;
+  }
+
+  if (isSplitNode(node)) {
+    for (const child of node.children) {
+      const found = findPanelNodeIdByPanelId(child, panelId);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function VideoDockableArea() {
+  const { layoutState } = useVideoLayout();
+
+  return (
+    <>
+      <VideoSplitContainer node={layoutState.root} />
+      <VideoFloatingWindows />
+    </>
+  );
+}
+
 function VideoEditorContent() {
   const { t } = useLanguage();
   const {
@@ -122,6 +132,10 @@ function VideoEditorContent() {
     clipboardRef,
     hasClipboard,
     setHasClipboard,
+    cropArea,
+    setCropArea,
+    canvasExpandMode,
+    setCanvasExpandMode,
   } = useVideoState();
   const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -147,37 +161,27 @@ function VideoEditorContent() {
     canUndo,
     canRedo,
   } = useTimeline();
-  const { isEditingMask, startMaskEdit } = useMask();
+  const { startMaskEdit } = useMask();
+  const {
+    layoutState,
+    isPanelOpen,
+    addPanel,
+    removePanel,
+    openFloatingWindow,
+    closeFloatingWindow,
+  } = useVideoLayout();
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
-  const timelineAreaRef = useRef<HTMLDivElement>(null);
-  const cropOverlayRef = useRef<HTMLDivElement>(null);
-  const cropDragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const cropDragTypeRef = useRef<"none" | "create" | "move" | "resize">("none");
-  const cropResizeHandleRef = useRef<RectHandle | null>(null);
-  const cropOriginalAreaRef = useRef<VideoCropArea | null>(null);
-  const timelineResizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const exportAudioContextRef = useRef<AudioContext | null>(null);
   const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
   const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
 
-  const [isTimelineVisible, setIsTimelineVisible] = useState(true);
-  const [timelineHeight, setTimelineHeight] = useState(260);
-  const [isResizingTimeline, setIsResizingTimeline] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
-  const [isCanvasModalOpen, setIsCanvasModalOpen] = useState(false);
-  const [canvasWidthInput, setCanvasWidthInput] = useState("");
-  const [canvasHeightInput, setCanvasHeightInput] = useState("");
-  const [canvasResizeMode, setCanvasResizeMode] = useState<"resize" | "crop">("resize");
-  const [cropArea, setCropArea] = useState<VideoCropArea | null>(null);
-  const [cropOverlaySize, setCropOverlaySize] = useState({ width: 0, height: 0 });
-  const [cropExpandMode, setCropExpandMode] = useState(false);
   const audioHistorySavedRef = useRef(false);
-  const transformHistorySavedRef = useRef(false);
+  const visualHistorySavedRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -192,63 +196,21 @@ function VideoEditorContent() {
   }, []);
 
   useEffect(() => {
-    if (!isResizingTimeline) return;
+    registerVideoPanelComponent("preview", () => <VideoPreviewPanelContent />);
+    registerVideoPanelComponent("timeline", () => <VideoTimelinePanelContent />);
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const resizeState = timelineResizeStateRef.current;
-      if (!resizeState) return;
-
-      const delta = resizeState.startY - event.clientY;
-      const nextHeight = Math.max(160, Math.min(520, resizeState.startHeight + delta));
-      setTimelineHeight(nextHeight);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingTimeline(false);
-      timelineResizeStateRef.current = null;
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      clearVideoPanelComponents();
     };
-  }, [isResizingTimeline]);
-
-  useEffect(() => {
-    const element = cropOverlayRef.current;
-    if (!element) return;
-
-    const updateSize = () => {
-      const rect = element.getBoundingClientRect();
-      setCropOverlaySize({ width: rect.width, height: rect.height });
-    };
-
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [isTimelineVisible, clips.length]);
-
-  useEffect(() => {
-    if (toolMode !== "crop") return;
-    setCropArea((prev) =>
-      prev || {
-        x: 0,
-        y: 0,
-        width: project.canvasSize.width,
-        height: project.canvasSize.height,
-      }
-    );
-  }, [toolMode, project.canvasSize.width, project.canvasSize.height]);
+  }, []);
 
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
     ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
     : null;
-  const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
+  const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const isTimelineVisible = isPanelOpen("timeline");
 
   const buildSavedProject = useCallback(
     (nameOverride?: string): SavedVideoProject => {
@@ -281,7 +243,9 @@ function VideoEditorContent() {
 
       let targetVideoTrackId = tracks.find((track) => track.type === "video")?.id || null;
       let targetAudioTrackId = tracks.find((track) => track.type === "audio")?.id || null;
+      const hasExistingVisualClip = clips.some((clip) => clip.type !== "audio");
       let insertTime = playback.currentTime;
+      let visualImportedCount = 0;
 
       for (const file of files) {
         const isVideo =
@@ -322,6 +286,13 @@ function VideoEditorContent() {
             continue;
           }
 
+          if (!hasExistingVisualClip && visualImportedCount === 0) {
+            setProject({
+              ...project,
+              canvasSize: metadata.size,
+            });
+          }
+
           const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime));
           try {
             await saveMediaBlob(clipId, file);
@@ -330,6 +301,7 @@ function VideoEditorContent() {
           }
 
           insertTime += metadata.duration;
+          visualImportedCount += 1;
           continue;
         }
 
@@ -392,6 +364,13 @@ function VideoEditorContent() {
           continue;
         }
 
+        if (!hasExistingVisualClip && visualImportedCount === 0) {
+          setProject({
+            ...project,
+            canvasSize: size,
+          });
+        }
+
         const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5);
         try {
           await saveMediaBlob(clipId, file);
@@ -400,6 +379,7 @@ function VideoEditorContent() {
         }
 
         insertTime += 5;
+        visualImportedCount += 1;
       }
     },
     [
@@ -407,7 +387,9 @@ function VideoEditorContent() {
       tracks,
       addTrack,
       playback.currentTime,
+      clips.length,
       project,
+      setProject,
       addVideoClip,
       addAudioClip,
       addImageClip,
@@ -594,286 +576,6 @@ function VideoEditorContent() {
     }
   }, [isExporting, includeAudioOnExport, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
-  const openExportModal = useCallback(() => {
-    if (isExporting) return;
-    setIsExportModalOpen(true);
-  }, [isExporting]);
-
-  const closeExportModal = useCallback(() => {
-    if (isExporting) return;
-    setIsExportModalOpen(false);
-  }, [isExporting]);
-
-  const handleConfirmExport = useCallback(async () => {
-    await handleExport();
-    setIsExportModalOpen(false);
-  }, [handleExport]);
-
-  const openCanvasModal = useCallback(() => {
-    setCanvasWidthInput(String(project.canvasSize.width));
-    setCanvasHeightInput(String(project.canvasSize.height));
-    setCanvasResizeMode("resize");
-    setIsCanvasModalOpen(true);
-  }, [project.canvasSize.width, project.canvasSize.height]);
-
-  const closeCanvasModal = useCallback(() => {
-    if (isExporting) return;
-    setIsCanvasModalOpen(false);
-  }, [isExporting]);
-
-  const applyCanvasSize = useCallback(() => {
-    const width = Math.max(1, Math.round(Number(canvasWidthInput)));
-    const height = Math.max(1, Math.round(Number(canvasHeightInput)));
-    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
-
-    const currentWidth = project.canvasSize.width;
-    const currentHeight = project.canvasSize.height;
-
-    if (canvasResizeMode === "crop") {
-      const offsetX = (width - currentWidth) / 2;
-      const offsetY = (height - currentHeight) / 2;
-      const updatedClips = clips.map((clip) => {
-        if (clip.type === "audio") return clip;
-        return {
-          ...clip,
-          position: {
-            x: clip.position.x + offsetX,
-            y: clip.position.y + offsetY,
-          },
-        };
-      });
-
-      saveToHistory();
-      restoreClips(updatedClips);
-    }
-
-    setProject({
-      ...project,
-      canvasSize: { width, height },
-    });
-    setIsCanvasModalOpen(false);
-  }, [
-    canvasWidthInput,
-    canvasHeightInput,
-    canvasResizeMode,
-    project,
-    clips,
-    saveToHistory,
-    restoreClips,
-    setProject,
-  ]);
-
-  const getCropPreviewMetrics = useCallback(() => {
-    const width = cropOverlaySize.width;
-    const height = cropOverlaySize.height;
-    if (width <= 0 || height <= 0) return null;
-
-    const projectWidth = project.canvasSize.width;
-    const projectHeight = project.canvasSize.height;
-    if (projectWidth <= 0 || projectHeight <= 0) return null;
-
-    const availableWidth = Math.max(20, width - 40);
-    const availableHeight = Math.max(20, height - 40);
-    const scale = Math.min(availableWidth / projectWidth, availableHeight / projectHeight);
-    const previewWidth = projectWidth * scale;
-    const previewHeight = projectHeight * scale;
-    const offsetX = (width - previewWidth) / 2;
-    const offsetY = (height - previewHeight) / 2;
-
-    return { scale, offsetX, offsetY, previewWidth, previewHeight };
-  }, [cropOverlaySize.width, cropOverlaySize.height, project.canvasSize.width, project.canvasSize.height]);
-
-  const screenPointToCanvasPoint = useCallback((clientX: number, clientY: number) => {
-    const overlay = cropOverlayRef.current;
-    const metrics = getCropPreviewMetrics();
-    if (!overlay || !metrics) return null;
-
-    const rect = overlay.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
-
-    return {
-      x: (localX - metrics.offsetX) / metrics.scale,
-      y: (localY - metrics.offsetY) / metrics.scale,
-    };
-  }, [getCropPreviewMetrics]);
-
-  const clampCropArea = useCallback((area: VideoCropArea): VideoCropArea => {
-    if (cropExpandMode) return area;
-
-    const canvasWidth = project.canvasSize.width;
-    const canvasHeight = project.canvasSize.height;
-
-    const x = Math.max(0, Math.min(area.x, canvasWidth - 1));
-    const y = Math.max(0, Math.min(area.y, canvasHeight - 1));
-    const maxWidth = Math.max(1, canvasWidth - x);
-    const maxHeight = Math.max(1, canvasHeight - y);
-
-    return {
-      x,
-      y,
-      width: Math.max(1, Math.min(area.width, maxWidth)),
-      height: Math.max(1, Math.min(area.height, maxHeight)),
-    };
-  }, [cropExpandMode, project.canvasSize.width, project.canvasSize.height]);
-
-  const handleApplyCrop = useCallback(() => {
-    if (!cropArea) return;
-
-    const newWidth = Math.max(1, Math.round(cropArea.width));
-    const newHeight = Math.max(1, Math.round(cropArea.height));
-    const offsetX = Math.round(cropArea.x);
-    const offsetY = Math.round(cropArea.y);
-
-    saveToHistory();
-
-    const updatedClips = clips.map((clip) => {
-      if (clip.type === "audio") return clip;
-      return {
-        ...clip,
-        position: {
-          x: clip.position.x - offsetX,
-          y: clip.position.y - offsetY,
-        },
-      };
-    });
-
-    restoreClips(updatedClips);
-    setProject({
-      ...project,
-      canvasSize: { width: newWidth, height: newHeight },
-    });
-
-    setCropArea(null);
-    setToolMode("select");
-  }, [cropArea, saveToHistory, clips, restoreClips, setProject, project, setToolMode]);
-
-  const handleCancelCrop = useCallback(() => {
-    setCropArea(null);
-    setToolMode("select");
-  }, [setToolMode]);
-
-  const handleCropOverlayPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (toolMode !== "crop") return;
-
-    const point = screenPointToCanvasPoint(event.clientX, event.clientY);
-    if (!point) return;
-
-    if (cropArea) {
-      const hit = getRectHandleAtPosition(point, cropArea, {
-        handleSize: 8,
-        includeMove: true,
-      });
-
-      if (hit === "move") {
-        cropDragTypeRef.current = "move";
-        cropDragStartRef.current = point;
-        cropOriginalAreaRef.current = { ...cropArea };
-        event.currentTarget.setPointerCapture(event.pointerId);
-        event.preventDefault();
-        return;
-      }
-
-      if (hit) {
-        cropDragTypeRef.current = "resize";
-        cropResizeHandleRef.current = hit;
-        cropDragStartRef.current = point;
-        cropOriginalAreaRef.current = { ...cropArea };
-        event.currentTarget.setPointerCapture(event.pointerId);
-        event.preventDefault();
-        return;
-      }
-    }
-
-    // Start creating a new crop area.
-    cropDragTypeRef.current = "create";
-    cropDragStartRef.current = point;
-    cropResizeHandleRef.current = null;
-    cropOriginalAreaRef.current = null;
-    setCropArea({ x: point.x, y: point.y, width: 0, height: 0 });
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.preventDefault();
-  }, [toolMode, screenPointToCanvasPoint, cropArea]);
-
-  const handleCropOverlayPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (toolMode !== "crop") return;
-    const dragType = cropDragTypeRef.current;
-    if (dragType === "none") return;
-
-    const point = screenPointToCanvasPoint(event.clientX, event.clientY);
-    if (!point) return;
-
-    const start = cropDragStartRef.current;
-    const original = cropOriginalAreaRef.current;
-    if (!start) return;
-
-    if (dragType === "create") {
-      const bounds = cropExpandMode
-        ? undefined
-        : {
-            minX: 0,
-            minY: 0,
-            maxX: project.canvasSize.width,
-            maxY: project.canvasSize.height,
-          };
-
-      const area = createRectFromDrag(
-        { x: start.x, y: start.y },
-        { x: point.x, y: point.y },
-        { bounds, round: false }
-      );
-      setCropArea(clampCropArea(area));
-      return;
-    }
-
-    if (!original) return;
-
-    if (dragType === "move") {
-      const dx = point.x - start.x;
-      const dy = point.y - start.y;
-      setCropArea((prev) => {
-        const next = prev
-          ? { ...prev, x: original.x + dx, y: original.y + dy }
-          : { ...original, x: original.x + dx, y: original.y + dy };
-        return clampCropArea(next);
-      });
-      return;
-    }
-
-    if (dragType === "resize" && cropResizeHandleRef.current) {
-      const dx = point.x - start.x;
-      const dy = point.y - start.y;
-      const resized = resizeRectByHandle(
-        original,
-        cropResizeHandleRef.current,
-        { dx, dy },
-        {
-          minWidth: 1,
-          minHeight: 1,
-          keepAspect: false,
-        }
-      );
-      setCropArea(clampCropArea(resized));
-    }
-  }, [
-    toolMode,
-    screenPointToCanvasPoint,
-    cropExpandMode,
-    project.canvasSize.width,
-    project.canvasSize.height,
-    clampCropArea,
-  ]);
-
-  const handleCropOverlayPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    cropDragTypeRef.current = "none";
-    cropDragStartRef.current = null;
-    cropResizeHandleRef.current = null;
-    cropOriginalAreaRef.current = null;
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {}
-  }, []);
-
   // Edit menu handlers
   const handleUndo = useCallback(() => {
     undo();
@@ -977,29 +679,15 @@ function VideoEditorContent() {
     audioHistorySavedRef.current = false;
   }, []);
 
-  const beginTransformAdjustment = useCallback(() => {
-    if (transformHistorySavedRef.current) return;
+  const beginVisualAdjustment = useCallback(() => {
+    if (visualHistorySavedRef.current) return;
     saveToHistory();
-    transformHistorySavedRef.current = true;
+    visualHistorySavedRef.current = true;
   }, [saveToHistory]);
 
-  const endTransformAdjustment = useCallback(() => {
-    transformHistorySavedRef.current = false;
+  const endVisualAdjustment = useCallback(() => {
+    visualHistorySavedRef.current = false;
   }, []);
-
-  const handleSelectedVisualScaleChange = useCallback((scalePercent: number) => {
-    if (!selectedVisualClip) return;
-    updateClip(selectedVisualClip.id, {
-      scale: Math.max(0.05, Math.min(10, scalePercent / 100)),
-    });
-  }, [selectedVisualClip, updateClip]);
-
-  const handleSelectedVisualRotationChange = useCallback((rotation: number) => {
-    if (!selectedVisualClip) return;
-    updateClip(selectedVisualClip.id, {
-      rotation: Math.max(-180, Math.min(180, rotation)),
-    });
-  }, [selectedVisualClip, updateClip]);
 
   const handleToggleSelectedClipMute = useCallback(() => {
     if (!selectedAudioClip) return;
@@ -1019,6 +707,65 @@ function VideoEditorContent() {
     [selectedAudioClip, updateClip]
   );
 
+  const handleSelectedVisualScaleChange = useCallback((scalePercent: number) => {
+    if (!selectedVisualClip) return;
+    updateClip(selectedVisualClip.id, {
+      scale: Math.max(0.05, Math.min(8, scalePercent / 100)),
+    });
+  }, [selectedVisualClip, updateClip]);
+
+  const handleSelectedVisualRotationChange = useCallback((rotationDeg: number) => {
+    if (!selectedVisualClip) return;
+    updateClip(selectedVisualClip.id, {
+      rotation: Math.max(-360, Math.min(360, rotationDeg)),
+    });
+  }, [selectedVisualClip, updateClip]);
+
+  const handleSelectAllCrop = useCallback(() => {
+    setCropArea({
+      x: 0,
+      y: 0,
+      width: project.canvasSize.width,
+      height: project.canvasSize.height,
+    });
+  }, [setCropArea, project.canvasSize.width, project.canvasSize.height]);
+
+  const handleClearCrop = useCallback(() => {
+    setCropArea(null);
+    setCanvasExpandMode(false);
+  }, [setCropArea, setCanvasExpandMode]);
+
+  const handleApplyCrop = useCallback(() => {
+    if (!cropArea) return;
+
+    const width = Math.max(1, Math.round(cropArea.width));
+    const height = Math.max(1, Math.round(cropArea.height));
+    if (width < 2 || height < 2) return;
+
+    const offsetX = Math.round(cropArea.x);
+    const offsetY = Math.round(cropArea.y);
+
+    saveToHistory();
+
+    for (const clip of clips) {
+      if (clip.type === "audio") continue;
+      updateClip(clip.id, {
+        position: {
+          x: clip.position.x - offsetX,
+          y: clip.position.y - offsetY,
+        },
+      });
+    }
+
+    setProject({
+      ...project,
+      canvasSize: { width, height },
+    });
+
+    setCropArea(null);
+    setCanvasExpandMode(false);
+  }, [cropArea, clips, saveToHistory, updateClip, setProject, project, setCropArea, setCanvasExpandMode]);
+
   // View menu handlers
   const handleZoomIn = useCallback(() => {
     setZoom(viewState.zoom * 1.25);
@@ -1029,7 +776,8 @@ function VideoEditorContent() {
   }, [setZoom, viewState.zoom]);
 
   const handleFitToScreen = useCallback(() => {
-    const width = timelineAreaRef.current?.clientWidth;
+    const timelineRoot = document.querySelector("[data-video-timeline-root]") as HTMLDivElement | null;
+    const width = timelineRoot?.clientWidth;
     if (!width) {
       setZoom(TIMELINE.DEFAULT_ZOOM);
       setScrollX(0);
@@ -1043,22 +791,45 @@ function VideoEditorContent() {
   }, [project.duration, setZoom, setScrollX]);
 
   const handleToggleTimeline = useCallback(() => {
-    setIsTimelineVisible((prev) => !prev);
-  }, []);
+    const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
+    if (timelineWindow) {
+      closeFloatingWindow(timelineWindow.id);
+      return;
+    }
+
+    const timelinePanelNodeId = findPanelNodeIdByPanelId(layoutState.root, "timeline");
+    if (timelinePanelNodeId) {
+      removePanel(timelinePanelNodeId);
+      return;
+    }
+
+    const previewPanelNodeId = findPanelNodeIdByPanelId(layoutState.root, "preview");
+    if (previewPanelNodeId) {
+      addPanel(previewPanelNodeId, "timeline", "bottom");
+      return;
+    }
+
+    openFloatingWindow("timeline", { x: 140, y: 140 });
+  }, [layoutState, closeFloatingWindow, removePanel, addPanel, openFloatingWindow]);
 
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
-    if (toolMode === "crop" && mode !== "crop") {
-      setCropArea(null);
-    }
     if (mode === "mask" && selectedClipIds.length > 0) {
       const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
       if (selectedClip) {
         startMaskEdit(selectedClip.id, selectedClip.sourceSize);
       }
     }
+    if (mode === "crop" && !cropArea) {
+      setCropArea({
+        x: 0,
+        y: 0,
+        width: project.canvasSize.width,
+        height: project.canvasSize.height,
+      });
+    }
     setToolMode(mode);
-  }, [toolMode, selectedClipIds, clips, startMaskEdit, setToolMode]);
+  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize.width, project.canvasSize.height]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -1074,19 +845,6 @@ function VideoEditorContent() {
 
     const isCmd = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
-
-    if (toolMode === "crop") {
-      if (key === "enter") {
-        e.preventDefault();
-        handleApplyCrop();
-        return;
-      }
-      if (key === "escape") {
-        e.preventDefault();
-        handleCancelCrop();
-        return;
-      }
-    }
 
     if (isCmd) {
       if (key === "z" && e.shiftKey) {
@@ -1166,6 +924,12 @@ function VideoEditorContent() {
       case "m":
         handleToolModeChange("mask");
         break;
+      case "enter":
+        if (toolMode === "crop") {
+          e.preventDefault();
+          handleApplyCrop();
+        }
+        break;
       case "arrowleft":
         stepBackward();
         break;
@@ -1190,6 +954,8 @@ function VideoEditorContent() {
     togglePlay,
     setToolMode,
     handleToolModeChange,
+    toolMode,
+    handleApplyCrop,
     stepBackward,
     stepForward,
     handleUndo,
@@ -1204,9 +970,6 @@ function VideoEditorContent() {
     handlePaste,
     handleDelete,
     handleDuplicate,
-    toolMode,
-    handleApplyCrop,
-    handleCancelCrop,
   ]);
 
   const menuTranslations = {
@@ -1234,30 +997,21 @@ function VideoEditorContent() {
   const toolbarTranslations = {
     select: t.select,
     selectDesc: t.selectDesc,
-    crop: t.crop,
-    cropDesc: t.cropToolTip,
     trim: t.trim,
     trimDesc: t.trimDesc,
     razor: t.razor,
     razorDesc: t.razorDesc,
+    crop: t.crop,
+    cropDesc: t.cropToolTip || "Crop and expand canvas",
     mask: t.mask,
     maskDesc: t.maskDesc,
   };
 
-  const cropPreviewMetrics = getCropPreviewMetrics();
-  const cropScreenArea =
-    cropArea && cropPreviewMetrics
-      ? {
-          x: cropPreviewMetrics.offsetX + cropArea.x * cropPreviewMetrics.scale,
-          y: cropPreviewMetrics.offsetY + cropArea.y * cropPreviewMetrics.scale,
-          width: cropArea.width * cropPreviewMetrics.scale,
-          height: cropArea.height * cropPreviewMetrics.scale,
-        }
-      : null;
+  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask", "move", "pan"];
 
   return (
     <div
-      className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative"
+      className="h-full bg-background text-text-primary flex flex-col overflow-hidden"
       onKeyDown={handleKeyDown}
       tabIndex={0}
     >
@@ -1269,7 +1023,7 @@ function VideoEditorContent() {
           onSave={handleSave}
           onSaveAs={handleSaveAs}
           onImportMedia={handleImportMedia}
-          onExport={openExportModal}
+          onExport={handleExport}
           canSave={hasContent}
           isLoading={isExporting}
           onUndo={handleUndo}
@@ -1296,17 +1050,10 @@ function VideoEditorContent() {
         <span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
           ({project.canvasSize.width}x{project.canvasSize.height})
         </span>
-        <button
-          onClick={openCanvasModal}
-          className="ml-2 px-2 py-0.5 text-xs rounded bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
-          title="Canvas size and crop settings"
-        >
-          Canvas
-        </button>
       </HeaderSlot>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border">
+      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border overflow-x-auto">
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
@@ -1320,7 +1067,9 @@ function VideoEditorContent() {
               onClick={stop}
               className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             >
-              <StopIcon />
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="3" y="3" width="10" height="10" />
+              </svg>
             </button>
           </Tooltip>
 
@@ -1329,7 +1078,10 @@ function VideoEditorContent() {
               onClick={stepBackward}
               className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             >
-              <StepBackwardIcon />
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="2" y="3" width="2" height="10" />
+                <path d="M14 3L6 8L14 13V3Z" />
+              </svg>
             </button>
           </Tooltip>
 
@@ -1338,7 +1090,9 @@ function VideoEditorContent() {
               onClick={togglePlay}
               className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
             >
-              <PlayIcon />
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4 2L14 8L4 14V2Z" />
+              </svg>
             </button>
           </Tooltip>
 
@@ -1347,88 +1101,110 @@ function VideoEditorContent() {
               onClick={stepForward}
               className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             >
-              <StepForwardIcon />
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M2 3L10 8L2 13V3Z" />
+                <rect x="12" y="3" width="2" height="10" />
+              </svg>
             </button>
           </Tooltip>
         </div>
 
+        <div className="h-4 w-px bg-border-default mx-1" />
         {toolMode === "crop" && (
           <>
-            <div className="h-4 w-px bg-border-default mx-1" />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-[380px]">
               <button
-                onClick={() => setCropExpandMode((prev) => !prev)}
+                onClick={handleSelectAllCrop}
+                className="px-2 py-1 text-xs rounded bg-surface-tertiary hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                title="Select full canvas"
+              >
+                Select All
+              </button>
+              <button
+                onClick={handleClearCrop}
+                className="px-2 py-1 text-xs rounded bg-surface-tertiary hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                title="Clear crop area"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setCanvasExpandMode(!canvasExpandMode)}
                 className={`px-2 py-1 text-xs rounded transition-colors ${
-                  cropExpandMode
+                  canvasExpandMode
                     ? "bg-accent/20 text-accent hover:bg-accent/30"
-                    : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+                    : "bg-surface-tertiary text-text-secondary hover:bg-interactive-hover"
                 }`}
-                title="Allow crop area outside canvas"
+                title={canvasExpandMode ? "Expand mode on" : "Expand mode off"}
               >
-                Expand
+                Expand {canvasExpandMode ? "On" : "Off"}
               </button>
-              <span className="text-xs text-text-secondary min-w-[96px] text-right">
-                {cropArea ? `${Math.round(cropArea.width)} x ${Math.round(cropArea.height)}` : "No crop"}
-              </span>
-              <button
-                onClick={handleCancelCrop}
-                className="px-2 py-1 text-xs rounded bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
-              >
-                Cancel
-              </button>
+              {cropArea && (
+                <span className="text-xs text-text-tertiary font-mono">
+                  {Math.round(cropArea.width)} x {Math.round(cropArea.height)} @ {Math.round(cropArea.x)},{Math.round(cropArea.y)}
+                </span>
+              )}
               <button
                 onClick={handleApplyCrop}
                 disabled={!cropArea}
-                className="px-2 py-1 text-xs rounded bg-accent text-white hover:bg-accent-hover disabled:opacity-60"
+                className="px-2 py-1 text-xs rounded bg-accent-primary text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Apply crop"
               >
-                Apply
+                Apply Crop
               </button>
             </div>
+            <div className="h-4 w-px bg-border-default mx-1" />
           </>
         )}
+
+        <button
+          onClick={() => setIncludeAudioOnExport((prev) => !prev)}
+          className={`px-2 py-1 text-xs rounded transition-colors ${
+            includeAudioOnExport
+              ? "bg-accent/20 text-accent hover:bg-accent/30"
+              : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+          }`}
+          title={includeAudioOnExport ? "Export includes audio" : "Export without audio"}
+        >
+          Export Audio {includeAudioOnExport ? "On" : "Off"}
+        </button>
 
         {selectedVisualClip && toolMode !== "crop" && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
-            <div className="flex items-center gap-2 min-w-[300px]">
-              <span className="text-xs text-text-secondary w-8">Scale</span>
+            <div className="flex items-center gap-2 min-w-[250px]">
+              <span className="text-xs text-text-secondary">Scale</span>
               <input
                 type="range"
-                min={10}
+                min={5}
                 max={400}
-                value={Math.round((selectedVisualClip.scale ?? 1) * 100)}
-                onMouseDown={beginTransformAdjustment}
-                onTouchStart={beginTransformAdjustment}
-                onMouseUp={endTransformAdjustment}
-                onTouchEnd={endTransformAdjustment}
+                value={Math.round((selectedVisualClip.scale || 1) * 100)}
+                onMouseDown={beginVisualAdjustment}
+                onTouchStart={beginVisualAdjustment}
+                onMouseUp={endVisualAdjustment}
+                onTouchEnd={endVisualAdjustment}
                 onChange={(e) => handleSelectedVisualScaleChange(Number(e.target.value))}
                 className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
               />
               <span className="text-xs text-text-secondary w-10 text-right">
-                {Math.round((selectedVisualClip.scale ?? 1) * 100)}%
+                {Math.round((selectedVisualClip.scale || 1) * 100)}%
               </span>
-
-              <span className="text-xs text-text-secondary w-7">Rot</span>
+            </div>
+            <div className="flex items-center gap-1 min-w-[132px]">
+              <span className="text-xs text-text-secondary">Rotate</span>
               <input
-                type="range"
-                min={-180}
-                max={180}
-                value={Math.round(selectedVisualClip.rotation ?? 0)}
-                onMouseDown={beginTransformAdjustment}
-                onTouchStart={beginTransformAdjustment}
-                onMouseUp={endTransformAdjustment}
-                onTouchEnd={endTransformAdjustment}
+                type="number"
+                value={Math.round(selectedVisualClip.rotation || 0)}
+                onFocus={beginVisualAdjustment}
+                onBlur={endVisualAdjustment}
                 onChange={(e) => handleSelectedVisualRotationChange(Number(e.target.value))}
-                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+                className="w-16 px-2 py-1 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary focus:outline-none focus:border-accent-primary"
               />
-              <span className="text-xs text-text-secondary w-10 text-right">
-                {Math.round(selectedVisualClip.rotation ?? 0)}deg
-              </span>
+              <span className="text-xs text-text-tertiary">deg</span>
             </div>
           </>
         )}
 
-        {selectedAudioClip && toolMode !== "crop" && (
+        {selectedAudioClip && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
             <div className="flex items-center gap-2 min-w-[220px]">
@@ -1437,11 +1213,13 @@ function VideoEditorContent() {
                 className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
                 title={(selectedAudioClip.audioMuted ?? false) ? "Unmute clip audio" : "Mute clip audio"}
               >
-                {(selectedAudioClip.audioMuted ?? false) ? (
-                  <TrackMutedIcon className="w-4 h-4" />
-                ) : (
-                  <TrackUnmutedIcon className="w-4 h-4" />
-                )}
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                  {(selectedAudioClip.audioMuted ?? false) ? (
+                    <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
+                  ) : (
+                    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
+                  )}
+                </svg>
               </button>
               <input
                 type="range"
@@ -1463,264 +1241,10 @@ function VideoEditorContent() {
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Preview Area */}
-        <div className="flex-1 min-h-0 flex">
-          <div className="flex-1 flex flex-col bg-surface-primary relative">
-            {!hasContent ? (
-              <div className="flex-1 flex items-center justify-center p-8">
-                <AssetDropZone className="max-w-md w-full" />
-              </div>
-            ) : (
-              <div className="flex-1 relative">
-                <PreviewCanvas />
-
-                {toolMode === "crop" && (
-                  <div
-                    ref={cropOverlayRef}
-                    className="absolute inset-0 z-20 cursor-crosshair"
-                    onPointerDown={handleCropOverlayPointerDown}
-                    onPointerMove={handleCropOverlayPointerMove}
-                    onPointerUp={handleCropOverlayPointerUp}
-                    onPointerCancel={handleCropOverlayPointerUp}
-                  >
-                    {cropScreenArea && (
-                      <>
-                        <div
-                          className="absolute bg-black/55 pointer-events-none"
-                          style={{
-                            left: 0,
-                            top: 0,
-                            width: "100%",
-                            height: Math.max(0, cropScreenArea.y),
-                          }}
-                        />
-                        <div
-                          className="absolute bg-black/55 pointer-events-none"
-                          style={{
-                            left: 0,
-                            top: cropScreenArea.y,
-                            width: Math.max(0, cropScreenArea.x),
-                            height: Math.max(0, cropScreenArea.height),
-                          }}
-                        />
-                        <div
-                          className="absolute bg-black/55 pointer-events-none"
-                          style={{
-                            left: cropScreenArea.x + cropScreenArea.width,
-                            top: cropScreenArea.y,
-                            right: 0,
-                            height: Math.max(0, cropScreenArea.height),
-                          }}
-                        />
-                        <div
-                          className="absolute bg-black/55 pointer-events-none"
-                          style={{
-                            left: 0,
-                            top: cropScreenArea.y + cropScreenArea.height,
-                            width: "100%",
-                            bottom: 0,
-                          }}
-                        />
-
-                        <div
-                          className="absolute border border-white/90 pointer-events-none"
-                          style={{
-                            left: cropScreenArea.x,
-                            top: cropScreenArea.y,
-                            width: cropScreenArea.width,
-                            height: cropScreenArea.height,
-                          }}
-                        >
-                          <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/35" />
-                          <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/35" />
-                          <div className="absolute top-1/3 left-0 right-0 h-px bg-white/35" />
-                          <div className="absolute top-2/3 left-0 right-0 h-px bg-white/35" />
-                        </div>
-
-                        {[
-                          { x: cropScreenArea.x, y: cropScreenArea.y },
-                          { x: cropScreenArea.x + cropScreenArea.width / 2, y: cropScreenArea.y },
-                          { x: cropScreenArea.x + cropScreenArea.width, y: cropScreenArea.y },
-                          { x: cropScreenArea.x + cropScreenArea.width, y: cropScreenArea.y + cropScreenArea.height / 2 },
-                          { x: cropScreenArea.x + cropScreenArea.width, y: cropScreenArea.y + cropScreenArea.height },
-                          { x: cropScreenArea.x + cropScreenArea.width / 2, y: cropScreenArea.y + cropScreenArea.height },
-                          { x: cropScreenArea.x, y: cropScreenArea.y + cropScreenArea.height },
-                          { x: cropScreenArea.x, y: cropScreenArea.y + cropScreenArea.height / 2 },
-                        ].map((handle, index) => (
-                          <div
-                            key={`crop-handle-${index}`}
-                            className="absolute w-2.5 h-2.5 bg-white border border-black/60 rounded-sm pointer-events-none"
-                            style={{
-                              left: handle.x - 5,
-                              top: handle.y - 5,
-                            }}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Mask Controls Panel (floating) */}
-                {isEditingMask && (
-                  <div className="absolute top-4 right-4 z-10">
-                    <MaskControls />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Preview Controls */}
-            {hasContent && <PreviewControls />}
-          </div>
-        </div>
-
-        {/* Timeline Area */}
-        {isTimelineVisible && (
-          <>
-            <div
-              className={`h-2 shrink-0 border-t border-border bg-surface-secondary cursor-row-resize ${
-                isResizingTimeline ? "bg-accent/40" : "hover:bg-accent/20"
-              }`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                timelineResizeStateRef.current = {
-                  startY: e.clientY,
-                  startHeight: timelineHeight,
-                };
-                setIsResizingTimeline(true);
-              }}
-              title="Drag to resize timeline panel"
-            />
-            <div
-              ref={timelineAreaRef}
-              className="border-t border-border shrink-0"
-              style={{ height: timelineHeight }}
-            >
-              <Timeline className="h-full" />
-            </div>
-          </>
-        )}
+      {/* Main Content (shared docking/split system) */}
+      <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
+        <VideoDockableArea />
       </div>
-
-      {isExportModalOpen && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-border bg-surface-primary shadow-xl">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-medium text-text-primary">Export Video</h3>
-              <p className="text-xs text-text-secondary mt-1">Export current timeline to WebM.</p>
-            </div>
-
-            <div className="px-4 py-3 space-y-3">
-              <label className="flex items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={includeAudioOnExport}
-                  onChange={(e) => setIncludeAudioOnExport(e.target.checked)}
-                  disabled={isExporting}
-                  className="h-4 w-4 rounded border-border"
-                />
-                Include audio
-              </label>
-            </div>
-
-            <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
-              <button
-                onClick={closeExportModal}
-                disabled={isExporting}
-                className="px-3 py-1.5 text-sm rounded bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmExport}
-                disabled={isExporting}
-                className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent-hover disabled:opacity-60"
-              >
-                {isExporting ? "Exporting..." : "Export"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isCanvasModalOpen && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-border bg-surface-primary shadow-xl">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-medium text-text-primary">Canvas Settings</h3>
-              <p className="text-xs text-text-secondary mt-1">
-                Resize canvas or center-crop relative to current composition.
-              </p>
-            </div>
-
-            <div className="px-4 py-3 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-text-secondary">
-                  Width
-                  <input
-                    type="number"
-                    min={1}
-                    value={canvasWidthInput}
-                    onChange={(e) => setCanvasWidthInput(e.target.value)}
-                    className="mt-1 w-full rounded border border-border bg-surface-tertiary px-2 py-1 text-sm text-text-primary"
-                  />
-                </label>
-                <label className="text-xs text-text-secondary">
-                  Height
-                  <input
-                    type="number"
-                    min={1}
-                    value={canvasHeightInput}
-                    onChange={(e) => setCanvasHeightInput(e.target.value)}
-                    className="mt-1 w-full rounded border border-border bg-surface-tertiary px-2 py-1 text-sm text-text-primary"
-                  />
-                </label>
-              </div>
-
-              <div className="space-y-1">
-                <label className="flex items-center gap-2 text-sm text-text-primary">
-                  <input
-                    type="radio"
-                    name="canvas-mode"
-                    checked={canvasResizeMode === "resize"}
-                    onChange={() => setCanvasResizeMode("resize")}
-                    className="h-4 w-4"
-                  />
-                  Resize only (keep clip coordinates)
-                </label>
-                <label className="flex items-center gap-2 text-sm text-text-primary">
-                  <input
-                    type="radio"
-                    name="canvas-mode"
-                    checked={canvasResizeMode === "crop"}
-                    onChange={() => setCanvasResizeMode("crop")}
-                    className="h-4 w-4"
-                  />
-                  Center crop/expand (shift clips with canvas center)
-                </label>
-              </div>
-            </div>
-
-            <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
-              <button
-                onClick={closeCanvasModal}
-                className="px-3 py-1.5 text-sm rounded bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={applyCanvasSize}
-                className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent-hover"
-              >
-                Apply
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Hidden file input for media import */}
       <input
@@ -1797,8 +1321,8 @@ function VideoEditorContent() {
               seek(0);
             }
 
-            if (parsed.toolMode === "select" || parsed.toolMode === "crop" || parsed.toolMode === "trim" || parsed.toolMode === "razor" || parsed.toolMode === "mask" || parsed.toolMode === "move" || parsed.toolMode === "pan") {
-              setToolMode(parsed.toolMode);
+            if (parsed.toolMode && supportedToolModes.includes(parsed.toolMode as VideoToolMode)) {
+              setToolMode(parsed.toolMode as VideoToolMode);
             }
 
             selectClips([]);
@@ -1818,7 +1342,9 @@ function VideoEditorContent() {
 function VideoEditorWithMask() {
   return (
     <MaskProvider>
-      <VideoEditorContent />
+      <VideoLayoutProvider>
+        <VideoEditorContent />
+      </VideoLayoutProvider>
     </MaskProvider>
   );
 }

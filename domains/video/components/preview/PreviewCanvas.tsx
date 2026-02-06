@@ -1,37 +1,60 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { useVideoState, useVideoRefs, useTimeline, useMask } from "../../contexts";
+import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import { useVideoElements } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { PREVIEW } from "../../constants";
-import { AudioClip, VideoClip } from "../../types";
+import { AudioClip, Clip, VideoClip } from "../../types";
 
 interface PreviewCanvasProps {
   className?: string;
 }
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
-  const { playback, project, selectedClipIds, toolMode } = useVideoState();
+  const { previewCanvasRef, previewContainerRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const {
+    playback,
+    project,
+    selectedClipIds,
+    toolMode,
+    selectClip,
+    cropArea,
+    setCropArea,
+    canvasExpandMode,
+  } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
-  const { getMaskForClip, getMaskAtTime } = useMask();
   const [videoReadyCount, setVideoReadyCount] = useState(0);
   const wasPlayingRef = useRef(false);
-  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
-  const maskImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
-  const maskBlendCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const draggingClipRef = useRef<{
-    clipId: string;
-    startClientX: number;
-    startClientY: number;
-    startPosX: number;
-    startPosY: number;
-    previewScale: number;
-  } | null>(null);
-  const hasSavedMoveHistoryRef = useRef(false);
+  const [isDraggingClip, setIsDraggingClip] = useState(false);
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+
+  const previewGeometryRef = useRef({
+    offsetX: 0,
+    offsetY: 0,
+    scale: 1,
+    previewWidth: 0,
+    previewHeight: 0,
+  });
+  const dragStateRef = useRef<{
+    clipId: string | null;
+    pointerStart: { x: number; y: number };
+    clipStart: { x: number; y: number };
+  }>({
+    clipId: null,
+    pointerStart: { x: 0, y: 0 },
+    clipStart: { x: 0, y: 0 },
+  });
+  const cropDragRef = useRef<{
+    mode: "none" | "create" | "move";
+    pointerStart: { x: number; y: number };
+    cropStart: { x: number; y: number; width: number; height: number } | null;
+  }>({
+    mode: "none",
+    pointerStart: { x: 0, y: 0 },
+    cropStart: null,
+  });
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
@@ -201,7 +224,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Render the composited frame
   const render = useCallback(() => {
     const canvas = previewCanvasRef.current;
-    const container = containerRef.current;
+    const container = previewContainerRef.current;
     if (!canvas || !container) return;
 
     const ctx = canvas.getContext("2d");
@@ -211,11 +234,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const rect = container.getBoundingClientRect();
 
     // Set canvas size with DPI scaling
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
-    ctx.scale(dpr, dpr);
+    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const width = rect.width;
     const height = rect.height;
@@ -235,6 +260,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const previewHeight = projectHeight * scale;
     const offsetX = (width - previewWidth) / 2;
     const offsetY = (height - previewHeight) / 2;
+    previewGeometryRef.current = { offsetX, offsetY, scale, previewWidth, previewHeight };
 
     // Draw checkerboard for transparency
     ctx.save();
@@ -247,6 +273,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Sort tracks by zIndex (lower first = background)
     const sortedTracks = [...tracks].sort((a, b) => a.zIndex - b.zIndex);
 
+    const selectedVisualClipId = selectedClipIds.find((clipId) => {
+      const selected = clips.find((clip) => clip.id === clipId);
+      return !!selected && selected.type !== "audio";
+    }) || null;
+
     // Composite each track
     for (const track of sortedTracks) {
       if (!track.visible) continue;
@@ -254,62 +285,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const clip = getClipAtTime(track.id, playback.currentTime);
       if (!clip || !clip.visible) continue;
 
-      const drawClipWithMask = (source: CanvasImageSource) => {
-        const drawX = offsetX + clip.position.x * scale;
-        const drawY = offsetY + clip.position.y * scale;
-        const drawWidth = clip.sourceSize.width * scale * clip.scale;
-        const drawHeight = clip.sourceSize.height * scale * clip.scale;
-        const mask = getMaskForClip(clip.id);
-        const maskDataUrl = mask ? getMaskAtTime(mask.id, playback.currentTime) : null;
-
-        if (!maskDataUrl || clip.type === "audio") {
-          ctx.globalAlpha = clip.opacity / 100;
-          ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
-          ctx.globalAlpha = 1;
-          return;
-        }
-
-        let maskImage = maskImageCacheRef.current.get(maskDataUrl);
-        if (!maskImage) {
-          maskImage = new Image();
-          maskImage.src = maskDataUrl;
-          maskImageCacheRef.current.set(maskDataUrl, maskImage);
-        }
-
-        if (!maskImage.complete || maskImage.naturalWidth === 0 || maskImage.naturalHeight === 0) {
-          // Mask image decode in progress; draw clip without mask for now.
-          ctx.globalAlpha = clip.opacity / 100;
-          ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
-          ctx.globalAlpha = 1;
-          return;
-        }
-
-        const blendCanvas = maskBlendCanvasRef.current || document.createElement("canvas");
-        maskBlendCanvasRef.current = blendCanvas;
-        blendCanvas.width = Math.max(1, Math.round(clip.sourceSize.width));
-        blendCanvas.height = Math.max(1, Math.round(clip.sourceSize.height));
-        const blendCtx = blendCanvas.getContext("2d");
-        if (!blendCtx) {
-          ctx.globalAlpha = clip.opacity / 100;
-          ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
-          ctx.globalAlpha = 1;
-          return;
-        }
-
-        blendCtx.clearRect(0, 0, blendCanvas.width, blendCanvas.height);
-        blendCtx.globalCompositeOperation = "source-over";
-        blendCtx.drawImage(source, 0, 0, blendCanvas.width, blendCanvas.height);
-        blendCtx.globalCompositeOperation = "destination-in";
-        blendCtx.drawImage(maskImage, 0, 0, blendCanvas.width, blendCanvas.height);
-        blendCtx.globalCompositeOperation = "source-over";
-
-        ctx.globalAlpha = clip.opacity / 100;
-        ctx.drawImage(blendCanvas, drawX, drawY, drawWidth, drawHeight);
-        ctx.globalAlpha = 1;
-      };
-
       // Get the video/image element for this clip
-      const videoElement = clip.type === "video" ? videoElementsRef.current.get(clip.sourceUrl) : null;
+      const videoElement = videoElementsRef.current.get(clip.sourceUrl);
 
       if (clip.type === "video" && videoElement) {
         // Check if video has enough data to display
@@ -335,18 +312,97 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         // During playback, just draw whatever frame the video is at
         // The video.play() handles syncing
 
-        drawClipWithMask(videoElement);
+        // Draw video frame
+        ctx.globalAlpha = clip.opacity / 100;
+        ctx.drawImage(
+          videoElement,
+          offsetX + clip.position.x * scale,
+          offsetY + clip.position.y * scale,
+          clip.sourceSize.width * scale * clip.scale,
+          clip.sourceSize.height * scale * clip.scale
+        );
+        ctx.globalAlpha = 1;
       } else if (clip.type === "image") {
-        let img = imageCacheRef.current.get(clip.sourceUrl);
-        if (!img) {
-          img = new Image();
-          img.src = clip.sourceUrl;
-          imageCacheRef.current.set(clip.sourceUrl, img);
-        }
+        // Draw image
+        const img = new Image();
+        img.src = clip.sourceUrl;
         if (img.complete) {
-          drawClipWithMask(img);
+          ctx.globalAlpha = clip.opacity / 100;
+          ctx.drawImage(
+            img,
+            offsetX + clip.position.x * scale,
+            offsetY + clip.position.y * scale,
+            clip.sourceSize.width * scale * clip.scale,
+            clip.sourceSize.height * scale * clip.scale
+          );
+          ctx.globalAlpha = 1;
         }
       }
+
+      if (selectedVisualClipId && clip.id === selectedVisualClipId && clip.type !== "audio") {
+        const boxX = offsetX + clip.position.x * scale;
+        const boxY = offsetY + clip.position.y * scale;
+        const boxW = clip.sourceSize.width * scale * clip.scale;
+        const boxH = clip.sourceSize.height * scale * clip.scale;
+
+        ctx.save();
+        if (clip.rotation !== 0) {
+          const centerX = boxX + boxW / 2;
+          const centerY = boxY + boxH / 2;
+          ctx.translate(centerX, centerY);
+          ctx.rotate((clip.rotation * Math.PI) / 180);
+          ctx.translate(-centerX, -centerY);
+        }
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+        ctx.restore();
+      }
+    }
+
+    if (toolMode === "crop") {
+      const activeCrop = cropArea || {
+        x: 0,
+        y: 0,
+        width: project.canvasSize.width,
+        height: project.canvasSize.height,
+      };
+      const cropX = offsetX + activeCrop.x * scale;
+      const cropY = offsetY + activeCrop.y * scale;
+      const cropW = activeCrop.width * scale;
+      const cropH = activeCrop.height * scale;
+
+      // Dim everything outside crop.
+      ctx.save();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.fillRect(0, 0, width, height);
+      ctx.clearRect(cropX, cropY, cropW, cropH);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([8, 4]);
+      ctx.strokeRect(cropX, cropY, cropW, cropH);
+      ctx.setLineDash([]);
+
+      const handleSize = 8;
+      const handles = [
+        { x: cropX, y: cropY },
+        { x: cropX + cropW / 2, y: cropY },
+        { x: cropX + cropW, y: cropY },
+        { x: cropX + cropW, y: cropY + cropH / 2 },
+        { x: cropX + cropW, y: cropY + cropH },
+        { x: cropX + cropW / 2, y: cropY + cropH },
+        { x: cropX, y: cropY + cropH },
+        { x: cropX, y: cropY + cropH / 2 },
+      ];
+      ctx.fillStyle = "#ffffff";
+      for (const handle of handles) {
+        ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+      }
+      ctx.restore();
     }
 
     // Draw frame border
@@ -360,109 +416,219 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     project.canvasSize,
     tracks,
     clips,
+    selectedClipIds,
+    toolMode,
+    cropArea,
     getClipAtTime,
     videoElementsRef,
-    getMaskForClip,
-    getMaskAtTime,
     drawCheckerboard,
     videoReadyCount,
+    previewContainerRef,
   ]);
 
-  const getPreviewMetrics = useCallback(() => {
-    const container = containerRef.current;
+  const clampToCanvas = useCallback((point: { x: number; y: number }) => {
+    return {
+      x: Math.max(0, Math.min(project.canvasSize.width, point.x)),
+      y: Math.max(0, Math.min(project.canvasSize.height, point.y)),
+    };
+  }, [project.canvasSize.height, project.canvasSize.width]);
+
+  const screenToProject = useCallback((clientX: number, clientY: number, allowOutside: boolean = false) => {
+    const container = previewContainerRef.current;
     if (!container) return null;
 
     const rect = container.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
+    const { offsetX, offsetY, scale, previewWidth, previewHeight } = previewGeometryRef.current;
+    if (scale <= 0) return null;
 
-    const projectWidth = project.canvasSize.width;
-    const projectHeight = project.canvasSize.height;
-    if (projectWidth <= 0 || projectHeight <= 0) return null;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const localX = x - offsetX;
+    const localY = y - offsetY;
 
-    const scale = Math.min(
-      (width - 40) / projectWidth,
-      (height - 40) / projectHeight
+    if (!allowOutside && (localX < 0 || localY < 0 || localX > previewWidth || localY > previewHeight)) {
+      return null;
+    }
+
+    return {
+      x: localX / scale,
+      y: localY / scale,
+    };
+  }, [previewContainerRef]);
+
+  const isInsideCropArea = useCallback((point: { x: number; y: number }, area: { x: number; y: number; width: number; height: number }) => {
+    return (
+      point.x >= area.x &&
+      point.x <= area.x + area.width &&
+      point.y >= area.y &&
+      point.y <= area.y + area.height
     );
-    const previewWidth = projectWidth * scale;
-    const previewHeight = projectHeight * scale;
-    const offsetX = (width - previewWidth) / 2;
-    const offsetY = (height - previewHeight) / 2;
+  }, []);
 
-    return { rect, scale, offsetX, offsetY };
-  }, [project.canvasSize.width, project.canvasSize.height]);
+  const hitTestClipAtPoint = useCallback((point: { x: number; y: number }): Clip | null => {
+    const tracksById = new Map(tracks.map((track) => [track.id, track]));
+    const sortedTracks = [...tracks].sort((a, b) => b.zIndex - a.zIndex);
 
-  const findDraggableSelectedClip = useCallback(() => {
-    if (selectedClipIds.length === 0) return null;
-    const visualSelected = clips.filter(
-      (clip) => selectedClipIds.includes(clip.id) && clip.type !== "audio"
-    );
-    if (visualSelected.length === 0) return null;
+    for (const track of sortedTracks) {
+      if (!track.visible || track.locked) continue;
+      const clip = getClipAtTime(track.id, playback.currentTime);
+      if (!clip || !clip.visible || clip.type === "audio") continue;
 
-    const trackOrder = new Map(tracks.map((track) => [track.id, track.zIndex]));
-    visualSelected.sort((a, b) => (trackOrder.get(b.trackId) || 0) - (trackOrder.get(a.trackId) || 0));
-    return visualSelected[0];
-  }, [selectedClipIds, clips, tracks]);
+      const width = clip.sourceSize.width * clip.scale;
+      const height = clip.sourceSize.height * clip.scale;
+      const centerX = clip.position.x + width / 2;
+      const centerY = clip.position.y + height / 2;
+      const angle = ((clip.rotation || 0) * Math.PI) / 180;
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (playback.isPlaying) return;
+      const dx = point.x - centerX;
+      const dy = point.y - centerY;
+      const cos = Math.cos(-angle);
+      const sin = Math.sin(-angle);
+      const localX = dx * cos - dy * sin;
+      const localY = dx * sin + dy * cos;
+
+      const inside =
+        localX >= -width / 2 &&
+        localX <= width / 2 &&
+        localY >= -height / 2 &&
+        localY <= height / 2;
+
+      const trackState = tracksById.get(clip.trackId);
+      if (inside && trackState && !trackState.locked) {
+        return clip;
+      }
+    }
+
+    return null;
+  }, [tracks, getClipAtTime, playback.currentTime]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (toolMode === "crop") {
+      const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
+      if (!rawPoint) return;
+      const point = canvasExpandMode ? rawPoint : clampToCanvas(rawPoint);
+
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+
+      if (cropArea && isInsideCropArea(point, cropArea)) {
+        cropDragRef.current = {
+          mode: "move",
+          pointerStart: point,
+          cropStart: { ...cropArea },
+        };
+      } else {
+        const nextArea = {
+          x: Math.round(point.x),
+          y: Math.round(point.y),
+          width: 0,
+          height: 0,
+        };
+        setCropArea(nextArea);
+        cropDragRef.current = {
+          mode: "create",
+          pointerStart: point,
+          cropStart: nextArea,
+        };
+      }
+      setIsDraggingCrop(true);
+      return;
+    }
+
     if (toolMode !== "select" && toolMode !== "move") return;
 
-    const clip = findDraggableSelectedClip();
-    if (!clip) return;
+    const point = screenToProject(e.clientX, e.clientY);
+    if (!point) return;
 
-    const metrics = getPreviewMetrics();
-    if (!metrics) return;
+    const hitClip = hitTestClipAtPoint(point);
+    if (!hitClip || hitClip.type === "audio") return;
 
-    const localX = event.clientX - metrics.rect.left;
-    const localY = event.clientY - metrics.rect.top;
-    const drawX = metrics.offsetX + clip.position.x * metrics.scale;
-    const drawY = metrics.offsetY + clip.position.y * metrics.scale;
-    const drawW = clip.sourceSize.width * clip.scale * metrics.scale;
-    const drawH = clip.sourceSize.height * clip.scale * metrics.scale;
-    const inside = localX >= drawX && localX <= drawX + drawW && localY >= drawY && localY <= drawY + drawH;
-    if (!inside) return;
-
-    draggingClipRef.current = {
-      clipId: clip.id,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      startPosX: clip.position.x,
-      startPosY: clip.position.y,
-      previewScale: metrics.scale,
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    saveToHistory();
+    selectClip(hitClip.id, false);
+    dragStateRef.current = {
+      clipId: hitClip.id,
+      pointerStart: point,
+      clipStart: { ...hitClip.position },
     };
-    hasSavedMoveHistoryRef.current = false;
-    (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
-    event.preventDefault();
-  }, [playback.isPlaying, toolMode, findDraggableSelectedClip, getPreviewMetrics]);
+    setIsDraggingClip(true);
+  }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip]);
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = draggingClipRef.current;
-    if (!drag) return;
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (cropDragRef.current.mode !== "none") {
+      const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
+      if (!rawPoint) return;
+      const point = canvasExpandMode ? rawPoint : clampToCanvas(rawPoint);
 
-    if (!hasSavedMoveHistoryRef.current) {
-      saveToHistory();
-      hasSavedMoveHistoryRef.current = true;
+      if (cropDragRef.current.mode === "create") {
+        const start = cropDragRef.current.pointerStart;
+        const nextArea = {
+          x: Math.round(Math.min(start.x, point.x)),
+          y: Math.round(Math.min(start.y, point.y)),
+          width: Math.max(1, Math.round(Math.abs(point.x - start.x))),
+          height: Math.max(1, Math.round(Math.abs(point.y - start.y))),
+        };
+        setCropArea(nextArea);
+        return;
+      }
+
+      if (cropDragRef.current.mode === "move" && cropDragRef.current.cropStart) {
+        const start = cropDragRef.current.cropStart;
+        const dx = point.x - cropDragRef.current.pointerStart.x;
+        const dy = point.y - cropDragRef.current.pointerStart.y;
+        let nextX = start.x + dx;
+        let nextY = start.y + dy;
+
+        if (!canvasExpandMode) {
+          nextX = Math.max(0, Math.min(project.canvasSize.width - start.width, nextX));
+          nextY = Math.max(0, Math.min(project.canvasSize.height - start.height, nextY));
+        }
+
+        setCropArea({
+          x: Math.round(nextX),
+          y: Math.round(nextY),
+          width: Math.round(start.width),
+          height: Math.round(start.height),
+        });
+        return;
+      }
     }
 
-    const deltaX = (event.clientX - drag.startClientX) / Math.max(0.0001, drag.previewScale);
-    const deltaY = (event.clientY - drag.startClientY) / Math.max(0.0001, drag.previewScale);
-    updateClip(drag.clipId, {
+    if (!isDraggingClip || !dragStateRef.current.clipId) return;
+
+    const point = screenToProject(e.clientX, e.clientY);
+    if (!point) return;
+
+    const dragState = dragStateRef.current;
+    const clipId = dragState.clipId;
+    if (!clipId) return;
+    const dx = point.x - dragState.pointerStart.x;
+    const dy = point.y - dragState.pointerStart.y;
+    updateClip(clipId, {
       position: {
-        x: drag.startPosX + deltaX,
-        y: drag.startPosY + deltaY,
+        x: dragState.clipStart.x + dx,
+        y: dragState.clipStart.y + dy,
       },
     });
-  }, [saveToHistory, updateClip]);
+  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip]);
 
-  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (draggingClipRef.current) {
-      draggingClipRef.current = null;
-      hasSavedMoveHistoryRef.current = false;
-      try {
-        (event.currentTarget as HTMLDivElement).releasePointerCapture(event.pointerId);
-      } catch {}
+  const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e && e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
+    dragStateRef.current = {
+      clipId: null,
+      pointerStart: { x: 0, y: 0 },
+      clipStart: { x: 0, y: 0 },
+    };
+    setIsDraggingClip(false);
+    cropDragRef.current = {
+      mode: "none",
+      pointerStart: { x: 0, y: 0 },
+      cropStart: null,
+    };
+    setIsDraggingCrop(false);
   }, []);
 
   // Render on playback time change
@@ -472,7 +638,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Handle resize
   useEffect(() => {
-    const container = containerRef.current;
+    const container = previewContainerRef.current;
     if (!container) return;
 
     const resizeObserver = new ResizeObserver(() => {
@@ -481,20 +647,27 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
-  }, [render]);
+  }, [render, previewContainerRef]);
 
   return (
     <div
-      ref={containerRef}
+      ref={previewContainerRef}
       className={cn("relative w-full h-full overflow-hidden", className)}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
     >
       <canvas
         ref={previewCanvasRef}
         className="absolute inset-0"
+        style={{
+          cursor: toolMode === "crop"
+            ? (isDraggingCrop ? "grabbing" : "crosshair")
+            : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+          touchAction: "none",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onPointerLeave={handlePointerUp}
       />
     </div>
   );

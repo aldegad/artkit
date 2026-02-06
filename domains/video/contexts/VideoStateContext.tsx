@@ -36,6 +36,10 @@ interface VideoState {
 
   // UI
   showAssetLibrary: boolean;
+
+  // Crop
+  cropArea: { x: number; y: number; width: number; height: number } | null;
+  canvasExpandMode: boolean;
 }
 
 interface VideoStateContextValue extends VideoState {
@@ -66,6 +70,10 @@ interface VideoStateContextValue extends VideoState {
   // UI actions
   setShowAssetLibrary: (show: boolean) => void;
 
+  // Crop actions
+  setCropArea: (area: { x: number; y: number; width: number; height: number } | null) => void;
+  setCanvasExpandMode: (enabled: boolean) => void;
+
   // Refs for high-frequency access
   currentTimeRef: React.RefObject<number>;
   isPlayingRef: React.RefObject<boolean>;
@@ -86,6 +94,8 @@ const initialState: VideoState = {
   selectedClipIds: [],
   selectedTrackId: null,
   showAssetLibrary: false,
+  cropArea: null,
+  canvasExpandMode: false,
 };
 
 export function VideoStateProvider({ children }: { children: ReactNode }) {
@@ -305,6 +315,14 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, showAssetLibrary: show }));
   }, []);
 
+  const setCropArea = useCallback((area: { x: number; y: number; width: number; height: number } | null) => {
+    setState((prev) => ({ ...prev, cropArea: area }));
+  }, []);
+
+  const setCanvasExpandMode = useCallback((enabled: boolean) => {
+    setState((prev) => ({ ...prev, canvasExpandMode: enabled }));
+  }, []);
+
   const value: VideoStateContextValue = {
     ...state,
     setProject,
@@ -324,6 +342,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     deselectAll,
     selectTrack,
     setShowAssetLibrary,
+    setCropArea,
+    setCanvasExpandMode,
     currentTimeRef,
     isPlayingRef,
     clipboardRef,
