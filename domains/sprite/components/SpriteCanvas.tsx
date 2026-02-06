@@ -7,6 +7,7 @@ import { Point, SpriteFrame, UnifiedLayer } from "../types";
 import { getBoundingBox, isPointInPolygon } from "../../../utils/geometry";
 import { ImageDropZone } from "../../../shared/components";
 import { getCanvasColorsSync } from "@/hooks";
+import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 
 // ============================================
 // Component
@@ -121,6 +122,8 @@ export default function CanvasContent() {
     setIsDragOver(false);
   }, []);
 
+  const { setPendingVideoFile, setIsVideoImportOpen } = useSpriteUIStore();
+
   const handleDrop = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
@@ -129,10 +132,16 @@ export default function CanvasContent() {
 
       const files = e.dataTransfer.files;
       if (files.length > 0) {
-        handleFileDrop(files[0]);
+        const file = files[0];
+        if (file.type.startsWith("video/")) {
+          setPendingVideoFile(file);
+          setIsVideoImportOpen(true);
+        } else {
+          handleFileDrop(file);
+        }
       }
     },
-    [handleFileDrop],
+    [handleFileDrop, setPendingVideoFile, setIsVideoImportOpen],
   );
 
   // ResizeObserver to detect container size changes
@@ -852,7 +861,17 @@ export default function CanvasContent() {
       ) : (
         <ImageDropZone
           variant="sprite"
-          onFileSelect={(files) => files[0] && handleFileDrop(files[0])}
+          accept="image/*,video/*"
+          onFileSelect={(files) => {
+            if (!files[0]) return;
+            const file = files[0];
+            if (file.type.startsWith("video/")) {
+              setPendingVideoFile(file);
+              setIsVideoImportOpen(true);
+            } else {
+              handleFileDrop(file);
+            }
+          }}
         />
       )}
     </div>

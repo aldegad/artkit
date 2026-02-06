@@ -12,6 +12,7 @@ interface SpriteUIStore {
   isFrameEditOpen: boolean;
   isProjectListOpen: boolean;
   isSpriteSheetImportOpen: boolean;
+  isVideoImportOpen: boolean;
 
   // Project
   projectName: string;
@@ -21,11 +22,15 @@ interface SpriteUIStore {
   // Clipboard
   clipboardFrame: SpriteFrame | null;
 
+  // Video import
+  pendingVideoFile: File | null;
+
   // Actions - Windows
   setIsPreviewWindowOpen: (open: boolean) => void;
   setIsFrameEditOpen: (open: boolean) => void;
   setIsProjectListOpen: (open: boolean) => void;
   setIsSpriteSheetImportOpen: (open: boolean) => void;
+  setIsVideoImportOpen: (open: boolean) => void;
 
   // Actions - Project
   setProjectName: (name: string) => void;
@@ -35,6 +40,9 @@ interface SpriteUIStore {
   // Actions - Clipboard
   copyFrame: (frame: SpriteFrame) => void;
   getClipboardFrame: () => SpriteFrame | null;
+
+  // Actions - Video import
+  setPendingVideoFile: (file: File | null) => void;
 
   // Reset
   reset: () => void;
@@ -50,16 +58,19 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   isFrameEditOpen: false,
   isProjectListOpen: false,
   isSpriteSheetImportOpen: false,
+  isVideoImportOpen: false,
   projectName: "",
   savedProjects: [],
   currentProjectId: null,
   clipboardFrame: null,
+  pendingVideoFile: null,
 
   // Window Actions
   setIsPreviewWindowOpen: (open) => set({ isPreviewWindowOpen: open }),
   setIsFrameEditOpen: (open) => set({ isFrameEditOpen: open }),
   setIsProjectListOpen: (open) => set({ isProjectListOpen: open }),
   setIsSpriteSheetImportOpen: (open) => set({ isSpriteSheetImportOpen: open }),
+  setIsVideoImportOpen: (open) => set({ isVideoImportOpen: open }),
 
   // Project Actions
   setProjectName: (name) => set({ projectName: name }),
@@ -68,6 +79,9 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
       savedProjects: typeof projectsOrFn === "function" ? projectsOrFn(state.savedProjects) : projectsOrFn,
     })),
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
+
+  // Video Import Actions
+  setPendingVideoFile: (file) => set({ pendingVideoFile: file }),
 
   // Clipboard Actions
   copyFrame: (frame) => set({ clipboardFrame: deepCopyFrame(frame) }),
@@ -83,8 +97,10 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
       isFrameEditOpen: false,
       isProjectListOpen: false,
       isSpriteSheetImportOpen: false,
+      isVideoImportOpen: false,
       projectName: "",
       currentProjectId: null,
+      pendingVideoFile: null,
       // Note: savedProjects and clipboardFrame are not reset
     }),
 }));

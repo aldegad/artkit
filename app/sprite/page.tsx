@@ -15,13 +15,17 @@ import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
 import { LayersPanelContent } from "../../components/panels";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
-import { Tooltip } from "../../shared/components";
+import { Tooltip, Scrollbar } from "../../shared/components";
 import {
   BrushIcon,
   CursorIcon,
   HandIcon,
   BackgroundRemovalIcon,
   ExportIcon,
+  UndoIcon,
+  RedoIcon,
+  MinusIcon,
+  PlusIcon,
 } from "../../shared/components/icons";
 import {
   saveProject as saveProjectToDB,
@@ -57,6 +61,8 @@ function SpriteEditorMain() {
     setNextFrameId,
     selectedFrameId,
     selectedPointIndex,
+    currentFrameIndex,
+    zoom,
     setIsSpacePressed,
     projectName,
     setProjectName,
@@ -68,6 +74,10 @@ function SpriteEditorMain() {
     setIsProjectListOpen,
     isSpriteSheetImportOpen,
     setIsSpriteSheetImportOpen,
+    isVideoImportOpen,
+    setIsVideoImportOpen,
+    pendingVideoFile,
+    setPendingVideoFile,
     undo,
     redo,
     canUndo,
@@ -84,8 +94,7 @@ function SpriteEditorMain() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
   const [isFrameEditOpen, setIsFrameEditOpen] = useState(true);
 
-  // Video import modal state
-  const [isVideoImportOpen, setIsVideoImportOpen] = useState(false);
+  // Video import modal state is now in the UI store (pendingVideoFile, isVideoImportOpen)
 
   // Background removal state
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
@@ -103,13 +112,14 @@ function SpriteEditorMain() {
     handleRemoveBackground,
   } = useFrameBackgroundRemoval({
     frames,
-    selectedFrameId,
+    currentFrameIndex,
     setFrames,
     pushHistory,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
       frameImageNotFound: t.frameImageNotFound,
+      processingFrameProgress: t.processingFrameProgress,
     },
   });
   const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
@@ -256,8 +266,9 @@ function SpriteEditorMain() {
       setFrames((prev) => [...prev, ...newFrames]);
       setNextFrameId((prev) => prev + importedFrames.length);
       setIsVideoImportOpen(false);
+      setPendingVideoFile(null);
     },
-    [nextFrameId, setFrames, setNextFrameId, pushHistory],
+    [nextFrameId, setFrames, setNextFrameId, pushHistory, setIsVideoImportOpen, setPendingVideoFile],
   );
 
   // Undo last point
@@ -671,139 +682,203 @@ function SpriteEditorMain() {
       </HeaderSlot>
 
       {/* Top Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-surface-primary border-b border-border-default shrink-0 shadow-sm">
-        {/* Tool mode buttons */}
-        <div className="flex gap-1 bg-surface-secondary rounded-lg p-1">
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.pen}</span>
-                <span className="text-text-tertiary text-[11px]">{t.penToolTip}</span>
-                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                  <span>{t.clickToAddPoint}</span>
-                  <span>{t.firstPointToComplete}</span>
+      {/* Top Toolbar */}
+      <Scrollbar
+        className="bg-surface-primary border-b border-border-default shrink-0"
+        overflow={{ x: "scroll", y: "hidden" }}
+      >
+        <div className="flex items-center gap-1 px-3.5 py-1 whitespace-nowrap">
+          {/* Tool buttons */}
+          <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{t.pen}</span>
+                  <span className="text-text-tertiary text-[11px]">{t.penToolTip}</span>
+                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                    <span>{t.clickToAddPoint}</span>
+                    <span>{t.firstPointToComplete}</span>
+                  </div>
                 </div>
-              </div>
-            }
-            shortcut="P"
-          >
-            <button
-              onClick={() => setSpriteToolMode("pen")}
-              className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
-                toolMode === "pen"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover text-text-primary"
-              }`}
+              }
+              shortcut="P"
             >
-              <BrushIcon className="w-4 h-4" />
-              {t.pen}
-            </button>
-          </Tooltip>
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.select}</span>
-                <span className="text-text-tertiary text-[11px]">{t.selectToolTip}</span>
-                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                  <span>{t.clickToSelect}</span>
-                  <span>{t.dragToMove}</span>
-                </div>
-              </div>
-            }
-            shortcut="V"
-          >
-            <button
-              onClick={() => setSpriteToolMode("select")}
-              className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
-                toolMode === "select"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover text-text-primary"
-              }`}
-            >
-              <CursorIcon className="w-4 h-4" />
-              {t.select}
-            </button>
-          </Tooltip>
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.hand}</span>
-                <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
-                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                  <span>{t.dragToPan}</span>
-                  <span>{t.spaceAltToPan}</span>
-                  <span>{t.wheelToZoom}</span>
-                </div>
-              </div>
-            }
-            shortcut="H"
-          >
-            <button
-              onClick={() => setSpriteToolMode("hand")}
-              className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${
-                toolMode === "hand"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover text-text-primary"
-              }`}
-            >
-              <HandIcon className="w-4 h-4" />
-              {t.hand}
-            </button>
-          </Tooltip>
-        </div>
-
-        <div className="h-6 w-px bg-border-default" />
-
-        {toolMode === "pen" && currentPoints.length > 0 && (
-          <>
-            <button
-              onClick={undoLastPoint}
-              className="px-3 py-1.5 bg-accent-warning hover:bg-accent-warning-hover text-white rounded-lg text-sm transition-colors"
-            >
-              {t.undo}
-            </button>
-            <button
-              onClick={cancelCurrentPolygon}
-              className="px-3 py-1.5 bg-accent-danger hover:bg-accent-danger-hover text-white rounded-lg text-sm transition-colors"
-            >
-              {t.cancel}
-            </button>
-            {currentPoints.length >= 3 && (
               <button
-                onClick={completeFrame}
-                className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-sm transition-colors"
+                onClick={() => setSpriteToolMode("pen")}
+                className={`p-1.5 rounded transition-colors ${
+                  toolMode === "pen"
+                    ? "bg-accent-primary text-white"
+                    : "hover:bg-interactive-hover"
+                }`}
               >
-                {t.complete}
+                <BrushIcon className="w-4 h-4" />
               </button>
-            )}
-            <span className="text-text-secondary text-sm">
-              {t.points}: {currentPoints.length}
+            </Tooltip>
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{t.select}</span>
+                  <span className="text-text-tertiary text-[11px]">{t.selectToolTip}</span>
+                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                    <span>{t.clickToSelect}</span>
+                    <span>{t.dragToMove}</span>
+                  </div>
+                </div>
+              }
+              shortcut="V"
+            >
+              <button
+                onClick={() => setSpriteToolMode("select")}
+                className={`p-1.5 rounded transition-colors ${
+                  toolMode === "select"
+                    ? "bg-accent-primary text-white"
+                    : "hover:bg-interactive-hover"
+                }`}
+              >
+                <CursorIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{t.hand}</span>
+                  <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
+                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                    <span>{t.dragToPan}</span>
+                    <span>{t.spaceAltToPan}</span>
+                    <span>{t.wheelToZoom}</span>
+                  </div>
+                </div>
+              }
+              shortcut="H"
+            >
+              <button
+                onClick={() => setSpriteToolMode("hand")}
+                className={`p-1.5 rounded transition-colors ${
+                  toolMode === "hand"
+                    ? "bg-accent-primary text-white"
+                    : "hover:bg-interactive-hover"
+                }`}
+              >
+                <HandIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+
+            {/* Divider */}
+            <div className="w-px bg-border-default mx-0.5" />
+
+            {/* AI Background Removal */}
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{t.removeBackground}</span>
+                  <span className="text-text-tertiary text-[11px]">
+                    AI 모델을 사용해 프레임 배경을 제거합니다
+                  </span>
+                  <span className="text-[10px] text-text-tertiary">
+                    첫 실행 시 모델 다운로드 (~30MB)
+                  </span>
+                </div>
+              }
+            >
+              <button
+                onClick={() => setShowBgRemovalConfirm(true)}
+                disabled={isRemovingBackground || frames.filter((f) => f.imageData).length === 0}
+                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                  isRemovingBackground
+                    ? "bg-accent-primary text-white cursor-wait"
+                    : "hover:bg-interactive-hover"
+                }`}
+              >
+                <BackgroundRemovalIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Undo/Redo */}
+          <div className="flex items-center gap-0.5">
+            <Tooltip content={`${t.undo} (Ctrl+Z)`}>
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+              >
+                <UndoIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+              >
+                <RedoIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+            >
+              <MinusIcon className="w-4 h-4" />
+            </button>
+            <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => setZoom((z) => Math.min(10, z * 1.25))}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+            >
+              <PlusIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Context-specific controls */}
+          {toolMode === "pen" && currentPoints.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={undoLastPoint}
+                className="px-2 py-1 bg-accent-warning hover:bg-accent-warning-hover text-white rounded text-xs transition-colors"
+              >
+                {t.undo}
+              </button>
+              <button
+                onClick={cancelCurrentPolygon}
+                className="px-2 py-1 bg-accent-danger hover:bg-accent-danger-hover text-white rounded text-xs transition-colors"
+              >
+                {t.cancel}
+              </button>
+              {currentPoints.length >= 3 && (
+                <button
+                  onClick={completeFrame}
+                  className="px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-xs transition-colors"
+                >
+                  {t.complete}
+                </button>
+              )}
+              <span className="text-text-secondary text-xs">
+                {t.points}: {currentPoints.length}
+              </span>
+            </div>
+          )}
+
+          {toolMode === "select" && selectedFrameId !== null && (
+            <span className="text-accent-primary text-xs">
+              {t.frame} {frames.findIndex((f) => f.id === selectedFrameId) + 1} {t.selected}
+              {selectedPointIndex !== null && ` (${t.point} ${selectedPointIndex + 1})`}
             </span>
-          </>
-        )}
+          )}
 
-        {toolMode === "select" && selectedFrameId !== null && (
-          <span className="text-accent-primary text-sm">
-            {t.frame} {frames.findIndex((f) => f.id === selectedFrameId) + 1} {t.selected}
-            {selectedPointIndex !== null && ` (${t.point} ${selectedPointIndex + 1})`}
-          </span>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Background Removal Button */}
-        <Tooltip content={t.removeBackground}>
-          <button
-            onClick={() => setShowBgRemovalConfirm(true)}
-            disabled={selectedFrameId === null || isRemovingBackground}
-            className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary disabled:opacity-50 disabled:cursor-not-allowed text-text-primary border border-border-default rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-          >
-            <BackgroundRemovalIcon className="w-4 h-4" />
-            {t.removeBackground}
-          </button>
-        </Tooltip>
-
-      </div>
+          <div className="flex-1 min-w-0" />
+        </div>
+      </Scrollbar>
 
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">
@@ -940,9 +1015,13 @@ function SpriteEditorMain() {
       {/* Video Import Modal */}
       <VideoImportModal
         isOpen={isVideoImportOpen}
-        onClose={() => setIsVideoImportOpen(false)}
+        onClose={() => {
+          setIsVideoImportOpen(false);
+          setPendingVideoFile(null);
+        }}
         onImport={handleVideoImport}
         startFrameId={nextFrameId}
+        initialFile={pendingVideoFile}
         translations={{
           videoImport: t.videoImport,
           selectVideo: t.selectVideo,
@@ -968,20 +1047,26 @@ function SpriteEditorMain() {
       <FrameBackgroundRemovalModals
         showConfirm={showBgRemovalConfirm}
         onCloseConfirm={() => setShowBgRemovalConfirm(false)}
-        onConfirm={() => {
+        onConfirmCurrentFrame={() => {
           setShowBgRemovalConfirm(false);
-          handleRemoveBackground();
+          handleRemoveBackground("current");
+        }}
+        onConfirmAllFrames={() => {
+          setShowBgRemovalConfirm(false);
+          handleRemoveBackground("all");
         }}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
         status={bgRemovalStatus}
+        hasFrames={frames.filter((f) => f.imageData).length > 0}
         translations={{
           removeBackground: t.removeBackground,
           cancel: t.cancel,
-          confirm: t.confirm,
           removingBackgroundDesc: t.removingBackgroundDesc,
           frameBackgroundRemoval: t.frameBackgroundRemoval,
           firstRunDownload: t.firstRunDownload,
+          currentFrame: t.removeBackgroundCurrentFrame,
+          allFrames: t.removeBackgroundAllFrames,
         }}
       />
 
