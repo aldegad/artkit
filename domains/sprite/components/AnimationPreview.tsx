@@ -423,36 +423,39 @@ export default function AnimationPreviewContent() {
               viewport.wheelRef(el);
               viewport.pinchRef(el);
             }}
-            className={`flex-1 overflow-hidden relative ${bgType === "checkerboard" ? "checkerboard" : ""}`}
+            className="flex-1 overflow-hidden relative bg-surface-secondary"
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            style={{
-              cursor: getCursor(),
-              backgroundColor: bgType === "solid" ? bgColor : undefined,
-            }}
+            style={{ cursor: getCursor() }}
           >
-            {/* Background image */}
-            {bgType === "image" && bgImage && (
-              <img
-                src={bgImage}
-                alt="background"
-                className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-              />
-            )}
             {compositedDataUrl ? (
-              <canvas
-                ref={canvasRef}
-                className="absolute border border-border-default"
+              <div
+                className={`absolute border border-border-default overflow-hidden ${bgType === "checkerboard" ? "checkerboard" : ""}`}
                 style={{
-                  cursor: getCursor(),
-                  pointerEvents: isHandMode ? "none" : "auto",
                   left: "50%",
                   top: "50%",
                   transform: `translate(calc(-50% + ${viewportSync.pan.x}px), calc(-50% + ${viewportSync.pan.y}px))`,
+                  backgroundColor: bgType === "solid" ? bgColor : undefined,
                 }}
-              />
+              >
+                {bgType === "image" && bgImage && (
+                  <img
+                    src={bgImage}
+                    alt="background"
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  />
+                )}
+                <canvas
+                  ref={canvasRef}
+                  className="block relative"
+                  style={{
+                    cursor: getCursor(),
+                    pointerEvents: isHandMode ? "none" : "auto",
+                  }}
+                />
+              </div>
             ) : null}
           </div>
 
