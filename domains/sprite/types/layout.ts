@@ -67,25 +67,17 @@ export const DEFAULT_LAYOUT: SplitNode = {
   id: "root",
   direction: "vertical",
   children: [
-    {
-      type: "split",
-      id: "top-row",
-      direction: "horizontal",
-      children: [
-        { type: "panel", id: "preview-panel", panelId: "preview", minSize: 200 } as PanelNode,
-        { type: "panel", id: "frame-edit-panel", panelId: "frame-edit", minSize: 200 } as PanelNode,
-      ],
-      sizes: [40, 60],
-    } as SplitNode,
+    { type: "panel", id: "preview-panel", panelId: "preview", minSize: 200 } as PanelNode,
     {
       type: "split",
       id: "bottom-row",
       direction: "horizontal",
       children: [
-        { type: "panel", id: "frames-panel", panelId: "frames", minSize: 100 } as PanelNode,
         { type: "panel", id: "timeline-panel", panelId: "timeline", minSize: 100 } as PanelNode,
+        { type: "panel", id: "frames-panel", panelId: "frames", minSize: 100 } as PanelNode,
+        { type: "panel", id: "frame-edit-panel", panelId: "frame-edit", minSize: 200 } as PanelNode,
       ],
-      sizes: [35, 65],
+      sizes: [50, 25, 25],
     } as SplitNode,
   ],
   sizes: [50, 50],

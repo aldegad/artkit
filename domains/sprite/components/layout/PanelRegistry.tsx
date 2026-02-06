@@ -33,7 +33,7 @@ const PANEL_META: Record<string, PanelMeta> = {
   },
   preview: {
     title: "Animation Preview",
-    showHeader: true,
+    showHeader: false,
     defaultSize: { width: 400, height: 450 },
     minSize: 200,
   },
