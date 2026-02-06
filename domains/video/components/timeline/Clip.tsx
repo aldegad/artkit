@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Clip as ClipType } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useVideoState } from "../../contexts";
@@ -11,9 +11,68 @@ interface ClipProps {
   clip: ClipType;
 }
 
+const waveformCache = new Map<string, number[]>();
+const waveformPending = new Map<string, Promise<number[]>>();
+
+async function buildWaveform(sourceUrl: string, bins = 48): Promise<number[]> {
+  const cached = waveformCache.get(sourceUrl);
+  if (cached) return cached;
+
+  const pending = waveformPending.get(sourceUrl);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    const response = await fetch(sourceUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioContext = new AudioContext();
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      const data = audioBuffer.getChannelData(0);
+      const samplesPerBin = Math.max(1, Math.floor(data.length / bins));
+      const values: number[] = [];
+
+      for (let bin = 0; bin < bins; bin++) {
+        const start = bin * samplesPerBin;
+        const end = Math.min(data.length, start + samplesPerBin);
+        if (end <= start) {
+          values.push(0);
+          continue;
+        }
+
+        let sum = 0;
+        for (let i = start; i < end; i++) {
+          const v = data[i];
+          sum += v * v;
+        }
+
+        values.push(Math.sqrt(sum / (end - start)));
+      }
+
+      const peak = Math.max(...values, 0.001);
+      const normalized = values.map((v) => Math.max(0.06, Math.min(1, v / peak)));
+      waveformCache.set(sourceUrl, normalized);
+      return normalized;
+    } finally {
+      await audioContext.close();
+    }
+  })();
+
+  waveformPending.set(sourceUrl, promise);
+  try {
+    return await promise;
+  } finally {
+    waveformPending.delete(sourceUrl);
+  }
+}
+
 export function Clip({ clip }: ClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
   const { selectedClipIds } = useVideoState();
+  const clipHasAudio = clip.type === "video" ? clip.hasAudio : false;
+  const clipSourceUrl = clip.type === "video" ? clip.sourceUrl : "";
+  const [waveform, setWaveform] = useState<number[] | null>(
+    clip.type === "video" ? waveformCache.get(clip.sourceUrl) || null : null
+  );
 
   const isSelected = selectedClipIds.includes(clip.id);
   const x = timeToPixel(clip.startTime);
@@ -28,6 +87,27 @@ export function Clip({ clip }: ClipProps) {
     }
     return "bg-green-600/80";
   }, [clip.type]);
+
+  useEffect(() => {
+    if (clip.type !== "video" || !clipHasAudio) {
+      setWaveform(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    buildWaveform(clipSourceUrl)
+      .then((values) => {
+        if (!cancelled) setWaveform(values);
+      })
+      .catch(() => {
+        if (!cancelled) setWaveform(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clip.type, clipHasAudio, clipSourceUrl]);
 
   // Note: Click/drag events are handled by useTimelineInput in Timeline component
 
@@ -48,6 +128,19 @@ export function Clip({ clip }: ClipProps) {
       <div className="px-2 py-1 text-xs text-white truncate">
         {clip.name}
       </div>
+
+      {/* Waveform preview */}
+      {clip.type === "video" && clipHasAudio && waveform && (
+        <div className="absolute left-1 right-1 bottom-1 h-4 flex items-end gap-[1px] opacity-70 pointer-events-none">
+          {waveform.map((value, idx) => (
+            <div
+              key={`${clip.id}-wave-${idx}`}
+              className="bg-white/70 rounded-sm flex-1"
+              style={{ height: `${Math.round(value * 100)}%` }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Trim handles */}
       {isSelected && (

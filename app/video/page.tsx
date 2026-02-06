@@ -92,6 +92,7 @@ function VideoEditorContent() {
     addImageClip,
     removeClip,
     addClips,
+    updateClip,
     restoreTracks,
     restoreClips,
     saveToHistory,
@@ -109,8 +110,13 @@ function VideoEditorContent() {
 
   const [isTimelineVisible, setIsTimelineVisible] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const audioHistorySavedRef = useRef(false);
 
   const hasContent = clips.length > 0;
+  const selectedClip = selectedClipIds.length > 0
+    ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
+    : null;
+  const selectedVideoClip = selectedClip && selectedClip.type === "video" ? selectedClip : null;
 
   const buildSavedProject = useCallback(
     (nameOverride?: string): SavedVideoProject => {
@@ -449,6 +455,34 @@ function VideoEditorContent() {
     selectClips(duplicated.map((clip) => clip.id));
   }, [selectedClipIds, clips, saveToHistory, addClips, selectClips]);
 
+  const beginAudioAdjustment = useCallback(() => {
+    if (audioHistorySavedRef.current) return;
+    saveToHistory();
+    audioHistorySavedRef.current = true;
+  }, [saveToHistory]);
+
+  const endAudioAdjustment = useCallback(() => {
+    audioHistorySavedRef.current = false;
+  }, []);
+
+  const handleToggleSelectedClipMute = useCallback(() => {
+    if (!selectedVideoClip) return;
+    saveToHistory();
+    updateClip(selectedVideoClip.id, {
+      audioMuted: !selectedVideoClip.audioMuted,
+    });
+  }, [selectedVideoClip, saveToHistory, updateClip]);
+
+  const handleSelectedClipVolumeChange = useCallback(
+    (volume: number) => {
+      if (!selectedVideoClip) return;
+      updateClip(selectedVideoClip.id, {
+        audioVolume: Math.max(0, Math.min(100, volume)),
+      });
+    },
+    [selectedVideoClip, updateClip]
+  );
+
   // View menu handlers
   const handleZoomIn = useCallback(() => {
     setZoom(viewState.zoom * 1.25);
@@ -749,6 +783,42 @@ function VideoEditorContent() {
             </button>
           </Tooltip>
         </div>
+
+        {selectedVideoClip && (
+          <>
+            <div className="h-4 w-px bg-border-default mx-1" />
+            <div className="flex items-center gap-2 min-w-[220px]">
+              <button
+                onClick={handleToggleSelectedClipMute}
+                className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                title={selectedVideoClip.audioMuted ? "Unmute clip audio" : "Mute clip audio"}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                  {selectedVideoClip.audioMuted ? (
+                    <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
+                  ) : (
+                    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
+                  )}
+                </svg>
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={selectedVideoClip.audioVolume}
+                onMouseDown={beginAudioAdjustment}
+                onTouchStart={beginAudioAdjustment}
+                onMouseUp={endAudioAdjustment}
+                onTouchEnd={endAudioAdjustment}
+                onChange={(e) => handleSelectedClipVolumeChange(Number(e.target.value))}
+                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs text-text-secondary w-10 text-right">
+                {selectedVideoClip.audioVolume}%
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main Content */}
