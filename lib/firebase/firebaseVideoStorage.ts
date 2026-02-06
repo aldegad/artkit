@@ -24,7 +24,6 @@ import {
   VideoProject,
   VideoTrack,
   MaskData,
-  MaskKeyframe,
   TimelineViewState,
 } from "@/domains/video/types";
 import { Clip } from "@/domains/video/types/clip";
@@ -67,20 +66,13 @@ interface FirestoreClipMeta {
   imageData?: string;
 }
 
-interface FirestoreMaskKeyframeMeta {
-  id: string;
-  time: number;
-  easing: string;
-  storageRef: string;
-}
-
 interface FirestoreMaskMeta {
   id: string;
   trackId: string;
   startTime: number;
   duration: number;
   size: { width: number; height: number };
-  keyframes?: FirestoreMaskKeyframeMeta[];
+  maskDataRef?: string; // Storage path for mask image
 }
 
 interface FirestoreVideoProject {
@@ -141,16 +133,15 @@ async function downloadMediaFile(path: string): Promise<Blob> {
 }
 
 /**
- * Upload mask keyframe image to Firebase Storage
+ * Upload mask image to Firebase Storage
  */
-async function uploadMaskKeyframe(
+async function uploadMaskImage(
   userId: string,
   projectId: string,
   maskId: string,
-  keyframeId: string,
   base64Data: string
 ): Promise<string> {
-  const path = `users/${userId}/video-media/${projectId}/masks/${maskId}/${keyframeId}.png`;
+  const path = `users/${userId}/video-media/${projectId}/masks/${maskId}/mask.png`;
   const storageRef = ref(storage, path);
 
   const base64Content = base64Data.includes(",")
@@ -165,9 +156,9 @@ async function uploadMaskKeyframe(
 }
 
 /**
- * Download mask keyframe from Firebase Storage
+ * Download mask image from Firebase Storage
  */
-async function downloadMaskKeyframe(path: string): Promise<string> {
+async function downloadMaskImage(path: string): Promise<string> {
   const storageRef = ref(storage, path);
   const blob = await getBlob(storageRef);
 
@@ -393,26 +384,15 @@ export async function saveVideoProjectToFirebase(
     });
 
     for (const mask of masks) {
-      const keyframeMetas: FirestoreMaskKeyframeMeta[] = [];
+      let maskDataRef: string | undefined;
 
-      if (mask.keyframes) {
-        for (const kf of mask.keyframes) {
-          if (kf.maskData) {
-            const storageRef = await uploadMaskKeyframe(
-              userId,
-              project.id,
-              mask.id,
-              kf.id,
-              kf.maskData
-            );
-            keyframeMetas.push({
-              id: kf.id,
-              time: kf.time,
-              easing: kf.easing,
-              storageRef,
-            });
-          }
-        }
+      if (mask.maskData) {
+        maskDataRef = await uploadMaskImage(
+          userId,
+          project.id,
+          mask.id,
+          mask.maskData
+        );
       }
 
       maskMetas.push({
@@ -421,7 +401,7 @@ export async function saveVideoProjectToFirebase(
         startTime: mask.startTime,
         duration: mask.duration,
         size: mask.size,
-        keyframes: keyframeMetas.length > 0 ? keyframeMetas : undefined,
+        maskDataRef,
       });
     }
   }
@@ -479,7 +459,7 @@ export async function getVideoProjectFromFirebase(
   const data = docSnap.data() as FirestoreVideoProject;
 
   // Download media for each clip in parallel
-  const totalSteps = data.clips.length + (data.masks.some((m) => m.keyframes?.length) ? 1 : 0);
+  const totalSteps = data.clips.length + (data.masks.some((m) => m.maskDataRef) ? 1 : 0);
   let currentStep = 0;
 
   const clips: Clip[] = await Promise.all(
@@ -511,33 +491,22 @@ export async function getVideoProjectFromFirebase(
     })
   );
 
-  // Download mask keyframes
+  // Download mask data
   const masks: MaskData[] = await Promise.all(
     data.masks.map(async (maskMeta) => {
-      const keyframes: MaskKeyframe[] = [];
+      let maskData: string | null = null;
 
-      if (maskMeta.keyframes) {
+      if (maskMeta.maskDataRef) {
         onProgress?.({
           current: ++currentStep,
           total: totalSteps,
           clipName: "Masks",
         });
 
-        for (const kfMeta of maskMeta.keyframes) {
-          let maskData = "";
-          if (kfMeta.storageRef) {
-            try {
-              maskData = await downloadMaskKeyframe(kfMeta.storageRef);
-            } catch (error) {
-              console.error(`Failed to download mask keyframe ${kfMeta.id}:`, error);
-            }
-          }
-          keyframes.push({
-            id: kfMeta.id,
-            time: kfMeta.time,
-            maskData,
-            easing: kfMeta.easing as MaskKeyframe["easing"],
-          });
+        try {
+          maskData = await downloadMaskImage(maskMeta.maskDataRef);
+        } catch (error) {
+          console.error(`Failed to download mask ${maskMeta.id}:`, error);
         }
       }
 
@@ -547,7 +516,7 @@ export async function getVideoProjectFromFirebase(
         startTime: maskMeta.startTime,
         duration: maskMeta.duration,
         size: maskMeta.size,
-        keyframes: keyframes.length > 0 ? keyframes : [],
+        maskData,
       };
     })
   );

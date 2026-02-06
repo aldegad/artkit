@@ -49,7 +49,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     getMaskAtTimeForTrack,
     brushSettings,
     setBrushMode,
-    autoSaveKeyframe,
+    saveMaskData,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
@@ -765,8 +765,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       endDraw();
       isMaskDrawingRef.current = false;
 
-      // Auto-save mask as keyframe after each stroke
-      autoSaveKeyframe(currentTimeRef.current);
+      // Auto-save mask data after each stroke
+      saveMaskData();
 
       // Restore brush mode if Alt was used
       if (prevBrushModeRef.current !== null) {
@@ -793,7 +793,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       cropStart: null,
     };
     setIsDraggingCrop(false);
-  }, [endDraw, setBrushMode, autoSaveKeyframe, currentTimeRef]);
+  }, [endDraw, setBrushMode, saveMaskData]);
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick(() => {

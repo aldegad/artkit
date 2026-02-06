@@ -171,7 +171,7 @@ function VideoEditorContent() {
     canRedo,
     isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, restoreMasks, masks: masksMap, autoSaveKeyframe } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, restoreMasks, masks: masksMap, saveMaskData } = useMask();
   const {
     layoutState,
     isPanelOpen,
