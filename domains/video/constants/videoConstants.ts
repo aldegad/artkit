@@ -51,13 +51,6 @@ export const PLAYBACK = {
   TIME_DISPLAY_THROTTLE_MS: 100, // throttle for time display updates
 } as const;
 
-// Buffer constants
-export const BUFFER = {
-  CRITICAL_THRESHOLD: 0.5, // seconds: pause when less than this buffered
-  RESUME_THRESHOLD: 2.0, // seconds: resume when this much is buffered
-  CHECK_INTERVAL_MS: 250, // how often to check buffer state
-} as const;
-
 // UI constants
 export const UI = {
   HANDLE_SIZE: 8,
