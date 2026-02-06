@@ -94,12 +94,15 @@ export default function FramePreviewContent() {
 
   const viewportSync = viewport.useReactSync(16);
 
+  // Extract stable references from viewport
+  const { onViewportChange: onFrameViewportChange, setZoom: setFrameVpZoom, setPan: setFrameVpPan } = viewport;
+
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const unsub = viewport.onViewportChange((state) => {
+    const unsub = onFrameViewportChange((state) => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = setTimeout(() => {
         const store = useSpriteViewportStore.getState();
@@ -111,7 +114,7 @@ export default function FramePreviewContent() {
       unsub();
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [viewport]);
+  }, [onFrameViewportChange]);
 
   // Restore viewport from autosave on load
   const restoredRef = useRef(false);
@@ -120,10 +123,10 @@ export default function FramePreviewContent() {
     restoredRef.current = true;
     const { frameEditZoom, frameEditPan } = useSpriteViewportStore.getState();
     if (frameEditZoom > 0) {
-      viewport.setZoom(frameEditZoom);
-      viewport.setPan(frameEditPan);
+      setFrameVpZoom(frameEditZoom);
+      setFrameVpPan(frameEditPan);
     }
-  }, [isAutosaveLoading, viewport]);
+  }, [isAutosaveLoading, setFrameVpZoom, setFrameVpPan]);
 
   // ---- Render scheduler ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);

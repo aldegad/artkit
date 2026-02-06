@@ -32,13 +32,8 @@ export class ViewportEmitter {
   }
 
   emit(state: ViewportState): void {
-    console.log("[ViewportEmitter] emit called, listeners:", this.listeners.size, state);
     for (const listener of this.listeners) {
       listener(state);
     }
-  }
-
-  listenerCount(): number {
-    return this.listeners.size;
   }
 }

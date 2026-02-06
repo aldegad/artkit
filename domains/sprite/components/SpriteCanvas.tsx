@@ -33,6 +33,9 @@ export default function CanvasContent() {
     setSelectedFrameId,
     selectedPointIndex,
     setSelectedPointIndex,
+    zoom,
+    pan,
+    scale,
     setScale,
     setZoom,
     setPan,
@@ -71,40 +74,46 @@ export default function CanvasContent() {
     enablePinch: true,
   });
 
+  // Extract stable references from viewport (useCallback-backed, won't change on re-render)
+  const {
+    onViewportChange,
+    updateTransform,
+    wheelRef: viewportWheelRef,
+    pinchRef: viewportPinchRef,
+  } = viewport;
+
   // ---- Shared render scheduler ----
   const { requestRender, setRenderFn } = useRenderScheduler(canvasContainerRef);
 
-  // Sync viewport hook state back to the Zustand store for autosave
+  // Track last synced values to prevent infinite sync loops
+  const lastViewportSyncRef = useRef({ zoom: 1, pan: { x: 0, y: 0 }, baseScale: 1 });
+
+  // Forward sync: viewport (wheel/pinch) → Zustand store (for autosave)
   useEffect(() => {
-    console.log("[SpriteCanvas] SUBSCRIBING to viewport changes, emitter listeners count:", viewport.emitter.listenerCount());
-    const unsub = viewport.onViewportChange((state) => {
-      console.log("[SpriteCanvas] viewport → store sync:", {
-        zoom: state.zoom,
-        pan: state.pan,
-        baseScale: state.baseScale,
-      });
+    return onViewportChange((state) => {
+      lastViewportSyncRef.current = { zoom: state.zoom, pan: { ...state.pan }, baseScale: state.baseScale };
       setZoom(state.zoom);
       setPan(state.pan);
       setScale(state.baseScale);
     });
-    console.log("[SpriteCanvas] SUBSCRIBED, emitter listeners count:", viewport.emitter.listenerCount());
-    return () => {
-      console.log("[SpriteCanvas] UNSUBSCRIBING from viewport changes");
-      unsub();
-    };
-  }, [viewport, setZoom, setPan, setScale]);
+  }, [onViewportChange, setZoom, setPan, setScale]);
+
+  // Reverse sync: Zustand store (autosave restore, external changes) → viewport
+  useEffect(() => {
+    const last = lastViewportSyncRef.current;
+    if (zoom === last.zoom && pan.x === last.pan.x && pan.y === last.pan.y && scale === last.baseScale) return;
+    lastViewportSyncRef.current = { zoom, pan: { ...pan }, baseScale: scale };
+    updateTransform({ zoom, pan, baseScale: scale });
+  }, [zoom, pan, scale, updateTransform]);
 
   // Merge wheel + canvas ref callbacks
   const canvasCallbackRef = useCallback(
     (el: HTMLCanvasElement | null) => {
-      // Update the canvasRef from context
       canvasRef.current = el;
-      // Bind wheel zoom
-      viewport.wheelRef(el);
-      // Bind pinch zoom
-      viewport.pinchRef(el);
+      viewportWheelRef(el);
+      viewportPinchRef(el);
     },
-    [canvasRef, viewport],
+    [canvasRef, viewportWheelRef, viewportPinchRef],
   );
 
   // ---- Coordinate transforms via viewport ----
@@ -435,11 +444,10 @@ export default function CanvasContent() {
 
   // Subscribe to viewport changes to trigger re-render
   useEffect(() => {
-    const unsub = viewport.onViewportChange(() => {
+    return onViewportChange(() => {
       requestRender();
     });
-    return unsub;
-  }, [viewport, requestRender]);
+  }, [onViewportChange, requestRender]);
 
   // Canvas click handler
   const handleCanvasClick = useCallback(

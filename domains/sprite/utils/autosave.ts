@@ -41,10 +41,7 @@ const spriteAutosave = createAutosave<AutosaveData>({
 export async function loadAutosaveData(): Promise<AutosaveData | null> {
   try {
     const data = await spriteAutosave.load();
-    if (!data) {
-      console.log("[Sprite Autosave] LOAD: No saved data found");
-      return null;
-    }
+    if (!data) return null;
 
     // V1 format (flat frames) → migrate to V2 (tracks)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,35 +52,12 @@ export async function loadAutosaveData(): Promise<AutosaveData | null> {
 
     // Still no tracks → corrupted data
     if (!Array.isArray(data.tracks)) {
-      console.warn("[Sprite Autosave] LOAD: Corrupted data (no tracks), clearing");
       await spriteAutosave.clear();
       return null;
     }
-
-    console.log("[Sprite Autosave] LOAD:", {
-      imageSize: data.imageSize,
-      zoom: data.zoom,
-      pan: data.pan,
-      scale: data.scale,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      canvasHeight: (data as any).canvasHeight,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      isCanvasCollapsed: (data as any).isCanvasCollapsed,
-      tracksCount: data.tracks.length,
-      fps: data.fps,
-      currentFrameIndex: data.currentFrameIndex,
-      projectName: data.projectName,
-      animPreviewZoom: data.animPreviewZoom,
-      animPreviewPan: data.animPreviewPan,
-      frameEditZoom: data.frameEditZoom,
-      frameEditPan: data.frameEditPan,
-      savedAt: data.savedAt,
-    });
-
     return data;
   } catch {
     // Corrupted data — clear and return null
-    console.error("[Sprite Autosave] LOAD: Error loading data, clearing");
     await spriteAutosave.clear();
     return null;
   }
@@ -95,20 +69,6 @@ export async function loadAutosaveData(): Promise<AutosaveData | null> {
 export async function saveAutosaveData(
   data: Omit<AutosaveData, "savedAt" | "id">
 ): Promise<void> {
-  console.log("[Sprite Autosave] SAVE:", {
-    imageSize: data.imageSize,
-    zoom: data.zoom,
-    pan: data.pan,
-    scale: data.scale,
-    tracksCount: data.tracks.length,
-    fps: data.fps,
-    currentFrameIndex: data.currentFrameIndex,
-    projectName: data.projectName,
-    animPreviewZoom: data.animPreviewZoom,
-    animPreviewPan: data.animPreviewPan,
-    frameEditZoom: data.frameEditZoom,
-    frameEditPan: data.frameEditPan,
-  });
   return spriteAutosave.save(data);
 }
 
