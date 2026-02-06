@@ -38,6 +38,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
 
   // Mask
   const {
@@ -667,6 +668,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    // Update brush cursor position in mask mode
+    if (toolMode === "mask" && isEditingMask) {
+      const container = previewContainerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        setBrushCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      }
+    }
+
     if (isMaskDrawingRef.current) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords) {
@@ -732,7 +742,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw]);
+  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     if (isMaskDrawingRef.current) {
@@ -795,17 +805,41 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         style={{
           cursor: toolMode === "crop"
             ? (isDraggingCrop ? "grabbing" : "crosshair")
-            : toolMode === "mask"
-              ? "crosshair"
-              : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+            : toolMode === "mask" && isEditingMask
+              ? "none"
+              : toolMode === "mask"
+                ? "crosshair"
+                : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onPointerLeave={(e) => {
+          handlePointerUp(e);
+          setBrushCursor(null);
+        }}
       />
+      {/* Brush cursor preview */}
+      {toolMode === "mask" && isEditingMask && brushCursor && (() => {
+        const { scale } = previewGeometryRef.current;
+        const displaySize = brushSettings.size * scale;
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: brushCursor.x - displaySize / 2,
+              top: brushCursor.y - displaySize / 2,
+              width: displaySize,
+              height: displaySize,
+              borderRadius: "50%",
+              border: `1.5px solid ${brushSettings.mode === "erase" ? "rgba(255,100,100,0.8)" : "rgba(255,255,255,0.8)"}`,
+              boxShadow: `0 0 0 1px ${brushSettings.mode === "erase" ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.5)"}`,
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

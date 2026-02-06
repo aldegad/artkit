@@ -170,7 +170,7 @@ function VideoEditorContent() {
     canUndo,
     canRedo,
   } = useTimeline();
-  const { startMaskEdit, masks: masksMap } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, masks: masksMap } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -914,6 +914,9 @@ function VideoEditorContent() {
         startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
       }
     }
+    if (mode !== "mask" && isEditingMask) {
+      endMaskEdit();
+    }
     if (mode === "crop" && !cropArea) {
       setCropArea({
         x: 0,
@@ -923,7 +926,19 @@ function VideoEditorContent() {
       });
     }
     setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime]);
+  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime, isEditingMask, endMaskEdit]);
+
+  // Auto-start mask edit when clip is selected while already in mask mode
+  useEffect(() => {
+    if (toolMode !== "mask") return;
+    if (selectedClipIds.length === 0) return;
+    if (isEditingMask) return; // already editing
+
+    const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
+    if (selectedClip && selectedClip.type !== "audio") {
+      startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
+    }
+  }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

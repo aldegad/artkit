@@ -164,7 +164,7 @@ export function useMaskTool(): UseMaskToolReturn {
     [maskCanvasRef]
   );
 
-  // Clear mask (all black = fully transparent)
+  // Clear mask (fully transparent = clip invisible)
   const clearMask = useCallback(() => {
     if (!maskCanvasRef.current) return;
 
@@ -172,8 +172,6 @@ export function useMaskTool(): UseMaskToolReturn {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
-    ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
   }, [maskCanvasRef]);
 
   // Fill mask (all white = fully visible)

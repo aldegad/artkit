@@ -164,9 +164,8 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         maskCanvasRef.current.height = canvasSize.height;
         const ctx = maskCanvasRef.current.getContext("2d");
         if (ctx) {
-          // Start with fully transparent (black = transparent)
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+          // Start fully transparent (alpha=0) — clip invisible until painted
+          ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
 
           // Load existing keyframe data if available
           const localTime = currentTime - mask.startTime;
