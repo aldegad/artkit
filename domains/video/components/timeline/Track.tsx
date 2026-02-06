@@ -5,15 +5,17 @@ import { Clip } from "./Clip";
 import { MaskClip } from "./MaskClip";
 import { cn } from "@/shared/utils/cn";
 import { MASK_LANE_HEIGHT } from "../../constants";
+import type { ClipBufferMap } from "../../hooks/useClipBufferRanges";
 
 interface TrackProps {
   track: VideoTrack;
   clips: ClipType[];
   masks: MaskData[];
+  bufferMap?: ClipBufferMap;
   className?: string;
 }
 
-export function Track({ track, clips, masks, className }: TrackProps) {
+export function Track({ track, clips, masks, bufferMap, className }: TrackProps) {
   const hasMasks = masks.length > 0;
   const totalHeight = track.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
 
@@ -31,7 +33,7 @@ export function Track({ track, clips, masks, className }: TrackProps) {
       <div className="relative" style={{ height: track.height }}>
         <div className="absolute inset-0 bg-surface-secondary/50" />
         {clips.map((clip) => (
-          <Clip key={clip.id} clip={clip} />
+          <Clip key={clip.id} clip={clip} bufferRanges={bufferMap?.get(clip.id)} />
         ))}
       </div>
 

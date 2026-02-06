@@ -114,6 +114,8 @@
   --clip-trim-handle: rgba(255, 255, 255, 0.3);
   --clip-trim-handle-hover: rgba(255, 255, 255, 0.6);
   --clip-selection-ring: var(--accent-primary);
+  --clip-buffer-loaded: rgba(255, 255, 255, 0.25);
+  --clip-buffer-bg: rgba(0, 0, 0, 0.15);
 }
 
 /* =============================================
@@ -229,6 +231,8 @@
   --clip-trim-handle: rgba(255, 255, 255, 0.25);
   --clip-trim-handle-hover: rgba(255, 255, 255, 0.5);
   --clip-selection-ring: var(--accent-primary);
+  --clip-buffer-loaded: rgba(255, 255, 255, 0.20);
+  --clip-buffer-bg: rgba(0, 0, 0, 0.25);
 }
 
 /* =============================================
@@ -279,6 +283,8 @@
   --color-clip-trim-handle: var(--clip-trim-handle);
   --color-clip-trim-handle-hover: var(--clip-trim-handle-hover);
   --color-clip-selection-ring: var(--clip-selection-ring);
+  --color-clip-buffer-loaded: var(--clip-buffer-loaded);
+  --color-clip-buffer-bg: var(--clip-buffer-bg);
 }
 
 /* =============================================
