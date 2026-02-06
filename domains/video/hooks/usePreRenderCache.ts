@@ -220,7 +220,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     // Spread outward from playhead
     for (let offset = 0; offset < totalFrameCount; offset++) {
       const forward = playheadFrame + offset;
-      const backward = playheadFrame - offset - 1;
+      const backward = playheadFrame - offset;
 
       if (forward < totalFrameCount && !cachedFrameSet.has(forward)) {
         queue.push(forward);
