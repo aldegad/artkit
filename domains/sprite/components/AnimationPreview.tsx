@@ -124,16 +124,23 @@ export default function AnimationPreviewContent() {
   // Throttled React state for UI display only (zoom %, CSS transform)
   const viewportSync = viewport.useReactSync(16);
 
-  // ---- Sync viewport to Zustand store for autosave (no full subscription) ----
+  // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const unsub = viewport.onViewportChange((state) => {
-      const store = useSpriteViewportStore.getState();
-      store.setAnimPreviewZoom(state.zoom);
-      store.setAnimPreviewPan(state.pan);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = setTimeout(() => {
+        const store = useSpriteViewportStore.getState();
+        store.setAnimPreviewZoom(state.zoom);
+        store.setAnimPreviewPan(state.pan);
+      }, 1000);
     });
-    return unsub;
+    return () => {
+      unsub();
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    };
   }, [viewport]);
 
   // Restore viewport from autosave on load
