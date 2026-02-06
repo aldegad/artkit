@@ -18,7 +18,7 @@ interface TimelineProps {
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
-  const { tracks, getClipsInTrack, viewState, setScrollX, setZoom, updateTrack, addTrack } = useTimeline();
+  const { tracks, getClipsInTrack, viewState, setScrollX, setZoom, updateTrack, addTrack, removeTrack, reorderTracks, saveToHistory } = useTimeline();
   const { project } = useVideoState();
   useVideoCoordinates();
 
@@ -31,6 +31,8 @@ export function Timeline({ className }: TimelineProps) {
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
+  const [dragTrackId, setDragTrackId] = useState<string | null>(null);
+  const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
 
   // Calculate total tracks height
   const totalTracksHeight = tracks.reduce((sum, t) => sum + t.height, 0);
@@ -129,9 +131,9 @@ export function Timeline({ className }: TimelineProps) {
               <button
                 onClick={() => addTrack(undefined, "video")}
                 className="h-5 px-1.5 rounded text-[10px] bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
-                title="Add video track"
+                title="Add visual track (video/image)"
               >
-                + Video
+                + Visual
               </button>
               <button
                 onClick={() => addTrack(undefined, "audio")}
@@ -156,8 +158,45 @@ export function Timeline({ className }: TimelineProps) {
             {tracks.map((track) => (
               <div
                 key={track.id}
-                className="flex items-center px-2 border-b border-border"
+                className={cn(
+                  "flex items-center px-2 border-b border-border",
+                  dragOverTrackId === track.id && "bg-surface-tertiary/60"
+                )}
                 style={{ height: track.height }}
+                draggable
+                onDragStart={(e) => {
+                  setDragTrackId(track.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverTrackId(track.id);
+                }}
+                onDragLeave={() => {
+                  if (dragOverTrackId === track.id) {
+                    setDragOverTrackId(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!dragTrackId || dragTrackId === track.id) {
+                    setDragOverTrackId(null);
+                    return;
+                  }
+
+                  const fromIndex = tracks.findIndex((t) => t.id === dragTrackId);
+                  const toIndex = tracks.findIndex((t) => t.id === track.id);
+                  if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+                    saveToHistory();
+                    reorderTracks(fromIndex, toIndex);
+                  }
+                  setDragTrackId(null);
+                  setDragOverTrackId(null);
+                }}
+                onDragEnd={() => {
+                  setDragTrackId(null);
+                  setDragOverTrackId(null);
+                }}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {/* Visibility toggle */}
@@ -200,6 +239,27 @@ export function Timeline({ className }: TimelineProps) {
                   <span className="text-xs text-text-secondary truncate">
                     {track.name}
                   </span>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (tracks.length <= 1) return;
+                      saveToHistory();
+                      removeTrack(track.id);
+                    }}
+                    disabled={tracks.length <= 1}
+                    className={cn(
+                      "ml-auto p-1 rounded transition-colors",
+                      tracks.length <= 1
+                        ? "text-text-tertiary/40 cursor-not-allowed"
+                        : "text-text-tertiary hover:text-red-400 hover:bg-surface-tertiary"
+                    )}
+                    title={tracks.length <= 1 ? "At least one track is required" : "Delete track"}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M5.5 2h5l.5 1H14v1H2V3h3l.5-1zm-1 3h1v8h-1V5zm3 0h1v8h-1V5zm3 0h1v8h-1V5z" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))}

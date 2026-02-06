@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
+import { useVideoState, useVideoRefs, useTimeline, useMask } from "../../contexts";
 import { useVideoElements } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
@@ -17,8 +17,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const { playback, project } = useVideoState();
   const { tracks, clips, getClipAtTime } = useTimeline();
+  const { getMaskForClip, getMaskAtTime } = useMask();
   const [videoReadyCount, setVideoReadyCount] = useState(0);
   const wasPlayingRef = useRef(false);
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const maskImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const maskBlendCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
@@ -241,8 +245,62 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const clip = getClipAtTime(track.id, playback.currentTime);
       if (!clip || !clip.visible) continue;
 
+      const drawClipWithMask = (source: CanvasImageSource) => {
+        const drawX = offsetX + clip.position.x * scale;
+        const drawY = offsetY + clip.position.y * scale;
+        const drawWidth = clip.sourceSize.width * scale * clip.scale;
+        const drawHeight = clip.sourceSize.height * scale * clip.scale;
+        const mask = getMaskForClip(clip.id);
+        const maskDataUrl = mask ? getMaskAtTime(mask.id, playback.currentTime) : null;
+
+        if (!maskDataUrl || clip.type === "audio") {
+          ctx.globalAlpha = clip.opacity / 100;
+          ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+          ctx.globalAlpha = 1;
+          return;
+        }
+
+        let maskImage = maskImageCacheRef.current.get(maskDataUrl);
+        if (!maskImage) {
+          maskImage = new Image();
+          maskImage.src = maskDataUrl;
+          maskImageCacheRef.current.set(maskDataUrl, maskImage);
+        }
+
+        if (!maskImage.complete || maskImage.naturalWidth === 0 || maskImage.naturalHeight === 0) {
+          // Mask image decode in progress; draw clip without mask for now.
+          ctx.globalAlpha = clip.opacity / 100;
+          ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+          ctx.globalAlpha = 1;
+          return;
+        }
+
+        const blendCanvas = maskBlendCanvasRef.current || document.createElement("canvas");
+        maskBlendCanvasRef.current = blendCanvas;
+        blendCanvas.width = Math.max(1, Math.round(clip.sourceSize.width));
+        blendCanvas.height = Math.max(1, Math.round(clip.sourceSize.height));
+        const blendCtx = blendCanvas.getContext("2d");
+        if (!blendCtx) {
+          ctx.globalAlpha = clip.opacity / 100;
+          ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+          ctx.globalAlpha = 1;
+          return;
+        }
+
+        blendCtx.clearRect(0, 0, blendCanvas.width, blendCanvas.height);
+        blendCtx.globalCompositeOperation = "source-over";
+        blendCtx.drawImage(source, 0, 0, blendCanvas.width, blendCanvas.height);
+        blendCtx.globalCompositeOperation = "destination-in";
+        blendCtx.drawImage(maskImage, 0, 0, blendCanvas.width, blendCanvas.height);
+        blendCtx.globalCompositeOperation = "source-over";
+
+        ctx.globalAlpha = clip.opacity / 100;
+        ctx.drawImage(blendCanvas, drawX, drawY, drawWidth, drawHeight);
+        ctx.globalAlpha = 1;
+      };
+
       // Get the video/image element for this clip
-      const videoElement = videoElementsRef.current.get(clip.sourceUrl);
+      const videoElement = clip.type === "video" ? videoElementsRef.current.get(clip.sourceUrl) : null;
 
       if (clip.type === "video" && videoElement) {
         // Check if video has enough data to display
@@ -268,30 +326,16 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         // During playback, just draw whatever frame the video is at
         // The video.play() handles syncing
 
-        // Draw video frame
-        ctx.globalAlpha = clip.opacity / 100;
-        ctx.drawImage(
-          videoElement,
-          offsetX + clip.position.x * scale,
-          offsetY + clip.position.y * scale,
-          clip.sourceSize.width * scale * clip.scale,
-          clip.sourceSize.height * scale * clip.scale
-        );
-        ctx.globalAlpha = 1;
+        drawClipWithMask(videoElement);
       } else if (clip.type === "image") {
-        // Draw image
-        const img = new Image();
-        img.src = clip.sourceUrl;
+        let img = imageCacheRef.current.get(clip.sourceUrl);
+        if (!img) {
+          img = new Image();
+          img.src = clip.sourceUrl;
+          imageCacheRef.current.set(clip.sourceUrl, img);
+        }
         if (img.complete) {
-          ctx.globalAlpha = clip.opacity / 100;
-          ctx.drawImage(
-            img,
-            offsetX + clip.position.x * scale,
-            offsetY + clip.position.y * scale,
-            clip.sourceSize.width * scale * clip.scale,
-            clip.sourceSize.height * scale * clip.scale
-          );
-          ctx.globalAlpha = 1;
+          drawClipWithMask(img);
         }
       }
     }
@@ -309,6 +353,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     clips,
     getClipAtTime,
     videoElementsRef,
+    getMaskForClip,
+    getMaskAtTime,
     drawCheckerboard,
     videoReadyCount,
   ]);

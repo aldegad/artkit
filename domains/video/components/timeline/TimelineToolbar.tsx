@@ -30,7 +30,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
       <button
         onClick={() => addTrack(undefined, "video")}
         className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-        title="Add Video Track"
+        title="Add Visual Track (video/image)"
       >
         <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 2v12M2 8h12" />

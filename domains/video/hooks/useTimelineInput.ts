@@ -10,6 +10,7 @@ interface DragState {
   type: TimelineDragType;
   clipId: string | null;
   startX: number;
+  startY: number;
   startTime: number;
   originalClipStart: number;
   originalClipDuration: number;
@@ -20,6 +21,7 @@ const INITIAL_DRAG_STATE: DragState = {
   type: "none",
   clipId: null,
   startX: 0,
+  startY: 0,
   startTime: 0,
   originalClipStart: 0,
   originalClipDuration: 0,
@@ -28,6 +30,7 @@ const INITIAL_DRAG_STATE: DragState = {
 
 export function useTimelineInput() {
   const {
+    tracks,
     clips,
     moveClip,
     trimClipStart,
@@ -43,16 +46,41 @@ export function useTimelineInput() {
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  const getTrackAtY = useCallback(
+    (y: number): string | null => {
+      if (tracks.length === 0) return null;
+
+      let offset = 0;
+      for (const track of tracks) {
+        const start = offset;
+        const end = offset + track.height;
+        if (y >= start && y < end) {
+          return track.id;
+        }
+        offset = end;
+      }
+
+      return tracks[tracks.length - 1].id;
+    },
+    [tracks]
+  );
+
   // Find clip at position
   const findClipAtPosition = useCallback(
-    (x: number): { clip: Clip; handle: "start" | "end" | "body" } | null => {
-      const time = pixelToTime(x);
+    (x: number, y: number): { clip: Clip; handle: "start" | "end" | "body" } | null => {
+      const trackId = getTrackAtY(y);
+      if (!trackId) return null;
 
-      for (const clip of clips) {
+      const time = pixelToTime(x);
+      const trackClips = clips
+        .filter((clip) => clip.trackId === trackId)
+        .sort((a, b) => b.startTime - a.startTime);
+
+      for (const clip of trackClips) {
         const clipStartX = timeToPixel(clip.startTime);
         const clipEndX = timeToPixel(clip.startTime + clip.duration);
 
-        // Check if within clip bounds (rough y check based on track)
+        // Check if within clip bounds
         if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
           // Check for trim handles
           if (Math.abs(x - clipStartX) < UI.TRIM_HANDLE_WIDTH) {
@@ -66,13 +94,14 @@ export function useTimelineInput() {
       }
       return null;
     },
-    [clips, pixelToTime, timeToPixel]
+    [getTrackAtY, clips, pixelToTime, timeToPixel]
   );
 
   // Handle mouse down
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, containerRect: DOMRect) => {
       const x = e.clientX - containerRect.left;
+      const y = e.clientY - containerRect.top;
       const time = pixelToTime(x);
 
       // Middle mouse for pan
@@ -81,6 +110,7 @@ export function useTimelineInput() {
           ...INITIAL_DRAG_STATE,
           type: "playhead",
           startX: x,
+          startY: y,
           startTime: time,
         });
         return;
@@ -88,7 +118,7 @@ export function useTimelineInput() {
 
       // Left click
       if (e.button === 0) {
-        const result = findClipAtPosition(x);
+        const result = findClipAtPosition(x, y);
 
         if (result) {
           const { clip, handle } = result;
@@ -99,6 +129,7 @@ export function useTimelineInput() {
               type: "clip-trim-start",
               clipId: clip.id,
               startX: x,
+              startY: y,
               startTime: time,
               originalClipStart: clip.startTime,
               originalClipDuration: clip.duration,
@@ -111,6 +142,7 @@ export function useTimelineInput() {
               type: "clip-trim-end",
               clipId: clip.id,
               startX: x,
+              startY: y,
               startTime: time,
               originalClipStart: clip.startTime,
               originalClipDuration: clip.duration,
@@ -168,6 +200,7 @@ export function useTimelineInput() {
                 type: "clip-move",
                 clipId: dragClipId,
                 startX: x,
+                startY: y,
                 startTime: time,
                 originalClipStart: clip.startTime,
                 originalClipDuration: clip.duration,
@@ -184,6 +217,7 @@ export function useTimelineInput() {
             type: "playhead",
             clipId: null,
             startX: x,
+            startY: y,
             startTime: time,
             originalClipStart: 0,
             originalClipDuration: 0,
@@ -212,6 +246,7 @@ export function useTimelineInput() {
       if (dragState.type === "none") return;
 
       const x = e.clientX - containerRect.left;
+      const y = e.clientY - containerRect.top;
       const time = pixelToTime(x);
       const deltaTime = time - dragState.startTime;
 
@@ -225,7 +260,8 @@ export function useTimelineInput() {
             const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
             const clip = clips.find((c) => c.id === dragState.clipId);
             if (clip) {
-              moveClip(dragState.clipId, clip.trackId, newStartTime);
+              const targetTrackId = getTrackAtY(y) || clip.trackId;
+              moveClip(dragState.clipId, targetTrackId, newStartTime);
             }
           }
           break;
@@ -247,7 +283,7 @@ export function useTimelineInput() {
           break;
       }
     },
-    [dragState, pixelToTime, clips, moveClip, trimClipStart, trimClipEnd, seek]
+    [dragState, pixelToTime, getTrackAtY, clips, moveClip, trimClipStart, trimClipEnd, seek]
   );
 
   // Handle mouse up
@@ -270,7 +306,7 @@ export function useTimelineInput() {
         }
       }
 
-      const result = findClipAtPosition(x);
+      const result = findClipAtPosition(x, 0);
       if (result) {
         if (result.handle === "start" || result.handle === "end") {
           return "ew-resize";

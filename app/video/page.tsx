@@ -335,7 +335,7 @@ function VideoEditorContent() {
       tracks,
       addTrack,
       playback.currentTime,
-      clips.length,
+      clips,
       project,
       setProject,
       addVideoClip,
