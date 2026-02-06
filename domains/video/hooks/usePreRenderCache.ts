@@ -270,7 +270,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       // Render composite frame to offscreen canvas
       oscCtx.clearRect(0, 0, cacheW, cacheH);
 
-      renderCompositeFrame(oscCtx, {
+      const fullyRendered = renderCompositeFrame(oscCtx, {
         time,
         tracks: currentTracks,
         getClipAtTime: getClipAtTimeRef.current,
@@ -284,6 +284,13 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         // No live mask canvas for pre-rendering (use saved data only)
         isPlaying: false,
       });
+
+      // Skip caching partial/incomplete frames (e.g. seek not settled yet).
+      // Otherwise a transient black/empty render can become "sticky" in cache.
+      if (!fullyRendered) {
+        await new Promise((r) => setTimeout(r, PRE_RENDER.BATCH_DELAY_MS));
+        continue;
+      }
 
       // Create ImageBitmap from rendered frame
       try {
