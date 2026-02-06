@@ -19,6 +19,7 @@ interface TimelineProps {
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
+  const trackHeadersRef = useRef<HTMLDivElement>(null);
   const {
     tracks,
     getClipsInTrack,
@@ -95,6 +96,20 @@ export function Timeline({ className }: TimelineProps) {
       window.removeEventListener("mouseup", handleUp);
     };
   }, [isHeaderResizing]);
+
+  // Sync vertical scroll from clips area to track headers
+  useEffect(() => {
+    const tracksEl = tracksContainerRef.current;
+    const headersEl = trackHeadersRef.current;
+    if (!tracksEl || !headersEl) return;
+
+    const onScroll = () => {
+      headersEl.scrollTop = tracksEl.scrollTop;
+    };
+
+    tracksEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => tracksEl.removeEventListener("scroll", onScroll);
+  }, []);
 
   // Handle mouse down - combine timeline input with middle-mouse scroll
   const handleMouseDown = useCallback(
@@ -192,7 +207,7 @@ export function Timeline({ className }: TimelineProps) {
         {/* Tracks area */}
         <div className="flex overflow-hidden" style={{ height: `calc(100% - 24px)` }}>
           {/* Track headers */}
-          <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-auto" style={headerWidthStyle}>
+          <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
             {tracks.map((track) => (
               <div
                 key={track.id}
