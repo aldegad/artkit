@@ -26,33 +26,66 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Handle playback state changes - sync video elements
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
+    const trackById = new Map(tracks.map((track) => [track.id, track]));
 
-    if (playback.isPlaying && !wasPlayingRef.current) {
-      // Playback started - sync and play all video elements
-      for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.sourceUrl);
-        if (video && video.readyState >= 2) {
-          const clipTime = playback.currentTime - clip.startTime;
-          if (clipTime >= 0 && clipTime < clip.duration) {
-            const sourceTime = clip.trimIn + clipTime;
-            video.currentTime = sourceTime;
-            video.playbackRate = playback.playbackRate;
-            video.play().catch(() => {});
-          }
-        }
+    // Pick a single audible clip at current time (topmost visible track wins).
+    const sortedTracks = [...tracks].sort((a, b) => b.zIndex - a.zIndex);
+    let activeAudioClipId: string | null = null;
+    for (const track of sortedTracks) {
+      const clip = getClipAtTime(track.id, playback.currentTime);
+      if (
+        clip &&
+        clip.type === "video" &&
+        clip.visible &&
+        !track.muted &&
+        clip.hasAudio &&
+        !clip.audioMuted &&
+        clip.audioVolume > 0
+      ) {
+        activeAudioClipId = clip.id;
+        break;
       }
-    } else if (!playback.isPlaying && wasPlayingRef.current) {
-      // Playback stopped - pause all video elements
+    }
+
+    if (playback.isPlaying) {
+      // Playback started/continued - sync and play all visible video clips for visual render.
       for (const clip of videoClips) {
         const video = videoElementsRef.current?.get(clip.sourceUrl);
-        if (video) {
+        const track = trackById.get(clip.trackId);
+        if (!video || !track || video.readyState < 2) continue;
+
+        const clipTime = playback.currentTime - clip.startTime;
+        if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible) {
           video.pause();
+          video.muted = true;
+          continue;
         }
+
+        const sourceTime = clip.trimIn + clipTime;
+        if (Math.abs(video.currentTime - sourceTime) > 0.1) {
+          video.currentTime = sourceTime;
+        }
+
+        video.playbackRate = playback.playbackRate;
+
+        const isAudible = clip.id === activeAudioClipId;
+        video.muted = !isAudible;
+        video.volume = isAudible ? Math.max(0, Math.min(1, clip.audioVolume / 100)) : 0;
+
+        video.play().catch(() => {});
+      }
+    } else if (wasPlayingRef.current) {
+      // Playback stopped - pause all videos and mute audio.
+      for (const clip of videoClips) {
+        const video = videoElementsRef.current?.get(clip.sourceUrl);
+        if (!video) continue;
+        video.pause();
+        video.muted = true;
       }
     }
 
     wasPlayingRef.current = playback.isPlaying;
-  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, videoElementsRef]);
+  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef]);
 
   // Setup video ready listeners
   useEffect(() => {
