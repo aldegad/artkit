@@ -104,6 +104,8 @@ export function EditorProvider({ children }: EditorProviderProps) {
     }
 
     autosaveTimeoutRef.current = setTimeout(() => {
+      // Read panel viewport from getState() to avoid subscribing to rapid changes
+      const vpSnap = useSpriteViewportStore.getState();
       void saveAutosaveData({
         imageSrc: trackStore.imageSrc,
         imageSize: trackStore.imageSize,
@@ -115,10 +117,10 @@ export function EditorProvider({ children }: EditorProviderProps) {
         pan: viewportStore.pan,
         scale: viewportStore.scale,
         projectName: uiStore.projectName,
-        animPreviewZoom: viewportStore.animPreviewZoom,
-        animPreviewPan: viewportStore.animPreviewPan,
-        frameEditZoom: viewportStore.frameEditZoom,
-        frameEditPan: viewportStore.frameEditPan,
+        animPreviewZoom: vpSnap.animPreviewZoom,
+        animPreviewPan: vpSnap.animPreviewPan,
+        frameEditZoom: vpSnap.frameEditZoom,
+        frameEditPan: vpSnap.frameEditPan,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -137,12 +139,50 @@ export function EditorProvider({ children }: EditorProviderProps) {
     viewportStore.zoom,
     viewportStore.pan,
     viewportStore.scale,
-    viewportStore.animPreviewZoom,
-    viewportStore.animPreviewPan,
-    viewportStore.frameEditZoom,
-    viewportStore.frameEditPan,
     uiStore.projectName,
   ]);
+
+  // Separate subscribe for panel viewport changes (avoids re-rendering EditorProvider)
+  useEffect(() => {
+    const panelAutosaveRef = { timeout: null as NodeJS.Timeout | null };
+    const unsub = useSpriteViewportStore.subscribe(
+      (state, prev) => {
+        if (!isInitializedRef.current) return;
+        if (
+          state.animPreviewZoom === prev.animPreviewZoom &&
+          state.animPreviewPan === prev.animPreviewPan &&
+          state.frameEditZoom === prev.frameEditZoom &&
+          state.frameEditPan === prev.frameEditPan
+        ) return;
+        if (panelAutosaveRef.timeout) clearTimeout(panelAutosaveRef.timeout);
+        panelAutosaveRef.timeout = setTimeout(() => {
+          const ts = useSpriteTrackStore.getState();
+          const vs = useSpriteViewportStore.getState();
+          const us = useSpriteUIStore.getState();
+          void saveAutosaveData({
+            imageSrc: ts.imageSrc,
+            imageSize: ts.imageSize,
+            tracks: ts.tracks,
+            nextFrameId: ts.nextFrameId,
+            fps: ts.fps,
+            currentFrameIndex: ts.currentFrameIndex,
+            zoom: vs.zoom,
+            pan: vs.pan,
+            scale: vs.scale,
+            projectName: us.projectName,
+            animPreviewZoom: vs.animPreviewZoom,
+            animPreviewPan: vs.animPreviewPan,
+            frameEditZoom: vs.frameEditZoom,
+            frameEditPan: vs.frameEditPan,
+          });
+        }, AUTOSAVE_DEBOUNCE_MS);
+      },
+    );
+    return () => {
+      unsub();
+      if (panelAutosaveRef.timeout) clearTimeout(panelAutosaveRef.timeout);
+    };
+  }, []);
 
   const refsValue: EditorRefsContextValue = {
     canvasRef,
