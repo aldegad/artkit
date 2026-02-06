@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { MinusIcon, PlusIcon } from "./icons";
+import { MinusIcon, PlusIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 import { cn } from "@/shared/utils/cn";
 
 interface NumberScrubberProps {
@@ -18,6 +18,7 @@ interface NumberScrubberProps {
   sensitivity?: number;
   valueWidth?: string;
   editable?: boolean;
+  variant?: "default" | "zoom";
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -38,6 +39,7 @@ export function NumberScrubber({
   sensitivity,
   valueWidth,
   editable = false,
+  variant = "default",
 }: NumberScrubberProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -124,6 +126,8 @@ export function NumberScrubber({
 
   const displayValue = format ? format(value) : String(value);
 
+  const DecrementIcon = variant === "zoom" ? ZoomOutIcon : MinusIcon;
+  const IncrementIcon = variant === "zoom" ? ZoomInIcon : PlusIcon;
   const iconSize = size === "sm" ? "w-3 h-3" : "w-3.5 h-3.5";
   const btnClass = cn(
     "flex items-center justify-center rounded transition-colors",
@@ -144,7 +148,7 @@ export function NumberScrubber({
         className={btnClass}
         tabIndex={-1}
       >
-        <MinusIcon className={iconSize} />
+        <DecrementIcon className={iconSize} />
       </button>
 
       {isEditing ? (
@@ -185,7 +189,7 @@ export function NumberScrubber({
         className={btnClass}
         tabIndex={-1}
       >
-        <PlusIcon className={iconSize} />
+        <IncrementIcon className={iconSize} />
       </button>
     </div>
   );
