@@ -177,9 +177,9 @@ export function Timeline({ className }: TimelineProps) {
         onWheel={handleWheel}
       >
         {/* Track headers + ruler row */}
-        <div className="flex border-b border-border">
+        <div className="flex border-b border-border-default">
           {/* Track header column */}
-          <div className="flex-shrink-0 bg-surface-secondary border-r border-border" style={headerWidthStyle}>
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default" style={headerWidthStyle}>
             <div className="h-6" /> {/* Ruler spacer */}
           </div>
 
@@ -192,11 +192,11 @@ export function Timeline({ className }: TimelineProps) {
         {/* Tracks area */}
         <div className="flex overflow-hidden" style={{ height: `calc(100% - 24px)` }}>
           {/* Track headers */}
-          <div className="flex-shrink-0 bg-surface-secondary border-r border-border overflow-y-auto" style={headerWidthStyle}>
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-auto" style={headerWidthStyle}>
             {tracks.map((track) => (
               <div
                 key={track.id}
-                className="flex items-center px-2 border-b border-border"
+                className="flex items-center px-2 border-b border-border-default"
                 style={{ height: track.height }}
                 draggable
                 onDragStart={(event) => {
@@ -268,7 +268,7 @@ export function Timeline({ className }: TimelineProps) {
 
           {/* Track header/content resize handle */}
           <div
-            className="w-1 shrink-0 cursor-ew-resize bg-border hover:bg-accent transition-colors"
+            className="w-1 shrink-0 cursor-ew-resize bg-border-default hover:bg-accent transition-colors"
             onMouseDown={handleStartHeaderResize}
             title="Resize track headers"
           />

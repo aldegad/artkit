@@ -1055,7 +1055,7 @@ function VideoEditorContent() {
       </HeaderSlot>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border overflow-x-auto">
+      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border-default overflow-x-auto">
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
