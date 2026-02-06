@@ -276,6 +276,7 @@ interface Translations {
   stop: string;
   previousFrame: string;
   nextFrame: string;
+  includeAudio: string;
   dropMediaHere: string;
   dropMediaDesc: string;
 
@@ -556,6 +557,7 @@ const translations: Record<Language, Translations> = {
     stop: "정지",
     previousFrame: "이전 프레임",
     nextFrame: "다음 프레임",
+    includeAudio: "오디오 포함",
     dropMediaHere: "미디어 파일을 여기에 드롭",
     dropMediaDesc: "비디오 또는 이미지 파일을 드래그하여 추가",
 
@@ -834,6 +836,7 @@ const translations: Record<Language, Translations> = {
     stop: "Stop",
     previousFrame: "Previous Frame",
     nextFrame: "Next Frame",
+    includeAudio: "Include Audio",
     dropMediaHere: "Drop media files here",
     dropMediaDesc: "Drag video or image files to add",
 

@@ -1,19 +1,8 @@
 "use client";
 
-import { ReactNode, useState, useEffect } from "react";
+import { createPanelRegistry } from "@/shared/components/layout";
 
-// ============================================
-// Panel Metadata
-// ============================================
-
-interface PanelMeta {
-  title: string;
-  showHeader: boolean;
-  defaultSize: { width: number; height: number };
-  minSize: number;
-}
-
-const PANEL_META: Record<string, PanelMeta> = {
+const PANEL_META = {
   canvas: {
     title: "Canvas",
     showHeader: false,
@@ -32,88 +21,19 @@ const PANEL_META: Record<string, PanelMeta> = {
     defaultSize: { width: 250, height: 300 },
     minSize: 150,
   },
-};
+} as const;
 
-// ============================================
-// Registry Functions
-// ============================================
+const registry = createPanelRegistry(PANEL_META);
 
-// Panel component registry - will be set dynamically from page
-let panelComponents: Record<string, () => ReactNode> = {};
-
-// Listeners for panel updates
-const updateListeners: Set<() => void> = new Set();
-
-// Subscribe to panel updates
-export function subscribeToPanelUpdates(listener: () => void): () => void {
-  updateListeners.add(listener);
-  return () => {
-    updateListeners.delete(listener);
-  };
-}
-
-// Notify all listeners of panel update
-function notifyPanelUpdate() {
-  updateListeners.forEach((listener) => listener());
-}
-
-// Hook to force re-render when panels update
-export function usePanelUpdate() {
-  const [, setVersion] = useState(0);
-
-  useEffect(() => {
-    return subscribeToPanelUpdates(() => setVersion((v) => v + 1));
-  }, []);
-}
-
-// Register a panel component
-export function registerEditorPanelComponent(panelId: string, component: () => ReactNode) {
-  panelComponents[panelId] = component;
-  notifyPanelUpdate();
-}
-
-// Clear all registered components
-export function clearEditorPanelComponents() {
-  panelComponents = {};
-}
-
-// Get panel content
-export function getEditorPanelContent(panelId: string): ReactNode {
-  const renderFn = panelComponents[panelId];
-  if (!renderFn) {
-    return (
-      <div className="w-full h-full flex items-center justify-center text-gray-500">
-        Unknown Panel: {panelId}
-      </div>
-    );
-  }
-  return renderFn();
-}
-
-// Get panel title
-export function getEditorPanelTitle(panelId: string): string {
-  return PANEL_META[panelId]?.title || panelId;
-}
-
-// Check if panel should show header
-export function isEditorPanelHeaderVisible(panelId: string): boolean {
-  return PANEL_META[panelId]?.showHeader ?? true;
-}
-
-// Get panel default size
-export function getEditorPanelDefaultSize(panelId: string): {
-  width: number;
-  height: number;
-} {
-  return PANEL_META[panelId]?.defaultSize || { width: 400, height: 300 };
-}
-
-// Get panel minimum size
-export function getEditorPanelMinSize(panelId: string): number {
-  return PANEL_META[panelId]?.minSize || 100;
-}
-
-// Get all registered panel IDs
-export function getRegisteredEditorPanelIds(): string[] {
-  return Object.keys(panelComponents);
-}
+export const {
+  registerPanelComponent: registerEditorPanelComponent,
+  clearPanelComponents: clearEditorPanelComponents,
+  getPanelContent: getEditorPanelContent,
+  getPanelTitle: getEditorPanelTitle,
+  isPanelHeaderVisible: isEditorPanelHeaderVisible,
+  getPanelDefaultSize: getEditorPanelDefaultSize,
+  getPanelMinSize: getEditorPanelMinSize,
+  getRegisteredPanelIds: getRegisteredEditorPanelIds,
+  usePanelUpdate,
+  subscribeToPanelUpdates,
+} = registry;
