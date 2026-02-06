@@ -7,5 +7,3 @@ export { useMediaImport } from "./useMediaImport";
 export { useVideoSave } from "./useVideoSave";
 export { usePlaybackTick, usePlaybackTime } from "./usePlaybackTick";
 export { useBufferMonitor } from "./useBufferMonitor";
-export { useClipBufferRanges } from "./useClipBufferRanges";
-export type { ClipBufferRange, ClipBufferMap } from "./useClipBufferRanges";
