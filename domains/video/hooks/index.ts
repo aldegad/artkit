@@ -4,3 +4,4 @@ export { useVideoElements } from "./useVideoElements";
 export { usePreviewRendering } from "./usePreviewRendering";
 export { useMaskTool } from "./useMaskTool";
 export { useMediaImport } from "./useMediaImport";
+export { useVideoSave } from "./useVideoSave";
