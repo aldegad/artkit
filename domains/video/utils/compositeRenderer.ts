@@ -14,6 +14,8 @@ export interface CompositeRenderParams {
   renderRect: { x: number; y: number; width: number; height: number };
   liveMaskCanvas?: HTMLCanvasElement | null;
   isPlaying?: boolean;
+  /** When true, skip video currentTime validation (caller already handled seeking via waitForSeek). */
+  preSeekVerified?: boolean;
   onMaskImageLoad?: () => void;
 }
 
@@ -39,6 +41,7 @@ export function renderCompositeFrame(
     renderRect,
     liveMaskCanvas,
     isPlaying,
+    preSeekVerified,
     onMaskImageLoad,
   } = params;
 
@@ -64,7 +67,7 @@ export function renderCompositeFrame(
         allRendered = false;
         continue;
       }
-      if (!isPlaying) {
+      if (!isPlaying && !preSeekVerified) {
         const clipTime = time - clip.startTime;
         const sourceTime = clip.trimIn + clipTime;
         if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
