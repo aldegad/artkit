@@ -27,7 +27,7 @@ const INITIAL_DRAG_STATE: DragState = {
 };
 
 export function useTimelineInput() {
-  const { clips, moveClip, trimClipStart, trimClipEnd } = useTimeline();
+  const { clips, moveClip, trimClipStart, trimClipEnd, duplicateClip } = useTimeline();
   const { seek, selectClip, deselectAll, toolMode } = useVideoState();
   const { pixelToTime, timeToPixel } = useVideoCoordinates();
 
@@ -111,16 +111,25 @@ export function useTimelineInput() {
               // Split clip at cursor
               // TODO: implement split
             } else {
+              // Alt+Drag: duplicate clip and drag the copy
+              let dragClipId = clip.id;
+              if (e.altKey && toolMode === "select") {
+                const newId = duplicateClip(clip.id, clip.trackId);
+                if (newId) {
+                  dragClipId = newId;
+                }
+              }
+
               setDragState({
                 type: "clip-move",
-                clipId: clip.id,
+                clipId: dragClipId,
                 startX: x,
                 startTime: time,
                 originalClipStart: clip.startTime,
                 originalClipDuration: clip.duration,
                 originalTrimIn: clip.trimIn,
               });
-              selectClip(clip.id, e.shiftKey);
+              selectClip(dragClipId, e.shiftKey);
             }
           }
         } else {
@@ -139,7 +148,7 @@ export function useTimelineInput() {
         }
       }
     },
-    [pixelToTime, findClipAtPosition, toolMode, selectClip, seek, deselectAll]
+    [pixelToTime, findClipAtPosition, toolMode, selectClip, seek, deselectAll, duplicateClip]
   );
 
   // Handle mouse move

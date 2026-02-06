@@ -4,6 +4,7 @@ export type {
   VideoClip,
   ImageClip,
   Clip,
+  ClipboardData,
 } from "./clip";
 export {
   createVideoClip,

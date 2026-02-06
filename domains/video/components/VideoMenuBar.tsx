@@ -27,6 +27,7 @@ interface VideoMenuBarProps {
   onPaste: () => void;
   onDelete: () => void;
   hasSelection: boolean;
+  hasClipboard?: boolean;
   // View menu
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -74,6 +75,7 @@ export default function VideoMenuBar({
   onPaste,
   onDelete,
   hasSelection,
+  hasClipboard,
   onZoomIn,
   onZoomOut,
   onFitToScreen,
@@ -100,7 +102,7 @@ export default function VideoMenuBar({
     { divider: true },
     { label: t.cut, onClick: onCut, disabled: !hasSelection, shortcut: "⌘X" },
     { label: t.copy, onClick: onCopy, disabled: !hasSelection, shortcut: "⌘C" },
-    { label: t.paste, onClick: onPaste, shortcut: "⌘V" },
+    { label: t.paste, onClick: onPaste, disabled: !hasClipboard, shortcut: "⌘V" },
     { label: t.delete, onClick: onDelete, disabled: !hasSelection, shortcut: "⌫" },
   ];
 
