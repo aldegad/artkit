@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useEffect, useState } from "react";
-import { useTimeline, useVideoState } from "../../contexts";
+import { useTimeline, useVideoState, useMask } from "../../contexts";
 import { useVideoCoordinates, useTimelineInput } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
@@ -32,6 +32,7 @@ export function Timeline({ className }: TimelineProps) {
     saveToHistory,
   } = useTimeline();
   const { project } = useVideoState();
+  const { getMasksForTrack } = useMask();
   useVideoCoordinates();
 
   // Timeline input handling (clip drag, trim, seek)
@@ -309,6 +310,7 @@ export function Timeline({ className }: TimelineProps) {
                   key={track.id}
                   track={track}
                   clips={getClipsInTrack(track.id)}
+                  masks={getMasksForTrack(track.id)}
                 />
               ))}
 

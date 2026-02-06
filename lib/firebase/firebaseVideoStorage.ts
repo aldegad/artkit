@@ -50,7 +50,6 @@ interface FirestoreClipMeta {
   opacity: number;
   visible: boolean;
   locked: boolean;
-  maskId: string | null;
   position: { x: number; y: number };
   scale: number;
   rotation: number;
@@ -77,9 +76,10 @@ interface FirestoreMaskKeyframeMeta {
 
 interface FirestoreMaskMeta {
   id: string;
-  clipId: string;
+  trackId: string;
+  startTime: number;
+  duration: number;
   size: { width: number; height: number };
-  mode: "per-frame" | "keyframed";
   keyframes?: FirestoreMaskKeyframeMeta[];
 }
 
@@ -254,7 +254,6 @@ function clipToMeta(clip: Clip, storageRef: string): FirestoreClipMeta {
     opacity: clip.opacity,
     visible: clip.visible,
     locked: clip.locked,
-    maskId: clip.maskId,
     position: clip.position,
     scale: clip.scale,
     rotation: clip.rotation,
@@ -292,7 +291,6 @@ function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
     opacity: meta.opacity,
     visible: meta.visible,
     locked: meta.locked,
-    maskId: meta.maskId,
     position: meta.position,
     scale: meta.scale,
     rotation: meta.rotation,
@@ -419,9 +417,10 @@ export async function saveVideoProjectToFirebase(
 
       maskMetas.push({
         id: mask.id,
-        clipId: mask.clipId,
+        trackId: mask.trackId,
+        startTime: mask.startTime,
+        duration: mask.duration,
         size: mask.size,
-        mode: mask.mode,
         keyframes: keyframeMetas.length > 0 ? keyframeMetas : undefined,
       });
     }
@@ -544,10 +543,11 @@ export async function getVideoProjectFromFirebase(
 
       return {
         id: maskMeta.id,
-        clipId: maskMeta.clipId,
+        trackId: maskMeta.trackId,
+        startTime: maskMeta.startTime,
+        duration: maskMeta.duration,
         size: maskMeta.size,
-        mode: maskMeta.mode,
-        keyframes: keyframes.length > 0 ? keyframes : undefined,
+        keyframes: keyframes.length > 0 ? keyframes : [],
       };
     })
   );
