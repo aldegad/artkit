@@ -19,6 +19,9 @@ export function Playhead({ className, height }: PlayheadProps) {
   // Initial position from state (for first render and when paused)
   const initialX = timeToPixel(playback.currentTime);
 
+  // Center the playhead line on the computed time position
+  const halfWidth = TIMELINE.PLAYHEAD_WIDTH / 2;
+
   // Update DOM directly during playback — no React re-renders
   usePlaybackTick((time) => {
     if (!divRef.current) return;
@@ -27,7 +30,7 @@ export function Playhead({ className, height }: PlayheadProps) {
       divRef.current.style.display = "none";
     } else {
       divRef.current.style.display = "";
-      divRef.current.style.left = `${x}px`;
+      divRef.current.style.left = `${x - halfWidth}px`;
     }
   });
 
@@ -42,7 +45,7 @@ export function Playhead({ className, height }: PlayheadProps) {
         className
       )}
       style={{
-        left: initialX,
+        left: initialX - halfWidth,
         height,
         width: TIMELINE.PLAYHEAD_WIDTH,
         backgroundColor: "var(--waveform-playhead, #FF8C00)",
