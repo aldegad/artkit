@@ -14,7 +14,7 @@ export function Track({ track, clips, className }: TrackProps) {
   return (
     <div
       className={cn(
-        "relative border-b border-border",
+        "relative border-b border-border-default",
         !track.visible && "opacity-50",
         track.locked && "pointer-events-none",
         className

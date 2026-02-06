@@ -244,12 +244,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     const width = rect.width;
     const height = rect.height;
-
-    // Clear with background color
     const colors = getCanvasColorsSync();
     const rootStyle = getComputedStyle(document.documentElement);
     const surfacePrimary = rootStyle.getPropertyValue("--surface-primary").trim() || "#1a1a1a";
     const borderDefault = rootStyle.getPropertyValue("--border-default").trim() || "#333333";
+
+    // Clear with background color
     ctx.fillStyle = surfacePrimary;
     ctx.fillRect(0, 0, width, height);
 
@@ -383,7 +383,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ctx.restore();
 
       ctx.save();
-      ctx.strokeStyle = colors.textOnColor;
+      ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([8, 4]);
       ctx.strokeRect(cropX, cropY, cropW, cropH);
@@ -400,7 +400,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         { x: cropX, y: cropY + cropH },
         { x: cropX, y: cropY + cropH / 2 },
       ];
-      ctx.fillStyle = colors.textOnColor;
+      ctx.fillStyle = colors.selection;
       for (const handle of handles) {
         ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
       }

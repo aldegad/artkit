@@ -92,12 +92,19 @@ export default function ImageDropZone({
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+      const acceptParts = accept.split(",").map((a) => a.trim());
+      const files = Array.from(e.dataTransfer.files).filter((f) =>
+        acceptParts.some((a) => {
+          if (a.endsWith("/*")) return f.type.startsWith(a.replace("/*", "/"));
+          if (a.startsWith(".")) return f.name.toLowerCase().endsWith(a.toLowerCase());
+          return f.type === a;
+        })
+      );
       if (files.length > 0) {
         onFileSelect(isMultiple ? files : [files[0]]);
       }
     },
-    [onFileSelect, isMultiple]
+    [onFileSelect, isMultiple, accept]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
