@@ -623,6 +623,7 @@ export default function FramePreviewContent() {
             step={{ multiply: 1.25 }}
             format={(v) => `${Math.round(v * 100)}%`}
             size="sm"
+            variant="zoom"
           />
         </div>
 
