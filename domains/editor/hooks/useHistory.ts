@@ -6,15 +6,29 @@ import { useCallback, useRef, RefObject } from "react";
 // Types
 // ============================================
 
-interface HistoryEntry {
+interface LegacyHistoryEntry {
+  type: "legacy";
   imageData: ImageData;
   width: number;
   height: number;
 }
 
+interface AdapterHistoryEntry<TState = unknown> {
+  type: "adapter";
+  state: TState;
+}
+
+type HistoryEntry<TState = unknown> = LegacyHistoryEntry | AdapterHistoryEntry<TState>;
+
+export interface HistoryAdapter<TState = unknown> {
+  captureState: () => TState | null;
+  applyState: (state: TState) => void;
+}
+
 interface UseHistoryOptions {
   maxHistory?: number;
-  editCanvasRef: RefObject<HTMLCanvasElement | null>;
+  editCanvasRef?: RefObject<HTMLCanvasElement | null>;
+  historyAdapterRef?: RefObject<HistoryAdapter<any> | null>;
 }
 
 interface UseHistoryReturn {
@@ -33,99 +47,128 @@ interface UseHistoryReturn {
 // ============================================
 
 export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
-  const { maxHistory = 50, editCanvasRef } = options;
+  const { maxHistory = 50, editCanvasRef, historyAdapterRef } = options;
 
   const historyRef = useRef<HistoryEntry[]>([]);
   const historyIndexRef = useRef<number>(-1);
+  const redoRef = useRef<HistoryEntry[]>([]);
+
+  // Keep compatibility refs in sync with the past stack.
+  const syncRefs = useCallback(() => {
+    historyIndexRef.current = historyRef.current.length - 1;
+  }, []);
+
+  // Capture current state from adapter if available, otherwise from active canvas.
+  const captureCurrentState = useCallback((): HistoryEntry | null => {
+    const adapter = historyAdapterRef?.current;
+    if (adapter) {
+      const state = adapter.captureState();
+      if (!state) return null;
+      return {
+        type: "adapter",
+        state,
+      };
+    }
+
+    const editCanvas = editCanvasRef?.current;
+    const ctx = editCanvas?.getContext("2d");
+    if (!editCanvas || !ctx) return null;
+
+    return {
+      type: "legacy",
+      imageData: ctx.getImageData(0, 0, editCanvas.width, editCanvas.height),
+      width: editCanvas.width,
+      height: editCanvas.height,
+    };
+  }, [editCanvasRef, historyAdapterRef]);
+
+  // Restore an entry onto adapter/canvas.
+  const applyEntry = useCallback(
+    (entry: HistoryEntry) => {
+      if (entry.type === "adapter") {
+        const adapter = historyAdapterRef?.current;
+        if (!adapter) return;
+        adapter.applyState(entry.state);
+        return;
+      }
+
+      const editCanvas = editCanvasRef?.current;
+      const ctx = editCanvas?.getContext("2d");
+      if (!editCanvas || !ctx) return;
+
+      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
+        editCanvas.width = entry.width;
+        editCanvas.height = entry.height;
+      }
+      ctx.putImageData(entry.imageData, 0, 0);
+    },
+    [editCanvasRef, historyAdapterRef]
+  );
 
   // Clear history
   const clearHistory = useCallback(() => {
     historyRef.current = [];
-    historyIndexRef.current = -1;
-  }, []);
+    redoRef.current = [];
+    syncRefs();
+  }, [syncRefs]);
 
-  // Save current edit canvas state to history
+  // Save current state to history (intended to be called BEFORE mutation).
   const saveToHistory = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
+    const entry = captureCurrentState();
+    if (!entry) return;
 
-    // Remove any future states if we're not at the end
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-    }
-
-    // Save current state with canvas dimensions
-    const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    const entry: HistoryEntry = {
-      imageData,
-      width: editCanvas.width,
-      height: editCanvas.height,
-    };
     historyRef.current.push(entry);
+    redoRef.current = [];
 
     // Limit history size
     if (historyRef.current.length > maxHistory) {
       historyRef.current.shift();
-    } else {
-      historyIndexRef.current++;
     }
-  }, [editCanvasRef, maxHistory]);
+    syncRefs();
+  }, [captureCurrentState, maxHistory, syncRefs]);
 
-  // Undo last edit
+  // Undo last mutation.
   const undo = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
+    if (historyRef.current.length === 0) return;
 
-    if (historyIndexRef.current > 0) {
-      historyIndexRef.current--;
-      const entry = historyRef.current[historyIndexRef.current];
-      // Restore canvas size if changed
-      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
-        editCanvas.width = entry.width;
-        editCanvas.height = entry.height;
-      }
-      ctx.putImageData(entry.imageData, 0, 0);
-    } else if (historyIndexRef.current === 0 && historyRef.current.length > 0) {
-      // Restore to the first saved state (before any edits in this session)
-      const entry = historyRef.current[0];
-      historyIndexRef.current = -1;
-      // Restore canvas size
-      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
-        editCanvas.width = entry.width;
-        editCanvas.height = entry.height;
-      }
-      ctx.putImageData(entry.imageData, 0, 0);
-    }
-  }, [editCanvasRef]);
+    const currentEntry = captureCurrentState();
+    if (!currentEntry) return;
 
-  // Redo last undone edit
+    const previousEntry = historyRef.current.pop();
+    if (!previousEntry) return;
+
+    redoRef.current.push(currentEntry);
+    applyEntry(previousEntry);
+    syncRefs();
+  }, [applyEntry, captureCurrentState, syncRefs]);
+
+  // Redo last undone mutation.
   const redo = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
+    if (redoRef.current.length === 0) return;
 
-    if (historyIndexRef.current < historyRef.current.length - 1) {
-      historyIndexRef.current++;
-      const entry = historyRef.current[historyIndexRef.current];
-      // Restore canvas size if changed
-      if (editCanvas.width !== entry.width || editCanvas.height !== entry.height) {
-        editCanvas.width = entry.width;
-        editCanvas.height = entry.height;
-      }
-      ctx.putImageData(entry.imageData, 0, 0);
+    const currentEntry = captureCurrentState();
+    if (!currentEntry) return;
+
+    const nextEntry = redoRef.current.pop();
+    if (!nextEntry) return;
+
+    historyRef.current.push(currentEntry);
+    if (historyRef.current.length > maxHistory) {
+      historyRef.current.shift();
     }
-  }, [editCanvasRef]);
+
+    applyEntry(nextEntry);
+    syncRefs();
+  }, [applyEntry, captureCurrentState, maxHistory, syncRefs]);
 
   // Check if undo is available
   const canUndo = useCallback(() => {
-    return historyIndexRef.current >= 0;
+    return historyRef.current.length > 0;
   }, []);
 
   // Check if redo is available
   const canRedo = useCallback(() => {
-    return historyIndexRef.current < historyRef.current.length - 1;
+    return redoRef.current.length > 0;
   }, []);
 
   return {

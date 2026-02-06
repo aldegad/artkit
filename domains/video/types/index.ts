@@ -2,12 +2,14 @@
 export type {
   BaseClip,
   VideoClip,
+  AudioClip,
   ImageClip,
   Clip,
   ClipboardData,
 } from "./clip";
 export {
   createVideoClip,
+  createAudioClip,
   createImageClip,
   getSourceTime,
   isTimeInClip,
@@ -15,7 +17,7 @@ export {
 
 // Track types
 export type { VideoTrack } from "./track";
-export { createVideoTrack, DEFAULT_TRACK_HEIGHT } from "./track";
+export { createVideoTrack, createAudioTrack, DEFAULT_TRACK_HEIGHT } from "./track";
 
 // Timeline types
 export type {

@@ -6,7 +6,7 @@ import { useVideoElements } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { PREVIEW } from "../../constants";
-import { VideoClip } from "../../types";
+import { AudioClip, VideoClip } from "../../types";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -14,7 +14,7 @@ interface PreviewCanvasProps {
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { previewCanvasRef, videoElementsRef } = useVideoRefs();
+  const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const { playback, project } = useVideoState();
   const { tracks, clips, getClipAtTime } = useTimeline();
   const [videoReadyCount, setVideoReadyCount] = useState(0);
@@ -26,33 +26,110 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Handle playback state changes - sync video elements
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
+    const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
+    const trackById = new Map(tracks.map((track) => [track.id, track]));
 
-    if (playback.isPlaying && !wasPlayingRef.current) {
-      // Playback started - sync and play all video elements
-      for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.sourceUrl);
-        if (video && video.readyState >= 2) {
-          const clipTime = playback.currentTime - clip.startTime;
-          if (clipTime >= 0 && clipTime < clip.duration) {
-            const sourceTime = clip.trimIn + clipTime;
-            video.currentTime = sourceTime;
-            video.playbackRate = playback.playbackRate;
-            video.play().catch(() => {});
-          }
+    // Collect all audible clips at current time.
+    const sortedTracks = [...tracks].sort((a, b) => b.zIndex - a.zIndex);
+    const audibleClipIds = new Set<string>();
+    for (const track of sortedTracks) {
+      if (!track.visible || track.muted) continue;
+
+      const clip = getClipAtTime(track.id, playback.currentTime);
+      if (!clip || !clip.visible) continue;
+
+      if (clip.type === "video") {
+        const hasAudio = clip.hasAudio ?? true;
+        const audioMuted = clip.audioMuted ?? false;
+        const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+        if (hasAudio && !audioMuted && audioVolume > 0) {
+          audibleClipIds.add(clip.id);
         }
-      }
-    } else if (!playback.isPlaying && wasPlayingRef.current) {
-      // Playback stopped - pause all video elements
-      for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.sourceUrl);
-        if (video) {
-          video.pause();
+      } else if (clip.type === "audio") {
+        const audioMuted = clip.audioMuted ?? false;
+        const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+        if (!audioMuted && audioVolume > 0) {
+          audibleClipIds.add(clip.id);
         }
       }
     }
 
+    if (playback.isPlaying) {
+      // Playback started/continued - sync and play all visible video clips for visual render.
+      for (const clip of videoClips) {
+        const video = videoElementsRef.current?.get(clip.sourceUrl);
+        const track = trackById.get(clip.trackId);
+        if (!video || !track || video.readyState < 2) continue;
+
+        const clipTime = playback.currentTime - clip.startTime;
+        if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible) {
+          video.pause();
+          video.muted = true;
+          continue;
+        }
+
+        const sourceTime = clip.trimIn + clipTime;
+        if (Math.abs(video.currentTime - sourceTime) > 0.1) {
+          video.currentTime = sourceTime;
+        }
+
+        video.playbackRate = playback.playbackRate;
+
+        const isAudible = audibleClipIds.has(clip.id);
+        video.muted = !isAudible;
+        const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+        video.volume = isAudible ? Math.max(0, Math.min(1, clipVolume / 100)) : 0;
+
+        video.play().catch(() => {});
+      }
+
+      // Sync and play audio-only clips.
+      for (const clip of audioClips) {
+        const audio = audioElementsRef.current?.get(clip.sourceUrl);
+        const track = trackById.get(clip.trackId);
+        if (!audio || !track) continue;
+
+        const clipTime = playback.currentTime - clip.startTime;
+        if (
+          clipTime < 0 ||
+          clipTime >= clip.duration ||
+          !clip.visible ||
+          !track.visible ||
+          !audibleClipIds.has(clip.id)
+        ) {
+          audio.pause();
+          audio.muted = true;
+          continue;
+        }
+
+        const sourceTime = clip.trimIn + clipTime;
+        if (Math.abs(audio.currentTime - sourceTime) > 0.1) {
+          audio.currentTime = sourceTime;
+        }
+
+        audio.playbackRate = playback.playbackRate;
+        audio.muted = false;
+        audio.volume = Math.max(0, Math.min(1, (clip.audioVolume ?? 100) / 100));
+        audio.play().catch(() => {});
+      }
+    } else if (wasPlayingRef.current) {
+      // Playback stopped - pause all videos and mute audio.
+      for (const clip of videoClips) {
+        const video = videoElementsRef.current?.get(clip.sourceUrl);
+        if (!video) continue;
+        video.pause();
+        video.muted = true;
+      }
+      for (const clip of audioClips) {
+        const audio = audioElementsRef.current?.get(clip.sourceUrl);
+        if (!audio) continue;
+        audio.pause();
+        audio.muted = true;
+      }
+    }
+
     wasPlayingRef.current = playback.isPlaying;
-  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, videoElementsRef]);
+  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
 
   // Setup video ready listeners
   useEffect(() => {

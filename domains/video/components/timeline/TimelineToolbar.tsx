@@ -28,12 +28,22 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
     >
       {/* Add track */}
       <button
-        onClick={() => addTrack()}
+        onClick={() => addTrack(undefined, "video")}
         className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-        title="Add Track"
+        title="Add Video Track"
       >
         <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 2v12M2 8h12" />
+        </svg>
+      </button>
+
+      <button
+        onClick={() => addTrack(undefined, "audio")}
+        className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+        title="Add Audio Track"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
         </svg>
       </button>
 

@@ -68,6 +68,17 @@ export const SUPPORTED_IMAGE_FORMATS = [
   "image/webp",
 ] as const;
 
+export const SUPPORTED_AUDIO_FORMATS = [
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/ogg",
+  "audio/webm",
+  "audio/mp4",
+  "audio/aac",
+  "audio/x-m4a",
+] as const;
+
 // Default canvas sizes
 export const CANVAS_PRESETS = [
   { name: "1080p", width: 1920, height: 1080 },

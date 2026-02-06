@@ -16,6 +16,7 @@ import {
   createMaskData,
 } from "../types";
 import { Size } from "@/shared/types";
+import { applyEasing } from "../utils/maskStorage";
 
 interface MaskContextValue {
   // Current mask being edited
@@ -64,6 +65,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   // Brush settings
   const setBrushSettings = useCallback((settings: Partial<MaskBrushSettings>) => {
@@ -256,9 +258,52 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // For now, just return the "before" keyframe
-      // TODO: Implement actual interpolation between mask images
-      return before.maskData;
+      const timeRange = Math.max(after.time - before.time, 0.0001);
+      const linearT = Math.max(0, Math.min(1, (time - before.time) / timeRange));
+      const easedT = applyEasing(linearT, after.easing);
+
+      // Fast paths
+      if (easedT <= 0) return before.maskData;
+      if (easedT >= 1) return after.maskData;
+
+      // Cache keyframe image elements for blend interpolation
+      const getCachedImage = (dataUrl: string): HTMLImageElement | null => {
+        const cached = maskImageCacheRef.current.get(dataUrl);
+        if (cached) {
+          return cached.complete ? cached : null;
+        }
+
+        const img = new Image();
+        img.src = dataUrl;
+        maskImageCacheRef.current.set(dataUrl, img);
+        return null;
+      };
+
+      const beforeImage = getCachedImage(before.maskData);
+      const afterImage = getCachedImage(after.maskData);
+      if (!beforeImage || !afterImage) {
+        // If image decode is still in progress, return nearest keyframe mask.
+        return easedT < 0.5 ? before.maskData : after.maskData;
+      }
+
+      // Blend both masks on an offscreen canvas.
+      const blendCanvas = tempCanvasRef.current || document.createElement("canvas");
+      blendCanvas.width = mask.size.width;
+      blendCanvas.height = mask.size.height;
+
+      const ctx = blendCanvas.getContext("2d");
+      if (!ctx) {
+        return easedT < 0.5 ? before.maskData : after.maskData;
+      }
+
+      ctx.clearRect(0, 0, blendCanvas.width, blendCanvas.height);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(beforeImage, 0, 0, blendCanvas.width, blendCanvas.height);
+      ctx.globalAlpha = easedT;
+      ctx.drawImage(afterImage, 0, 0, blendCanvas.width, blendCanvas.height);
+      ctx.globalAlpha = 1;
+
+      return blendCanvas.toDataURL("image/png");
     },
     [masks]
   );

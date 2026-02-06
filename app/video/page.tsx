@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
+import { downloadBlob, downloadJson } from "../../shared/utils";
 import {
   VideoStateProvider,
   VideoRefsProvider,
   TimelineProvider,
   MaskProvider,
   useVideoState,
+  useVideoRefs,
   useTimeline,
   useMask,
   PreviewCanvas,
@@ -18,21 +20,81 @@ import {
   VideoMenuBar,
   VideoToolbar,
   clearVideoAutosave,
+  saveMediaBlob,
+  SUPPORTED_VIDEO_FORMATS,
+  SUPPORTED_IMAGE_FORMATS,
+  SUPPORTED_AUDIO_FORMATS,
+  TIMELINE,
+  type Clip,
+  type SavedVideoProject,
+  type TimelineViewState,
+  type VideoTrack,
 } from "../../domains/video";
 import Tooltip from "../../shared/components/Tooltip";
+
+interface VideoProjectFile extends Partial<SavedVideoProject> {
+  tracks?: VideoTrack[];
+  clips?: Clip[];
+  timelineView?: TimelineViewState;
+  currentTime?: number;
+  toolMode?: string;
+}
+
+function sanitizeFileName(name: string): string {
+  return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
+}
+
+function calculateProjectDuration(clips: Clip[]): number {
+  const maxEnd = clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0);
+  return Math.max(maxEnd, 10);
+}
+
+function cloneClip(clip: Clip): Clip {
+  return {
+    ...clip,
+    position: { ...clip.position },
+    sourceSize: { ...clip.sourceSize },
+  };
+}
+
+function normalizeLoadedClip(clip: Clip): Clip {
+  if (clip.type === "video") {
+    return {
+      ...clip,
+      hasAudio: clip.hasAudio ?? true,
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  if (clip.type === "audio") {
+    return {
+      ...clip,
+      sourceSize: clip.sourceSize || { width: 0, height: 0 },
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  return clip;
+}
 
 function VideoEditorContent() {
   const { t } = useLanguage();
   const {
     project,
     projectName,
+    setProject,
+    setProjectName,
     toolMode,
     setToolMode,
     selectedClipIds,
     selectClips,
     deselectAll,
     togglePlay,
+    play,
     stop,
+    seek,
     stepForward,
     stepBackward,
     playback,
@@ -40,11 +102,246 @@ function VideoEditorContent() {
     hasClipboard,
     setHasClipboard,
   } = useVideoState();
-  const { clips, removeClip, addClips } = useTimeline();
+  const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const {
+    tracks,
+    clips,
+    viewState,
+    setZoom,
+    setScrollX,
+    setViewState,
+    addTrack,
+    addVideoClip,
+    addAudioClip,
+    addImageClip,
+    removeClip,
+    addClips,
+    updateClip,
+    restoreTracks,
+    restoreClips,
+    saveToHistory,
+    undo,
+    redo,
+    clearHistory,
+    canUndo,
+    canRedo,
+  } = useTimeline();
   const { isEditingMask, startMaskEdit } = useMask();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaFileInputRef = useRef<HTMLInputElement>(null);
+  const projectFileInputRef = useRef<HTMLInputElement>(null);
+  const timelineAreaRef = useRef<HTMLDivElement>(null);
+  const exportAudioContextRef = useRef<AudioContext | null>(null);
+  const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
+  const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
+
+  const [isTimelineVisible, setIsTimelineVisible] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
+  const audioHistorySavedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (exportAudioContextRef.current) {
+        exportAudioContextRef.current.close().catch(() => {});
+      }
+      exportAudioContextRef.current = null;
+      exportAudioDestinationRef.current = null;
+      exportSourceNodesRef.current.clear();
+      exportGainNodesRef.current.clear();
+    };
+  }, []);
+
   const hasContent = clips.length > 0;
+  const selectedClip = selectedClipIds.length > 0
+    ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
+    : null;
+  const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
+
+  const buildSavedProject = useCallback(
+    (nameOverride?: string): SavedVideoProject => {
+      const resolvedName = nameOverride || projectName;
+      const duration = calculateProjectDuration(clips);
+
+      return {
+        id: project.id,
+        name: resolvedName,
+        project: {
+          ...project,
+          name: resolvedName,
+          tracks: tracks.map((track) => ({ ...track })),
+          clips: clips.map(cloneClip),
+          duration,
+        },
+        timelineView: { ...viewState },
+        currentTime: playback.currentTime,
+        savedAt: Date.now(),
+      };
+    },
+    [project, projectName, tracks, clips, viewState, playback.currentTime]
+  );
+
+  const importMediaFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+
+      saveToHistory();
+
+      let targetVideoTrackId = tracks.find((track) => track.type === "video")?.id || null;
+      let targetAudioTrackId = tracks.find((track) => track.type === "audio")?.id || null;
+      const hasExistingVisualClip = clips.some((clip) => clip.type !== "audio");
+      let insertTime = playback.currentTime;
+      let visualImportedCount = 0;
+
+      for (const file of files) {
+        const isVideo =
+          file.type.startsWith("video/") ||
+          SUPPORTED_VIDEO_FORMATS.some((format) => file.type === format);
+        const isImage =
+          file.type.startsWith("image/") ||
+          SUPPORTED_IMAGE_FORMATS.some((format) => file.type === format);
+        const isAudio =
+          file.type.startsWith("audio/") ||
+          SUPPORTED_AUDIO_FORMATS.some((format) => file.type === format);
+
+        if (!isVideo && !isImage && !isAudio) {
+          continue;
+        }
+
+        if (isVideo) {
+          if (!targetVideoTrackId) {
+            targetVideoTrackId = addTrack("Video 1", "video");
+          }
+
+          const url = URL.createObjectURL(file);
+          const video = document.createElement("video");
+          video.src = url;
+
+          const metadata = await new Promise<{ duration: number; size: { width: number; height: number } } | null>((resolve) => {
+            video.onloadedmetadata = () => {
+              resolve({
+                duration: Math.max(video.duration || 0, 0.1),
+                size: { width: video.videoWidth || project.canvasSize.width, height: video.videoHeight || project.canvasSize.height },
+              });
+            };
+            video.onerror = () => resolve(null);
+          });
+
+          if (!metadata) {
+            URL.revokeObjectURL(url);
+            continue;
+          }
+
+          if (!hasExistingVisualClip && visualImportedCount === 0) {
+            setProject({
+              ...project,
+              canvasSize: metadata.size,
+            });
+          }
+
+          const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime));
+          try {
+            await saveMediaBlob(clipId, file);
+          } catch (error) {
+            console.error("Failed to save media blob:", error);
+          }
+
+          insertTime += metadata.duration;
+          visualImportedCount += 1;
+          continue;
+        }
+
+        if (isAudio) {
+          const url = URL.createObjectURL(file);
+          const audio = document.createElement("audio");
+          audio.src = url;
+
+          const metadata = await new Promise<{ duration: number } | null>((resolve) => {
+            audio.onloadedmetadata = () => {
+              resolve({
+                duration: Math.max(audio.duration || 0, 0.1),
+              });
+            };
+            audio.onerror = () => resolve(null);
+          });
+
+          if (!metadata) {
+            URL.revokeObjectURL(url);
+            continue;
+          }
+
+          if (!targetAudioTrackId) {
+            targetAudioTrackId = addTrack("Audio 1", "audio");
+          }
+
+          const clipId = addAudioClip(
+            targetAudioTrackId,
+            url,
+            metadata.duration,
+            Math.max(0, insertTime),
+            { ...project.canvasSize }
+          );
+
+          try {
+            await saveMediaBlob(clipId, file);
+          } catch (error) {
+            console.error("Failed to save media blob:", error);
+          }
+
+          insertTime += metadata.duration;
+          continue;
+        }
+
+        if (!targetVideoTrackId) {
+          targetVideoTrackId = addTrack("Video 1", "video");
+        }
+
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.src = url;
+
+        const size = await new Promise<{ width: number; height: number } | null>((resolve) => {
+          image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+          image.onerror = () => resolve(null);
+        });
+
+        if (!size) {
+          URL.revokeObjectURL(url);
+          continue;
+        }
+
+        if (!hasExistingVisualClip && visualImportedCount === 0) {
+          setProject({
+            ...project,
+            canvasSize: size,
+          });
+        }
+
+        const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5);
+        try {
+          await saveMediaBlob(clipId, file);
+        } catch (error) {
+          console.error("Failed to save media blob:", error);
+        }
+
+        insertTime += 5;
+        visualImportedCount += 1;
+      }
+    },
+    [
+      saveToHistory,
+      tracks,
+      addTrack,
+      playback.currentTime,
+      clips.length,
+      project,
+      setProject,
+      addVideoClip,
+      addAudioClip,
+      addImageClip,
+    ]
+  );
 
   // Menu handlers
   const handleNew = useCallback(async () => {
@@ -55,39 +352,187 @@ function VideoEditorContent() {
   }, [t]);
 
   const handleOpen = useCallback(() => {
-    // TODO: implement project open
-    console.log("Open project");
+    projectFileInputRef.current?.click();
   }, []);
 
   const handleSave = useCallback(() => {
-    // TODO: implement project save
-    console.log("Save project");
-  }, []);
+    const savedProject = buildSavedProject();
+    const fileName = `${sanitizeFileName(projectName)}.video-project.json`;
+    downloadJson(savedProject, fileName);
+  }, [buildSavedProject, projectName]);
 
   const handleSaveAs = useCallback(() => {
-    // TODO: implement save as
-    console.log("Save as");
-  }, []);
+    const suggestedName = projectName || "Untitled Project";
+    const nextName = window.prompt("Project name", suggestedName);
+    if (!nextName) return;
+
+    setProjectName(nextName);
+    const savedProject = buildSavedProject(nextName);
+    const fileName = `${sanitizeFileName(nextName)}.video-project.json`;
+    downloadJson(savedProject, fileName);
+  }, [buildSavedProject, projectName, setProjectName]);
 
   const handleImportMedia = useCallback(() => {
-    fileInputRef.current?.click();
+    mediaFileInputRef.current?.click();
   }, []);
 
-  const handleExport = useCallback(() => {
-    // TODO: implement video export
-    console.log("Export video");
-  }, []);
+  const handleExport = useCallback(async () => {
+    if (isExporting) return;
+
+    const canvas = previewCanvasRef.current;
+    if (!canvas) {
+      alert(`${t.exportFailed}: preview canvas unavailable`);
+      return;
+    }
+
+    const duration = Math.max(project.duration, 0.1);
+    const frameRate = Math.max(1, project.frameRate || 30);
+
+    if (typeof canvas.captureStream !== "function" || typeof MediaRecorder === "undefined") {
+      alert(`${t.exportFailed}: browser does not support video recording`);
+      return;
+    }
+
+    const mimeTypeCandidates = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+    ];
+    const selectedMimeType = mimeTypeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+
+    const canvasStream = canvas.captureStream(frameRate);
+    const recordingStream = new MediaStream();
+    canvasStream.getVideoTracks().forEach((track) => recordingStream.addTrack(track));
+
+    let syncAudioFrameId: number | null = null;
+    const mediaElements: HTMLMediaElement[] = [
+      ...Array.from(videoElementsRef.current.values()),
+      ...Array.from(audioElementsRef.current.values()),
+    ];
+
+    if (includeAudioOnExport && typeof AudioContext !== "undefined" && mediaElements.length > 0) {
+      let audioContext = exportAudioContextRef.current;
+      if (!audioContext || audioContext.state === "closed") {
+        audioContext = new AudioContext();
+        exportAudioContextRef.current = audioContext;
+        exportAudioDestinationRef.current = audioContext.createMediaStreamDestination();
+      }
+
+      const destination = exportAudioDestinationRef.current;
+      if (audioContext.state === "suspended") {
+        await audioContext.resume().catch(() => {});
+      }
+
+      if (destination) {
+        for (const mediaElement of mediaElements) {
+          if (exportSourceNodesRef.current.has(mediaElement)) continue;
+
+          try {
+            const sourceNode = audioContext.createMediaElementSource(mediaElement);
+            const gainNode = audioContext.createGain();
+            sourceNode.connect(gainNode);
+            gainNode.connect(destination);
+            exportSourceNodesRef.current.set(mediaElement, sourceNode);
+            exportGainNodesRef.current.set(mediaElement, gainNode);
+          } catch {
+            // Source node can fail for unsupported media elements.
+          }
+        }
+
+        const syncGains = () => {
+          for (const [mediaElement, gainNode] of exportGainNodesRef.current.entries()) {
+            const volume = typeof mediaElement.volume === "number" ? mediaElement.volume : 1;
+            gainNode.gain.value = mediaElement.muted ? 0 : Math.max(0, Math.min(1, volume));
+          }
+        };
+
+        syncGains();
+        const audioTrack = destination.stream.getAudioTracks()[0];
+        if (audioTrack) {
+          recordingStream.addTrack(audioTrack);
+        }
+
+        const syncLoop = () => {
+          syncGains();
+          syncAudioFrameId = window.requestAnimationFrame(syncLoop);
+        };
+        syncAudioFrameId = window.requestAnimationFrame(syncLoop);
+      }
+    }
+
+    const chunks: BlobPart[] = [];
+
+    try {
+      setIsExporting(true);
+
+      const recorder = selectedMimeType
+        ? new MediaRecorder(recordingStream, { mimeType: selectedMimeType })
+        : new MediaRecorder(recordingStream);
+
+      const blobPromise = new Promise<Blob>((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+        recorder.onerror = () => reject(new Error("MediaRecorder error"));
+        recorder.onstop = () => {
+          resolve(new Blob(chunks, { type: selectedMimeType || "video/webm" }));
+        };
+      });
+
+      const previousTime = playback.currentTime;
+      const wasPlaying = playback.isPlaying;
+
+      stop();
+      seek(0);
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
+      recorder.start(100);
+      play();
+
+      await new Promise<void>((resolve) => {
+        window.setTimeout(() => resolve(), duration * 1000 + 150);
+      });
+
+      stop();
+      recorder.stop();
+
+      const blob = await blobPromise;
+      downloadBlob(blob, `${sanitizeFileName(projectName)}.webm`);
+
+      seek(previousTime);
+      if (wasPlaying) {
+        play();
+      }
+    } catch (error) {
+      console.error("Video export failed:", error);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
+    } finally {
+      if (syncAudioFrameId !== null) {
+        window.cancelAnimationFrame(syncAudioFrameId);
+      }
+      for (const gainNode of exportGainNodesRef.current.values()) {
+        gainNode.gain.value = 0;
+      }
+      canvasStream.getTracks().forEach((track) => track.stop());
+      setIsExporting(false);
+    }
+  }, [isExporting, includeAudioOnExport, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
-    // TODO: implement undo
-    console.log("Undo");
-  }, []);
+    undo();
+    deselectAll();
+  }, [undo, deselectAll]);
 
   const handleRedo = useCallback(() => {
-    // TODO: implement redo
-    console.log("Redo");
-  }, []);
+    redo();
+    deselectAll();
+  }, [redo, deselectAll]);
 
   const handleCopy = useCallback(() => {
     if (selectedClipIds.length === 0) return;
@@ -95,7 +540,7 @@ function VideoEditorContent() {
     if (selectedClips.length === 0) return;
 
     clipboardRef.current = {
-      clips: selectedClips.map((c) => ({ ...c })),
+      clips: selectedClips.map(cloneClip),
       mode: "copy",
       sourceTime: playback.currentTime,
     };
@@ -108,26 +553,29 @@ function VideoEditorContent() {
     if (selectedClips.length === 0) return;
 
     clipboardRef.current = {
-      clips: selectedClips.map((c) => ({ ...c })),
+      clips: selectedClips.map(cloneClip),
       mode: "cut",
       sourceTime: playback.currentTime,
     };
     setHasClipboard(true);
 
+    saveToHistory();
     selectedClipIds.forEach((id) => removeClip(id));
     deselectAll();
-  }, [selectedClipIds, clips, playback.currentTime, clipboardRef, setHasClipboard, removeClip, deselectAll]);
+  }, [selectedClipIds, clips, playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, removeClip, deselectAll]);
 
   const handlePaste = useCallback(() => {
     const clipboard = clipboardRef.current;
     if (!clipboard || clipboard.clips.length === 0) return;
+
+    saveToHistory();
 
     const currentTime = playback.currentTime;
     const earliestStart = Math.min(...clipboard.clips.map((c) => c.startTime));
     const timeOffset = currentTime - earliestStart;
 
     const newClips = clipboard.clips.map((clipData) => ({
-      ...clipData,
+      ...cloneClip(clipData),
       id: crypto.randomUUID(),
       startTime: Math.max(0, clipData.startTime + timeOffset),
     }));
@@ -139,33 +587,88 @@ function VideoEditorContent() {
       clipboardRef.current = null;
       setHasClipboard(false);
     }
-  }, [playback.currentTime, clipboardRef, setHasClipboard, addClips, selectClips]);
+  }, [playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, addClips, selectClips]);
 
   const handleDelete = useCallback(() => {
     if (selectedClipIds.length === 0) return;
+
+    saveToHistory();
     selectedClipIds.forEach((id) => removeClip(id));
     deselectAll();
-  }, [selectedClipIds, removeClip, deselectAll]);
+  }, [selectedClipIds, saveToHistory, removeClip, deselectAll]);
+
+  const handleDuplicate = useCallback(() => {
+    if (selectedClipIds.length === 0) return;
+
+    const selectedClips = clips.filter((clip) => selectedClipIds.includes(clip.id));
+    if (selectedClips.length === 0) return;
+
+    saveToHistory();
+
+    const duplicated = selectedClips.map((clip) => ({
+      ...cloneClip(clip),
+      id: crypto.randomUUID(),
+      startTime: clip.startTime + 0.25,
+      name: `${clip.name} (Copy)`,
+    }));
+
+    addClips(duplicated);
+    selectClips(duplicated.map((clip) => clip.id));
+  }, [selectedClipIds, clips, saveToHistory, addClips, selectClips]);
+
+  const beginAudioAdjustment = useCallback(() => {
+    if (audioHistorySavedRef.current) return;
+    saveToHistory();
+    audioHistorySavedRef.current = true;
+  }, [saveToHistory]);
+
+  const endAudioAdjustment = useCallback(() => {
+    audioHistorySavedRef.current = false;
+  }, []);
+
+  const handleToggleSelectedClipMute = useCallback(() => {
+    if (!selectedAudioClip) return;
+    saveToHistory();
+    updateClip(selectedAudioClip.id, {
+      audioMuted: !(selectedAudioClip.audioMuted ?? false),
+    });
+  }, [selectedAudioClip, saveToHistory, updateClip]);
+
+  const handleSelectedClipVolumeChange = useCallback(
+    (volume: number) => {
+      if (!selectedAudioClip) return;
+      updateClip(selectedAudioClip.id, {
+        audioVolume: Math.max(0, Math.min(100, volume)),
+      });
+    },
+    [selectedAudioClip, updateClip]
+  );
 
   // View menu handlers
   const handleZoomIn = useCallback(() => {
-    // TODO: implement zoom in
-    console.log("Zoom in");
-  }, []);
+    setZoom(viewState.zoom * 1.25);
+  }, [setZoom, viewState.zoom]);
 
   const handleZoomOut = useCallback(() => {
-    // TODO: implement zoom out
-    console.log("Zoom out");
-  }, []);
+    setZoom(viewState.zoom / 1.25);
+  }, [setZoom, viewState.zoom]);
 
   const handleFitToScreen = useCallback(() => {
-    // TODO: implement fit to screen
-    console.log("Fit to screen");
-  }, []);
+    const width = timelineAreaRef.current?.clientWidth;
+    if (!width) {
+      setZoom(TIMELINE.DEFAULT_ZOOM);
+      setScrollX(0);
+      return;
+    }
+
+    const availableWidth = Math.max(100, width - 160);
+    const duration = Math.max(project.duration, 1);
+    setZoom(availableWidth / duration);
+    setScrollX(0);
+  }, [project.duration, setZoom, setScrollX]);
 
   const handleToggleTimeline = useCallback(() => {
-    // TODO: implement timeline toggle
-    console.log("Toggle timeline");
+    setIsTimelineVisible((prev) => !prev);
   }, []);
 
   // Handle mask tool toggle
@@ -181,42 +684,93 @@ function VideoEditorContent() {
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement) return;
+    const target = e.target as HTMLElement;
+    if (
+      target.tagName === "INPUT" ||
+      target.tagName === "SELECT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable
+    ) {
+      return;
+    }
 
     const isCmd = e.metaKey || e.ctrlKey;
+    const key = e.key.toLowerCase();
 
-    switch (e.key.toLowerCase()) {
+    if (isCmd) {
+      if (key === "z" && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+      if (key === "z") {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      if (key === "y") {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+      if (key === "s") {
+        e.preventDefault();
+        handleSave();
+        return;
+      }
+      if (key === "o") {
+        e.preventDefault();
+        handleOpen();
+        return;
+      }
+      if (key === "=") {
+        e.preventDefault();
+        handleZoomIn();
+        return;
+      }
+      if (key === "-") {
+        e.preventDefault();
+        handleZoomOut();
+        return;
+      }
+      if (key === "0") {
+        e.preventDefault();
+        handleFitToScreen();
+        return;
+      }
+      if (key === "c") {
+        e.preventDefault();
+        handleCopy();
+        return;
+      }
+      if (key === "x") {
+        e.preventDefault();
+        handleCut();
+        return;
+      }
+      if (key === "v") {
+        e.preventDefault();
+        handlePaste();
+        return;
+      }
+    }
+
+    switch (key) {
       case " ":
         e.preventDefault();
         togglePlay();
         break;
       case "v":
-        if (isCmd) {
-          e.preventDefault();
-          handlePaste();
-        } else {
-          setToolMode("select");
-        }
+        setToolMode("select");
         break;
       case "c":
-        if (isCmd) {
-          e.preventDefault();
-          handleCopy();
-        } else {
-          setToolMode("razor");
-        }
-        break;
-      case "x":
-        if (isCmd) {
-          e.preventDefault();
-          handleCut();
-        }
+        setToolMode("razor");
         break;
       case "t":
-        if (!isCmd) setToolMode("trim");
+        setToolMode("trim");
         break;
       case "m":
-        if (!isCmd) handleToolModeChange("mask");
+        handleToolModeChange("mask");
         break;
       case "arrowleft":
         stepBackward();
@@ -224,13 +778,39 @@ function VideoEditorContent() {
       case "arrowright":
         stepForward();
         break;
+      case "d":
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleDuplicate();
+        }
+        break;
       case "delete":
       case "backspace":
         e.preventDefault();
         handleDelete();
         break;
+      default:
+        break;
     }
-  }, [togglePlay, setToolMode, handleToolModeChange, stepBackward, stepForward, handleCopy, handleCut, handlePaste, handleDelete]);
+  }, [
+    togglePlay,
+    setToolMode,
+    handleToolModeChange,
+    stepBackward,
+    stepForward,
+    handleUndo,
+    handleRedo,
+    handleSave,
+    handleOpen,
+    handleZoomIn,
+    handleZoomOut,
+    handleFitToScreen,
+    handleCopy,
+    handleCut,
+    handlePaste,
+    handleDelete,
+    handleDuplicate,
+  ]);
 
   const menuTranslations = {
     file: t.file,
@@ -281,10 +861,11 @@ function VideoEditorContent() {
           onImportMedia={handleImportMedia}
           onExport={handleExport}
           canSave={hasContent}
+          isLoading={isExporting}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          canUndo={false}
-          canRedo={false}
+          canUndo={canUndo}
+          canRedo={canRedo}
           onCut={handleCut}
           onCopy={handleCopy}
           onPaste={handlePaste}
@@ -295,7 +876,7 @@ function VideoEditorContent() {
           onZoomOut={handleZoomOut}
           onFitToScreen={handleFitToScreen}
           onToggleTimeline={handleToggleTimeline}
-          showTimeline={true}
+          showTimeline={isTimelineVisible}
           translations={menuTranslations}
         />
         <div className="h-4 w-px bg-border-default mx-2" />
@@ -363,6 +944,55 @@ function VideoEditorContent() {
             </button>
           </Tooltip>
         </div>
+
+        <div className="h-4 w-px bg-border-default mx-1" />
+        <button
+          onClick={() => setIncludeAudioOnExport((prev) => !prev)}
+          className={`px-2 py-1 text-xs rounded transition-colors ${
+            includeAudioOnExport
+              ? "bg-accent/20 text-accent hover:bg-accent/30"
+              : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+          }`}
+          title={includeAudioOnExport ? "Export includes audio" : "Export without audio"}
+        >
+          Export Audio {includeAudioOnExport ? "On" : "Off"}
+        </button>
+
+        {selectedAudioClip && (
+          <>
+            <div className="h-4 w-px bg-border-default mx-1" />
+            <div className="flex items-center gap-2 min-w-[220px]">
+              <button
+                onClick={handleToggleSelectedClipMute}
+                className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                title={(selectedAudioClip.audioMuted ?? false) ? "Unmute clip audio" : "Mute clip audio"}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+                  {(selectedAudioClip.audioMuted ?? false) ? (
+                    <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
+                  ) : (
+                    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
+                  )}
+                </svg>
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={selectedAudioClip.audioVolume ?? 100}
+                onMouseDown={beginAudioAdjustment}
+                onTouchStart={beginAudioAdjustment}
+                onMouseUp={endAudioAdjustment}
+                onTouchEnd={endAudioAdjustment}
+                onChange={(e) => handleSelectedClipVolumeChange(Number(e.target.value))}
+                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs text-text-secondary w-10 text-right">
+                {selectedAudioClip.audioVolume ?? 100}%
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main Content */}
@@ -393,21 +1023,100 @@ function VideoEditorContent() {
         </div>
 
         {/* Timeline Area */}
-        <div className="h-64 border-t border-border shrink-0">
-          <Timeline className="h-full" />
-        </div>
+        {isTimelineVisible && (
+          <div ref={timelineAreaRef} className="h-64 border-t border-border shrink-0">
+            <Timeline className="h-full" />
+          </div>
+        )}
       </div>
 
-      {/* Hidden file input for import */}
+      {/* Hidden file input for media import */}
       <input
-        ref={fileInputRef}
+        ref={mediaFileInputRef}
         type="file"
-        accept="video/*,image/*"
+        accept={[...SUPPORTED_VIDEO_FORMATS, ...SUPPORTED_IMAGE_FORMATS, ...SUPPORTED_AUDIO_FORMATS].join(",")}
         multiple
         className="hidden"
-        onChange={(e) => {
-          // TODO: handle file import
-          console.log("Files selected:", e.target.files);
+        onChange={async (e) => {
+          const files = e.target.files ? Array.from(e.target.files) : [];
+          if (files.length > 0) {
+            try {
+              await importMediaFiles(files);
+            } catch (error) {
+              console.error("Media import failed:", error);
+              alert(`${t.importFailed}: ${(error as Error).message}`);
+            }
+          }
+          e.target.value = "";
+        }}
+      />
+
+      {/* Hidden file input for project open */}
+      <input
+        ref={projectFileInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+
+          try {
+            const text = await file.text();
+            const parsed = JSON.parse(text) as VideoProjectFile;
+
+            const loadedTracks = Array.isArray(parsed.project?.tracks)
+              ? parsed.project!.tracks
+              : Array.isArray(parsed.tracks)
+              ? parsed.tracks
+              : null;
+            const loadedClips = Array.isArray(parsed.project?.clips)
+              ? parsed.project!.clips
+              : Array.isArray(parsed.clips)
+              ? parsed.clips
+              : null;
+
+            if (!loadedTracks || !loadedClips) {
+              throw new Error("Invalid video project file");
+            }
+
+            const loadedName = parsed.name || parsed.project?.name || "Untitled Project";
+            const loadedProject = parsed.project || project;
+            const normalizedClips = loadedClips.map((clip) => normalizeLoadedClip(clip));
+            const loadedDuration = calculateProjectDuration(normalizedClips);
+
+            setProjectName(loadedName);
+            setProject({
+              ...loadedProject,
+              name: loadedName,
+              tracks: loadedTracks,
+              clips: normalizedClips,
+              duration: loadedDuration,
+            });
+            restoreTracks(loadedTracks);
+            restoreClips(normalizedClips);
+
+            if (parsed.timelineView) {
+              setViewState(parsed.timelineView);
+            }
+            if (typeof parsed.currentTime === "number") {
+              seek(parsed.currentTime);
+            } else {
+              seek(0);
+            }
+
+            if (parsed.toolMode === "select" || parsed.toolMode === "trim" || parsed.toolMode === "razor" || parsed.toolMode === "mask" || parsed.toolMode === "move" || parsed.toolMode === "pan") {
+              setToolMode(parsed.toolMode);
+            }
+
+            selectClips([]);
+            clearHistory();
+          } catch (error) {
+            console.error("Failed to open project:", error);
+            alert(`${t.importFailed}: ${(error as Error).message}`);
+          } finally {
+            e.target.value = "";
+          }
         }}
       />
     </div>

@@ -169,6 +169,8 @@ export function useLayerManagement(
     const { width, height } = getDisplayDimensions();
     if (width === 0 || height === 0) return;
 
+    saveToHistory?.();
+
     const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
     const newLayer = createPaintLayer(`${t.layer} ${layers.length + 1}`, maxZIndex);
 
@@ -180,12 +182,14 @@ export function useLayerManagement(
     setLayers((prev) => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
     editCanvasRef.current = canvas;
-  }, [layers, getDisplayDimensions, t.layer]);
+  }, [layers, getDisplayDimensions, saveToHistory, t.layer]);
 
   // Add new layer with image drawn to canvas
   const addImageLayer = useCallback((imageSrc: string, name?: string) => {
     const img = new Image();
     img.onload = () => {
+      saveToHistory?.();
+
       const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
       const newLayer = createPaintLayer(
         name || `${t.layer} ${layers.length + 1}`,
@@ -208,14 +212,18 @@ export function useLayerManagement(
       editCanvasRef.current = layerCanvas;
     };
     img.src = imageSrc;
-  }, [layers, t.layer]);
+  }, [layers, saveToHistory, t.layer]);
 
-  // Delete layer
-  const deleteLayer = useCallback(
-    (layerId: string) => {
+  // Delete layer (internal helper with optional history save)
+  const deleteLayerInternal = useCallback(
+    (layerId: string, withHistory: boolean) => {
       if (layers.length <= 1) {
         alert(t.minOneLayerRequired);
         return;
+      }
+
+      if (withHistory) {
+        saveToHistory?.();
       }
 
       const layer = layers.find(l => l.id === layerId);
@@ -242,7 +250,15 @@ export function useLayerManagement(
         });
       }
     },
-    [layers, activeLayerId, t.minOneLayerRequired]
+    [layers, activeLayerId, saveToHistory, t.minOneLayerRequired]
+  );
+
+  // Delete layer
+  const deleteLayer = useCallback(
+    (layerId: string) => {
+      deleteLayerInternal(layerId, true);
+    },
+    [deleteLayerInternal]
   );
 
   // Select layer
@@ -355,9 +371,9 @@ export function useLayerManagement(
         ctx.globalAlpha = 1;
       }
 
-      deleteLayer(layerId);
+      deleteLayerInternal(layerId, false);
     },
-    [layers, saveToHistory, deleteLayer]
+    [layers, saveToHistory, deleteLayerInternal]
   );
 
   // Rotate all layer canvases by degrees (90, -90, 180)
@@ -411,6 +427,8 @@ export function useLayerManagement(
     const layer = layers.find(l => l.id === layerId);
     if (!layer) return;
 
+    saveToHistory?.();
+
     const maxZIndex = Math.max(...layers.map(l => l.zIndex)) + 1;
     const newLayer: UnifiedLayer = {
       ...layer,
@@ -439,7 +457,7 @@ export function useLayerManagement(
     setLayers(prev => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
     setSelectedLayerIds([newLayer.id]);
-  }, [layers, getDisplayDimensions]);
+  }, [layers, getDisplayDimensions, saveToHistory]);
 
   // Select layer with modifier (shift for range multi-select)
   const selectLayerWithModifier = useCallback((layerId: string, shiftKey: boolean) => {

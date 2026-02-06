@@ -16,6 +16,7 @@ import {
   INITIAL_TIMELINE_VIEW,
   createVideoTrack,
   createVideoClip,
+  createAudioClip,
   createImageClip,
   MaskData,
 } from "../types";
@@ -40,7 +41,7 @@ interface TimelineContextValue {
 
   // Track management
   tracks: VideoTrack[];
-  addTrack: (name?: string) => string;
+  addTrack: (name?: string, type?: "video" | "audio") => string;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<VideoTrack>) => void;
   reorderTracks: (fromIndex: number, toIndex: number) => void;
@@ -54,6 +55,13 @@ interface TimelineContextValue {
     sourceDuration: number,
     sourceSize: Size,
     startTime?: number
+  ) => string;
+  addAudioClip: (
+    trackId: string,
+    sourceUrl: string,
+    sourceDuration: number,
+    startTime?: number,
+    sourceSize?: Size
   ) => string;
   addImageClip: (
     trackId: string,
@@ -70,6 +78,12 @@ interface TimelineContextValue {
   duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
   addClips: (newClips: Clip[]) => void;
   restoreClips: (clips: Clip[]) => void;
+  saveToHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  clearHistory: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 
   // Queries
   getClipAtTime: (trackId: string, time: number) => Clip | null;
@@ -81,6 +95,51 @@ interface TimelineContextValue {
 }
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
+
+interface TimelineHistorySnapshot {
+  tracks: VideoTrack[];
+  clips: Clip[];
+}
+
+const MAX_HISTORY = 100;
+
+function cloneTrack(track: VideoTrack): VideoTrack {
+  return { ...track };
+}
+
+function cloneClip(clip: Clip): Clip {
+  const base = {
+    ...clip,
+    position: { ...clip.position },
+  };
+
+  return {
+    ...base,
+    sourceSize: { ...clip.sourceSize },
+  };
+}
+
+function normalizeClip(clip: Clip): Clip {
+  if (clip.type === "video") {
+    return {
+      ...clip,
+      hasAudio: clip.hasAudio ?? true,
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  if (clip.type === "audio") {
+    return {
+      ...clip,
+      sourceSize: clip.sourceSize || { width: 0, height: 0 },
+      audioMuted: clip.audioMuted ?? false,
+      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
+    };
+  }
+
+  return clip;
+}
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
@@ -104,10 +163,66 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [masks, setMasks] = useState<MaskData[]>([]);
   const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Refs for autosave
   const isInitializedRef = useRef(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const historyPastRef = useRef<TimelineHistorySnapshot[]>([]);
+  const historyFutureRef = useRef<TimelineHistorySnapshot[]>([]);
+  const projectRef = useRef(project);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  const syncHistoryFlags = useCallback(() => {
+    setCanUndo(historyPastRef.current.length > 0);
+    setCanRedo(historyFutureRef.current.length > 0);
+  }, []);
+
+  const captureHistorySnapshot = useCallback((): TimelineHistorySnapshot => {
+    return {
+      tracks: tracks.map(cloneTrack),
+      clips: clips.map(cloneClip),
+    };
+  }, [tracks, clips]);
+
+  const saveToHistory = useCallback(() => {
+    historyPastRef.current.push(captureHistorySnapshot());
+    if (historyPastRef.current.length > MAX_HISTORY) {
+      historyPastRef.current.shift();
+    }
+    historyFutureRef.current = [];
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
+
+  const clearHistory = useCallback(() => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    syncHistoryFlags();
+  }, [syncHistoryFlags]);
+
+  const undo = useCallback(() => {
+    const previous = historyPastRef.current.pop();
+    if (!previous) return;
+
+    historyFutureRef.current.push(captureHistorySnapshot());
+    setTracks(previous.tracks.map(cloneTrack));
+    setClips(previous.clips.map(cloneClip));
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
+
+  const redo = useCallback(() => {
+    const next = historyFutureRef.current.pop();
+    if (!next) return;
+
+    historyPastRef.current.push(captureHistorySnapshot());
+    setTracks(next.tracks.map(cloneTrack));
+    setClips(next.clips.map(cloneClip));
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
 
   // Set view state
   const setViewState = useCallback((newViewState: TimelineViewState) => {
@@ -116,11 +231,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Restore functions for autosave
   const restoreTracks = useCallback((savedTracks: VideoTrack[]) => {
-    setTracks(savedTracks);
+    setTracks(savedTracks.map(cloneTrack));
   }, []);
 
   const restoreClips = useCallback((savedClips: Clip[]) => {
-    setClips(savedClips);
+    setClips(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
     updateProjectDuration();
   }, [updateProjectDuration]);
 
@@ -139,16 +254,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             const restoredClips: Clip[] = [];
 
             for (const clip of data.clips) {
+              const normalizedClip = normalizeClip(clip as Clip);
               // Try to load blob from IndexedDB using clipId
-              const blob = await loadMediaBlob(clip.id);
+              const blob = await loadMediaBlob(normalizedClip.id);
 
               if (blob) {
                 // Create new blob URL from stored blob
                 const newUrl = URL.createObjectURL(blob);
-                restoredClips.push({ ...clip, sourceUrl: newUrl });
-              } else if (!clip.sourceUrl.startsWith("blob:")) {
+                restoredClips.push({ ...normalizedClip, sourceUrl: newUrl });
+              } else if (!normalizedClip.sourceUrl.startsWith("blob:")) {
                 // Non-blob URL (e.g., remote URL), keep as is
-                restoredClips.push(clip);
+                restoredClips.push(normalizedClip);
               }
               // If blob URL but no stored blob, skip (invalid)
             }
@@ -179,12 +295,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         console.error("Failed to load autosave:", error);
       } finally {
         isInitializedRef.current = true;
+        historyPastRef.current = [];
+        historyFutureRef.current = [];
+        syncHistoryFlags();
         setIsAutosaveInitialized(true);
       }
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, selectClips]);
+  }, [setProject, setProjectName, setToolMode, selectClips, syncHistoryFlags]);
 
   // Debounced autosave on state change
   useEffect(() => {
@@ -228,6 +347,21 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     selectedClipIds,
   ]);
 
+  // Keep project.timeline data synchronized with TimelineContext state.
+  useEffect(() => {
+    const duration = clips.reduce((max, clip) => {
+      return Math.max(max, clip.startTime + clip.duration);
+    }, 0);
+
+    setProject({
+      ...projectRef.current,
+      tracks: tracks.map(cloneTrack),
+      clips: clips.map(cloneClip),
+      masks: [...masks],
+      duration: Math.max(duration, 10),
+    });
+  }, [tracks, clips, masks, setProject]);
+
   // View state actions
   const setZoom = useCallback((zoom: number) => {
     const clampedZoom = Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, zoom));
@@ -247,14 +381,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Track management
-  const addTrack = useCallback((name?: string): string => {
+  const addTrack = useCallback((name?: string, type: "video" | "audio" = "video"): string => {
+    const countForType = tracks.filter((track) => track.type === type).length + 1;
+    const fallbackName = type === "audio" ? `Audio ${countForType}` : `Video ${countForType}`;
     const newTrack = createVideoTrack(
-      name || `Video ${tracks.length + 1}`,
-      tracks.length
+      name || fallbackName,
+      tracks.length,
+      type
     );
     setTracks((prev) => [...prev, newTrack]);
     return newTrack.id;
-  }, [tracks.length]);
+  }, [tracks]);
 
   const removeTrack = useCallback((trackId: string) => {
     // Don't remove the last track
@@ -299,6 +436,22 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       startTime: number = 0
     ): string => {
       const clip = createVideoClip(trackId, sourceUrl, sourceDuration, sourceSize, startTime);
+      setClips((prev) => [...prev, clip]);
+      updateProjectDuration();
+      return clip.id;
+    },
+    [updateProjectDuration]
+  );
+
+  const addAudioClip = useCallback(
+    (
+      trackId: string,
+      sourceUrl: string,
+      sourceDuration: number,
+      startTime: number = 0,
+      sourceSize: Size = { width: 0, height: 0 }
+    ): string => {
+      const clip = createAudioClip(trackId, sourceUrl, sourceDuration, startTime, sourceSize);
       setClips((prev) => [...prev, clip]);
       updateProjectDuration();
       return clip.id;
@@ -383,7 +536,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
         // Validate
         if (newDuration < TIMELINE.CLIP_MIN_DURATION) return c;
-        if (c.type === "video" && newTrimOut > c.sourceDuration) return c;
+        if ((c.type === "video" || c.type === "audio") && newTrimOut > c.sourceDuration) return c;
 
         return {
           ...c,
@@ -404,9 +557,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     let trackId = targetTrackId;
     if (!trackId) {
       // Create a new track for the duplicate
+      const duplicateTrackType = sourceClip.type === "audio" ? "audio" : "video";
+      const duplicateTrackCount = tracks.filter((track) => track.type === duplicateTrackType).length + 1;
+      const duplicateTrackName = duplicateTrackType === "audio"
+        ? `Audio ${duplicateTrackCount}`
+        : `Video ${duplicateTrackCount}`;
       const newTrack = createVideoTrack(
-        `Video ${tracks.length + 1}`,
-        tracks.length
+        duplicateTrackName,
+        tracks.length,
+        duplicateTrackType
       );
       setTracks((prev) => [...prev, newTrack]);
       trackId = newTrack.id;
@@ -477,6 +636,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     restoreTracks,
     clips,
     addVideoClip,
+    addAudioClip,
     addImageClip,
     removeClip,
     updateClip,
@@ -486,6 +646,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     duplicateClip,
     addClips,
     restoreClips,
+    saveToHistory,
+    undo,
+    redo,
+    clearHistory,
+    canUndo,
+    canRedo,
     getClipAtTime,
     getClipsInTrack,
     getTrackById,

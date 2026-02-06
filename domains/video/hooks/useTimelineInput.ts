@@ -27,7 +27,16 @@ const INITIAL_DRAG_STATE: DragState = {
 };
 
 export function useTimelineInput() {
-  const { clips, moveClip, trimClipStart, trimClipEnd, duplicateClip } = useTimeline();
+  const {
+    clips,
+    moveClip,
+    trimClipStart,
+    trimClipEnd,
+    duplicateClip,
+    removeClip,
+    addClips,
+    saveToHistory,
+  } = useTimeline();
   const { seek, selectClip, deselectAll, toolMode } = useVideoState();
   const { pixelToTime, timeToPixel } = useVideoCoordinates();
 
@@ -85,6 +94,7 @@ export function useTimelineInput() {
           const { clip, handle } = result;
 
           if (handle === "start" && (toolMode === "select" || toolMode === "trim")) {
+            saveToHistory();
             setDragState({
               type: "clip-trim-start",
               clipId: clip.id,
@@ -96,6 +106,7 @@ export function useTimelineInput() {
             });
             selectClip(clip.id, e.shiftKey);
           } else if (handle === "end" && (toolMode === "select" || toolMode === "trim")) {
+            saveToHistory();
             setDragState({
               type: "clip-trim-end",
               clipId: clip.id,
@@ -109,8 +120,41 @@ export function useTimelineInput() {
           } else if (handle === "body") {
             if (toolMode === "razor") {
               // Split clip at cursor
-              // TODO: implement split
+              const splitTime = Math.max(clip.startTime, Math.min(time, clip.startTime + clip.duration));
+              const splitOffset = splitTime - clip.startTime;
+
+              // Ignore split at very edges
+              if (splitOffset <= TIMELINE.CLIP_MIN_DURATION || clip.duration - splitOffset <= TIMELINE.CLIP_MIN_DURATION) {
+                return;
+              }
+
+              saveToHistory();
+
+              const firstDuration = splitOffset;
+              const secondDuration = clip.duration - splitOffset;
+
+              const firstClip: Clip = {
+                ...clip,
+                id: crypto.randomUUID(),
+                duration: firstDuration,
+                trimOut: clip.trimIn + firstDuration,
+              };
+
+              const secondClip: Clip = {
+                ...clip,
+                id: crypto.randomUUID(),
+                name: `${clip.name} (2)`,
+                startTime: splitTime,
+                duration: secondDuration,
+                trimIn: clip.trimIn + splitOffset,
+              };
+
+              removeClip(clip.id);
+              addClips([firstClip, secondClip]);
+              selectClip(secondClip.id, false);
             } else {
+              saveToHistory();
+
               // Alt+Drag: duplicate clip and drag the copy
               let dragClipId = clip.id;
               if (e.altKey && toolMode === "select") {
@@ -148,7 +192,18 @@ export function useTimelineInput() {
         }
       }
     },
-    [pixelToTime, findClipAtPosition, toolMode, selectClip, seek, deselectAll, duplicateClip]
+    [
+      pixelToTime,
+      findClipAtPosition,
+      toolMode,
+      selectClip,
+      seek,
+      deselectAll,
+      duplicateClip,
+      removeClip,
+      addClips,
+      saveToHistory,
+    ]
   );
 
   // Handle mouse move
