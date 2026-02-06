@@ -56,7 +56,6 @@ export const BUFFER = {
   CRITICAL_THRESHOLD: 0.5, // seconds: pause when less than this buffered
   RESUME_THRESHOLD: 2.0, // seconds: resume when this much is buffered
   CHECK_INTERVAL_MS: 250, // how often to check buffer state
-  VISUAL_POLL_INTERVAL_MS: 500, // how often to update timeline buffer bar
 } as const;
 
 // UI constants
