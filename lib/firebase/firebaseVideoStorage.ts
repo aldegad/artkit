@@ -92,6 +92,22 @@ interface FirestoreVideoProject {
 }
 
 // ============================================
+// Utility: Remove undefined values (Firestore rejects undefined)
+// ============================================
+
+function removeUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(removeUndefined) as T;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    if (value !== undefined) {
+      result[key] = removeUndefined(value);
+    }
+  }
+  return result as T;
+}
+
+// ============================================
 // Progress Callback Type
 // ============================================
 
@@ -440,7 +456,7 @@ export async function saveVideoProjectToFirebase(
   };
 
   const docRef = doc(db, "users", userId, "videoProjects", project.id);
-  await setDoc(docRef, firestoreProject);
+  await setDoc(docRef, removeUndefined(firestoreProject));
 }
 
 /**
