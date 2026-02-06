@@ -124,8 +124,19 @@ export default function AnimationPreviewContent() {
   // Throttled React state for UI display only (zoom %, CSS transform)
   const viewportSync = viewport.useReactSync(16);
 
-  // Extract stable references from viewport
-  const { onViewportChange: onAnimViewportChange, setZoom: setAnimVpZoom, setPan: setAnimVpPan } = viewport;
+  // Extract stable references from viewport (useCallback-backed, stable across re-renders)
+  const {
+    onViewportChange: onAnimViewportChange,
+    setZoom: setAnimVpZoom,
+    setPan: setAnimVpPan,
+    getZoom: getAnimVpZoom,
+    startPanDrag: animStartPanDrag,
+    updatePanDrag: animUpdatePanDrag,
+    endPanDrag: animEndPanDrag,
+    isPanDragging: animIsPanDragging,
+    wheelRef: animWheelRef,
+    pinchRef: animPinchRef,
+  } = viewport;
 
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
@@ -168,7 +179,7 @@ export default function AnimationPreviewContent() {
       const img = compositedImgRef.current;
       if (!canvas || !img || !img.complete || img.naturalWidth === 0) return;
 
-      const zoom = viewport.getZoom();
+      const zoom = getAnimVpZoom();
       const w = img.width * zoom;
       const h = img.height * zoom;
 
@@ -182,14 +193,14 @@ export default function AnimationPreviewContent() {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, 0, 0, w, h);
     });
-  }, [setRenderFn, viewport]);
+  }, [setRenderFn, getAnimVpZoom]);
 
   // Subscribe viewport changes → render
   useEffect(() => {
-    return viewport.onViewportChange(() => {
+    return onAnimViewportChange(() => {
       requestRender();
     });
-  }, [viewport, requestRender]);
+  }, [onAnimViewportChange, requestRender]);
 
   // Preset colors for quick selection
   const presetColors = [
@@ -389,7 +400,7 @@ export default function AnimationPreviewContent() {
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         setIsPanning(false);
-        viewport.endPanDrag();
+        animEndPanDrag();
       }
     };
 
@@ -400,7 +411,7 @@ export default function AnimationPreviewContent() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [viewport]);
+  }, [animEndPanDrag]);
 
   // 손 툴 또는 스페이스바로 패닝 활성화
   const isHandMode = toolMode === "hand" || isPanning;
@@ -409,29 +420,29 @@ export default function AnimationPreviewContent() {
     (e: React.MouseEvent) => {
       if (isPanning || toolMode === "hand") {
         e.preventDefault();
-        viewport.startPanDrag({ x: e.clientX, y: e.clientY });
+        animStartPanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isPanning, toolMode, viewport],
+    [isPanning, toolMode, animStartPanDrag],
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (viewport.isPanDragging()) {
-        viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
+      if (animIsPanDragging()) {
+        animUpdatePanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [viewport],
+    [animIsPanDragging, animUpdatePanDrag],
   );
 
   const handleMouseUp = useCallback(() => {
-    viewport.endPanDrag();
-  }, [viewport]);
+    animEndPanDrag();
+  }, [animEndPanDrag]);
 
   // 커서 결정
   const getCursor = () => {
     if (isHandMode) {
-      return viewport.isPanDragging() ? "grabbing" : "grab";
+      return animIsPanDragging() ? "grabbing" : "grab";
     }
     return "default";
   };
@@ -455,8 +466,8 @@ export default function AnimationPreviewContent() {
           <div
             ref={(el) => {
               containerRef.current = el;
-              viewport.wheelRef(el);
-              viewport.pinchRef(el);
+              animWheelRef(el);
+              animPinchRef(el);
             }}
             className="flex-1 overflow-hidden relative bg-surface-secondary"
             onMouseDown={handleMouseDown}
@@ -627,14 +638,14 @@ export default function AnimationPreviewContent() {
               {/* Right: Zoom controls */}
               <div className="ml-auto flex items-center gap-1">
                 <button
-                  onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
+                  onClick={() => setAnimVpZoom(Math.max(0.1, getAnimVpZoom() * 0.8))}
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
                 </button>
                 <span className="text-xs w-10 text-center text-text-primary">{Math.round(viewportSync.zoom * 100)}%</span>
                 <button
-                  onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
+                  onClick={() => setAnimVpZoom(Math.min(20, getAnimVpZoom() * 1.25))}
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
