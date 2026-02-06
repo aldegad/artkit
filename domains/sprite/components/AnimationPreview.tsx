@@ -3,10 +3,81 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
-import { ImageDropZone } from "../../../shared/components";
+import { ImageDropZone, Popover } from "../../../shared/components";
+import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../../shared/components/icons";
 import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
+
+// Background icon for popover trigger
+const BackgroundPatternIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
+    <rect x="1" y="1" width="6" height="6" opacity="0.8" />
+    <rect x="9" y="1" width="6" height="6" opacity="0.3" />
+    <rect x="1" y="9" width="6" height="6" opacity="0.3" />
+    <rect x="9" y="9" width="6" height="6" opacity="0.8" />
+  </svg>
+);
+
+// ============================================
+// Frame Indicator (editable)
+// ============================================
+
+function FrameIndicator({
+  currentIndex,
+  maxCount,
+  onChange,
+}: {
+  currentIndex: number;
+  maxCount: number;
+  onChange: (index: number) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDoubleClick = () => {
+    setEditValue(String(currentIndex + 1));
+    setIsEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const handleSubmit = () => {
+    const num = parseInt(editValue, 10);
+    if (!isNaN(num) && num >= 1 && num <= maxCount) {
+      onChange(num - 1);
+    }
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSubmit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSubmit();
+          if (e.key === "Escape") setIsEditing(false);
+        }}
+        className="w-12 text-xs text-center bg-surface-tertiary border border-border-default rounded px-1 py-0.5"
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <span
+      onDoubleClick={handleDoubleClick}
+      className="text-xs text-text-secondary cursor-default select-none tabular-nums"
+      title="Double-click to edit"
+    >
+      {currentIndex + 1}/{maxCount}
+    </span>
+  );
+}
 
 // ============================================
 // Component
@@ -14,7 +85,7 @@ import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 
 export default function AnimationPreviewContent() {
   const {
-    tracks, fps, setFps, toolMode, getMaxFrameCount,
+    tracks, fps, toolMode, getMaxFrameCount,
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
   } = useEditor();
@@ -397,48 +468,125 @@ export default function AnimationPreviewContent() {
           )}
 
           {/* Control area */}
-          <div className="p-3 border-t border-border-default space-y-3">
-            {/* Playback controls */}
-            <div className="flex items-center justify-center gap-2">
+          <div className="px-2 py-1.5 border-t border-border-default">
+            <div className="flex items-center gap-1.5">
+              {/* Frame indicator (editable) */}
+              <FrameIndicator
+                currentIndex={currentFrameIndex}
+                maxCount={maxFrameCount}
+                onChange={setCurrentFrameIndex}
+              />
+
+              {/* Transport controls */}
               <button
                 onClick={handlePrev}
-                className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
+                className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
               >
-                ◀
+                <StepBackwardIcon />
               </button>
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
-                  isPlaying
-                    ? "bg-accent-danger hover:bg-accent-danger-hover"
-                    : "bg-accent-primary hover:bg-accent-primary-hover"
-                }`}
+                className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
               >
-                {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
+                {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
               </button>
               <button
                 onClick={handleNext}
-                className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
+                className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
               >
-                ▶
+                <StepForwardIcon />
               </button>
-            </div>
 
-            {/* FPS & Zoom controls */}
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-text-secondary whitespace-nowrap">FPS:</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="30"
-                  value={fps}
-                  onChange={(e) => setFps(Number(e.target.value))}
-                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-                />
-                <span className="w-8 text-center text-text-primary">{fps}</span>
-              </div>
+              {/* Background popover */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleBgImageUpload}
+                className="hidden"
+              />
+              <Popover
+                trigger={
+                  <button
+                    className={`p-1.5 rounded transition-colors ${
+                      bgType !== "checkerboard"
+                        ? "bg-accent/20 text-accent hover:bg-accent/30"
+                        : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
+                    }`}
+                    title={t.background}
+                  >
+                    <BackgroundPatternIcon />
+                  </button>
+                }
+                align="start"
+                side="top"
+              >
+                <div className="p-3 space-y-2 min-w-[200px]">
+                  <div className="text-xs text-text-secondary font-medium">{t.background}</div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setBgType("checkerboard")}
+                      className={`w-6 h-6 rounded border-2 checkerboard transition-colors ${
+                        bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
+                      }`}
+                      title={t.transparent}
+                    />
+                    {presetColors.map(({ color, label }) => (
+                      <button
+                        key={color}
+                        onClick={() => {
+                          setBgType("solid");
+                          setBgColor(color);
+                        }}
+                        className={`w-6 h-6 rounded border-2 transition-colors ${
+                          bgType === "solid" && bgColor === color
+                            ? "border-accent-primary"
+                            : "border-border-default"
+                        }`}
+                        style={{ backgroundColor: color }}
+                        title={label}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={bgColor}
+                      onChange={(e) => {
+                        setBgType("solid");
+                        setBgColor(e.target.value);
+                      }}
+                      className="w-6 h-6 rounded cursor-pointer border-0 p-0"
+                      title={t.customColor}
+                    />
+                  </div>
+                  <div className="border-t border-border-default pt-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`w-full px-2 py-1.5 rounded text-xs text-left transition-colors ${
+                        bgType === "image"
+                          ? "bg-accent-primary/10 text-accent-primary"
+                          : "hover:bg-interactive-hover text-text-secondary"
+                      }`}
+                    >
+                      {t.uploadBgImage}
+                    </button>
+                    {bgType === "image" && bgImage && (
+                      <button
+                        onClick={() => {
+                          setBgImage(null);
+                          setBgType("checkerboard");
+                        }}
+                        className="w-full px-2 py-1 rounded text-xs text-left text-accent-danger hover:bg-interactive-hover transition-colors mt-1"
+                      >
+                        {t.removeBgImage}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Popover>
 
+              <div className="flex-1" />
+
+              {/* Zoom controls */}
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
@@ -454,80 +602,6 @@ export default function AnimationPreviewContent() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
                 </button>
               </div>
-            </div>
-
-            {/* Background selector */}
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-text-secondary whitespace-nowrap">{t.background}:</span>
-              <button
-                onClick={() => setBgType("checkerboard")}
-                className={`w-6 h-6 rounded-lg border-2 checkerboard transition-colors ${
-                  bgType === "checkerboard" ? "border-accent-primary" : "border-border-default"
-                }`}
-                title={t.transparent}
-              />
-              {presetColors.map(({ color, label }) => (
-                <button
-                  key={color}
-                  onClick={() => {
-                    setBgType("solid");
-                    setBgColor(color);
-                  }}
-                  className={`w-6 h-6 rounded-lg border-2 transition-colors ${
-                    bgType === "solid" && bgColor === color
-                      ? "border-accent-primary"
-                      : "border-border-default"
-                  }`}
-                  style={{ backgroundColor: color }}
-                  title={label}
-                />
-              ))}
-              <input
-                type="color"
-                value={bgColor}
-                onChange={(e) => {
-                  setBgType("solid");
-                  setBgColor(e.target.value);
-                }}
-                className="w-6 h-6 rounded-lg cursor-pointer border-0 p-0"
-                title={t.customColor}
-              />
-              <div className="border-l border-border-default h-4 mx-1" />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleBgImageUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className={`px-2 py-0.5 rounded-lg border-2 text-xs transition-colors ${
-                  bgType === "image"
-                    ? "border-accent-primary bg-accent-primary/20"
-                    : "border-border-default hover:bg-interactive-hover"
-                }`}
-                title={t.uploadBgImage}
-              >
-                {t.image}
-              </button>
-              {bgType === "image" && bgImage && (
-                <button
-                  onClick={() => {
-                    setBgImage(null);
-                    setBgType("checkerboard");
-                  }}
-                  className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-xs text-text-secondary transition-colors"
-                  title={t.removeBgImage}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Frame info */}
-            <div className="text-center text-xs text-text-tertiary">
-              {`${t.frame} ${currentFrameIndex + 1} / ${maxFrameCount}`}
             </div>
           </div>
         </div>

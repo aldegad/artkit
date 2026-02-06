@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
+import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 
@@ -413,9 +414,9 @@ export default function FramePreviewContent() {
   return (
     <div className="flex flex-col h-full bg-surface-primary">
       {/* Tool bar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default bg-surface-secondary">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-default bg-surface-secondary">
         {/* Edit tools */}
-        <div className="flex gap-1 bg-surface-tertiary rounded p-1">
+        <div className="flex gap-0.5 bg-surface-tertiary rounded p-0.5">
           <button
             onClick={() => setEditToolMode("brush")}
             className={`p-1.5 rounded ${
@@ -449,37 +450,6 @@ export default function FramePreviewContent() {
           >
             <EyedropperIcon />
           </button>
-        </div>
-
-        <div className="h-6 w-px bg-border-default" />
-
-        {/* Color picker */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-text-secondary">{t.color}:</label>
-          <input
-            type="color"
-            value={brushColor}
-            onChange={(e) => setBrushColor(e.target.value)}
-            className="w-8 h-8 rounded cursor-pointer border border-border-default"
-            style={{ backgroundColor: brushColor }}
-          />
-          <span className="text-xs text-text-secondary font-mono">{brushColor}</span>
-        </div>
-
-        <div className="h-6 w-px bg-border-default" />
-
-        {/* Brush size */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-text-secondary">{t.size}:</label>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            className="w-16 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-          />
-          <span className="text-xs text-text-secondary w-4">{brushSize}</span>
         </div>
       </div>
 
@@ -570,50 +540,77 @@ export default function FramePreviewContent() {
         )}
       </div>
 
-      {/* Control area */}
-      <div className="p-3 border-t border-border-default space-y-3">
-        {/* Frame navigation */}
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={handlePrev}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
-            disabled={validFrames.length === 0}
-          >
-            ◀ {t.previous}
-          </button>
-          <span className="px-4 text-sm text-text-primary">
-            {validFrames.length > 0 ? `${currentFrameIndex + 1} / ${validFrames.length}` : "-"}
-          </span>
-          <button
-            onClick={handleNext}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
-            disabled={validFrames.length === 0}
-          >
-            {t.next} ▶
-          </button>
-        </div>
+      {/* Frame navigation */}
+      <div className="flex items-center justify-center gap-2 px-2 py-1.5 border-t border-border-default">
+        <button
+          onClick={handlePrev}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+          disabled={validFrames.length === 0}
+        >
+          <StepBackwardIcon />
+        </button>
+        <span className="text-xs text-text-primary tabular-nums select-none">
+          {validFrames.length > 0 ? `${currentFrameIndex + 1} / ${validFrames.length}` : "-"}
+        </span>
+        <button
+          onClick={handleNext}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+          disabled={validFrames.length === 0}
+        >
+          <StepForwardIcon />
+        </button>
+      </div>
 
-        {/* Zoom control */}
-        <div className="flex items-center justify-center gap-1 text-sm">
+      {/* Tool options bar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-default bg-surface-secondary">
+        {(editToolMode === "brush" || editToolMode === "eraser") && (
+          <>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={brushColor}
+                onChange={(e) => setBrushColor(e.target.value)}
+                className="w-6 h-6 rounded cursor-pointer border border-border-default"
+                style={{ backgroundColor: brushColor }}
+              />
+              <span className="text-[10px] text-text-tertiary font-mono">{brushColor}</span>
+            </div>
+
+            <div className="h-4 w-px bg-border-default" />
+
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-text-secondary">{t.size}:</label>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={brushSize}
+                onChange={(e) => setBrushSize(Number(e.target.value))}
+                className="w-14 h-1 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-[10px] text-text-secondary w-3">{brushSize}</span>
+            </div>
+
+            <div className="h-4 w-px bg-border-default" />
+          </>
+        )}
+
+        {/* Zoom control (always visible) */}
+        <div className="flex items-center gap-1 ml-auto">
           <button
             onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
-            className="p-1 hover:bg-interactive-hover rounded transition-colors"
+            className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
           </button>
-          <span className="text-xs w-10 text-center text-text-primary">{Math.round(currentZoom * 100)}%</span>
+          <span className="text-[10px] w-8 text-center text-text-primary tabular-nums">{Math.round(currentZoom * 100)}%</span>
           <button
             onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
-            className="p-1 hover:bg-interactive-hover rounded transition-colors"
+            className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
           </button>
         </div>
-
-        {/* Frame name */}
-        {currentFrame && (
-          <div className="text-center text-xs text-text-tertiary">{currentFrame.name}</div>
-        )}
       </div>
     </div>
   );
