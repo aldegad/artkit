@@ -31,6 +31,10 @@ export function MaskClip({ mask }: MaskClipProps) {
     });
   }, [mask.keyframes, mask.duration, durationToWidth]);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     selectMask(mask.id);
@@ -47,6 +51,7 @@ export function MaskClip({ mask }: MaskClipProps) {
         left: x,
         width,
       }}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
     >
       <div className="px-1.5 py-0.5 text-[10px] text-white/80 truncate leading-tight">

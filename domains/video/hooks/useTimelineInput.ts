@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState, useEffect } from "react";
-import { useTimeline, useVideoState } from "../contexts";
+import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { TimelineDragType, Clip } from "../types";
-import { TIMELINE, UI } from "../constants";
+import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 
 interface DragState {
   type: TimelineDragType;
@@ -72,30 +72,37 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  const { getMasksForTrack } = useMask();
+
   const getTrackAtY = useCallback(
-    (y: number): string | null => {
-      if (tracks.length === 0 || y < 0) return null;
+    (y: number): { trackId: string | null; inMaskLane: boolean } => {
+      if (tracks.length === 0 || y < 0) return { trackId: null, inMaskLane: false };
 
       let offset = 0;
       for (const track of tracks) {
-        const start = offset;
-        const end = offset + track.height;
-        if (y >= start && y < end) {
-          return track.id;
+        const hasMasks = getMasksForTrack(track.id).length > 0;
+        const clipEnd = offset + track.height;
+        const trackEnd = clipEnd + (hasMasks ? MASK_LANE_HEIGHT : 0);
+
+        if (y >= offset && y < trackEnd) {
+          if (y >= clipEnd && hasMasks) {
+            return { trackId: track.id, inMaskLane: true };
+          }
+          return { trackId: track.id, inMaskLane: false };
         }
-        offset = end;
+        offset = trackEnd;
       }
 
-      return tracks[tracks.length - 1].id;
+      return { trackId: tracks[tracks.length - 1].id, inMaskLane: false };
     },
-    [tracks]
+    [tracks, getMasksForTrack]
   );
 
-  // Find clip at position
+  // Find clip at position (returns null for mask lane clicks)
   const findClipAtPosition = useCallback(
     (x: number, y: number): { clip: Clip; handle: "start" | "end" | "body" } | null => {
-      const trackId = getTrackAtY(y);
-      if (!trackId) return null;
+      const { trackId, inMaskLane } = getTrackAtY(y);
+      if (!trackId || inMaskLane) return null;
 
       const time = pixelToTime(x);
       const trackClips = clips
@@ -146,6 +153,10 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
       // Left click
       if (e.button === 0) {
+        // Check if click is in a mask lane - let MaskClip handle it
+        const { inMaskLane } = getTrackAtY(y);
+        if (inMaskLane) return;
+
         const result = findClipAtPosition(x, y);
 
         if (result) {
@@ -309,7 +320,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
           const clip = clips.find((c) => c.id === dragState.clipId);
           if (clip) {
-            const targetTrackId = getTrackAtY(y) || clip.trackId;
+            const targetTrackId = getTrackAtY(y).trackId || clip.trackId;
             moveClip(dragState.clipId, targetTrackId, finalStart);
           }
         }
