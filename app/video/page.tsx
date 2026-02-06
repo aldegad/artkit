@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useLanguage, HeaderSlot } from "../../shared/contexts";
-import { downloadBlob, downloadJson } from "../../shared/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
+import { downloadBlob } from "../../shared/utils";
 import {
   VideoStateProvider,
   VideoRefsProvider,
@@ -14,10 +14,12 @@ import {
   useTimeline,
   useMask,
   useVideoLayout,
+  useVideoSave,
   VideoMenuBar,
   VideoToolbar,
   VideoSplitContainer,
   VideoFloatingWindows,
+  VideoProjectListModal,
   registerVideoPanelComponent,
   clearVideoPanelComponents,
   VideoPreviewPanelContent,
@@ -34,6 +36,11 @@ import {
   type VideoToolMode,
   type VideoTrack,
 } from "../../domains/video";
+import {
+  getVideoStorageProvider,
+  type VideoStorageInfo,
+} from "../../services/videoProjectStorage";
+import { type SaveLoadProgress } from "../../lib/firebase/firebaseVideoStorage";
 import Tooltip from "../../shared/components/Tooltip";
 import { LayoutNode, isSplitNode, isPanelNode } from "../../types/layout";
 
@@ -112,6 +119,8 @@ function VideoDockableArea() {
 
 function VideoEditorContent() {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const storageProvider = useMemo(() => getVideoStorageProvider(user), [user]);
   const {
     project,
     projectName,
@@ -161,7 +170,7 @@ function VideoEditorContent() {
     canUndo,
     canRedo,
   } = useTimeline();
-  const { startMaskEdit } = useMask();
+  const { startMaskEdit, masks: masksMap } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -182,6 +191,34 @@ function VideoEditorContent() {
   const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
   const audioHistorySavedRef = useRef(false);
   const visualHistorySavedRef = useRef(false);
+
+  // Save system state
+  const [savedProjects, setSavedProjects] = useState<SavedVideoProject[]>([]);
+  const [storageInfo, setStorageInfo] = useState<VideoStorageInfo>({ used: 0, quota: 0, percentage: 0 });
+  const [isProjectListOpen, setIsProjectListOpen] = useState(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<SaveLoadProgress | null>(null);
+
+  const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
+
+  const { saveProject, saveAsProject, isSaving, saveProgress } = useVideoSave({
+    storageProvider,
+    project,
+    projectName,
+    currentProjectId,
+    tracks,
+    clips,
+    masks: masksArray,
+    viewState,
+    currentTime: playback.currentTime,
+    toolMode,
+    selectedClipIds,
+    previewCanvasRef,
+    setCurrentProjectId,
+    setSavedProjects,
+    setStorageInfo,
+  });
 
   useEffect(() => {
     return () => {
@@ -204,6 +241,12 @@ function VideoEditorContent() {
     };
   }, []);
 
+  // Load saved projects when storage provider changes
+  useEffect(() => {
+    storageProvider.getAllProjects().then(setSavedProjects).catch(console.error);
+    storageProvider.getStorageInfo().then(setStorageInfo).catch(console.error);
+  }, [storageProvider]);
+
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
     ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
@@ -212,28 +255,7 @@ function VideoEditorContent() {
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
   const isTimelineVisible = isPanelOpen("timeline");
 
-  const buildSavedProject = useCallback(
-    (nameOverride?: string): SavedVideoProject => {
-      const resolvedName = nameOverride || projectName;
-      const duration = calculateProjectDuration(clips);
-
-      return {
-        id: project.id,
-        name: resolvedName,
-        project: {
-          ...project,
-          name: resolvedName,
-          tracks: tracks.map((track) => ({ ...track })),
-          clips: clips.map(cloneClip),
-          duration,
-        },
-        timelineView: { ...viewState },
-        currentTime: playback.currentTime,
-        savedAt: Date.now(),
-      };
-    },
-    [project, projectName, tracks, clips, viewState, playback.currentTime]
-  );
+  // buildSavedProject is now inside useVideoSave hook
 
   const importMediaFiles = useCallback(
     async (files: File[]) => {
@@ -407,25 +429,94 @@ function VideoEditorContent() {
   }, [t]);
 
   const handleOpen = useCallback(() => {
+    setIsProjectListOpen(true);
+  }, []);
+
+  const handleImportFile = useCallback(() => {
     projectFileInputRef.current?.click();
   }, []);
 
-  const handleSave = useCallback(() => {
-    const savedProject = buildSavedProject();
-    const fileName = `${sanitizeFileName(projectName)}.video-project.json`;
-    downloadJson(savedProject, fileName);
-  }, [buildSavedProject, projectName]);
+  const handleSave = useCallback(async () => {
+    try {
+      await saveProject();
+    } catch (error) {
+      console.error("Failed to save project:", error);
+      alert(`Save failed: ${(error as Error).message}`);
+    }
+  }, [saveProject]);
 
-  const handleSaveAs = useCallback(() => {
+  const handleSaveAs = useCallback(async () => {
     const suggestedName = projectName || "Untitled Project";
     const nextName = window.prompt("Project name", suggestedName);
     if (!nextName) return;
 
     setProjectName(nextName);
-    const savedProject = buildSavedProject(nextName);
-    const fileName = `${sanitizeFileName(nextName)}.video-project.json`;
-    downloadJson(savedProject, fileName);
-  }, [buildSavedProject, projectName, setProjectName]);
+    try {
+      await saveAsProject(nextName);
+    } catch (error) {
+      console.error("Failed to save project:", error);
+      alert(`Save failed: ${(error as Error).message}`);
+    }
+  }, [projectName, setProjectName, saveAsProject]);
+
+  const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
+    setIsLoadingProject(true);
+    setLoadProgress(null);
+    try {
+      const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
+      if (!loaded) {
+        alert("Failed to load project");
+        return;
+      }
+
+      const loadedProject = loaded.project;
+      const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
+      const loadedDuration = calculateProjectDuration(normalizedClips);
+
+      setProjectName(loaded.name);
+      setProject({
+        ...loadedProject,
+        name: loaded.name,
+        tracks: loadedProject.tracks,
+        clips: normalizedClips,
+        duration: loadedDuration,
+      });
+      restoreTracks(loadedProject.tracks);
+      restoreClips(normalizedClips);
+
+      if (loaded.timelineView) {
+        setViewState(loaded.timelineView);
+      }
+      if (typeof loaded.currentTime === "number") {
+        seek(loaded.currentTime);
+      } else {
+        seek(0);
+      }
+
+      setCurrentProjectId(loaded.id);
+      selectClips([]);
+      clearHistory();
+      setIsProjectListOpen(false);
+    } catch (error) {
+      console.error("Failed to load project:", error);
+      alert(`Load failed: ${(error as Error).message}`);
+    } finally {
+      setIsLoadingProject(false);
+      setLoadProgress(null);
+    }
+  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, setViewState, seek, selectClips, clearHistory]);
+
+  const handleDeleteProject = useCallback(async (id: string) => {
+    if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;
+    try {
+      await storageProvider.deleteProject(id);
+      const projects = await storageProvider.getAllProjects();
+      setSavedProjects(projects);
+      if (currentProjectId === id) setCurrentProjectId(null);
+    } catch (error) {
+      console.error("Failed to delete project:", error);
+    }
+  }, [storageProvider, currentProjectId, t]);
 
   const handleImportMedia = useCallback(() => {
     mediaFileInputRef.current?.click();
@@ -1022,11 +1113,13 @@ function VideoEditorContent() {
         <VideoMenuBar
           onNew={handleNew}
           onOpen={handleOpen}
+          onImportFile={handleImportFile}
           onSave={handleSave}
           onSaveAs={handleSaveAs}
           onImportMedia={handleImportMedia}
           onExport={handleExport}
           canSave={hasContent}
+          isSaving={isSaving}
           isLoading={isExporting}
           onUndo={handleUndo}
           onRedo={handleRedo}
@@ -1269,6 +1362,44 @@ function VideoEditorContent() {
         }}
       />
 
+      {/* Save progress indicator */}
+      {isSaving && saveProgress && (
+        <div className="fixed bottom-4 right-4 z-50 bg-surface-primary border border-border-default rounded-lg shadow-lg p-3 min-w-[200px]">
+          <div className="flex items-center gap-2 text-sm text-text-secondary mb-1">
+            <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+            <span>Saving ({saveProgress.current}/{saveProgress.total})</span>
+          </div>
+          <div className="text-xs text-text-tertiary truncate">{saveProgress.clipName}</div>
+          <div className="mt-1 w-full h-1 bg-surface-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent-primary rounded-full transition-all"
+              style={{ width: `${(saveProgress.current / saveProgress.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Video Project List Modal */}
+      <VideoProjectListModal
+        isOpen={isProjectListOpen}
+        onClose={() => setIsProjectListOpen(false)}
+        projects={savedProjects}
+        currentProjectId={currentProjectId}
+        onLoadProject={handleLoadProject}
+        onDeleteProject={handleDeleteProject}
+        onImportFile={handleImportFile}
+        storageInfo={storageInfo}
+        isLoading={isLoadingProject}
+        loadProgress={loadProgress}
+        translations={{
+          savedProjects: t.savedProjects || "Saved Projects",
+          noSavedProjects: t.noSavedProjects || "No saved projects",
+          delete: t.delete,
+          importFile: "Import from file...",
+          loading: t.loading || "Loading",
+        }}
+      />
+
       {/* Hidden file input for project open */}
       <input
         ref={projectFileInputRef}
@@ -1327,8 +1458,10 @@ function VideoEditorContent() {
               setToolMode(parsed.toolMode as VideoToolMode);
             }
 
+            setCurrentProjectId(null); // File import creates a non-stored project
             selectClips([]);
             clearHistory();
+            setIsProjectListOpen(false);
           } catch (error) {
             console.error("Failed to open project:", error);
             alert(`${t.importFailed}: ${(error as Error).message}`);

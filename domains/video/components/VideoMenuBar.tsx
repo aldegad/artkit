@@ -11,11 +11,13 @@ interface VideoMenuBarProps {
   // File menu
   onNew: () => void;
   onOpen: () => void;
+  onImportFile?: () => void;
   onSave: () => void;
   onSaveAs: () => void;
   onImportMedia: () => void;
   onExport: () => void;
   canSave: boolean;
+  isSaving?: boolean;
   isLoading?: boolean;
   // Edit menu
   onUndo: () => void;
@@ -44,6 +46,7 @@ interface VideoMenuBarProps {
     saveAs: string;
     importMedia: string;
     exportVideo: string;
+    importFile?: string;
     undo: string;
     redo: string;
     cut: string;
@@ -60,11 +63,13 @@ interface VideoMenuBarProps {
 export default function VideoMenuBar({
   onNew,
   onOpen,
+  onImportFile,
   onSave,
   onSaveAs,
   onImportMedia,
   onExport,
   canSave,
+  isSaving,
   isLoading,
   onUndo,
   onRedo,
@@ -88,9 +93,10 @@ export default function VideoMenuBar({
   const fileMenuItems: MenuItem[] = [
     { label: t.newProject, onClick: onNew, shortcut: "⌘N" },
     { label: t.openProject, onClick: onOpen, shortcut: "⌘O" },
+    ...(onImportFile ? [{ label: t.importFile || "Import from File", onClick: onImportFile }] : []),
     { divider: true },
-    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: "⌘S" },
-    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
+    { label: t.save, onClick: onSave, disabled: !canSave || isSaving, shortcut: "⌘S" },
+    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave || isSaving, shortcut: "⇧⌘S" },
     { divider: true },
     { label: t.importMedia, onClick: onImportMedia },
     { label: t.exportVideo, onClick: onExport, disabled: !canSave },
@@ -116,7 +122,7 @@ export default function VideoMenuBar({
 
   return (
     <div className="flex items-center gap-1">
-      {isLoading && (
+      {(isLoading || isSaving) && (
         <div className="flex items-center gap-2 px-2 text-text-tertiary">
           <SpinnerIcon />
         </div>

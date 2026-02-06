@@ -1,0 +1,651 @@
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  query,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
+import {
+  ref,
+  uploadBytes,
+  uploadString,
+  getBlob,
+  getDownloadURL,
+  deleteObject,
+  listAll,
+} from "firebase/storage";
+import { db, storage } from "./config";
+import {
+  SavedVideoProject,
+  VideoProject,
+  VideoTrack,
+  MaskData,
+  MaskKeyframe,
+  TimelineViewState,
+} from "@/domains/video/types";
+import { Clip } from "@/domains/video/types/clip";
+import {
+  loadMediaBlob,
+  isStoredMedia,
+  getClipIdFromStoredUrl,
+} from "@/domains/video/utils/mediaStorage";
+
+// ============================================
+// Firestore Types
+// ============================================
+
+interface FirestoreClipMeta {
+  id: string;
+  name: string;
+  type: "video" | "audio" | "image";
+  trackId: string;
+  startTime: number;
+  duration: number;
+  trimIn: number;
+  trimOut: number;
+  opacity: number;
+  visible: boolean;
+  locked: boolean;
+  maskId: string | null;
+  position: { x: number; y: number };
+  scale: number;
+  rotation: number;
+  sourceId: string;
+  sourceDuration?: number;
+  sourceSize: { width: number; height: number };
+  // Firebase storage reference for the media file
+  storageRef: string;
+  mediaType: string;
+  // Audio properties
+  hasAudio?: boolean;
+  audioMuted?: boolean;
+  audioVolume?: number;
+  // Image inline data (for small images)
+  imageData?: string;
+}
+
+interface FirestoreMaskKeyframeMeta {
+  id: string;
+  time: number;
+  easing: string;
+  storageRef: string;
+}
+
+interface FirestoreMaskMeta {
+  id: string;
+  clipId: string;
+  size: { width: number; height: number };
+  mode: "per-frame" | "keyframed";
+  keyframes?: FirestoreMaskKeyframeMeta[];
+}
+
+interface FirestoreVideoProject {
+  id: string;
+  name: string;
+  canvasSize: { width: number; height: number };
+  frameRate: number;
+  duration: number;
+  tracks: VideoTrack[];
+  clips: FirestoreClipMeta[];
+  masks: FirestoreMaskMeta[];
+  timelineView: TimelineViewState;
+  currentTime: number;
+  thumbnailUrl?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// ============================================
+// Progress Callback Type
+// ============================================
+
+export interface SaveLoadProgress {
+  current: number;
+  total: number;
+  clipName: string;
+}
+
+// ============================================
+// Storage Functions (Media Files)
+// ============================================
+
+/**
+ * Upload a media blob to Firebase Storage
+ */
+async function uploadMediaFile(
+  userId: string,
+  projectId: string,
+  clipId: string,
+  blob: Blob,
+  contentType: string
+): Promise<string> {
+  const ext = contentType.split("/")[1] || "bin";
+  const path = `users/${userId}/video-media/${projectId}/${clipId}.${ext}`;
+  const storageRef = ref(storage, path);
+
+  await uploadBytes(storageRef, blob, { contentType });
+
+  return path;
+}
+
+/**
+ * Download a media blob from Firebase Storage
+ */
+async function downloadMediaFile(path: string): Promise<Blob> {
+  const storageRef = ref(storage, path);
+  return getBlob(storageRef);
+}
+
+/**
+ * Upload mask keyframe image to Firebase Storage
+ */
+async function uploadMaskKeyframe(
+  userId: string,
+  projectId: string,
+  maskId: string,
+  keyframeId: string,
+  base64Data: string
+): Promise<string> {
+  const path = `users/${userId}/video-media/${projectId}/masks/${maskId}/${keyframeId}.png`;
+  const storageRef = ref(storage, path);
+
+  const base64Content = base64Data.includes(",")
+    ? base64Data.split(",")[1]
+    : base64Data;
+
+  await uploadString(storageRef, base64Content, "base64", {
+    contentType: "image/png",
+  });
+
+  return path;
+}
+
+/**
+ * Download mask keyframe from Firebase Storage
+ */
+async function downloadMaskKeyframe(path: string): Promise<string> {
+  const storageRef = ref(storage, path);
+  const blob = await getBlob(storageRef);
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Upload thumbnail and return public URL
+ */
+async function uploadVideoThumbnail(
+  userId: string,
+  projectId: string,
+  base64Data: string
+): Promise<string> {
+  const path = `users/${userId}/video-media/${projectId}/thumbnail.png`;
+  const storageRef = ref(storage, path);
+
+  const base64Content = base64Data.includes(",")
+    ? base64Data.split(",")[1]
+    : base64Data;
+
+  await uploadString(storageRef, base64Content, "base64", {
+    contentType: "image/png",
+  });
+
+  return getDownloadURL(storageRef);
+}
+
+/**
+ * Delete all media files for a project
+ */
+async function deleteProjectMedia(
+  userId: string,
+  projectId: string
+): Promise<void> {
+  const folderRef = ref(storage, `users/${userId}/video-media/${projectId}`);
+
+  try {
+    const listResult = await listAll(folderRef);
+
+    // Delete files in root
+    await Promise.all(
+      listResult.items.map((itemRef) => deleteObject(itemRef))
+    );
+
+    // Delete files in subdirectories (masks)
+    for (const prefix of listResult.prefixes) {
+      const subList = await listAll(prefix);
+      await Promise.all(
+        subList.items.map((itemRef) => deleteObject(itemRef))
+      );
+      // Handle nested mask keyframe folders
+      for (const subPrefix of subList.prefixes) {
+        const subSubList = await listAll(subPrefix);
+        await Promise.all(
+          subSubList.items.map((itemRef) => deleteObject(itemRef))
+        );
+      }
+    }
+  } catch {
+    // Folder might not exist, ignore
+  }
+}
+
+// ============================================
+// Helper: Convert Clip to Firestore Meta
+// ============================================
+
+function clipToMeta(clip: Clip, storageRef: string): FirestoreClipMeta {
+  const meta: FirestoreClipMeta = {
+    id: clip.id,
+    name: clip.name,
+    type: clip.type,
+    trackId: clip.trackId,
+    startTime: clip.startTime,
+    duration: clip.duration,
+    trimIn: clip.trimIn,
+    trimOut: clip.trimOut,
+    opacity: clip.opacity,
+    visible: clip.visible,
+    locked: clip.locked,
+    maskId: clip.maskId,
+    position: clip.position,
+    scale: clip.scale,
+    rotation: clip.rotation,
+    sourceId: clip.sourceId,
+    sourceSize: clip.sourceSize,
+    storageRef,
+    mediaType: "",
+  };
+
+  if (clip.type === "video") {
+    meta.sourceDuration = clip.sourceDuration;
+    meta.hasAudio = clip.hasAudio;
+    meta.audioMuted = clip.audioMuted;
+    meta.audioVolume = clip.audioVolume;
+  } else if (clip.type === "audio") {
+    meta.sourceDuration = clip.sourceDuration;
+    meta.audioMuted = clip.audioMuted;
+    meta.audioVolume = clip.audioVolume;
+  } else if (clip.type === "image") {
+    meta.imageData = clip.imageData;
+  }
+
+  return meta;
+}
+
+function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
+  const base = {
+    id: meta.id,
+    name: meta.name,
+    trackId: meta.trackId,
+    startTime: meta.startTime,
+    duration: meta.duration,
+    trimIn: meta.trimIn,
+    trimOut: meta.trimOut,
+    opacity: meta.opacity,
+    visible: meta.visible,
+    locked: meta.locked,
+    maskId: meta.maskId,
+    position: meta.position,
+    scale: meta.scale,
+    rotation: meta.rotation,
+    sourceId: meta.sourceId,
+    sourceSize: meta.sourceSize,
+    sourceUrl,
+  };
+
+  if (meta.type === "video") {
+    return {
+      ...base,
+      type: "video",
+      sourceDuration: meta.sourceDuration || meta.duration,
+      hasAudio: meta.hasAudio ?? true,
+      audioMuted: meta.audioMuted ?? false,
+      audioVolume: meta.audioVolume ?? 100,
+    };
+  } else if (meta.type === "audio") {
+    return {
+      ...base,
+      type: "audio",
+      sourceDuration: meta.sourceDuration || meta.duration,
+      audioMuted: meta.audioMuted ?? false,
+      audioVolume: meta.audioVolume ?? 100,
+    };
+  } else {
+    return {
+      ...base,
+      type: "image",
+      imageData: meta.imageData,
+    };
+  }
+}
+
+// ============================================
+// Firestore CRUD Functions
+// ============================================
+
+/**
+ * Save a video project to Firebase
+ */
+export async function saveVideoProjectToFirebase(
+  userId: string,
+  project: SavedVideoProject,
+  thumbnailDataUrl?: string,
+  onProgress?: (progress: SaveLoadProgress) => void
+): Promise<void> {
+  const clips = project.project.clips;
+  const masks = project.project.masks;
+  const totalSteps = clips.length + (masks.length > 0 ? 1 : 0) + 1; // clips + masks + metadata
+  let currentStep = 0;
+
+  // 1. Upload media for each clip
+  const clipMetas: FirestoreClipMeta[] = [];
+
+  for (const clip of clips) {
+    onProgress?.({
+      current: ++currentStep,
+      total: totalSteps,
+      clipName: clip.name,
+    });
+
+    let storageRefPath = "";
+
+    if (isStoredMedia(clip.sourceUrl)) {
+      // Load blob from IndexedDB and upload to Firebase Storage
+      const clipId = getClipIdFromStoredUrl(clip.sourceUrl);
+      const blob = await loadMediaBlob(clipId);
+
+      if (blob) {
+        storageRefPath = await uploadMediaFile(
+          userId,
+          project.id,
+          clip.id,
+          blob,
+          blob.type || "application/octet-stream"
+        );
+      }
+    }
+    // If sourceUrl is a regular URL (not idb://), we can't upload it
+    // Store empty storageRef - this clip's media won't be available in cloud
+
+    const meta = clipToMeta(clip, storageRefPath);
+    meta.mediaType = storageRefPath
+      ? (isStoredMedia(clip.sourceUrl)
+          ? (await loadMediaBlob(getClipIdFromStoredUrl(clip.sourceUrl)))?.type || ""
+          : "")
+      : "";
+    clipMetas.push(meta);
+  }
+
+  // 2. Upload mask keyframes
+  const maskMetas: FirestoreMaskMeta[] = [];
+
+  if (masks.length > 0) {
+    onProgress?.({
+      current: ++currentStep,
+      total: totalSteps,
+      clipName: "Masks",
+    });
+
+    for (const mask of masks) {
+      const keyframeMetas: FirestoreMaskKeyframeMeta[] = [];
+
+      if (mask.keyframes) {
+        for (const kf of mask.keyframes) {
+          if (kf.maskData) {
+            const storageRef = await uploadMaskKeyframe(
+              userId,
+              project.id,
+              mask.id,
+              kf.id,
+              kf.maskData
+            );
+            keyframeMetas.push({
+              id: kf.id,
+              time: kf.time,
+              easing: kf.easing,
+              storageRef,
+            });
+          }
+        }
+      }
+
+      maskMetas.push({
+        id: mask.id,
+        clipId: mask.clipId,
+        size: mask.size,
+        mode: mask.mode,
+        keyframes: keyframeMetas.length > 0 ? keyframeMetas : undefined,
+      });
+    }
+  }
+
+  // 3. Upload thumbnail
+  let thumbnailUrl: string | undefined;
+  if (thumbnailDataUrl) {
+    try {
+      thumbnailUrl = await uploadVideoThumbnail(userId, project.id, thumbnailDataUrl);
+    } catch (error) {
+      console.warn("Failed to upload video thumbnail:", error);
+    }
+  }
+
+  // 4. Save metadata to Firestore
+  onProgress?.({
+    current: ++currentStep,
+    total: totalSteps,
+    clipName: "Saving metadata",
+  });
+
+  const firestoreProject: FirestoreVideoProject = {
+    id: project.id,
+    name: project.name || "Untitled Project",
+    canvasSize: project.project.canvasSize,
+    frameRate: project.project.frameRate,
+    duration: project.project.duration,
+    tracks: project.project.tracks,
+    clips: clipMetas,
+    masks: maskMetas,
+    timelineView: project.timelineView,
+    currentTime: project.currentTime,
+    thumbnailUrl,
+    createdAt: Timestamp.fromMillis(project.savedAt || Date.now()),
+    updatedAt: Timestamp.now(),
+  };
+
+  const docRef = doc(db, "users", userId, "videoProjects", project.id);
+  await setDoc(docRef, firestoreProject);
+}
+
+/**
+ * Get a single video project from Firebase (with media download)
+ */
+export async function getVideoProjectFromFirebase(
+  userId: string,
+  projectId: string,
+  onProgress?: (progress: SaveLoadProgress) => void
+): Promise<SavedVideoProject | null> {
+  const docRef = doc(db, "users", userId, "videoProjects", projectId);
+  const docSnap = await getDoc(docRef);
+
+  if (!docSnap.exists()) return null;
+
+  const data = docSnap.data() as FirestoreVideoProject;
+
+  // Download media for each clip in parallel
+  const totalSteps = data.clips.length + (data.masks.some((m) => m.keyframes?.length) ? 1 : 0);
+  let currentStep = 0;
+
+  const clips: Clip[] = await Promise.all(
+    data.clips.map(async (clipMeta) => {
+      onProgress?.({
+        current: ++currentStep,
+        total: totalSteps,
+        clipName: clipMeta.name,
+      });
+
+      let sourceUrl = "";
+
+      if (clipMeta.storageRef) {
+        try {
+          const blob = await downloadMediaFile(clipMeta.storageRef);
+
+          // Store in local IndexedDB for autosave compatibility
+          const { saveMediaBlob } = await import(
+            "@/domains/video/utils/mediaStorage"
+          );
+          await saveMediaBlob(clipMeta.id, blob);
+          sourceUrl = URL.createObjectURL(blob);
+        } catch (error) {
+          console.error(`Failed to download media for clip ${clipMeta.id}:`, error);
+        }
+      }
+
+      return metaToClip(clipMeta, sourceUrl);
+    })
+  );
+
+  // Download mask keyframes
+  const masks: MaskData[] = await Promise.all(
+    data.masks.map(async (maskMeta) => {
+      const keyframes: MaskKeyframe[] = [];
+
+      if (maskMeta.keyframes) {
+        onProgress?.({
+          current: ++currentStep,
+          total: totalSteps,
+          clipName: "Masks",
+        });
+
+        for (const kfMeta of maskMeta.keyframes) {
+          let maskData = "";
+          if (kfMeta.storageRef) {
+            try {
+              maskData = await downloadMaskKeyframe(kfMeta.storageRef);
+            } catch (error) {
+              console.error(`Failed to download mask keyframe ${kfMeta.id}:`, error);
+            }
+          }
+          keyframes.push({
+            id: kfMeta.id,
+            time: kfMeta.time,
+            maskData,
+            easing: kfMeta.easing as MaskKeyframe["easing"],
+          });
+        }
+      }
+
+      return {
+        id: maskMeta.id,
+        clipId: maskMeta.clipId,
+        size: maskMeta.size,
+        mode: maskMeta.mode,
+        keyframes: keyframes.length > 0 ? keyframes : undefined,
+      };
+    })
+  );
+
+  const projectData: VideoProject = {
+    id: data.id,
+    name: data.name,
+    canvasSize: data.canvasSize,
+    frameRate: data.frameRate,
+    duration: data.duration,
+    tracks: data.tracks,
+    clips,
+    masks,
+    assets: [],
+  };
+
+  return {
+    id: data.id,
+    name: data.name,
+    project: projectData,
+    timelineView: data.timelineView,
+    currentTime: data.currentTime,
+    savedAt: data.updatedAt.toMillis(),
+    thumbnailUrl: data.thumbnailUrl,
+  };
+}
+
+/**
+ * Get all video projects from Firebase (metadata only for list view)
+ */
+export async function getAllVideoProjectsFromFirebase(
+  userId: string
+): Promise<SavedVideoProject[]> {
+  const collectionRef = collection(db, "users", userId, "videoProjects");
+  const q = query(collectionRef, orderBy("updatedAt", "desc"));
+  const querySnapshot = await getDocs(q);
+
+  const projects: SavedVideoProject[] = [];
+
+  for (const docSnap of querySnapshot.docs) {
+    const data = docSnap.data() as FirestoreVideoProject;
+
+    projects.push({
+      id: data.id,
+      name: data.name,
+      project: {
+        id: data.id,
+        name: data.name,
+        canvasSize: data.canvasSize,
+        frameRate: data.frameRate,
+        duration: data.duration,
+        tracks: data.tracks,
+        clips: [], // Don't include clips in list view
+        masks: [],
+        assets: [],
+      },
+      timelineView: data.timelineView,
+      currentTime: data.currentTime,
+      savedAt: data.updatedAt.toMillis(),
+      thumbnailUrl: data.thumbnailUrl,
+    });
+  }
+
+  return projects;
+}
+
+/**
+ * Delete a video project from Firebase
+ */
+export async function deleteVideoProjectFromFirebase(
+  userId: string,
+  projectId: string
+): Promise<void> {
+  await deleteProjectMedia(userId, projectId);
+
+  const docRef = doc(db, "users", userId, "videoProjects", projectId);
+  await deleteDoc(docRef);
+}
+
+/**
+ * Check if user has any video projects in Firebase
+ */
+export async function hasCloudVideoProjects(userId: string): Promise<boolean> {
+  const collectionRef = collection(db, "users", userId, "videoProjects");
+  const querySnapshot = await getDocs(collectionRef);
+  return !querySnapshot.empty;
+}
+
+/**
+ * Delete all video projects from Firebase
+ */
+export async function deleteAllVideoProjectsFromFirebase(
+  userId: string
+): Promise<void> {
+  const collectionRef = collection(db, "users", userId, "videoProjects");
+  const querySnapshot = await getDocs(collectionRef);
+
+  for (const docSnap of querySnapshot.docs) {
+    await deleteVideoProjectFromFirebase(userId, docSnap.id);
+  }
+}
