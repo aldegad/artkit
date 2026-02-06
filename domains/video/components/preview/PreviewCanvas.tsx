@@ -77,7 +77,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const trackById = new Map(tracks.map((track) => [track.id, track]));
 
     // Collect all audible clips at current time.
-    const sortedTracks = [...tracks].sort((a, b) => b.zIndex - a.zIndex);
+    // Top track (index 0) = foreground; iterate top-to-bottom
+    const sortedTracks = [...tracks];
     const audibleClipIds = new Set<string>();
     for (const track of sortedTracks) {
       if (!track.visible || track.muted) continue;
@@ -283,8 +284,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     drawCheckerboard(ctx, width, height);
     ctx.restore();
 
-    // Sort tracks by zIndex (lower first = background)
-    const sortedTracks = [...tracks].sort((a, b) => a.zIndex - b.zIndex);
+    // Draw bottom track first (background), top track last (foreground).
+    // Use array order directly — tracks[0] is the topmost track in the timeline.
+    const sortedTracks = [...tracks].reverse();
 
     const selectedVisualClipId = selectedClipIds.find((clipId) => {
       const selected = clips.find((clip) => clip.id === clipId);
@@ -518,7 +520,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   const hitTestClipAtPoint = useCallback((point: { x: number; y: number }): Clip | null => {
     const tracksById = new Map(tracks.map((track) => [track.id, track]));
-    const sortedTracks = [...tracks].sort((a, b) => b.zIndex - a.zIndex);
+    // Top track (index 0) is foreground — check it first for hit testing
+    const sortedTracks = [...tracks];
 
     for (const track of sortedTracks) {
       if (!track.visible || track.locked) continue;
