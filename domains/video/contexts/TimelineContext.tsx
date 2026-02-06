@@ -25,8 +25,6 @@ import { useVideoState } from "./VideoStateContext";
 import { Size } from "@/shared/types";
 import {
   loadVideoAutosave,
-  saveVideoAutosave,
-  VIDEO_AUTOSAVE_DEBOUNCE_MS,
 } from "../utils/videoAutosave";
 import { loadMediaBlob } from "../utils/mediaStorage";
 
@@ -182,11 +180,6 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
     updateProjectDuration,
     project,
-    projectName,
-    toolMode,
-    selectedClipIds,
-    playback,
-    currentTimeRef,
     setProject,
     setProjectName,
     selectClips,
@@ -206,7 +199,6 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Refs for autosave
   const isInitializedRef = useRef(false);
-  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const historyPastRef = useRef<TimelineHistorySnapshot[]>([]);
   const historyFutureRef = useRef<TimelineHistorySnapshot[]>([]);
   const projectRef = useRef(project);
@@ -343,69 +335,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     loadAutosave();
   }, [setProject, setProjectName, setToolMode, selectClips, syncHistoryFlags]);
 
-  // Debounced autosave on state change — currentTime read from ref to avoid 60fps thrashing
-  useEffect(() => {
-    if (!isInitializedRef.current) return;
-
-    if (autosaveTimeoutRef.current) {
-      clearTimeout(autosaveTimeoutRef.current);
-    }
-
-    autosaveTimeoutRef.current = setTimeout(() => {
-      // Save all clips - blobs are stored separately in IndexedDB
-      saveVideoAutosave({
-        project,
-        projectName,
-        tracks,
-        clips,
-        masks,
-        timelineView: viewState,
-        currentTime: currentTimeRef.current,
-        toolMode,
-        selectedClipIds,
-      }).catch((error) => {
-        console.error("Failed to autosave:", error);
-      });
-    }, VIDEO_AUTOSAVE_DEBOUNCE_MS);
-
-    return () => {
-      if (autosaveTimeoutRef.current) {
-        clearTimeout(autosaveTimeoutRef.current);
-      }
-    };
-  }, [
-    project,
-    projectName,
-    tracks,
-    clips,
-    masks,
-    viewState,
-    toolMode,
-    selectedClipIds,
-    currentTimeRef,
-  ]);
-
-  // Save once when playback stops (to persist final currentTime)
-  const prevPlayingRef = useRef(false);
-  useEffect(() => {
-    if (prevPlayingRef.current && !playback.isPlaying) {
-      // Playback just stopped — save current time
-      saveVideoAutosave({
-        project,
-        projectName,
-        tracks,
-        clips,
-        masks,
-        timelineView: viewState,
-        currentTime: currentTimeRef.current,
-        toolMode,
-        selectedClipIds,
-      }).catch((error) => {
-        console.error("Failed to autosave on pause:", error);
-      });
-    }
-    prevPlayingRef.current = playback.isPlaying;
-  }, [playback.isPlaying, project, projectName, tracks, clips, masks, viewState, toolMode, selectedClipIds, currentTimeRef]);
+  // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
+  // access to MaskContext for correct mask data. TimelineContext only handles
+  // autosave RESTORE (on mount, above).
 
   // Keep project.timeline data synchronized with TimelineContext state.
   useEffect(() => {
@@ -417,7 +349,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       ...projectRef.current,
       tracks: tracks.map(cloneTrack),
       clips: clips.map(cloneClip),
-      masks: [...masks],
+      masks: masks.length > 0 ? [...masks] : projectRef.current.masks,
       duration: Math.max(duration, 10),
     });
   }, [tracks, clips, masks, setProject]);

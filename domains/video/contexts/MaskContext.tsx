@@ -35,6 +35,7 @@ interface MaskContextValue {
   masks: Map<string, MaskData>;
 
   // Actions
+  restoreMasks: (masks: MaskData[]) => void;
   selectMask: (maskId: string) => void;
   deselectMask: () => void;
   startMaskEdit: (trackId: string, canvasSize: Size, currentTime: number) => string;
@@ -86,6 +87,15 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   const setBrushMode = useCallback((mode: "paint" | "erase") => {
     setBrushSettingsState((prev) => ({ ...prev, mode }));
+  }, []);
+
+  // Restore masks from saved data (autosave / project load)
+  const restoreMasks = useCallback((savedMasks: MaskData[]) => {
+    const map = new Map<string, MaskData>();
+    for (const mask of savedMasks) {
+      map.set(mask.id, mask);
+    }
+    setMasks(map);
   }, []);
 
   // Select a mask (highlight without entering edit mode)
@@ -381,6 +391,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setBrushHardness,
     setBrushMode,
     masks,
+    restoreMasks,
     selectMask,
     deselectMask,
     startMaskEdit,
