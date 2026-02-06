@@ -190,7 +190,9 @@ export function useCanvasViewport(
         config.origin,
       );
     },
-    [getContainerRect, getCanvasPixelSize, contentSize, config.origin],
+    // Use primitive values to avoid new-object-per-render instability
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [getContainerRect, getCanvasPixelSize, contentSize.width, contentSize.height, config.origin],
   );
 
   const contentToScreenFn = useCallback(
@@ -204,7 +206,8 @@ export function useCanvasViewport(
         config.origin,
       );
     },
-    [getCanvasPixelSize, contentSize, config.origin],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [getCanvasPixelSize, contentSize.width, contentSize.height, config.origin],
   );
 
   const getRenderOffsetFn = useCallback((): Point => {
@@ -215,7 +218,8 @@ export function useCanvasViewport(
       transformRef.current,
       config.origin,
     );
-  }, [getCanvasPixelSize, contentSize, config.origin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getCanvasPixelSize, contentSize.width, contentSize.height, config.origin]);
 
   // ---- Public: imperative controls ----
 
@@ -281,7 +285,8 @@ export function useCanvasViewport(
       };
       emit();
     },
-    [containerRef, contentSize, fitPadding, fitMaxScale, emit],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [containerRef, contentSize.width, contentSize.height, fitPadding, fitMaxScale, emit],
   );
 
   const resetView = useCallback(() => {

@@ -80,25 +80,40 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { zoom: viewportZoom } = viewport.useReactSync(200);
   const zoomPercent = Math.round(viewportZoom * 100);
 
+  // Extract stable refs from viewport (useCallback-backed, stable across re-renders)
+  const {
+    onViewportChange: onVideoViewportChange,
+    wheelRef: vpWheelRef,
+    pinchRef: vpPinchRef,
+    startPanDrag: vpStartPanDrag,
+    updatePanDrag: vpUpdatePanDrag,
+    endPanDrag: vpEndPanDrag,
+    fitToContainer: vpFitToContainer,
+    setZoom: vpSetZoom,
+    getZoom: vpGetZoom,
+    setBaseScale: vpSetBaseScale,
+    getTransform: vpGetTransform,
+  } = viewport;
+
   // Merge container ref with viewport wheel/pinch refs
   const containerRefCallback = useCallback((el: HTMLDivElement | null) => {
     previewContainerRef.current = el;
-    viewport.wheelRef(el);
-    viewport.pinchRef(el);
-  }, [previewContainerRef, viewport]);
+    vpWheelRef(el);
+    vpPinchRef(el);
+  }, [previewContainerRef, vpWheelRef, vpPinchRef]);
 
   // Expose viewport API to parent (for toolbar zoom controls)
   useEffect(() => {
     previewViewportRef.current = {
-      zoomIn: () => viewport.setZoom(viewport.getZoom() * 1.25),
-      zoomOut: () => viewport.setZoom(viewport.getZoom() / 1.25),
-      fitToContainer: () => viewport.fitToContainer(40),
-      getZoom: () => viewport.getZoom(),
-      setZoom: (z) => viewport.setZoom(z),
-      onZoomChange: (cb) => viewport.onViewportChange((s) => cb(s.zoom)),
+      zoomIn: () => vpSetZoom(vpGetZoom() * 1.25),
+      zoomOut: () => vpSetZoom(vpGetZoom() / 1.25),
+      fitToContainer: () => vpFitToContainer(40),
+      getZoom: () => vpGetZoom(),
+      setZoom: (z) => vpSetZoom(z),
+      onZoomChange: (cb) => onVideoViewportChange((s) => cb(s.zoom)),
     };
     return () => { previewViewportRef.current = null; };
-  }, [viewport, previewViewportRef]);
+  }, [vpSetZoom, vpGetZoom, vpFitToContainer, onVideoViewportChange, previewViewportRef]);
 
   const previewGeometryRef = useRef({
     offsetX: 0,
@@ -716,7 +731,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (e.button === 1) {
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
-      viewport.startPanDrag({ x: e.clientX, y: e.clientY });
+      vpStartPanDrag({ x: e.clientX, y: e.clientY });
       isPanningRef.current = true;
       return;
     }
@@ -815,12 +830,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [viewport, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
+  }, [vpStartPanDrag, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button pan
     if (isPanningRef.current) {
-      viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
+      vpUpdatePanDrag({ x: e.clientX, y: e.clientY });
       return;
     }
 
@@ -971,11 +986,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [viewport, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
+  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     if (isPanningRef.current) {
-      viewport.endPanDrag();
+      vpEndPanDrag();
       isPanningRef.current = false;
     }
 
@@ -1018,12 +1033,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [viewport, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea]);
+  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
-    viewport.fitToContainer(40);
-  }, [viewport]);
+    vpFitToContainer(40);
+  }, [vpFitToContainer]);
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick(() => {
@@ -1042,7 +1057,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [invalidateCssCache]);
 
   // Re-render when viewport changes (zoom/pan)
-  const { onViewportChange: onVideoViewportChange } = viewport;
   useEffect(() => {
     return onVideoViewportChange((state) => {
       console.log("[Video Viewport] change:", { zoom: state.zoom, pan: state.pan });
@@ -1057,10 +1071,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (!container) return;
 
     const resizeObserver = new ResizeObserver(() => {
-      const { zoom, pan } = viewport.getTransform();
+      const { zoom, pan } = vpGetTransform();
       if (zoom === 1 && pan.x === 0 && pan.y === 0) {
         // Default view — fit to container
-        viewport.fitToContainer(40);
+        vpFitToContainer(40);
       } else {
         // User has zoomed/panned — only update baseScale
         const rect = container.getBoundingClientRect();
@@ -1070,7 +1084,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const pw = project.canvasSize.width;
         const ph = project.canvasSize.height;
         if (maxW > 0 && maxH > 0 && pw > 0 && ph > 0) {
-          viewport.setBaseScale(Math.min(maxW / pw, maxH / ph));
+          vpSetBaseScale(Math.min(maxW / pw, maxH / ph));
         }
       }
       requestAnimationFrame(() => renderRef.current());
@@ -1078,11 +1092,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
-  }, [previewContainerRef, viewport, project.canvasSize.width, project.canvasSize.height]);
+  }, [previewContainerRef, vpGetTransform, vpFitToContainer, vpSetBaseScale, project.canvasSize.width, project.canvasSize.height]);
 
   const handleFitToScreen = useCallback(() => {
-    viewport.fitToContainer(40);
-  }, [viewport]);
+    vpFitToContainer(40);
+  }, [vpFitToContainer]);
 
   return (
     <div

@@ -94,8 +94,19 @@ export default function FramePreviewContent() {
 
   const viewportSync = viewport.useReactSync(16);
 
-  // Extract stable references from viewport
-  const { onViewportChange: onFrameViewportChange, setZoom: setFrameVpZoom, setPan: setFrameVpPan } = viewport;
+  // Extract stable references from viewport (useCallback-backed, stable across re-renders)
+  const {
+    onViewportChange: onFrameViewportChange,
+    setZoom: setFrameVpZoom,
+    setPan: setFrameVpPan,
+    getZoom: getFrameVpZoom,
+    startPanDrag: frameStartPanDrag,
+    updatePanDrag: frameUpdatePanDrag,
+    endPanDrag: frameEndPanDrag,
+    isPanDragging: frameIsPanDragging,
+    wheelRef: frameWheelRef,
+    pinchRef: framePinchRef,
+  } = viewport;
 
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
@@ -138,7 +149,7 @@ export default function FramePreviewContent() {
       const img = frameImgRef.current;
       if (!canvas || !img || !img.complete || img.naturalWidth === 0) return;
 
-      const zoom = viewport.getZoom();
+      const zoom = getFrameVpZoom();
       const w = img.width * zoom;
       const h = img.height * zoom;
 
@@ -152,20 +163,20 @@ export default function FramePreviewContent() {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, 0, 0, w, h);
     });
-  }, [setRenderFn, viewport]);
+  }, [setRenderFn, getFrameVpZoom]);
 
   // Subscribe viewport changes → render
   useEffect(() => {
-    return viewport.onViewportChange(() => {
+    return onFrameViewportChange(() => {
       requestRender();
     });
-  }, [viewport, requestRender]);
+  }, [onFrameViewportChange, requestRender]);
 
   // Reset pan when frame changes
   useEffect(() => {
-    viewport.setPan({ x: 0, y: 0 });
+    setFrameVpPan({ x: 0, y: 0 });
     setHasDrawn(false);
-  }, [currentFrameIndex, viewport]);
+  }, [currentFrameIndex, setFrameVpPan]);
 
   // Load image when frame changes or imageData updates (after drawing)
   useEffect(() => {
@@ -215,13 +226,13 @@ export default function FramePreviewContent() {
       const scaleX = canvas.width / contentWidth;
       const scaleY = canvas.height / contentHeight;
 
-      const zoom = viewport.getZoom();
+      const zoom = getFrameVpZoom();
       const x = Math.floor(((e.clientX - rect.left - borderLeft) * scaleX) / zoom);
       const y = Math.floor(((e.clientY - rect.top - borderTop) * scaleY) / zoom);
 
       return { x, y };
     },
-    [viewport],
+    [getFrameVpZoom],
   );
 
   // Draw pixel on canvas
@@ -398,7 +409,7 @@ export default function FramePreviewContent() {
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         setIsPanning(false);
-        viewport.endPanDrag();
+        frameEndPanDrag();
       }
     };
 
@@ -409,37 +420,37 @@ export default function FramePreviewContent() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [viewport]);
+  }, [frameEndPanDrag]);
 
   const handleContainerMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (isPanning || toolMode === "hand") {
         e.preventDefault();
-        viewport.startPanDrag({ x: e.clientX, y: e.clientY });
+        frameStartPanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isPanning, toolMode, viewport],
+    [isPanning, toolMode, frameStartPanDrag],
   );
 
   const handleContainerMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (viewport.isPanDragging()) {
-        viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
+      if (frameIsPanDragging()) {
+        frameUpdatePanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [viewport],
+    [frameIsPanDragging, frameUpdatePanDrag],
   );
 
   const handleContainerMouseUp = useCallback(() => {
-    viewport.endPanDrag();
+    frameEndPanDrag();
     setIsDrawing(false);
-  }, [viewport]);
+  }, [frameEndPanDrag]);
 
   const isHandMode = toolMode === "hand" || isPanning;
 
   const getContainerCursor = () => {
     if (isHandMode) {
-      return viewport.isPanDragging() ? "grabbing" : "grab";
+      return frameIsPanDragging() ? "grabbing" : "grab";
     }
     return "default";
   };
@@ -490,14 +501,14 @@ export default function FramePreviewContent() {
         {/* Zoom control */}
         <div className="flex items-center gap-1 ml-auto">
           <button
-            onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
+            onClick={() => setFrameVpZoom(Math.max(0.1, getFrameVpZoom() * 0.8))}
             className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
           </button>
           <span className="text-[10px] w-8 text-center text-text-primary tabular-nums">{Math.round(currentZoom * 100)}%</span>
           <button
-            onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
+            onClick={() => setFrameVpZoom(Math.min(20, getFrameVpZoom() * 1.25))}
             className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
@@ -540,8 +551,8 @@ export default function FramePreviewContent() {
       <div
         ref={(el) => {
           containerRef.current = el;
-          viewport.wheelRef(el);
-          viewport.pinchRef(el);
+          frameWheelRef(el);
+          framePinchRef(el);
         }}
         className="flex-1 overflow-hidden bg-surface-secondary relative"
         onMouseDown={handleContainerMouseDown}
