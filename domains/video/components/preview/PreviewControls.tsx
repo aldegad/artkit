@@ -28,7 +28,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-2 px-4 py-2 bg-surface-secondary border-t border-border",
+        "flex items-center justify-center gap-2 px-4 py-2 bg-surface-secondary border-t border-border-default",
         className
       )}
     >

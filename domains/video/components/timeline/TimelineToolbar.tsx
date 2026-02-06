@@ -23,7 +23,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-2 py-1 bg-surface-secondary border-b border-border",
+        "flex items-center gap-2 px-2 py-1 bg-surface-secondary border-b border-border-default",
         className
       )}
     >
@@ -44,7 +44,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         <AddAudioTrackIcon />
       </button>
 
-      <div className="w-px h-4 bg-border" />
+      <div className="w-px h-4 bg-border-default" />
 
       {/* Snap toggle */}
       <button

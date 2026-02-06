@@ -121,7 +121,7 @@ export function Clip({ clip }: ClipProps) {
       className={cn(
         "absolute top-1 bottom-1 rounded cursor-pointer transition-all",
         clipColor,
-        isSelected && "ring-2 ring-white ring-offset-1 ring-offset-transparent",
+        isSelected && "ring-2 ring-accent-primary ring-offset-1 ring-offset-transparent",
         !clip.visible && "opacity-50"
       )}
       style={{

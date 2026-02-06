@@ -150,7 +150,7 @@ export function AssetDropZone({ className }: AssetDropZoneProps) {
         "flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg transition-colors",
         isDragOver
           ? "border-accent bg-accent/10"
-          : "border-border hover:border-accent/50",
+          : "border-border-default hover:border-accent/50",
         className
       )}
       onDragOver={handleDragOver}

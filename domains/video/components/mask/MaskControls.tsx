@@ -39,7 +39,7 @@ export function MaskControls({ className }: MaskControlsProps) {
   return (
     <div
       className={cn(
-        "p-3 bg-surface-secondary border border-border rounded-lg",
+        "p-3 bg-surface-secondary border border-border-default rounded-lg",
         className
       )}
     >
@@ -115,7 +115,7 @@ export function MaskControls({ className }: MaskControlsProps) {
       </div>
 
       {/* Quick Actions */}
-      <div className="flex gap-2 pt-2 border-t border-border">
+      <div className="flex gap-2 pt-2 border-t border-border-default">
         <button
           onClick={fillMask}
           className="flex-1 py-1.5 text-xs bg-surface-tertiary hover:bg-surface-tertiary/80 rounded transition-colors"

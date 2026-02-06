@@ -244,6 +244,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     const width = rect.width;
     const height = rect.height;
+    const colors = getCanvasColorsSync();
 
     // Clear with background color
     ctx.fillStyle = "#1a1a1a";
@@ -353,7 +354,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           ctx.rotate((clip.rotation * Math.PI) / 180);
           ctx.translate(-centerX, -centerY);
         }
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        ctx.strokeStyle = colors.selection;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(boxX, boxY, boxW, boxH);
@@ -381,7 +382,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ctx.restore();
 
       ctx.save();
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([8, 4]);
       ctx.strokeRect(cropX, cropY, cropW, cropH);
@@ -398,7 +399,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         { x: cropX, y: cropY + cropH },
         { x: cropX, y: cropY + cropH / 2 },
       ];
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = colors.selection;
       for (const handle of handles) {
         ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
       }
@@ -406,7 +407,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     // Draw frame border
-    ctx.strokeStyle = "#333";
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--border-strong").trim() || "#333";
     ctx.lineWidth = 1;
     ctx.strokeRect(offsetX, offsetY, previewWidth, previewHeight);
   }, [
