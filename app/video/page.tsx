@@ -1111,6 +1111,7 @@ function VideoEditorContent() {
     >
       {/* Header Slot - Menu Bar + Project Info */}
       <HeaderSlot>
+        <h1 className="text-sm font-semibold hidden md:block whitespace-nowrap">{t.videoEditor}</h1>
         <VideoMenuBar
           onNew={handleNew}
           onOpen={handleOpen}

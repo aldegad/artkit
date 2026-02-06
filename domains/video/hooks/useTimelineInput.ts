@@ -32,6 +32,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const {
     tracks,
     clips,
+    viewState,
     moveClip,
     trimClipStart,
     trimClipEnd,
@@ -41,7 +42,31 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     saveToHistory,
   } = useTimeline();
   const { seek, selectClip, deselectAll, toolMode } = useVideoState();
-  const { pixelToTime, timeToPixel } = useVideoCoordinates();
+  const { pixelToTime, timeToPixel, zoom } = useVideoCoordinates();
+
+  // Snap a time value to nearby snap points (time 0 + clip edges)
+  const snapToPoints = useCallback(
+    (time: number, excludeClipId?: string): number => {
+      if (!viewState.snapEnabled) return time;
+
+      const threshold = TIMELINE.SNAP_THRESHOLD / zoom; // convert pixels to time
+      const points: number[] = [0]; // always include time 0
+
+      for (const clip of clips) {
+        if (clip.id === excludeClipId) continue;
+        points.push(clip.startTime);
+        points.push(clip.startTime + clip.duration);
+      }
+
+      for (const point of points) {
+        if (Math.abs(time - point) < threshold) {
+          return point;
+        }
+      }
+      return time;
+    },
+    [viewState.snapEnabled, zoom, clips]
+  );
 
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -261,28 +286,39 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
       case "clip-move":
         if (dragState.clipId) {
-          const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
+          const rawStart = Math.max(0, dragState.originalClipStart + deltaTime);
+          const snappedStart = snapToPoints(rawStart, dragState.clipId);
+          // Also snap end edge: if end snaps, adjust start accordingly
+          const rawEnd = rawStart + dragState.originalClipDuration;
+          const snappedEnd = snapToPoints(rawEnd, dragState.clipId);
+          const endAdjusted = Math.max(0, snappedEnd - dragState.originalClipDuration);
+          // Use whichever snap is closer
+          const startDelta = Math.abs(snappedStart - rawStart);
+          const endDelta = Math.abs(snappedEnd - rawEnd);
+          const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
           const clip = clips.find((c) => c.id === dragState.clipId);
           if (clip) {
             const targetTrackId = getTrackAtY(y) || clip.trackId;
-            moveClip(dragState.clipId, targetTrackId, newStartTime);
+            moveClip(dragState.clipId, targetTrackId, finalStart);
           }
         }
         break;
 
       case "clip-trim-start":
         if (dragState.clipId) {
-          const newStartTime = Math.max(0, dragState.originalClipStart + deltaTime);
+          const rawTrimStart = Math.max(0, dragState.originalClipStart + deltaTime);
           const maxStart = dragState.originalClipStart + dragState.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
-          trimClipStart(dragState.clipId, Math.min(newStartTime, maxStart));
+          const clampedStart = Math.min(rawTrimStart, maxStart);
+          trimClipStart(dragState.clipId, snapToPoints(clampedStart, dragState.clipId));
         }
         break;
 
       case "clip-trim-end":
         if (dragState.clipId) {
-          const newEndTime = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
+          const rawTrimEnd = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
           const minEnd = dragState.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
-          trimClipEnd(dragState.clipId, Math.max(newEndTime, minEnd));
+          const clampedEnd = Math.max(rawTrimEnd, minEnd);
+          trimClipEnd(dragState.clipId, snapToPoints(clampedEnd, dragState.clipId));
         }
         break;
     }

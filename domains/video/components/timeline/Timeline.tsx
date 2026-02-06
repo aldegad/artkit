@@ -170,9 +170,11 @@ export function Timeline({ className }: TimelineProps) {
         const cursorTime = viewState.scrollX + x / viewState.zoom;
         setZoom(nextZoom);
         setScrollX(Math.max(0, cursorTime - x / nextZoom));
-      } else if (e.shiftKey) {
-        // Horizontal scroll
-        setScrollX(Math.max(0, viewState.scrollX + e.deltaY / viewState.zoom));
+      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        // Horizontal scroll (shift+wheel or trackpad horizontal swipe)
+        e.preventDefault();
+        const delta = e.shiftKey ? e.deltaY : e.deltaX;
+        setScrollX(Math.max(0, viewState.scrollX + delta / viewState.zoom));
       }
     },
     [viewState.zoom, viewState.scrollX, setScrollX, setZoom]
