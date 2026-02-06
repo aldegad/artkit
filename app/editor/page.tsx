@@ -1416,8 +1416,8 @@ function ImageEditorContent() {
     );
   }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
 
-  // Export each selected layer individually at canvas size
-  const exportSelectedLayers = useCallback(() => {
+  // Export each selected layer individually at canvas size, bundled as ZIP
+  const exportSelectedLayers = useCallback(async () => {
     const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
     if (targetIds.length === 0) return;
 
@@ -1426,47 +1426,56 @@ function ImageEditorContent() {
       outputFormat === "webp" ? "image/webp" : outputFormat === "jpeg" ? "image/jpeg" : "image/png";
     const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
 
-    targetIds.forEach((layerId) => {
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+
+    const blobPromises = targetIds.map((layerId) => {
       const layer = layers.find((l) => l.id === layerId);
-      if (!layer) return;
+      if (!layer) return null;
 
       const layerCanvas = layerCanvasesRef.current.get(layerId);
-      if (!layerCanvas) return;
+      if (!layerCanvas) return null;
 
-      // Create export canvas at full canvas size
       const exportCanvas = document.createElement("canvas");
       exportCanvas.width = displayWidth;
       exportCanvas.height = displayHeight;
       const ctx = exportCanvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) return null;
 
-      // Fill with white background for JPEG
       if (outputFormat === "jpeg") {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, displayWidth, displayHeight);
       }
 
-      // Draw layer at its position within the canvas
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
       ctx.globalAlpha = layer.opacity;
       ctx.drawImage(layerCanvas, posX, posY);
 
-      exportCanvas.toBlob(
-        (blob) => {
-          if (!blob) return;
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `${layer.name || "layer"}.${ext}`;
-          link.click();
-          URL.revokeObjectURL(url);
-        },
-        mimeType,
-        quality,
-      );
+      return new Promise<void>((resolve) => {
+        exportCanvas.toBlob(
+          (blob) => {
+            if (blob) {
+              zip.file(`${layer.name || "layer"}.${ext}`, blob);
+            }
+            resolve();
+          },
+          mimeType,
+          quality,
+        );
+      });
     });
-  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, outputFormat, quality, getDisplayDimensions]);
+
+    await Promise.all(blobPromises.filter(Boolean));
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(zipBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${projectName || "layers"}.zip`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, outputFormat, quality, projectName, getDisplayDimensions]);
 
   // Get cursor based on tool mode
   const getCursor = () => {
