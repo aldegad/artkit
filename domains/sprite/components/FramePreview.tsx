@@ -512,7 +512,7 @@ export default function FramePreviewContent() {
           viewport.wheelRef(el);
           viewport.pinchRef(el);
         }}
-        className="flex-1 overflow-hidden checkerboard relative"
+        className="flex-1 overflow-hidden bg-surface-secondary relative"
         onMouseDown={handleContainerMouseDown}
         onMouseMove={handleContainerMouseMove}
         onMouseUp={handleContainerMouseUp}
@@ -521,7 +521,7 @@ export default function FramePreviewContent() {
       >
         {currentFrame?.imageData ? (
           <div
-            className="absolute"
+            className="absolute checkerboard border border-border-default"
             style={{
               left: "50%",
               top: "50%",
