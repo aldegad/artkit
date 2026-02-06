@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { downloadBlob, downloadJson } from "../../shared/utils";
 import {
@@ -102,7 +102,7 @@ function VideoEditorContent() {
     hasClipboard,
     setHasClipboard,
   } = useVideoState();
-  const { previewCanvasRef } = useVideoRefs();
+  const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
     tracks,
     clips,
@@ -131,10 +131,26 @@ function VideoEditorContent() {
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const timelineAreaRef = useRef<HTMLDivElement>(null);
+  const exportAudioContextRef = useRef<AudioContext | null>(null);
+  const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
+  const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
 
   const [isTimelineVisible, setIsTimelineVisible] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const audioHistorySavedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (exportAudioContextRef.current) {
+        exportAudioContextRef.current.close().catch(() => {});
+      }
+      exportAudioContextRef.current = null;
+      exportAudioDestinationRef.current = null;
+      exportSourceNodesRef.current.clear();
+      exportGainNodesRef.current.clear();
+    };
+  }, []);
 
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
@@ -383,15 +399,74 @@ function VideoEditorContent() {
     ];
     const selectedMimeType = mimeTypeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
 
-    const stream = canvas.captureStream(frameRate);
+    const canvasStream = canvas.captureStream(frameRate);
+    const recordingStream = new MediaStream();
+    canvasStream.getVideoTracks().forEach((track) => recordingStream.addTrack(track));
+
+    let syncAudioFrameId: number | null = null;
+    const mediaElements: HTMLMediaElement[] = [
+      ...Array.from(videoElementsRef.current.values()),
+      ...Array.from(audioElementsRef.current.values()),
+    ];
+
+    if (typeof AudioContext !== "undefined" && mediaElements.length > 0) {
+      let audioContext = exportAudioContextRef.current;
+      if (!audioContext || audioContext.state === "closed") {
+        audioContext = new AudioContext();
+        exportAudioContextRef.current = audioContext;
+        exportAudioDestinationRef.current = audioContext.createMediaStreamDestination();
+      }
+
+      const destination = exportAudioDestinationRef.current;
+      if (audioContext.state === "suspended") {
+        await audioContext.resume().catch(() => {});
+      }
+
+      if (destination) {
+        for (const mediaElement of mediaElements) {
+          if (exportSourceNodesRef.current.has(mediaElement)) continue;
+
+          try {
+            const sourceNode = audioContext.createMediaElementSource(mediaElement);
+            const gainNode = audioContext.createGain();
+            sourceNode.connect(gainNode);
+            gainNode.connect(destination);
+            exportSourceNodesRef.current.set(mediaElement, sourceNode);
+            exportGainNodesRef.current.set(mediaElement, gainNode);
+          } catch {
+            // Source node can fail for unsupported media elements.
+          }
+        }
+
+        const syncGains = () => {
+          for (const [mediaElement, gainNode] of exportGainNodesRef.current.entries()) {
+            const volume = typeof mediaElement.volume === "number" ? mediaElement.volume : 1;
+            gainNode.gain.value = mediaElement.muted ? 0 : Math.max(0, Math.min(1, volume));
+          }
+        };
+
+        syncGains();
+        const audioTrack = destination.stream.getAudioTracks()[0];
+        if (audioTrack) {
+          recordingStream.addTrack(audioTrack);
+        }
+
+        const syncLoop = () => {
+          syncGains();
+          syncAudioFrameId = window.requestAnimationFrame(syncLoop);
+        };
+        syncAudioFrameId = window.requestAnimationFrame(syncLoop);
+      }
+    }
+
     const chunks: BlobPart[] = [];
 
     try {
       setIsExporting(true);
 
       const recorder = selectedMimeType
-        ? new MediaRecorder(stream, { mimeType: selectedMimeType })
-        : new MediaRecorder(stream);
+        ? new MediaRecorder(recordingStream, { mimeType: selectedMimeType })
+        : new MediaRecorder(recordingStream);
 
       const blobPromise = new Promise<Blob>((resolve, reject) => {
         recorder.ondataavailable = (event) => {
@@ -436,10 +511,16 @@ function VideoEditorContent() {
       console.error("Video export failed:", error);
       alert(`${t.exportFailed}: ${(error as Error).message}`);
     } finally {
-      stream.getTracks().forEach((track) => track.stop());
+      if (syncAudioFrameId !== null) {
+        window.cancelAnimationFrame(syncAudioFrameId);
+      }
+      for (const gainNode of exportGainNodesRef.current.values()) {
+        gainNode.gain.value = 0;
+      }
+      canvasStream.getTracks().forEach((track) => track.stop());
       setIsExporting(false);
     }
-  }, [isExporting, previewCanvasRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
+  }, [isExporting, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
