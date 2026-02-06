@@ -18,7 +18,7 @@ interface TimelineProps {
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
-  const { tracks, getClipsInTrack, viewState, setScrollX, setZoom, updateTrack } = useTimeline();
+  const { tracks, getClipsInTrack, viewState, setScrollX, setZoom, updateTrack, addTrack } = useTimeline();
   const { project } = useVideoState();
   useVideoCoordinates();
 
@@ -125,7 +125,22 @@ export function Timeline({ className }: TimelineProps) {
         <div className="flex border-b border-border">
           {/* Track header column */}
           <div className="w-32 flex-shrink-0 bg-surface-secondary border-r border-border">
-            <div className="h-6" /> {/* Ruler spacer */}
+            <div className="h-6 px-1 flex items-center gap-1">
+              <button
+                onClick={() => addTrack(undefined, "video")}
+                className="h-5 px-1.5 rounded text-[10px] bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
+                title="Add video track"
+              >
+                + Video
+              </button>
+              <button
+                onClick={() => addTrack(undefined, "audio")}
+                className="h-5 px-1.5 rounded text-[10px] bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
+                title="Add audio track"
+              >
+                + Audio
+              </button>
+            </div>
           </div>
 
           {/* Ruler */}

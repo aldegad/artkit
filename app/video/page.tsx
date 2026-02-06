@@ -138,6 +138,7 @@ function VideoEditorContent() {
 
   const [isTimelineVisible, setIsTimelineVisible] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
   const audioHistorySavedRef = useRef(false);
 
@@ -523,6 +524,21 @@ function VideoEditorContent() {
     }
   }, [isExporting, includeAudioOnExport, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
+  const openExportModal = useCallback(() => {
+    if (isExporting) return;
+    setIsExportModalOpen(true);
+  }, [isExporting]);
+
+  const closeExportModal = useCallback(() => {
+    if (isExporting) return;
+    setIsExportModalOpen(false);
+  }, [isExporting]);
+
+  const handleConfirmExport = useCallback(async () => {
+    await handleExport();
+    setIsExportModalOpen(false);
+  }, [handleExport]);
+
   // Edit menu handlers
   const handleUndo = useCallback(() => {
     undo();
@@ -847,7 +863,7 @@ function VideoEditorContent() {
 
   return (
     <div
-      className="h-full bg-background text-text-primary flex flex-col overflow-hidden"
+      className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative"
       onKeyDown={handleKeyDown}
       tabIndex={0}
     >
@@ -859,7 +875,7 @@ function VideoEditorContent() {
           onSave={handleSave}
           onSaveAs={handleSaveAs}
           onImportMedia={handleImportMedia}
-          onExport={handleExport}
+          onExport={openExportModal}
           canSave={hasContent}
           isLoading={isExporting}
           onUndo={handleUndo}
@@ -945,19 +961,6 @@ function VideoEditorContent() {
           </Tooltip>
         </div>
 
-        <div className="h-4 w-px bg-border-default mx-1" />
-        <button
-          onClick={() => setIncludeAudioOnExport((prev) => !prev)}
-          className={`px-2 py-1 text-xs rounded transition-colors ${
-            includeAudioOnExport
-              ? "bg-accent/20 text-accent hover:bg-accent/30"
-              : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
-          }`}
-          title={includeAudioOnExport ? "Export includes audio" : "Export without audio"}
-        >
-          Export Audio {includeAudioOnExport ? "On" : "Off"}
-        </button>
-
         {selectedAudioClip && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
@@ -1029,6 +1032,47 @@ function VideoEditorContent() {
           </div>
         )}
       </div>
+
+      {isExportModalOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-surface-primary shadow-xl">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-medium text-text-primary">Export Video</h3>
+              <p className="text-xs text-text-secondary mt-1">Export current timeline to WebM.</p>
+            </div>
+
+            <div className="px-4 py-3 space-y-3">
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={includeAudioOnExport}
+                  onChange={(e) => setIncludeAudioOnExport(e.target.checked)}
+                  disabled={isExporting}
+                  className="h-4 w-4 rounded border-border"
+                />
+                Include audio
+              </label>
+            </div>
+
+            <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
+              <button
+                onClick={closeExportModal}
+                disabled={isExporting}
+                className="px-3 py-1.5 text-sm rounded bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmExport}
+                disabled={isExporting}
+                className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent-hover disabled:opacity-60"
+              >
+                {isExporting ? "Exporting..." : "Export"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hidden file input for media import */}
       <input
