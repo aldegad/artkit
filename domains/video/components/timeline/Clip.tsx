@@ -15,7 +15,7 @@ interface ClipProps {
 const waveformCache = new Map<string, number[]>();
 const waveformPending = new Map<string, Promise<number[]>>();
 
-async function buildWaveform(sourceUrl: string, bins = 48): Promise<number[]> {
+async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   const cached = waveformCache.get(sourceUrl);
   if (cached) return cached;
 
@@ -80,6 +80,19 @@ export function Clip({ clip }: ClipProps) {
   const x = timeToPixel(clip.startTime);
   const width = durationToWidth(clip.duration);
 
+  // Slice waveform to match trimIn/trimOut
+  const visibleWaveform = useMemo(() => {
+    if (!waveform || clip.type === "image") return null;
+    const sourceDuration = clip.sourceDuration;
+    if (!sourceDuration || sourceDuration <= 0) return waveform;
+    const startRatio = clip.trimIn / sourceDuration;
+    const endRatio = clip.trimOut / sourceDuration;
+    const totalBins = waveform.length;
+    const startBin = Math.floor(startRatio * totalBins);
+    const endBin = Math.ceil(endRatio * totalBins);
+    return waveform.slice(startBin, Math.max(startBin + 1, endBin));
+  }, [waveform, clip]);
+
   // Don't render if clip would be invisible
   const minWidth = Math.max(width, UI.MIN_CLIP_WIDTH);
 
@@ -119,7 +132,7 @@ export function Clip({ clip }: ClipProps) {
   return (
     <div
       className={cn(
-        "absolute top-1 bottom-1 rounded cursor-pointer transition-all",
+        "absolute top-1 bottom-1 rounded cursor-pointer",
         clipColor,
         isSelected && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent",
         !clip.visible && "opacity-50"
@@ -135,9 +148,9 @@ export function Clip({ clip }: ClipProps) {
       </div>
 
       {/* Waveform preview */}
-      {clip.type !== "image" && clipHasAudio && waveform && (
+      {clip.type !== "image" && clipHasAudio && visibleWaveform && (
         <div className="absolute left-1 right-1 bottom-1 h-4 flex items-end gap-[1px] opacity-70 pointer-events-none">
-          {waveform.map((value, idx) => (
+          {visibleWaveform.map((value, idx) => (
             <div
               key={`${clip.id}-wave-${idx}`}
               className="bg-clip-waveform rounded-sm flex-1"
