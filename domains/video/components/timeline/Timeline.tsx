@@ -9,6 +9,7 @@ import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { cn } from "@/shared/utils/cn";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
+import { TIMELINE } from "../../constants";
 
 interface TimelineProps {
   className?: string;
@@ -17,7 +18,7 @@ interface TimelineProps {
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
-  const { tracks, getClipsInTrack, viewState, setScrollX } = useTimeline();
+  const { tracks, getClipsInTrack, viewState, setScrollX, setZoom } = useTimeline();
   const { project } = useVideoState();
   useVideoCoordinates();
 
@@ -81,14 +82,28 @@ export function Timeline({ className }: TimelineProps) {
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
       if (e.ctrlKey || e.metaKey) {
-        // Zoom - TODO: implement zoom toward cursor position
         e.preventDefault();
+        const rect = tracksContainerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const nextZoom = Math.max(
+          TIMELINE.MIN_ZOOM,
+          Math.min(TIMELINE.MAX_ZOOM, viewState.zoom * zoomFactor)
+        );
+        if (nextZoom === viewState.zoom) return;
+
+        // Keep timeline time under cursor fixed while zooming.
+        const cursorTime = viewState.scrollX + x / viewState.zoom;
+        setZoom(nextZoom);
+        setScrollX(Math.max(0, cursorTime - x / nextZoom));
       } else if (e.shiftKey) {
         // Horizontal scroll
         setScrollX(Math.max(0, viewState.scrollX + e.deltaY / viewState.zoom));
       }
     },
-    [viewState.zoom, viewState.scrollX, setScrollX]
+    [viewState.zoom, viewState.scrollX, setScrollX, setZoom]
   );
 
   return (

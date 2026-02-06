@@ -70,6 +70,12 @@ interface TimelineContextValue {
   duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
   addClips: (newClips: Clip[]) => void;
   restoreClips: (clips: Clip[]) => void;
+  saveToHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  clearHistory: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 
   // Queries
   getClipAtTime: (trackId: string, time: number) => Clip | null;
@@ -81,6 +87,36 @@ interface TimelineContextValue {
 }
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
+
+interface TimelineHistorySnapshot {
+  tracks: VideoTrack[];
+  clips: Clip[];
+}
+
+const MAX_HISTORY = 100;
+
+function cloneTrack(track: VideoTrack): VideoTrack {
+  return { ...track };
+}
+
+function cloneClip(clip: Clip): Clip {
+  const base = {
+    ...clip,
+    position: { ...clip.position },
+  };
+
+  if (clip.type === "video") {
+    return {
+      ...base,
+      sourceSize: { ...clip.sourceSize },
+    };
+  }
+
+  return {
+    ...base,
+    sourceSize: { ...clip.sourceSize },
+  };
+}
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
@@ -104,10 +140,66 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [masks, setMasks] = useState<MaskData[]>([]);
   const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Refs for autosave
   const isInitializedRef = useRef(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const historyPastRef = useRef<TimelineHistorySnapshot[]>([]);
+  const historyFutureRef = useRef<TimelineHistorySnapshot[]>([]);
+  const projectRef = useRef(project);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  const syncHistoryFlags = useCallback(() => {
+    setCanUndo(historyPastRef.current.length > 0);
+    setCanRedo(historyFutureRef.current.length > 0);
+  }, []);
+
+  const captureHistorySnapshot = useCallback((): TimelineHistorySnapshot => {
+    return {
+      tracks: tracks.map(cloneTrack),
+      clips: clips.map(cloneClip),
+    };
+  }, [tracks, clips]);
+
+  const saveToHistory = useCallback(() => {
+    historyPastRef.current.push(captureHistorySnapshot());
+    if (historyPastRef.current.length > MAX_HISTORY) {
+      historyPastRef.current.shift();
+    }
+    historyFutureRef.current = [];
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
+
+  const clearHistory = useCallback(() => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    syncHistoryFlags();
+  }, [syncHistoryFlags]);
+
+  const undo = useCallback(() => {
+    const previous = historyPastRef.current.pop();
+    if (!previous) return;
+
+    historyFutureRef.current.push(captureHistorySnapshot());
+    setTracks(previous.tracks.map(cloneTrack));
+    setClips(previous.clips.map(cloneClip));
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
+
+  const redo = useCallback(() => {
+    const next = historyFutureRef.current.pop();
+    if (!next) return;
+
+    historyPastRef.current.push(captureHistorySnapshot());
+    setTracks(next.tracks.map(cloneTrack));
+    setClips(next.clips.map(cloneClip));
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
 
   // Set view state
   const setViewState = useCallback((newViewState: TimelineViewState) => {
@@ -116,11 +208,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Restore functions for autosave
   const restoreTracks = useCallback((savedTracks: VideoTrack[]) => {
-    setTracks(savedTracks);
+    setTracks(savedTracks.map(cloneTrack));
   }, []);
 
   const restoreClips = useCallback((savedClips: Clip[]) => {
-    setClips(savedClips);
+    setClips(savedClips.map(cloneClip));
     updateProjectDuration();
   }, [updateProjectDuration]);
 
@@ -179,12 +271,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         console.error("Failed to load autosave:", error);
       } finally {
         isInitializedRef.current = true;
+        historyPastRef.current = [];
+        historyFutureRef.current = [];
+        syncHistoryFlags();
         setIsAutosaveInitialized(true);
       }
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, selectClips]);
+  }, [setProject, setProjectName, setToolMode, selectClips, syncHistoryFlags]);
 
   // Debounced autosave on state change
   useEffect(() => {
@@ -227,6 +322,21 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     toolMode,
     selectedClipIds,
   ]);
+
+  // Keep project.timeline data synchronized with TimelineContext state.
+  useEffect(() => {
+    const duration = clips.reduce((max, clip) => {
+      return Math.max(max, clip.startTime + clip.duration);
+    }, 0);
+
+    setProject({
+      ...projectRef.current,
+      tracks: tracks.map(cloneTrack),
+      clips: clips.map(cloneClip),
+      masks: [...masks],
+      duration: Math.max(duration, 10),
+    });
+  }, [tracks, clips, masks, setProject]);
 
   // View state actions
   const setZoom = useCallback((zoom: number) => {
@@ -486,6 +596,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     duplicateClip,
     addClips,
     restoreClips,
+    saveToHistory,
+    undo,
+    redo,
+    clearHistory,
+    canUndo,
+    canRedo,
     getClipAtTime,
     getClipsInTrack,
     getTrackById,
