@@ -423,10 +423,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     const fallbackName = type === "audio" ? `Audio ${countForType}` : `Video ${countForType}`;
     const newTrack = createVideoTrack(
       name || fallbackName,
-      tracks.length,
+      0, // New track starts at bottom (background)
       type
     );
-    setTracks((prev) => [...prev, newTrack]);
+    setTracks((prev) => {
+      const updated = [...prev, newTrack];
+      // Re-index: top track (index 0) gets highest zIndex (foreground)
+      return updated.map((t, i) => ({ ...t, zIndex: updated.length - 1 - i }));
+    });
     return newTrack.id;
   }, [tracks]);
 
@@ -440,8 +444,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     // Remove the track
     setTracks((prev) => {
       const filtered = prev.filter((t) => t.id !== trackId);
-      // Re-index zIndex
-      return filtered.map((t, i) => ({ ...t, zIndex: i }));
+      // Re-index: top track (index 0) gets highest zIndex (foreground)
+      return filtered.map((t, i) => ({ ...t, zIndex: filtered.length - 1 - i }));
     });
 
     updateProjectDuration();
@@ -458,8 +462,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       const newTracks = [...prev];
       const [removed] = newTracks.splice(fromIndex, 1);
       newTracks.splice(toIndex, 0, removed);
-      // Re-index zIndex
-      return newTracks.map((t, i) => ({ ...t, zIndex: i }));
+      // Re-index: top track (index 0) gets highest zIndex (foreground)
+      return newTracks.map((t, i) => ({ ...t, zIndex: newTracks.length - 1 - i }));
     });
   }, []);
 
@@ -474,10 +478,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       canvasSize?: Size
     ): string => {
       const track = tracks.find((t) => t.id === trackId) || null;
+      // Only redirect if the track exists but is the wrong type (audio).
+      // When track is null (e.g. just-created track not yet in state), trust the caller's trackId.
       const resolvedTrackId =
-        track && track.type !== "audio"
-          ? trackId
-          : tracks.find((t) => t.type !== "audio")?.id || trackId;
+        track && track.type === "audio"
+          ? tracks.find((t) => t.type !== "audio")?.id || trackId
+          : trackId;
 
       const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
       const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
@@ -502,10 +508,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceSize: Size = { width: 0, height: 0 }
     ): string => {
       const track = tracks.find((t) => t.id === trackId) || null;
+      // Only redirect if the track exists but is the wrong type (non-audio).
       const resolvedTrackId =
-        track && track.type === "audio"
-          ? trackId
-          : tracks.find((t) => t.type === "audio")?.id || trackId;
+        track && track.type !== "audio"
+          ? tracks.find((t) => t.type === "audio")?.id || trackId
+          : trackId;
 
       const clip = createAudioClip(resolvedTrackId, sourceUrl, sourceDuration, startTime, sourceSize);
       setClips((prev) => [...prev, clip]);
@@ -525,10 +532,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       canvasSize?: Size
     ): string => {
       const track = tracks.find((t) => t.id === trackId) || null;
+      // Only redirect if the track exists but is the wrong type (audio).
       const resolvedTrackId =
-        track && track.type !== "audio"
-          ? trackId
-          : tracks.find((t) => t.type !== "audio")?.id || trackId;
+        track && track.type === "audio"
+          ? tracks.find((t) => t.type !== "audio")?.id || trackId
+          : trackId;
 
       const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
       const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
@@ -638,10 +646,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         : `Video ${duplicateTrackCount}`;
       const newTrack = createVideoTrack(
         duplicateTrackName,
-        tracks.length,
+        0,
         duplicateTrackType
       );
-      setTracks((prev) => [...prev, newTrack]);
+      setTracks((prev) => {
+        const updated = [...prev, newTrack];
+        return updated.map((t, i) => ({ ...t, zIndex: updated.length - 1 - i }));
+      });
       trackId = newTrack.id;
     }
 
