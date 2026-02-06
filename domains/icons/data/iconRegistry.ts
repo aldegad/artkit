@@ -99,6 +99,7 @@ import {
   SidebarSoundIcon,
   SidebarVideoIcon,
   SidebarIconsIcon,
+  ArtkitIcon,
 } from "@/shared/components/icons";
 import type { IconMeta, IconCategory } from "../types";
 
@@ -227,6 +228,7 @@ const iconRegistry: IconMeta[] = [
   { name: "SidebarSoundIcon", component: SidebarSoundIcon, category: "sidebar", tags: ["sidebar", "sound", "audio", "music"] },
   { name: "SidebarVideoIcon", component: SidebarVideoIcon, category: "sidebar", tags: ["sidebar", "video", "film", "movie"] },
   { name: "SidebarIconsIcon", component: SidebarIconsIcon, category: "sidebar", tags: ["sidebar", "icons", "grid", "showcase"] },
+  { name: "ArtkitIcon", component: ArtkitIcon, category: "sidebar", tags: ["artkit", "logo", "brand", "app"] },
 ];
 
 export { iconRegistry, CATEGORY_LABELS };
