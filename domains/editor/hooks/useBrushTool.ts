@@ -13,6 +13,7 @@ import {
   saveActivePresetId,
 } from "../constants/brushPresets";
 import { imageToCanvas, ViewContext } from "../utils/coordinateSystem";
+import { drawDab, drawLine } from "@/shared/utils/brushEngine";
 
 // ============================================
 // Types
@@ -162,93 +163,44 @@ export function useBrushTool(): UseBrushToolReturn {
       // Calculate pressure-adjusted parameters
       const params = calculateDrawingParameters(pressure, activePreset, brushSize, pressureEnabled);
 
-      // Helper function to draw a pressure-sensitive dab
-      const drawSoftDab = (cx: number, cy: number, isEraser: boolean = false) => {
-        const radius = params.size / 2;
-        const hardnessRatio = brushHardness / 100;
+      // Shared dab params for brush/eraser
+      const dabParams = (cx: number, cy: number, isEraser: boolean) => ({
+        x: cx,
+        y: cy,
+        radius: params.size / 2,
+        hardness: (brushHardness / 100) * 0.9,
+        color: brushColor,
+        alpha: params.opacity * params.flow,
+        isEraser,
+      });
 
-        // Apply opacity from pressure
-        ctx.globalAlpha = params.opacity * params.flow;
-
-        if (hardnessRatio >= 0.99) {
-          // Hard brush - simple fill
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          if (isEraser) {
-            ctx.fill();
-          } else {
-            ctx.fillStyle = brushColor;
-            ctx.fill();
-          }
-        } else {
-          // Soft brush - use radial gradient
-          const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-
-          // Parse brush color to RGB
-          const hex = brushColor.replace("#", "");
-          const r = parseInt(hex.substring(0, 2), 16);
-          const g = parseInt(hex.substring(2, 4), 16);
-          const b = parseInt(hex.substring(4, 6), 16);
-
-          // Hardness determines where the falloff starts
-          const innerStop = hardnessRatio * 0.9;
-
-          if (isEraser) {
-            gradient.addColorStop(0, "rgba(0,0,0,1)");
-            gradient.addColorStop(Math.max(0.01, innerStop), "rgba(0,0,0,1)");
-            gradient.addColorStop(1, "rgba(0,0,0,0)");
-          } else {
-            gradient.addColorStop(0, `rgba(${r},${g},${b},1)`);
-            gradient.addColorStop(Math.max(0.01, innerStop), `rgba(${r},${g},${b},1)`);
-            gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
-          }
-
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Reset alpha
-        ctx.globalAlpha = 1;
-      };
-
-      // Helper function to interpolate dabs along a line for smooth strokes
-      const drawSoftLine = (
-        x1: number,
-        y1: number,
-        x2: number,
-        y2: number,
-        isEraser: boolean = false
-      ) => {
-        const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-        // Use preset spacing, scaled by current brush size
-        const spacing = Math.max(1, params.size * (activePreset.spacing / 100));
-        const steps = Math.ceil(dist / spacing);
-
-        for (let i = 0; i <= steps; i++) {
-          const t = steps === 0 ? 0 : i / steps;
-          const cx = x1 + (x2 - x1) * t;
-          const cy = y1 + (y2 - y1) * t;
-          drawSoftDab(cx, cy, isEraser);
-        }
-      };
+      const lineSpacing = Math.max(1, params.size * (activePreset.spacing / 100));
 
       if (toolMode === "brush") {
         ctx.globalCompositeOperation = "source-over";
 
         if (isStart || !lastDrawPoint.current) {
-          drawSoftDab(x, y, false);
+          drawDab(ctx, dabParams(x, y, false));
         } else {
-          drawSoftLine(lastDrawPoint.current.x, lastDrawPoint.current.y, x, y, false);
+          drawLine(ctx, {
+            from: lastDrawPoint.current,
+            to: { x, y },
+            spacing: lineSpacing,
+            dab: dabParams(0, 0, false),
+          });
         }
       } else if (toolMode === "eraser") {
         ctx.globalCompositeOperation = "destination-out";
 
         if (isStart || !lastDrawPoint.current) {
-          drawSoftDab(x, y, true);
+          drawDab(ctx, dabParams(x, y, true));
         } else {
-          drawSoftLine(lastDrawPoint.current.x, lastDrawPoint.current.y, x, y, true);
+          drawLine(ctx, {
+            from: lastDrawPoint.current,
+            to: { x, y },
+            spacing: lineSpacing,
+            dab: dabParams(0, 0, true),
+          });
         }
         ctx.globalCompositeOperation = "source-over";
       } else if (toolMode === "stamp" && stampSource) {
