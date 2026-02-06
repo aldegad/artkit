@@ -3,9 +3,9 @@
 import { useCallback, useRef, useEffect, useState } from "react";
 import { MaskData } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
-import { useMask } from "../../contexts";
+import { useMask, useTimeline } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
-import { UI } from "../../constants";
+import { UI, TIMELINE } from "../../constants";
 
 type DragMode = "none" | "move" | "trim-start" | "trim-end";
 
@@ -14,8 +14,9 @@ interface MaskClipProps {
 }
 
 export function MaskClip({ mask }: MaskClipProps) {
-  const { timeToPixel, durationToWidth } = useVideoCoordinates();
-  const { activeMaskId, startMaskEditById, updateMaskTime } = useMask();
+  const { timeToPixel, durationToWidth, zoom } = useVideoCoordinates();
+  const { activeMaskId, startMaskEditById, endMaskEdit, updateMaskTime } = useMask();
+  const { tracks, clips, viewState } = useTimeline();
 
   const isActive = activeMaskId === mask.id;
   const x = timeToPixel(mask.startTime);
@@ -27,11 +28,48 @@ export function MaskClip({ mask }: MaskClipProps) {
     originalStart: 0,
     originalDuration: 0,
   });
+  const didDragRef = useRef(false);
+
+  // Snap to own track clips + adjacent track below clips
+  const snapToPoints = useCallback(
+    (time: number): number => {
+      if (!viewState.snapEnabled) return time;
+
+      const threshold = TIMELINE.SNAP_THRESHOLD / zoom;
+      const points: number[] = [0];
+
+      // Find adjacent track below (next in tracks array)
+      const trackIndex = tracks.findIndex((t) => t.id === mask.trackId);
+      const adjacentTrackIds = [mask.trackId];
+      if (trackIndex >= 0 && trackIndex + 1 < tracks.length) {
+        adjacentTrackIds.push(tracks[trackIndex + 1].id);
+      }
+
+      for (const clip of clips) {
+        if (!adjacentTrackIds.includes(clip.trackId)) continue;
+        points.push(clip.startTime);
+        points.push(clip.startTime + clip.duration);
+      }
+
+      for (const point of points) {
+        if (Math.abs(time - point) < threshold) {
+          return point;
+        }
+      }
+      return time;
+    },
+    [viewState.snapEnabled, zoom, clips, tracks, mask.trackId]
+  );
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    startMaskEditById(mask.id);
+    didDragRef.current = false;
+
+    // Select or deselect on click (deselect handled in mouseUp if no drag)
+    if (!isActive) {
+      startMaskEditById(mask.id);
+    }
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const localX = e.clientX - rect.left;
@@ -49,7 +87,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       originalDuration: mask.duration,
     };
     setDragMode(mode);
-  }, [startMaskEditById, mask.id, mask.startTime, mask.duration]);
+  }, [startMaskEditById, endMaskEdit, isActive, mask.id, mask.startTime, mask.duration]);
 
   useEffect(() => {
     if (dragMode === "none") return;
@@ -58,25 +96,41 @@ export function MaskClip({ mask }: MaskClipProps) {
 
     const onMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startClientX;
+      if (Math.abs(deltaX) > 2) didDragRef.current = true;
       // Convert pixel delta to time delta using current zoom
       const deltaTime = deltaX / durationToWidth(1);
 
       if (dragMode === "move") {
-        const newStart = Math.max(0, originalStart + deltaTime);
-        updateMaskTime(mask.id, newStart, originalDuration);
+        const rawStart = Math.max(0, originalStart + deltaTime);
+        const rawEnd = rawStart + originalDuration;
+        const snappedStart = snapToPoints(rawStart);
+        const snappedEnd = snapToPoints(rawEnd);
+        const startDelta = Math.abs(snappedStart - rawStart);
+        const endDelta = Math.abs(snappedEnd - rawEnd);
+        const finalStart = startDelta <= endDelta ? snappedStart : Math.max(0, snappedEnd - originalDuration);
+        updateMaskTime(mask.id, finalStart, originalDuration);
       } else if (dragMode === "trim-start") {
-        const newStart = Math.max(0, originalStart + deltaTime);
+        const rawStart = Math.max(0, originalStart + deltaTime);
         const maxStart = originalStart + originalDuration - 0.1;
-        const clampedStart = Math.min(newStart, maxStart);
+        const snappedStart = snapToPoints(rawStart);
+        const clampedStart = Math.min(snappedStart, maxStart);
         const newDuration = originalDuration - (clampedStart - originalStart);
         updateMaskTime(mask.id, clampedStart, newDuration);
       } else if (dragMode === "trim-end") {
-        const newDuration = Math.max(0.1, originalDuration + deltaTime);
+        const rawEnd = originalStart + Math.max(0.1, originalDuration + deltaTime);
+        const snappedEnd = snapToPoints(rawEnd);
+        const newDuration = Math.max(0.1, snappedEnd - originalStart);
         updateMaskTime(mask.id, originalStart, newDuration);
       }
     };
 
-    const onMouseUp = () => setDragMode("none");
+    const onMouseUp = () => {
+      // Deselect if it was already active and user just clicked (no drag)
+      if (isActive && !didDragRef.current) {
+        endMaskEdit();
+      }
+      setDragMode("none");
+    };
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
@@ -84,7 +138,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
-  }, [dragMode, mask.id, updateMaskTime, durationToWidth]);
+  }, [dragMode, mask.id, isActive, updateMaskTime, endMaskEdit, durationToWidth, snapToPoints]);
 
   // Cursor based on hover position
   const handleMouseMoveLocal = useCallback((e: React.MouseEvent) => {
