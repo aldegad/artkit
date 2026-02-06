@@ -77,6 +77,11 @@ export default function CanvasContent() {
   // Sync viewport hook state back to the Zustand store for autosave
   useEffect(() => {
     const unsub = viewport.onViewportChange((state) => {
+      console.log("[SpriteCanvas] viewport → store sync:", {
+        zoom: state.zoom,
+        pan: state.pan,
+        baseScale: state.baseScale,
+      });
       setZoom(state.zoom);
       setPan(state.pan);
       setScale(state.baseScale);

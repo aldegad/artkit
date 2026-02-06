@@ -74,6 +74,11 @@ export function EditorProvider({ children }: EditorProviderProps) {
         if (data.currentFrameIndex !== undefined) trackStore.setCurrentFrameIndex(data.currentFrameIndex);
 
         // Restore viewport state
+        console.log("[Sprite Context] RESTORE viewport:", {
+          zoom: data.zoom,
+          pan: data.pan,
+          scale: data.scale,
+        });
         if (data.zoom) viewportStore.setZoom(data.zoom);
         if (data.pan) viewportStore.setPan(data.pan);
         if (data.scale) viewportStore.setScale(data.scale);
@@ -89,6 +94,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
       }
       isInitializedRef.current = true;
       uiStore.setIsAutosaveLoading(false);
+      console.log("[Sprite Context] Autosave load complete, isInitialized:", isInitializedRef.current);
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
