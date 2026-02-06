@@ -10,7 +10,11 @@ import { compositeFrame } from "../utils/compositor";
 // ============================================
 
 export default function AnimationPreviewContent() {
-  const { tracks, fps, setFps, toolMode, getMaxFrameCount } = useEditor();
+  const {
+    tracks, fps, setFps, toolMode, getMaxFrameCount,
+    addTrack, pushHistory,
+    setIsSpriteSheetImportOpen, setPendingVideoFile, setIsVideoImportOpen,
+  } = useEditor();
   const { t } = useLanguage();
 
   const [isPlaying, setIsPlaying] = useState(true);
@@ -18,6 +22,7 @@ export default function AnimationPreviewContent() {
   const [previewScale, setPreviewScale] = useState(2);
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
   const [bgColor, setBgColor] = useState("#000000");
@@ -27,6 +32,7 @@ export default function AnimationPreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const maxFrameCount = getMaxFrameCount();
 
@@ -56,6 +62,106 @@ export default function AnimationPreviewContent() {
     // Reset input so same file can be selected again
     e.target.value = "";
   }, []);
+
+  // File drag-and-drop import
+  const handleFileDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setIsFileDragOver(true);
+  }, []);
+
+  const handleFileDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsFileDragOver(false);
+  }, []);
+
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsFileDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    // Check for video files
+    const videoFile = files.find((f) => f.type.startsWith("video/"));
+    if (videoFile) {
+      setPendingVideoFile(videoFile);
+      setIsVideoImportOpen(true);
+      return;
+    }
+
+    // Handle image files → create new track
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length > 0) {
+      pushHistory();
+      const loadPromises = imageFiles.map(
+        (file) =>
+          new Promise<{ imageData: string; name: string }>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              resolve({
+                imageData: ev.target?.result as string,
+                name: file.name.replace(/\.[^/.]+$/, ""),
+              });
+            };
+            reader.readAsDataURL(file);
+          })
+      );
+      Promise.all(loadPromises).then((results) => {
+        const newFrames = results.map((r, idx) => ({
+          id: Date.now() + idx,
+          points: [] as { x: number; y: number }[],
+          name: r.name,
+          imageData: r.imageData,
+          offset: { x: 0, y: 0 },
+        }));
+        addTrack("Image Import", newFrames);
+      });
+    }
+  }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
+
+  // Handle import input (click-to-browse)
+  const handleImportInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const videoFile = files.find((f) => f.type.startsWith("video/"));
+    if (videoFile) {
+      setPendingVideoFile(videoFile);
+      setIsVideoImportOpen(true);
+      e.target.value = "";
+      return;
+    }
+
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length > 0) {
+      pushHistory();
+      const loadPromises = imageFiles.map(
+        (file) =>
+          new Promise<{ imageData: string; name: string }>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              resolve({
+                imageData: ev.target?.result as string,
+                name: file.name.replace(/\.[^/.]+$/, ""),
+              });
+            };
+            reader.readAsDataURL(file);
+          })
+      );
+      Promise.all(loadPromises).then((results) => {
+        const newFrames = results.map((r, idx) => ({
+          id: Date.now() + idx,
+          points: [] as { x: number; y: number }[],
+          name: r.name,
+          imageData: r.imageData,
+          offset: { x: 0, y: 0 },
+        }));
+        addTrack("Image Import", newFrames);
+      });
+    }
+    e.target.value = "";
+  }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
   // Wheel zoom - 마우스 커서 위치 기준 확대/축소
   const handleWheel = useCallback(
@@ -244,7 +350,36 @@ export default function AnimationPreviewContent() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-surface-primary">
+    <div
+      className="flex flex-col h-full bg-surface-primary relative"
+      onDragOver={handleFileDragOver}
+      onDragLeave={handleFileDragLeave}
+      onDrop={handleFileDrop}
+    >
+      {/* Hidden file input for click-to-browse */}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        onChange={handleImportInput}
+        className="hidden"
+      />
+
+      {/* Drag overlay */}
+      {isFileDragOver && (
+        <div className="absolute inset-0 z-20 bg-accent-primary/10 border-2 border-dashed border-accent-primary rounded-lg flex items-center justify-center pointer-events-none">
+          <div className="bg-surface-primary/90 px-6 py-4 rounded-xl text-center">
+            <p className="text-lg text-accent-primary font-medium">
+              {t.dropMediaHere}
+            </p>
+            <p className="text-sm text-text-tertiary mt-1">
+              {t.supportedFormats}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Preview area */}
       <div
         ref={containerRef}
@@ -279,8 +414,17 @@ export default function AnimationPreviewContent() {
             }}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm">
-            {t.noFramesAvailable}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 cursor-pointer"
+            onClick={() => importInputRef.current?.click()}
+          >
+            <svg className="w-12 h-12 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+            </svg>
+            <div className="text-text-tertiary text-sm text-center">
+              <p>{t.dropOrClickToImport}</p>
+              <p className="text-xs mt-1 text-text-tertiary/60">{t.supportedFormats}</p>
+            </div>
           </div>
         )}
       </div>

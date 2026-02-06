@@ -279,6 +279,9 @@ interface Translations {
   includeAudio: string;
   dropMediaHere: string;
   dropMediaDesc: string;
+  dropOrClickToImport: string;
+  supportedFormats: string;
+  resetLayout: string;
 
   // Copyright
   copyright: string;
@@ -560,6 +563,9 @@ const translations: Record<Language, Translations> = {
     includeAudio: "오디오 포함",
     dropMediaHere: "미디어 파일을 여기에 드롭",
     dropMediaDesc: "비디오 또는 이미지 파일을 드래그하여 추가",
+    dropOrClickToImport: "클릭하거나 파일을 드래그하세요",
+    supportedFormats: "이미지, 영상 파일",
+    resetLayout: "기본 레이아웃으로 복원",
 
     // Copyright
     copyright: "© 2026 Soo Hong Kim. All rights reserved.",
@@ -839,6 +845,9 @@ const translations: Record<Language, Translations> = {
     includeAudio: "Include Audio",
     dropMediaHere: "Drop media files here",
     dropMediaDesc: "Drag video or image files to add",
+    dropOrClickToImport: "Click or drag files here",
+    supportedFormats: "Images, video files",
+    resetLayout: "Reset to Default Layout",
 
     // Copyright
     copyright: "© 2026 Soo Hong Kim. All rights reserved.",

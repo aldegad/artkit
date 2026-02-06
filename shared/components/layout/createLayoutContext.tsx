@@ -454,6 +454,14 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       []
     );
 
+    const resetLayout = useCallback(() => {
+      setLayoutState((prev) => ({
+        ...prev,
+        root: defaultLayout,
+        floatingWindows: [],
+      }));
+    }, []);
+
     const value: LayoutContextValue = {
       layoutState,
       updateSizes,
@@ -482,6 +490,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       getAllPanelRects,
       updateFloatingWindowSnap,
       updateFloatingWindowMinimizedPosition,
+      resetLayout,
     };
 
     return (
