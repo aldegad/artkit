@@ -302,13 +302,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     (trackId: string, time: number): string | null => {
       for (const mask of masks.values()) {
         if (mask.trackId !== trackId) continue;
+        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
 
-        // Currently editing this mask - always show live canvas
+        // Currently editing this mask within its time range - use live canvas
         if (isEditingMask && activeMaskId === mask.id && maskCanvasRef.current) {
           return "__live_canvas__";
         }
-
-        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
 
         // Return saved mask data
         return mask.maskData;

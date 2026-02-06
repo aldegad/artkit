@@ -613,8 +613,13 @@ function SpriteEditorMain() {
             isPreviewOpen={isPreviewOpen}
             isFrameEditOpen={isFrameEditOpen}
             canSave={frames.length > 0 && frames.some((f) => f.imageData)}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
             translations={{
               file: t.file,
+              edit: t.edit,
               window: t.window,
               new: t.new,
               load: t.load,
@@ -623,6 +628,8 @@ function SpriteEditorMain() {
               importImage: t.importImage,
               importSheet: t.importSheet,
               importVideo: t.importVideo,
+              undo: t.undo,
+              redo: t.redo,
               preview: t.animation,
               frameEdit: t.frameWindow,
               resetLayout: t.resetLayout,

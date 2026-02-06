@@ -6,6 +6,7 @@ import {
   SpinnerIcon,
   type MenuItem,
 } from "../../../shared/components";
+import { shortcutToDisplayString, bindingToDisplayString, COMMON_SHORTCUTS } from "@/shared/utils/keyboard";
 
 // ============================================
 // Types
@@ -26,8 +27,14 @@ interface SpriteMenuBarProps {
   isFrameEditOpen: boolean;
   canSave: boolean;
   isLoading?: boolean;
+  // Edit menu props
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   translations: {
     file: string;
+    edit: string;
     window: string;
     new: string;
     load: string;
@@ -36,6 +43,8 @@ interface SpriteMenuBarProps {
     importImage: string;
     importSheet: string;
     importVideo: string;
+    undo: string;
+    redo: string;
     preview: string;
     frameEdit: string;
     resetLayout: string;
@@ -61,20 +70,31 @@ export default function SpriteMenuBar({
   isFrameEditOpen,
   canSave,
   isLoading,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   translations: t,
 }: SpriteMenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<"file" | "window" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "window" | null>(null);
 
+  const d = shortcutToDisplayString;
+  const db = bindingToDisplayString;
   const fileMenuItems: MenuItem[] = [
-    { label: t.new, onClick: onNew, shortcut: "⌘N" },
+    { label: t.new, onClick: onNew, shortcut: d(COMMON_SHORTCUTS.newFile) },
     { label: t.load, onClick: onLoad },
     { divider: true },
-    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: "⌘S" },
-    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
+    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.save) },
+    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.saveAs) },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
     { label: t.importSheet, onClick: onImportSheet },
     { label: t.importVideo, onClick: onImportVideo },
+  ];
+
+  const editMenuItems: MenuItem[] = [
+    { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: d(COMMON_SHORTCUTS.undo) },
+    { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: db(COMMON_SHORTCUTS.redo) },
   ];
 
   const windowMenuItems: MenuItem[] = [
@@ -96,6 +116,12 @@ export default function SpriteMenuBar({
         items={fileMenuItems}
         isOpen={openMenu === "file"}
         onOpenChange={(open) => setOpenMenu(open ? "file" : null)}
+      />
+      <MenuDropdown
+        label={t.edit}
+        items={editMenuItems}
+        isOpen={openMenu === "edit"}
+        onOpenChange={(open) => setOpenMenu(open ? "edit" : null)}
       />
       <MenuDropdown
         label={t.window}

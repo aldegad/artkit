@@ -735,7 +735,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
-    if (toolMode !== "select" && toolMode !== "move") return;
+    if (toolMode !== "select") return;
 
     const point = screenToProject(e.clientX, e.clientY);
     if (!point) return;
@@ -955,7 +955,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               ? "none"
               : toolMode === "crop"
                 ? (isDraggingCrop ? "grabbing" : "crosshair")
-                : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+                : (isDraggingClip ? "grabbing" : (toolMode === "select" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
