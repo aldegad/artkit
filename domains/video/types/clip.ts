@@ -21,9 +21,6 @@ export interface BaseClip {
   visible: boolean;
   locked: boolean;
 
-  // Mask reference
-  maskId: string | null;
-
   // Position/scale within frame (for transform)
   position: Point;
   scale: number;
@@ -101,7 +98,6 @@ export function createVideoClip(
     opacity: 100,
     visible: true,
     locked: false,
-    maskId: null,
     position: { x: 0, y: 0 },
     scale: 1,
     rotation: 0,
@@ -137,7 +133,6 @@ export function createAudioClip(
     opacity: 100,
     visible: true,
     locked: false,
-    maskId: null,
     position: { x: 0, y: 0 },
     scale: 1,
     rotation: 0,
@@ -172,7 +167,6 @@ export function createImageClip(
     opacity: 100,
     visible: true,
     locked: false,
-    maskId: null,
     position: { x: 0, y: 0 },
     scale: 1,
     rotation: 0,

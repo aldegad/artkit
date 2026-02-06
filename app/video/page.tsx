@@ -910,8 +910,8 @@ function VideoEditorContent() {
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
     if (mode === "mask" && selectedClipIds.length > 0) {
       const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
-      if (selectedClip) {
-        startMaskEdit(selectedClip.id, selectedClip.sourceSize);
+      if (selectedClip && selectedClip.type !== "audio") {
+        startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
       }
     }
     if (mode === "crop" && !cropArea) {
@@ -923,7 +923,7 @@ function VideoEditorContent() {
       });
     }
     setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize.width, project.canvasSize.height]);
+  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

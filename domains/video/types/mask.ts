@@ -1,22 +1,11 @@
 import { Size } from "@/shared/types";
 
 /**
- * Single frame mask data
- * Alpha channel: 255 = fully visible, 0 = fully transparent (reveals below)
- */
-export interface MaskFrame {
-  frameTime: number; // Time in seconds
-  imageData: string; // Base64 encoded grayscale image (alpha channel)
-  width: number;
-  height: number;
-}
-
-/**
  * Mask keyframe for interpolation
  */
 export interface MaskKeyframe {
   id: string;
-  time: number; // Keyframe time (seconds)
+  time: number; // Keyframe time relative to mask start (seconds)
   maskData: string; // Base64 encoded mask
   easing: MaskEasing;
 }
@@ -24,39 +13,34 @@ export interface MaskKeyframe {
 export type MaskEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out";
 
 /**
- * Complete mask data for a clip
+ * Track-level mask data with independent time range.
+ * Lives on a track's mask lane and can span multiple clips.
+ * White = visible, Black = transparent (reveals below).
  */
 export interface MaskData {
   id: string;
-  clipId: string;
-  size: Size; // Mask canvas size (matches video frame)
-
-  // Mode determines how mask is stored
-  mode: "per-frame" | "keyframed";
-
-  // Per-frame mode: every frame has explicit mask
-  frames?: MaskFrame[];
-
-  // Keyframed mode: interpolate between keyframes
-  keyframes?: MaskKeyframe[];
-
-  // Current editing state (not persisted)
-  isEditing?: boolean;
+  trackId: string; // Track this mask belongs to
+  startTime: number; // Timeline start time (seconds)
+  duration: number; // Mask duration (seconds)
+  size: Size; // Mask canvas size (= project canvasSize)
+  keyframes: MaskKeyframe[];
 }
 
 /**
- * Create empty mask for a clip
+ * Create empty mask for a track
  */
 export function createMaskData(
-  clipId: string,
+  trackId: string,
   size: Size,
-  mode: "per-frame" | "keyframed" = "keyframed"
+  startTime: number = 0,
+  duration: number = 5
 ): MaskData {
   return {
     id: crypto.randomUUID(),
-    clipId,
+    trackId,
     size,
-    mode,
+    startTime,
+    duration,
     keyframes: [],
   };
 }

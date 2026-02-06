@@ -1,16 +1,23 @@
 "use client";
 
-import { VideoTrack, Clip as ClipType } from "../../types";
+import { VideoTrack, Clip as ClipType, MaskData } from "../../types";
 import { Clip } from "./Clip";
+import { MaskClip } from "./MaskClip";
 import { cn } from "@/shared/utils/cn";
+
+const MASK_LANE_HEIGHT = 20;
 
 interface TrackProps {
   track: VideoTrack;
   clips: ClipType[];
+  masks: MaskData[];
   className?: string;
 }
 
-export function Track({ track, clips, className }: TrackProps) {
+export function Track({ track, clips, masks, className }: TrackProps) {
+  const hasMasks = masks.length > 0;
+  const totalHeight = track.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
+
   return (
     <div
       className={cn(
@@ -19,18 +26,27 @@ export function Track({ track, clips, className }: TrackProps) {
         track.locked && "pointer-events-none",
         className
       )}
-      style={{ height: track.height }}
+      style={{ height: totalHeight }}
     >
-      {/* Track background */}
-      <div className="absolute inset-0 bg-surface-secondary/50" />
+      {/* Clips area */}
+      <div className="relative" style={{ height: track.height }}>
+        <div className="absolute inset-0 bg-surface-secondary/50" />
+        {clips.map((clip) => (
+          <Clip key={clip.id} clip={clip} />
+        ))}
+      </div>
 
-      {/* Clips */}
-      {clips.map((clip) => (
-        <Clip
-          key={clip.id}
-          clip={clip}
-        />
-      ))}
+      {/* Mask lane */}
+      {hasMasks && (
+        <div
+          className="relative bg-surface-tertiary/30 border-t border-border-default/50"
+          style={{ height: MASK_LANE_HEIGHT }}
+        >
+          {masks.map((mask) => (
+            <MaskClip key={mask.id} mask={mask} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

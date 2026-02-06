@@ -20,6 +20,7 @@ export function MaskControls({ className }: MaskControlsProps) {
     endMaskEdit,
     addKeyframe,
     activeMaskId,
+    masks,
   } = useMask();
 
   const { getMaskDataUrl, clearMask, fillMask } = useMaskTool();
@@ -27,9 +28,13 @@ export function MaskControls({ className }: MaskControlsProps) {
 
   const handleSaveKeyframe = () => {
     if (!activeMaskId) return;
+    const mask = masks.get(activeMaskId);
+    if (!mask) return;
     const dataUrl = getMaskDataUrl();
     if (dataUrl) {
-      addKeyframe(activeMaskId, playback.currentTime, dataUrl);
+      // Convert absolute time to mask-local time
+      const localTime = playback.currentTime - mask.startTime;
+      addKeyframe(activeMaskId, localTime, dataUrl);
     }
   };
 
