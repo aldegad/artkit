@@ -243,13 +243,20 @@ function VideoEditorContent() {
   }, []);
 
   // Restore masks from autosave into MaskContext after autosave finishes loading
+  // postRestorationRef prevents auto-start mask edit from firing during initial load
   const masksRestoredRef = useRef(false);
+  const postRestorationRef = useRef(false);
   useEffect(() => {
     if (!isAutosaveInitialized || masksRestoredRef.current) return;
     masksRestoredRef.current = true;
     if (project.masks && project.masks.length > 0) {
       restoreMasks(project.masks);
     }
+    // Allow auto-start mask edit only after masks are restored and rendered
+    const timer = setTimeout(() => {
+      postRestorationRef.current = true;
+    }, 0);
+    return () => clearTimeout(timer);
   }, [isAutosaveInitialized, project.masks, restoreMasks]);
 
   // Load saved projects when storage provider changes
@@ -948,7 +955,9 @@ function VideoEditorContent() {
   }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime, isEditingMask, endMaskEdit]);
 
   // Auto-start mask edit when clip is selected while already in mask mode
+  // Skip during initial restoration to prevent creating new masks before masks are loaded
   useEffect(() => {
+    if (!postRestorationRef.current) return;
     if (toolMode !== "mask") return;
     if (selectedClipIds.length === 0) return;
     if (isEditingMask) return; // already editing
