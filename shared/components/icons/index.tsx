@@ -32,6 +32,7 @@ export {
   PlayIcon24,
   PauseIcon24,
   StopIcon24,
+  LoopIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
 } from "./media";
