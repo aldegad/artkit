@@ -204,6 +204,8 @@ export function Timeline({ className }: TimelineProps) {
           <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default" style={headerWidthStyle}>
             <div className="h-4" /> {/* Ruler spacer */}
           </div>
+          {/* Spacer matching resize handle width */}
+          <div className="w-1 shrink-0" />
 
           {/* Ruler */}
           <div className="flex-1 overflow-hidden">
@@ -214,6 +216,8 @@ export function Timeline({ className }: TimelineProps) {
         {/* Pre-render cache status bar */}
         <div className="flex border-b border-border-default">
           <div className="flex-shrink-0 bg-surface-secondary border-r border-border-default" style={headerWidthStyle} />
+          {/* Spacer matching resize handle width */}
+          <div className="w-1 shrink-0" />
           <div className="flex-1 overflow-hidden">
             <PreRenderBar />
           </div>
