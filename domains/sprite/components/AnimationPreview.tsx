@@ -124,31 +124,29 @@ export default function AnimationPreviewContent() {
   // Throttled React state for UI display only (zoom %, CSS transform)
   const viewportSync = viewport.useReactSync(16);
 
-  // ---- Sync viewport to Zustand store for autosave ----
-  const vpStore = useSpriteViewportStore();
-  const uiStore = useSpriteUIStore();
+  // ---- Sync viewport to Zustand store for autosave (no full subscription) ----
+  const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
 
   useEffect(() => {
     const unsub = viewport.onViewportChange((state) => {
-      vpStore.setAnimPreviewZoom(state.zoom);
-      vpStore.setAnimPreviewPan(state.pan);
+      const store = useSpriteViewportStore.getState();
+      store.setAnimPreviewZoom(state.zoom);
+      store.setAnimPreviewPan(state.pan);
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewport]);
 
   // Restore viewport from autosave on load
   const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || uiStore.isAutosaveLoading) return;
+    if (restoredRef.current || isAutosaveLoading) return;
     restoredRef.current = true;
     const { animPreviewZoom, animPreviewPan } = useSpriteViewportStore.getState();
     if (animPreviewZoom > 0) {
       viewport.setZoom(animPreviewZoom);
       viewport.setPan(animPreviewPan);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uiStore.isAutosaveLoading]);
+  }, [isAutosaveLoading, viewport]);
 
   // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);

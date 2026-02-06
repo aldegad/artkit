@@ -94,31 +94,29 @@ export default function FramePreviewContent() {
 
   const viewportSync = viewport.useReactSync(16);
 
-  // ---- Sync viewport to Zustand store for autosave ----
-  const vpStore = useSpriteViewportStore();
-  const uiStore = useSpriteUIStore();
+  // ---- Sync viewport to Zustand store for autosave (no full subscription) ----
+  const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
 
   useEffect(() => {
     const unsub = viewport.onViewportChange((state) => {
-      vpStore.setFrameEditZoom(state.zoom);
-      vpStore.setFrameEditPan(state.pan);
+      const store = useSpriteViewportStore.getState();
+      store.setFrameEditZoom(state.zoom);
+      store.setFrameEditPan(state.pan);
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewport]);
 
   // Restore viewport from autosave on load
   const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || uiStore.isAutosaveLoading) return;
+    if (restoredRef.current || isAutosaveLoading) return;
     restoredRef.current = true;
     const { frameEditZoom, frameEditPan } = useSpriteViewportStore.getState();
     if (frameEditZoom > 0) {
       viewport.setZoom(frameEditZoom);
       viewport.setPan(frameEditPan);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uiStore.isAutosaveLoading]);
+  }, [isAutosaveLoading, viewport]);
 
   // ---- Render scheduler ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
