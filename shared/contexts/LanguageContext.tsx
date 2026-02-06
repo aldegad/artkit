@@ -78,6 +78,7 @@ interface Translations {
   deleteConfirm: string;
   newProjectConfirm: string;
   noFramesToSave: string;
+  saving: string;
   saved: string;
   saveFailed: string;
   deleteFailed: string;
@@ -362,6 +363,7 @@ const translations: Record<Language, Translations> = {
     deleteConfirm: "정말 삭제하시겠습니까?",
     newProjectConfirm: "현재 작업이 삭제됩니다. 새 프로젝트를 시작하시겠습니까?",
     noFramesToSave: "저장할 프레임이 없습니다.",
+    saving: "저장 중…",
     saved: "저장됨",
     saveFailed: "저장 실패",
     deleteFailed: "삭제 실패",
@@ -644,7 +646,8 @@ const translations: Record<Language, Translations> = {
     deleteConfirm: "Are you sure you want to delete?",
     newProjectConfirm: "Current work will be lost. Start a new project?",
     noFramesToSave: "No frames to save.",
-    saved: "saved",
+    saving: "Saving…",
+    saved: "Saved",
     saveFailed: "Save failed",
     deleteFailed: "Delete failed",
     importFailed: "Import failed",

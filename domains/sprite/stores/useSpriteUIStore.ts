@@ -27,6 +27,9 @@ interface SpriteUIStore {
   // Video import
   pendingVideoFile: File | null;
 
+  // Loading state
+  isAutosaveLoading: boolean;
+
   // Actions - Windows
   setIsPreviewWindowOpen: (open: boolean) => void;
   setIsFrameEditOpen: (open: boolean) => void;
@@ -47,6 +50,9 @@ interface SpriteUIStore {
 
   // Actions - Video import
   setPendingVideoFile: (file: File | null) => void;
+
+  // Actions - Loading
+  setIsAutosaveLoading: (loading: boolean) => void;
 
   // Reset
   reset: () => void;
@@ -69,6 +75,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   clipboardFrame: null,
   clipboardTrack: null,
   pendingVideoFile: null,
+  isAutosaveLoading: true,
 
   // Window Actions
   setIsPreviewWindowOpen: (open) => set({ isPreviewWindowOpen: open }),
@@ -87,6 +94,9 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
 
   // Video Import Actions
   setPendingVideoFile: (file) => set({ pendingVideoFile: file }),
+
+  // Loading Actions
+  setIsAutosaveLoading: (loading) => set({ isAutosaveLoading: loading }),
 
   // Clipboard Actions
   copyFrame: (frame) => set({ clipboardFrame: deepCopyFrame(frame) }),
