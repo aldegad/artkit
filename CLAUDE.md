@@ -25,6 +25,7 @@ npm run deploy   # Build and deploy to Firebase Hosting
 | agent1 | `agent1` | `artkit-agent1/` |
 | agent2 | `agent2` | `artkit-agent2/` |
 | agent3 | `agent3` | `artkit-agent3/` |
+| agent4 | `agent4` | `artkit-agent4/` |
 
 ```bash
 git worktree list              # 현재 worktree 목록 확인
