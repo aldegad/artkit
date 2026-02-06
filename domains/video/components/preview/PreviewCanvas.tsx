@@ -43,6 +43,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Mask
   const {
+    activeMaskId,
     isEditingMask,
     activeTrackId,
     maskCanvasRef: maskContextCanvasRef,
@@ -421,8 +422,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             ctx.globalAlpha = 1;
           }
 
-          // Draw mask overlay when editing
-          if (isEditingMask && activeTrackId === clip.trackId && maskResult === "__live_canvas__") {
+          // Draw mask overlay when selected or editing
+          const showOverlay = activeTrackId === clip.trackId && activeMaskId && clipMaskSource;
+          if (showOverlay) {
             if (!maskOverlayCanvasRef.current) {
               maskOverlayCanvasRef.current = document.createElement("canvas");
             }
@@ -434,12 +436,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             const overlayCtx = overlayCanvas.getContext("2d");
             if (overlayCtx) {
               overlayCtx.clearRect(0, 0, maskW, maskH);
-              // Draw mask
               overlayCtx.globalCompositeOperation = "source-over";
               overlayCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
-              // Tint with red: only where mask is white (painted)
+              // Tint: red when editing, purple when selected
               overlayCtx.globalCompositeOperation = "source-in";
-              overlayCtx.fillStyle = "rgba(255, 60, 60, 0.35)";
+              overlayCtx.fillStyle = isEditingMask
+                ? "rgba(255, 60, 60, 0.35)"
+                : "rgba(168, 85, 247, 0.3)";
               overlayCtx.fillRect(0, 0, maskW, maskH);
 
               ctx.drawImage(overlayCanvas, offsetX, offsetY, previewWidth, previewHeight);
