@@ -7,6 +7,8 @@ import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { PREVIEW } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
+import { useMask } from "../../contexts";
+import { useMaskTool } from "../../hooks/useMaskTool";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -29,8 +31,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const renderRequestRef = useRef(0);
   const renderRef = useRef<() => void>(() => {});
   const imageCacheRef = useRef(new Map<string, HTMLImageElement>());
+  const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isMaskDrawingRef = useRef(false);
+  const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+
+  // Mask
+  const { isEditingMask, activeClipId, maskCanvasRef: maskContextCanvasRef, getMaskForClip, getMaskAtTime } = useMask();
+  const { startDraw, continueDraw, endDraw } = useMaskTool();
 
   const previewGeometryRef = useRef({
     offsetX: 0,
@@ -292,36 +301,23 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       // Get the video/image element for this clip
       const videoElement = videoElementsRef.current.get(clip.sourceUrl);
 
+      // Determine source element
+      let sourceEl: CanvasImageSource | null = null;
+
       if (clip.type === "video" && videoElement) {
-        // Check if video has enough data to display
         if (videoElement.readyState < 2) {
           continue;
         }
-
-        // During playback, let the video play naturally (don't seek every frame)
-        // Only seek when paused (scrubbing) or when severely out of sync
         if (!playback.isPlaying) {
           const clipTime = playback.currentTime - clip.startTime;
           const sourceTime = clip.trimIn + clipTime;
           if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
             videoElement.currentTime = sourceTime;
-            // Will re-render when seeked event fires via scheduleRender
             continue;
           }
         }
-
-        // Draw video frame
-        ctx.globalAlpha = clip.opacity / 100;
-        ctx.drawImage(
-          videoElement,
-          offsetX + clip.position.x * scale,
-          offsetY + clip.position.y * scale,
-          clip.sourceSize.width * scale * clip.scale,
-          clip.sourceSize.height * scale * clip.scale
-        );
-        ctx.globalAlpha = 1;
+        sourceEl = videoElement;
       } else if (clip.type === "image") {
-        // Draw image from cache
         let img = imageCacheRef.current.get(clip.sourceUrl);
         if (!img) {
           img = new Image();
@@ -329,14 +325,71 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           imageCacheRef.current.set(clip.sourceUrl, img);
         }
         if (img.complete && img.naturalWidth > 0) {
+          sourceEl = img;
+        }
+      }
+
+      if (sourceEl) {
+        const drawX = offsetX + clip.position.x * scale;
+        const drawY = offsetY + clip.position.y * scale;
+        const drawW = clip.sourceSize.width * scale * clip.scale;
+        const drawH = clip.sourceSize.height * scale * clip.scale;
+
+        // Check for mask (live editing or saved keyframes)
+        let clipMaskSource: CanvasImageSource | null = null;
+        if (isEditingMask && activeClipId === clip.id && maskContextCanvasRef.current) {
+          clipMaskSource = maskContextCanvasRef.current;
+        } else {
+          const savedMask = getMaskForClip(clip.id);
+          if (savedMask && savedMask.keyframes && savedMask.keyframes.length > 0) {
+            const clipLocalTime = playback.currentTime - clip.startTime;
+            const maskDataUrl = getMaskAtTime(savedMask.id, clipLocalTime);
+            if (maskDataUrl) {
+              let maskImg = savedMaskImgCacheRef.current.get(maskDataUrl);
+              if (!maskImg) {
+                maskImg = new Image();
+                maskImg.src = maskDataUrl;
+                savedMaskImgCacheRef.current.set(maskDataUrl, maskImg);
+                maskImg.onload = () => {
+                  renderRef.current();
+                };
+              }
+              if (maskImg.complete && maskImg.naturalWidth > 0) {
+                clipMaskSource = maskImg;
+              }
+            }
+          }
+        }
+
+        if (clipMaskSource) {
+          // Draw with mask using offscreen compositing
+          if (!maskTempCanvasRef.current) {
+            maskTempCanvasRef.current = document.createElement("canvas");
+          }
+          const tmpCanvas = maskTempCanvasRef.current;
+          const srcW = clip.sourceSize.width;
+          const srcH = clip.sourceSize.height;
+          if (tmpCanvas.width !== srcW || tmpCanvas.height !== srcH) {
+            tmpCanvas.width = srcW;
+            tmpCanvas.height = srcH;
+          }
+          const tmpCtx = tmpCanvas.getContext("2d");
+          if (tmpCtx) {
+            tmpCtx.clearRect(0, 0, srcW, srcH);
+            tmpCtx.globalCompositeOperation = "source-over";
+            tmpCtx.globalAlpha = 1;
+            tmpCtx.drawImage(sourceEl, 0, 0, srcW, srcH);
+            tmpCtx.globalCompositeOperation = "destination-in";
+            tmpCtx.drawImage(clipMaskSource, 0, 0, srcW, srcH);
+            tmpCtx.globalCompositeOperation = "source-over";
+
+            ctx.globalAlpha = clip.opacity / 100;
+            ctx.drawImage(tmpCanvas, drawX, drawY, drawW, drawH);
+            ctx.globalAlpha = 1;
+          }
+        } else {
           ctx.globalAlpha = clip.opacity / 100;
-          ctx.drawImage(
-            img,
-            offsetX + clip.position.x * scale,
-            offsetY + clip.position.y * scale,
-            clip.sourceSize.width * scale * clip.scale,
-            clip.sourceSize.height * scale * clip.scale
-          );
+          ctx.drawImage(sourceEl, drawX, drawY, drawW, drawH);
           ctx.globalAlpha = 1;
         }
       }
@@ -443,6 +496,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     };
   }, [previewContainerRef]);
 
+  const screenToMaskCoords = useCallback((clientX: number, clientY: number) => {
+    const point = screenToProject(clientX, clientY, true);
+    if (!point || !activeClipId) return null;
+    const activeClip = clips.find((c) => c.id === activeClipId);
+    if (!activeClip || activeClip.type === "audio") return null;
+    return {
+      x: Math.max(0, Math.min(activeClip.sourceSize.width, (point.x - activeClip.position.x) / activeClip.scale)),
+      y: Math.max(0, Math.min(activeClip.sourceSize.height, (point.y - activeClip.position.y) / activeClip.scale)),
+    };
+  }, [screenToProject, activeClipId, clips]);
+
   const isInsideCropArea = useCallback((point: { x: number; y: number }, area: { x: number; y: number; width: number; height: number }) => {
     return (
       point.x >= area.x &&
@@ -490,6 +554,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [tracks, getClipAtTime, playback.currentTime]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (toolMode === "mask" && isEditingMask && activeClipId) {
+      const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
+      if (!maskCoords) return;
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      startDraw(maskCoords.x, maskCoords.y);
+      isMaskDrawingRef.current = true;
+      cancelAnimationFrame(renderRequestRef.current);
+      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      return;
+    }
+
     if (toolMode === "crop") {
       const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
       if (!rawPoint) return;
@@ -540,9 +616,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip]);
+  }, [toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeClipId, screenToMaskCoords, startDraw]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isMaskDrawingRef.current) {
+      const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
+      if (maskCoords) {
+        continueDraw(maskCoords.x, maskCoords.y);
+        cancelAnimationFrame(renderRequestRef.current);
+        renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      }
+      return;
+    }
+
     if (cropDragRef.current.mode !== "none") {
       const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
       if (!rawPoint) return;
@@ -598,9 +684,16 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip]);
+  }, [screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isMaskDrawingRef.current) {
+      endDraw();
+      isMaskDrawingRef.current = false;
+      cancelAnimationFrame(renderRequestRef.current);
+      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    }
+
     if (e && e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
@@ -616,12 +709,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       cropStart: null,
     };
     setIsDraggingCrop(false);
-  }, []);
+  }, [endDraw]);
 
   // Render on playback time change
   useEffect(() => {
     renderRef.current();
-  }, [playback.currentTime, playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize]);
+  }, [playback.currentTime, playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize, isEditingMask, activeClipId]);
 
   // Handle resize
   useEffect(() => {
@@ -647,7 +740,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         style={{
           cursor: toolMode === "crop"
             ? (isDraggingCrop ? "grabbing" : "crosshair")
-            : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
+            : toolMode === "mask"
+              ? "crosshair"
+              : (isDraggingClip ? "grabbing" : (toolMode === "select" || toolMode === "move" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}

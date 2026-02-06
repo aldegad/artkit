@@ -1,6 +1,7 @@
 "use client";
 
 import { useMask } from "../../contexts/MaskContext";
+import { useVideoState } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { cn } from "@/shared/utils/cn";
 import { MASK_BRUSH } from "../../constants";
@@ -22,13 +23,13 @@ export function MaskControls({ className }: MaskControlsProps) {
   } = useMask();
 
   const { getMaskDataUrl, clearMask, fillMask } = useMaskTool();
+  const { playback } = useVideoState();
 
   const handleSaveKeyframe = () => {
     if (!activeMaskId) return;
     const dataUrl = getMaskDataUrl();
     if (dataUrl) {
-      // Save at current time (you'd need to get current time from VideoState)
-      addKeyframe(activeMaskId, 0, dataUrl);
+      addKeyframe(activeMaskId, playback.currentTime, dataUrl);
     }
   };
 

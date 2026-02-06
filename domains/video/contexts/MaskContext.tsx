@@ -144,6 +144,19 @@ export function MaskProvider({ children }: { children: ReactNode }) {
           // Start with fully opaque (white = visible)
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, size.width, size.height);
+
+          // Load existing keyframe data if available
+          const lastKeyframe = mask.keyframes && mask.keyframes.length > 0
+            ? mask.keyframes[mask.keyframes.length - 1]
+            : null;
+          if (lastKeyframe) {
+            const img = new Image();
+            img.onload = () => {
+              ctx.clearRect(0, 0, size.width, size.height);
+              ctx.drawImage(img, 0, 0, size.width, size.height);
+            };
+            img.src = lastKeyframe.maskData;
+          }
         }
       }
 
