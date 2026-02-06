@@ -70,46 +70,64 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
 
-  // Handle playback state changes - sync video elements
+  // Ref for current time so the sync interval can read it without being a dependency
+  const currentTimeRef = useRef(playback.currentTime);
+  currentTimeRef.current = playback.currentTime;
+
+  // Handle playback state changes - sync video/audio elements.
+  // Runs only when play state or clip/track structure changes, NOT every frame.
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
     const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
-    const trackById = new Map(tracks.map((track) => [track.id, track]));
 
-    // Collect all audible clips at current time.
-    // Top track (index 0) = foreground; iterate top-to-bottom
-    const sortedTracks = [...tracks];
-    const audibleClipIds = new Set<string>();
-    for (const track of sortedTracks) {
-      if (!track.visible || track.muted) continue;
-
-      const clip = getClipAtTime(track.id, playback.currentTime);
-      if (!clip || !clip.visible) continue;
-
-      if (clip.type === "video") {
-        const hasAudio = clip.hasAudio ?? true;
-        const audioMuted = clip.audioMuted ?? false;
-        const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
-        if (hasAudio && !audioMuted && audioVolume > 0) {
-          audibleClipIds.add(clip.id);
+    if (!playback.isPlaying) {
+      if (wasPlayingRef.current) {
+        // Playback stopped - pause all media.
+        for (const clip of videoClips) {
+          const video = videoElementsRef.current?.get(clip.sourceUrl);
+          if (!video) continue;
+          video.pause();
+          video.muted = true;
         }
-      } else if (clip.type === "audio") {
-        const audioMuted = clip.audioMuted ?? false;
-        const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
-        if (!audioMuted && audioVolume > 0) {
-          audibleClipIds.add(clip.id);
+        for (const clip of audioClips) {
+          const audio = audioElementsRef.current?.get(clip.sourceUrl);
+          if (!audio) continue;
+          audio.pause();
+          audio.muted = true;
         }
       }
+      wasPlayingRef.current = false;
+      return;
     }
 
-    if (playback.isPlaying) {
-      // Playback started/continued - sync and play all visible video clips for visual render.
+    // Sync and start/stop media elements
+    const syncMedia = () => {
+      const ct = currentTimeRef.current;
+      const trackById = new Map(tracks.map((t) => [t.id, t]));
+
+      // Collect audible clips at current time
+      const audibleClipIds = new Set<string>();
+      for (const track of tracks) {
+        if (!track.visible || track.muted) continue;
+        const clip = getClipAtTime(track.id, ct);
+        if (!clip || !clip.visible) continue;
+        if (clip.type === "video") {
+          if ((clip.hasAudio ?? true) && !(clip.audioMuted ?? false) && ((typeof clip.audioVolume === "number" ? clip.audioVolume : 100) > 0)) {
+            audibleClipIds.add(clip.id);
+          }
+        } else if (clip.type === "audio") {
+          if (!(clip.audioMuted ?? false) && ((typeof clip.audioVolume === "number" ? clip.audioVolume : 100) > 0)) {
+            audibleClipIds.add(clip.id);
+          }
+        }
+      }
+
       for (const clip of videoClips) {
         const video = videoElementsRef.current?.get(clip.sourceUrl);
         const track = trackById.get(clip.trackId);
         if (!video || !track || video.readyState < 2) continue;
 
-        const clipTime = playback.currentTime - clip.startTime;
+        const clipTime = ct - clip.startTime;
         if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible) {
           video.pause();
           video.muted = true;
@@ -117,67 +135,52 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(video.currentTime - sourceTime) > 0.1) {
+        // Only seek when drift is significant (0.3s), not on minor differences
+        if (Math.abs(video.currentTime - sourceTime) > 0.3) {
           video.currentTime = sourceTime;
         }
 
         video.playbackRate = playback.playbackRate;
-
         const isAudible = audibleClipIds.has(clip.id);
         video.muted = !isAudible;
         const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
         video.volume = isAudible ? Math.max(0, Math.min(1, clipVolume / 100)) : 0;
 
-        video.play().catch(() => {});
+        if (video.paused) video.play().catch(() => {});
       }
 
-      // Sync and play audio-only clips.
       for (const clip of audioClips) {
         const audio = audioElementsRef.current?.get(clip.sourceUrl);
         const track = trackById.get(clip.trackId);
         if (!audio || !track) continue;
 
-        const clipTime = playback.currentTime - clip.startTime;
-        if (
-          clipTime < 0 ||
-          clipTime >= clip.duration ||
-          !clip.visible ||
-          !track.visible ||
-          !audibleClipIds.has(clip.id)
-        ) {
+        const clipTime = ct - clip.startTime;
+        if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible || !audibleClipIds.has(clip.id)) {
           audio.pause();
           audio.muted = true;
           continue;
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(audio.currentTime - sourceTime) > 0.1) {
+        if (Math.abs(audio.currentTime - sourceTime) > 0.3) {
           audio.currentTime = sourceTime;
         }
 
         audio.playbackRate = playback.playbackRate;
         audio.muted = false;
         audio.volume = Math.max(0, Math.min(1, (clip.audioVolume ?? 100) / 100));
-        audio.play().catch(() => {});
-      }
-    } else if (wasPlayingRef.current) {
-      // Playback stopped - pause all videos and mute audio.
-      for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.sourceUrl);
-        if (!video) continue;
-        video.pause();
-        video.muted = true;
-      }
-      for (const clip of audioClips) {
-        const audio = audioElementsRef.current?.get(clip.sourceUrl);
-        if (!audio) continue;
-        audio.pause();
-        audio.muted = true;
-      }
-    }
 
-    wasPlayingRef.current = playback.isPlaying;
-  }, [playback.isPlaying, playback.currentTime, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
+        if (audio.paused) audio.play().catch(() => {});
+      }
+    };
+
+    syncMedia(); // Initial sync when playback starts
+    // Periodic re-sync for clip boundaries and drift correction (not every frame)
+    const intervalId = setInterval(syncMedia, 250);
+    wasPlayingRef.current = true;
+
+    return () => clearInterval(intervalId);
+  }, [playback.isPlaying, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
 
   // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
   useEffect(() => {
@@ -239,6 +242,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // During playback, skip render if any video clip isn't decoded yet.
+    // This keeps the previous frame visible instead of showing a blank flash.
+    if (playback.isPlaying) {
+      for (const track of tracks) {
+        if (!track.visible) continue;
+        const clip = getClipAtTime(track.id, playback.currentTime);
+        if (!clip || !clip.visible || clip.type !== "video") continue;
+        const videoElement = videoElementsRef.current.get(clip.sourceUrl);
+        if (!videoElement || videoElement.readyState < 2) {
+          return;
+        }
+      }
+    }
 
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
