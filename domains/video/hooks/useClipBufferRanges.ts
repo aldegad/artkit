@@ -15,20 +15,26 @@ export type ClipBufferMap = Map<string, ClipBufferRange[]>;
 /**
  * Polls video element buffered ranges for all video clips and returns
  * a map of clip-local buffered ranges for timeline visualization.
+ * Always includes an entry for every video clip (empty array if not buffered yet).
  */
 export function useClipBufferRanges(): ClipBufferMap {
   const { videoElementsRef } = useVideoRefs();
   const { clips } = useTimeline();
   const [bufferMap, setBufferMap] = useState<ClipBufferMap>(() => new Map());
   const prevSerialRef = useRef("");
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const computeBufferMap = useCallback((): ClipBufferMap => {
+  const checkBufferRanges = useCallback(() => {
     const map: ClipBufferMap = new Map();
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
 
     for (const clip of videoClips) {
       const video = videoElementsRef.current?.get(clip.sourceUrl);
-      if (!video) continue;
+      if (!video) {
+        // Video element not created yet — include with empty ranges
+        map.set(clip.id, []);
+        continue;
+      }
 
       const ranges: ClipBufferRange[] = [];
       const buffered = video.buffered;
@@ -49,38 +55,28 @@ export function useClipBufferRanges(): ClipBufferMap {
         }
       }
 
-      if (ranges.length > 0) {
-        map.set(clip.id, ranges);
-      }
+      map.set(clip.id, ranges);
     }
 
-    return map;
+    // Only update state if changed
+    const serial = JSON.stringify(Array.from(map.entries()));
+    if (serial !== prevSerialRef.current) {
+      prevSerialRef.current = serial;
+      setBufferMap(map);
+    }
   }, [clips, videoElementsRef]);
 
   useEffect(() => {
-    const update = () => {
-      const newMap = computeBufferMap();
-      const serial = JSON.stringify(Array.from(newMap.entries()));
-      if (serial !== prevSerialRef.current) {
-        prevSerialRef.current = serial;
-        setBufferMap(newMap);
-      }
-    };
-
-    // Listen to progress events on all video elements
-    const videos = videoElementsRef.current;
-    const handler = () => update();
-    videos?.forEach((video) => video.addEventListener("progress", handler));
-
-    // Fallback interval
-    const interval = setInterval(update, BUFFER.VISUAL_POLL_INTERVAL_MS);
-    update();
+    checkBufferRanges();
+    intervalRef.current = setInterval(checkBufferRanges, BUFFER.VISUAL_POLL_INTERVAL_MS);
 
     return () => {
-      clearInterval(interval);
-      videos?.forEach((video) => video.removeEventListener("progress", handler));
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [computeBufferMap, videoElementsRef]);
+  }, [checkBufferRanges]);
 
   return bufferMap;
 }
