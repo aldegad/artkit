@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import { useTimeline, useVideoState, useMask } from "../../contexts";
-import { useVideoCoordinates, useTimelineInput } from "../../hooks";
+import { useVideoCoordinates, useTimelineInput, useClipBufferRanges } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
 import { Playhead } from "./Playhead";
@@ -34,6 +34,7 @@ export function Timeline({ className }: TimelineProps) {
   const { project } = useVideoState();
   const { getMasksForTrack } = useMask();
   useVideoCoordinates();
+  const bufferMap = useClipBufferRanges();
 
   // Timeline input handling (clip drag, trim, seek)
   const { handleMouseDown: handleTimelineMouseDown } = useTimelineInput(tracksContainerRef);
@@ -318,6 +319,7 @@ export function Timeline({ className }: TimelineProps) {
                   track={track}
                   clips={getClipsInTrack(track.id)}
                   masks={getMasksForTrack(track.id)}
+                  bufferMap={bufferMap}
                 />
               ))}
 

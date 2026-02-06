@@ -7,9 +7,12 @@ import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { VideoClipIcon, AudioClipIcon, ImageClipIcon } from "@/shared/components/icons";
 import { UI } from "../../constants";
+import { ClipBufferBar } from "./ClipBufferBar";
+import type { ClipBufferRange } from "../../hooks/useClipBufferRanges";
 
 interface ClipProps {
   clip: ClipType;
+  bufferRanges?: ClipBufferRange[];
 }
 
 const waveformCache = new Map<string, number[]>();
@@ -66,7 +69,7 @@ async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   }
 }
 
-export function Clip({ clip }: ClipProps) {
+export function Clip({ clip, bufferRanges }: ClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
   const { selectedClipIds } = useVideoState();
   const clipHasAudio =
@@ -158,6 +161,11 @@ export function Clip({ clip }: ClipProps) {
             />
           ))}
         </div>
+      )}
+
+      {/* Buffer bar (video clips only) */}
+      {clip.type === "video" && bufferRanges && bufferRanges.length > 0 && (
+        <ClipBufferBar bufferRanges={bufferRanges} clipDuration={clip.duration} />
       )}
 
       {/* Trim handles */}
