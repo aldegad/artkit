@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
-import { Scrollbar } from "../../shared/components";
+import { Scrollbar, NumberScrubber } from "../../shared/components";
 import { ExportDropdown } from "../timeline";
 import { SpriteTrack } from "../../domains/sprite/types";
 import { compositeFrame } from "../../domains/sprite/utils/compositor";
@@ -156,18 +156,15 @@ export default function TimelineContent() {
         </button>
 
         {/* FPS */}
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-text-tertiary">FPS</span>
-          <input
-            type="range"
-            min={1}
-            max={60}
-            value={fps}
-            onChange={(e) => setFps(parseInt(e.target.value))}
-            className="w-16"
-          />
-          <span className="text-[10px] text-text-primary w-5 text-center">{fps}</span>
-        </div>
+        <NumberScrubber
+          value={fps}
+          onChange={setFps}
+          min={1}
+          max={60}
+          step={1}
+          label="FPS"
+          size="sm"
+        />
 
         {/* Frame counter */}
         <span className="text-[10px] text-text-secondary">
