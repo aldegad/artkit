@@ -3,7 +3,7 @@
 import React, { useState, useEffect, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
-import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon } from "@/shared/components/icons";
+import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
 
 // ============================================
 // Layer Thumbnail Component (memoized)
@@ -298,7 +298,7 @@ export default function LayersPanelContent() {
                     setDragOverLayerId(null);
                   }}
                   onClick={(e) => handleLayerClick(e, layer.id)}
-                  className={`flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
+                  className={`group/layer flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
                     isActive
                       ? "bg-accent-primary/20 border border-accent-primary/50"
                       : isSelected
@@ -358,23 +358,21 @@ export default function LayersPanelContent() {
                         className="w-full text-xs bg-surface-secondary border border-accent-primary/50 focus:outline-none px-1 rounded"
                       />
                     ) : (
-                      <div
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          const timeout = setTimeout(() => {
+                      <div className="flex items-center gap-0.5 min-w-0">
+                        <span className="text-xs px-1 truncate select-none">
+                          {layer.name}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setEditingLayerId(layer.id);
                             setEditingName(layer.name);
-                          }, 500);
-                          const handleUp = () => {
-                            clearTimeout(timeout);
-                            window.removeEventListener("mouseup", handleUp);
-                          };
-                          window.addEventListener("mouseup", handleUp);
-                        }}
-                        className="text-xs px-1 truncate cursor-default select-none"
-                        title="Long press to rename"
-                      >
-                        {layer.name}
+                          }}
+                          className="p-0.5 rounded text-text-quaternary hover:text-text-primary shrink-0 opacity-0 group-hover/layer:opacity-100 transition-opacity"
+                          title="Rename"
+                        >
+                          <PencilPresetIcon className="w-3 h-3" />
+                        </button>
                       </div>
                     )}
                     <span className="text-[10px] text-text-quaternary px-1">

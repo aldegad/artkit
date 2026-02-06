@@ -24,3 +24,4 @@ export type { MenuItem, MenuDropdownProps } from "./MenuBar";
 
 // Modals
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
+export { ExportModal } from "./ExportModal";
