@@ -182,6 +182,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setProject,
     setProjectName,
     selectClips,
+    selectMasksForTimeline,
     setToolMode,
   } = useVideoState();
 
@@ -319,6 +320,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           if (data.selectedClipIds) {
             selectClips(data.selectedClipIds);
           }
+          if (data.selectedMaskIds) {
+            selectMasksForTimeline(data.selectedMaskIds);
+          }
         }
       } catch (error) {
         console.error("Failed to load autosave:", error);
@@ -332,7 +336,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, selectClips, syncHistoryFlags]);
+  }, [setProject, setProjectName, setToolMode, selectClips, selectMasksForTimeline, syncHistoryFlags]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles

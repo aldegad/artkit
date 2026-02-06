@@ -36,6 +36,7 @@ export interface VideoAutosaveData extends BaseAutosaveData {
   // Tool state
   toolMode: VideoToolMode;
   selectedClipIds: string[];
+  selectedMaskIds?: string[];
 }
 
 const videoAutosave = createAutosave<VideoAutosaveData>({

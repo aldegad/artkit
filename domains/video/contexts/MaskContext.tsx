@@ -41,6 +41,7 @@ interface MaskContextValue {
   endMaskEdit: () => void;
   saveMaskData: () => void;
   addMask: (trackId: string, size: Size, startTime: number, duration: number) => string;
+  duplicateMask: (maskId: string) => string | null;
   deleteMask: (maskId: string) => void;
   updateMaskTime: (maskId: string, startTime: number, duration: number) => void;
   getMasksForTrack: (trackId: string) => MaskData[];
@@ -112,6 +113,19 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     });
     return mask.id;
   }, []);
+
+  // Duplicate a mask
+  const duplicateMask = useCallback((maskId: string): string | null => {
+    const source = masks.get(maskId);
+    if (!source) return null;
+    const newId = crypto.randomUUID();
+    setMasks((prev) => {
+      const next = new Map(prev);
+      next.set(newId, { ...source, id: newId });
+      return next;
+    });
+    return newId;
+  }, [masks]);
 
   // Delete a mask
   const deleteMask = useCallback((maskId: string) => {
@@ -335,6 +349,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     endMaskEdit,
     saveMaskData,
     addMask,
+    duplicateMask,
     deleteMask,
     updateMaskTime,
     getMasksForTrack,
