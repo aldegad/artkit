@@ -19,6 +19,10 @@ interface Translations {
   light: string;
   dark: string;
   system: string;
+  keymap: string;
+  auto: string;
+  mac: string;
+  windows: string;
   korean: string;
   english: string;
 
@@ -134,6 +138,20 @@ interface Translations {
   altClickToSetSource: string;
   resetEdit: string;
   opacity: string;
+  exportType: string;
+  mergeVisibleLayers: string;
+  selectedLayersAsZip: string;
+  fileNamePng: string;
+  zipFileName: string;
+  layerFileNamePattern: string;
+  placeholdersAvailable: string;
+  solidColor: string;
+  layerSelection: string;
+  noLayersAvailable: string;
+  hiddenLabel: string;
+  exporting: string;
+  noVisibleLayersToExport: string;
+  selectAtLeastOneLayerToExport: string;
   closePanel: string;
 
   // Composition Layers Panel
@@ -294,6 +312,10 @@ const translations: Record<Language, Translations> = {
     light: "라이트",
     dark: "다크",
     system: "시스템",
+    keymap: "키맵",
+    auto: "자동",
+    mac: "Mac",
+    windows: "Windows",
     korean: "한국어",
     english: "English",
 
@@ -409,6 +431,20 @@ const translations: Record<Language, Translations> = {
     altClickToSetSource: "Alt+클릭으로 소스 지정",
     resetEdit: "편집 초기화",
     opacity: "불투명도",
+    exportType: "내보내기 방식",
+    mergeVisibleLayers: "보이는 레이어 병합",
+    selectedLayersAsZip: "선택 레이어 ZIP",
+    fileNamePng: "파일 이름 (PNG)",
+    zipFileName: "ZIP 파일 이름",
+    layerFileNamePattern: "레이어 파일명 패턴",
+    placeholdersAvailable: "사용 가능한 플레이스홀더",
+    solidColor: "단색",
+    layerSelection: "레이어 선택",
+    noLayersAvailable: "레이어가 없습니다.",
+    hiddenLabel: "숨김",
+    exporting: "내보내는 중...",
+    noVisibleLayersToExport: "내보낼 수 있는 보이는 레이어가 없습니다.",
+    selectAtLeastOneLayerToExport: "내보낼 레이어를 최소 1개 선택하세요.",
     closePanel: "패널 닫기",
 
     // Composition Layers Panel
@@ -567,6 +603,10 @@ const translations: Record<Language, Translations> = {
     light: "Light",
     dark: "Dark",
     system: "System",
+    keymap: "Keymap",
+    auto: "Auto",
+    mac: "Mac",
+    windows: "Windows",
     korean: "한국어",
     english: "English",
 
@@ -682,6 +722,20 @@ const translations: Record<Language, Translations> = {
     altClickToSetSource: "Alt+click to set source",
     resetEdit: "Reset Edit",
     opacity: "Opacity",
+    exportType: "Export Type",
+    mergeVisibleLayers: "Merge Visible Layers",
+    selectedLayersAsZip: "Selected Layers as ZIP",
+    fileNamePng: "File Name (PNG)",
+    zipFileName: "ZIP File Name",
+    layerFileNamePattern: "Layer File Name Pattern",
+    placeholdersAvailable: "Available placeholders",
+    solidColor: "Solid Color",
+    layerSelection: "Layer Selection",
+    noLayersAvailable: "No layers available.",
+    hiddenLabel: "hidden",
+    exporting: "Exporting...",
+    noVisibleLayersToExport: "No visible layers to export.",
+    selectAtLeastOneLayerToExport: "Select at least one layer to export.",
     closePanel: "Close Panel",
 
     // Composition Layers Panel

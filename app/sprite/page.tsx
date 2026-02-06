@@ -569,6 +569,30 @@ function SpriteEditorMain() {
         if (canRedo) redo();
       }
 
+      // Ctrl+N / Cmd+N = New project
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        if (frames.length > 0 || imageSrc) {
+          if (window.confirm(t.newProjectConfirm)) {
+            newProject();
+          }
+        } else {
+          newProject();
+        }
+      }
+
+      // Ctrl+S / Cmd+S = Save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !e.shiftKey) {
+        e.preventDefault();
+        void saveProject();
+      }
+
+      // Ctrl+Shift+S / Cmd+Shift+S = Save As
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && e.shiftKey) {
+        e.preventDefault();
+        void saveProjectAs();
+      }
+
       // Ctrl+C / Cmd+C = Copy frame
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && !e.shiftKey) {
         e.preventDefault();
@@ -596,7 +620,21 @@ function SpriteEditorMain() {
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
     };
-  }, [setIsSpacePressed, undo, redo, canUndo, canRedo, copyFrame, pasteFrame]);
+  }, [
+    setIsSpacePressed,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    copyFrame,
+    pasteFrame,
+    frames.length,
+    imageSrc,
+    newProject,
+    saveProject,
+    saveProjectAs,
+    t.newProjectConfirm,
+  ]);
 
   // Handle new project with confirmation
   const handleNew = useCallback(() => {

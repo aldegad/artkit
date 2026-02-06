@@ -1081,9 +1081,19 @@ function VideoEditorContent() {
     }
 
     if (isCmd) {
+      if (key === "n") {
+        e.preventDefault();
+        void handleNew();
+        return;
+      }
       if (key === "z" && e.shiftKey) {
         e.preventDefault();
         handleRedo();
+        return;
+      }
+      if (key === "s" && e.shiftKey) {
+        e.preventDefault();
+        handleSaveAs();
         return;
       }
       if (key === "z") {
@@ -1186,7 +1196,9 @@ function VideoEditorContent() {
     stepForward,
     handleUndo,
     handleRedo,
+    handleNew,
     handleSave,
+    handleSaveAs,
     handleOpen,
     handleZoomIn,
     handleZoomOut,

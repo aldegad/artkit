@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useKeymap } from "../../../shared/contexts";
 import {
   MenuDropdown,
   SpinnerIcon,
@@ -66,13 +67,16 @@ export default function SpriteMenuBar({
   translations: t,
 }: SpriteMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "window" | null>(null);
+  const { resolvedKeymap } = useKeymap();
+  const cmd = resolvedKeymap === "mac" ? "⌘" : "Ctrl+";
+  const shiftCmd = resolvedKeymap === "mac" ? "⇧⌘" : "Ctrl+Shift+";
 
   const fileMenuItems: MenuItem[] = [
-    { label: t.new, onClick: onNew, shortcut: "⌘N" },
+    { label: t.new, onClick: onNew, shortcut: `${cmd}N` },
     { label: t.load, onClick: onLoad },
     { divider: true },
-    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: "⌘S" },
-    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
+    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: `${cmd}S` },
+    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: `${shiftCmd}S` },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
     { label: t.importSheet, onClick: onImportSheet },

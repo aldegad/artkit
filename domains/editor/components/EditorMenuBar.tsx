@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useKeymap } from "../../../shared/contexts";
 import {
   MenuDropdown,
   SpinnerIcon,
@@ -16,6 +17,7 @@ interface MenuBarProps {
   onLoad: () => void;
   onSave: () => void;
   onSaveAs: () => void;
+  onExport: () => void;
   onImportImage: () => void;
   onToggleLayers: () => void;
   isLayersOpen: boolean;
@@ -39,6 +41,7 @@ interface MenuBarProps {
     load: string;
     save: string;
     saveAs: string;
+    export: string;
     importImage: string;
     layers: string;
     showRulers: string;
@@ -58,6 +61,7 @@ export default function EditorMenuBar({
   onLoad,
   onSave,
   onSaveAs,
+  onExport,
   onImportImage,
   onToggleLayers,
   isLayersOpen,
@@ -75,13 +79,17 @@ export default function EditorMenuBar({
   translations: t,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "view" | "window" | null>(null);
+  const { resolvedKeymap } = useKeymap();
+  const cmd = resolvedKeymap === "mac" ? "⌘" : "Ctrl+";
+  const shiftCmd = resolvedKeymap === "mac" ? "⇧⌘" : "Ctrl+Shift+";
 
   const fileMenuItems: MenuItem[] = [
-    { label: t.new, onClick: onNew, shortcut: "⌘N" },
+    { label: t.new, onClick: onNew, shortcut: `${cmd}N` },
     { label: t.load, onClick: onLoad },
     { divider: true },
-    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: "⌘S" },
-    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
+    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: `${cmd}S` },
+    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: `${shiftCmd}S` },
+    { label: t.export, onClick: onExport, disabled: !canSave },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
   ];

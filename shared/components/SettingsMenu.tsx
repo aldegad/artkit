@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useTheme, useLanguage } from "../contexts";
+import { useTheme, useLanguage, useKeymap } from "../contexts";
 
 export default function SettingsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { language, setLanguage, t } = useLanguage();
+  const { keymap, setKeymap, resolvedKeymap } = useKeymap();
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -88,6 +89,48 @@ export default function SettingsMenu() {
                     ({resolvedTheme === "dark" ? t.dark : t.light})
                   </span>
                 )}
+              </button>
+            </div>
+          </div>
+
+          {/* Keymap section */}
+          <div className="p-3 border-b border-border-default">
+            <div className="text-xs font-medium text-text-tertiary mb-2">{t.keymap}</div>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => setKeymap("auto")}
+                className={`w-full px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center gap-2 ${
+                  keymap === "auto"
+                    ? "bg-accent-primary text-white"
+                    : "bg-surface-secondary hover:bg-surface-tertiary text-text-primary"
+                }`}
+              >
+                {t.auto}
+                {keymap === "auto" && (
+                  <span className="text-[10px] opacity-70">
+                    ({resolvedKeymap === "mac" ? t.mac : t.windows})
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setKeymap("mac")}
+                className={`w-full px-3 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                  keymap === "mac"
+                    ? "bg-accent-primary text-white"
+                    : "bg-surface-secondary hover:bg-surface-tertiary text-text-primary"
+                }`}
+              >
+                {t.mac}
+              </button>
+              <button
+                onClick={() => setKeymap("windows")}
+                className={`w-full px-3 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                  keymap === "windows"
+                    ? "bg-accent-primary text-white"
+                    : "bg-surface-secondary hover:bg-surface-tertiary text-text-primary"
+                }`}
+              >
+                {t.windows}
               </button>
             </div>
           </div>

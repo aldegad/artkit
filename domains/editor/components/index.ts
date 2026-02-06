@@ -5,6 +5,7 @@
 export { default as ProjectListModal } from "./ProjectListModal";
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 export { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
+export { ExportModal } from "./ExportModal";
 export { default as EditorMenuBar } from "./EditorMenuBar";
 export { default as LayersPanelContent } from "./LayersPanelContent";
 export { default as CanvasPanelContent } from "./CanvasPanelContent";

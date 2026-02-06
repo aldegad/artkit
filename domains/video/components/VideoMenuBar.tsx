@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useKeymap } from "../../../shared/contexts";
 import {
   MenuDropdown,
   SpinnerIcon,
@@ -84,32 +85,36 @@ export default function VideoMenuBar({
   translations: t,
 }: VideoMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | null>(null);
+  const { resolvedKeymap } = useKeymap();
+  const cmd = resolvedKeymap === "mac" ? "⌘" : "Ctrl+";
+  const shiftCmd = resolvedKeymap === "mac" ? "⇧⌘" : "Ctrl+Shift+";
+  const deleteKey = resolvedKeymap === "mac" ? "⌫" : "Delete";
 
   const fileMenuItems: MenuItem[] = [
-    { label: t.newProject, onClick: onNew, shortcut: "⌘N" },
-    { label: t.openProject, onClick: onOpen, shortcut: "⌘O" },
+    { label: t.newProject, onClick: onNew, shortcut: `${cmd}N` },
+    { label: t.openProject, onClick: onOpen, shortcut: `${cmd}O` },
     { divider: true },
-    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: "⌘S" },
-    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: "⇧⌘S" },
+    { label: t.save, onClick: onSave, disabled: !canSave, shortcut: `${cmd}S` },
+    { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: `${shiftCmd}S` },
     { divider: true },
     { label: t.importMedia, onClick: onImportMedia },
     { label: t.exportVideo, onClick: onExport, disabled: !canSave },
   ];
 
   const editMenuItems: MenuItem[] = [
-    { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: "⌘Z" },
-    { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: "⇧⌘Z" },
+    { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: `${cmd}Z` },
+    { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: `${shiftCmd}Z` },
     { divider: true },
-    { label: t.cut, onClick: onCut, disabled: !hasSelection, shortcut: "⌘X" },
-    { label: t.copy, onClick: onCopy, disabled: !hasSelection, shortcut: "⌘C" },
-    { label: t.paste, onClick: onPaste, disabled: !hasClipboard, shortcut: "⌘V" },
-    { label: t.delete, onClick: onDelete, disabled: !hasSelection, shortcut: "⌫" },
+    { label: t.cut, onClick: onCut, disabled: !hasSelection, shortcut: `${cmd}X` },
+    { label: t.copy, onClick: onCopy, disabled: !hasSelection, shortcut: `${cmd}C` },
+    { label: t.paste, onClick: onPaste, disabled: !hasClipboard, shortcut: `${cmd}V` },
+    { label: t.delete, onClick: onDelete, disabled: !hasSelection, shortcut: deleteKey },
   ];
 
   const viewMenuItems: MenuItem[] = [
-    { label: t.zoomIn, onClick: onZoomIn, shortcut: "⌘+" },
-    { label: t.zoomOut, onClick: onZoomOut, shortcut: "⌘-" },
-    { label: t.fitToScreen, onClick: onFitToScreen, shortcut: "⌘0" },
+    { label: t.zoomIn, onClick: onZoomIn, shortcut: `${cmd}+` },
+    { label: t.zoomOut, onClick: onZoomOut, shortcut: `${cmd}-` },
+    { label: t.fitToScreen, onClick: onFitToScreen, shortcut: `${cmd}0` },
     { divider: true },
     { label: t.timeline, onClick: onToggleTimeline, checked: showTimeline },
   ];

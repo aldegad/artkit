@@ -2,10 +2,10 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
-import { Tooltip, Select, Scrollbar } from "../../shared/components";
+import { Tooltip, Scrollbar } from "../../shared/components";
+import { downloadBlob } from "../../shared/utils";
 import {
   EditorToolMode,
-  OutputFormat,
   SavedImageProject,
   UnifiedLayer,
   HistoryAdapter,
@@ -34,6 +34,7 @@ import {
   EditorStatusBar,
   PanModeToggle,
   EditorMenuBar,
+  ExportModal,
   EditorLayersProvider,
   LayersPanelContent,
   EditorCanvasProvider,
@@ -158,6 +159,15 @@ function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
   };
 }
 
+function sanitizeFileName(name: string): string {
+  const sanitized = name
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/\s+/g, " ");
+
+  return sanitized || "export";
+}
+
 // Main export - wraps with all providers
 export default function ImageEditor() {
   return (
@@ -187,6 +197,14 @@ function ImageEditorContent() {
 
   // Loading state for async operations
   const [isLoading, setIsLoading] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMode, setExportMode] = useState<"merged" | "layers">("merged");
+  const [exportFileName, setExportFileName] = useState("edited-image");
+  const [exportNamePattern, setExportNamePattern] = useState("{index}-{name}");
+  const [exportBackground, setExportBackground] = useState<"transparent" | "color">("transparent");
+  const [exportBackgroundColor, setExportBackgroundColor] = useState("#ffffff");
+  const [exportLayerIds, setExportLayerIds] = useState<string[]>([]);
 
   // Transform discard confirmation state
   const [showTransformDiscardConfirm, setShowTransformDiscardConfirm] = useState(false);
@@ -198,8 +216,6 @@ function ImageEditorContent() {
     state: {
       canvasSize,
       rotation,
-      outputFormat,
-      quality,
       toolMode,
       zoom,
       pan,
@@ -217,8 +233,6 @@ function ImageEditorContent() {
     },
     setCanvasSize,
     setRotation,
-    setOutputFormat,
-    setQuality,
     setToolMode,
     setZoom,
     setPan,
@@ -1155,13 +1169,6 @@ function ImageEditorContent() {
   // Background removal handler - moved to useBackgroundRemoval hook
   // selectAllCrop and clearCrop - moved to useCropTool hook
 
-  const clearEdits = () => {
-    if (confirm(t.clearEditConfirm)) {
-      const { width, height } = getDisplayDimensions();
-      initLayers(width, height);
-    }
-  };
-
   const fitToScreen = () => {
     if (!containerRef.current || !canvasSize.width) return;
     const container = containerRef.current;
@@ -1278,124 +1285,184 @@ function ImageEditorContent() {
     }, 0);
   }, [cropArea, layers, activeLayerId, rotation, setLayers, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
 
-  const exportImage = useCallback(() => {
-    // Check if we have any layers to export
+  const getExportBounds = useCallback(() => {
+    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+    const width = Math.max(1, Math.round(cropArea ? cropArea.width : displayWidth));
+    const height = Math.max(1, Math.round(cropArea ? cropArea.height : displayHeight));
+    const cropX = Math.round(cropArea?.x ?? 0);
+    const cropY = Math.round(cropArea?.y ?? 0);
+
+    return { width, height, cropX, cropY };
+  }, [cropArea, getDisplayDimensions]);
+
+  const renderLayersToExportCanvas = useCallback(
+    (
+      layersToRender: UnifiedLayer[],
+      background: "transparent" | "color",
+      backgroundColor: string
+    ): HTMLCanvasElement | null => {
+      const { width, height, cropX, cropY } = getExportBounds();
+
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = width;
+      exportCanvas.height = height;
+      const ctx = exportCanvas.getContext("2d");
+      if (!ctx) return null;
+
+      if (background === "color") {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      const sorted = [...layersToRender].sort((a, b) => a.zIndex - b.zIndex);
+
+      for (const layer of sorted) {
+        const layerCanvas = layerCanvasesRef.current.get(layer.id);
+        if (!layerCanvas) continue;
+
+        const posX = (layer.position?.x || 0) - cropX;
+        const posY = (layer.position?.y || 0) - cropY;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity / 100));
+        ctx.drawImage(layerCanvas, posX, posY);
+        ctx.restore();
+      }
+
+      return exportCanvas;
+    },
+    [getExportBounds, layerCanvasesRef]
+  );
+
+  const openExportModal = useCallback(() => {
     if (layers.length === 0) return;
 
-    const exportCanvas = document.createElement("canvas");
-    const ctx = exportCanvas.getContext("2d");
-    if (!ctx) return;
+    const validSelectedIds = selectedLayerIds.filter((id) => layers.some((layer) => layer.id === id));
+    const fallbackSelection =
+      validSelectedIds.length > 0
+        ? validSelectedIds
+        : activeLayerId && layers.some((layer) => layer.id === activeLayerId)
+          ? [activeLayerId]
+          : layers.map((layer) => layer.id);
 
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+    setExportMode("merged");
+    setExportFileName(projectName || "edited-image");
+    setExportNamePattern("{index}-{name}");
+    setExportBackground("transparent");
+    setExportBackgroundColor("#ffffff");
+    setExportLayerIds(fallbackSelection);
+    setIsExportModalOpen(true);
+  }, [layers, selectedLayerIds, activeLayerId, projectName]);
 
-    // Create composite canvas from all visible layers
-    const compositeCanvas = document.createElement("canvas");
-    compositeCanvas.width = displayWidth;
-    compositeCanvas.height = displayHeight;
-    const compositeCtx = compositeCanvas.getContext("2d");
-    if (!compositeCtx) return;
-
-    // Draw all visible layers in order (bottom to top)
-    layers.forEach((layer) => {
-      if (!layer.visible) return;
-
-      const layerCanvas = layerCanvasesRef.current.get(layer.id);
-      if (!layerCanvas) return;
-
-      // Apply layer opacity
-      compositeCtx.globalAlpha = layer.opacity;
-      compositeCtx.drawImage(layerCanvas, 0, 0);
-      compositeCtx.globalAlpha = 1;
-    });
-
-    if (cropArea) {
-      exportCanvas.width = Math.round(cropArea.width);
-      exportCanvas.height = Math.round(cropArea.height);
-
-      // Check if crop extends beyond canvas (canvas expand mode)
-      const extendsLeft = cropArea.x < 0;
-      const extendsTop = cropArea.y < 0;
-      const extendsRight = cropArea.x + cropArea.width > displayWidth;
-      const extendsBottom = cropArea.y + cropArea.height > displayHeight;
-      const extendsCanvas = extendsLeft || extendsTop || extendsRight || extendsBottom;
-
-      if (extendsCanvas) {
-        // Fill with white background for JPEG (which doesn't support transparency)
-        if (outputFormat === "jpeg") {
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, cropArea.width, cropArea.height);
-        }
-        // For PNG/WebP, leave transparent (canvas is transparent by default)
-
-        // Calculate the intersection of crop area with canvas
-        const srcX = Math.max(0, cropArea.x);
-        const srcY = Math.max(0, cropArea.y);
-        const srcRight = Math.min(displayWidth, cropArea.x + cropArea.width);
-        const srcBottom = Math.min(displayHeight, cropArea.y + cropArea.height);
-        const srcWidth = srcRight - srcX;
-        const srcHeight = srcBottom - srcY;
-
-        // Calculate destination position (where to draw in export canvas)
-        const destX = srcX - cropArea.x;
-        const destY = srcY - cropArea.y;
-
-        // Only draw if there's actual intersection with canvas
-        if (srcWidth > 0 && srcHeight > 0) {
-          ctx.drawImage(
-            compositeCanvas,
-            srcX,
-            srcY,
-            srcWidth,
-            srcHeight,
-            destX,
-            destY,
-            srcWidth,
-            srcHeight,
-          );
-        }
-      } else {
-        // Normal crop within canvas bounds
-        ctx.drawImage(
-          compositeCanvas,
-          Math.round(cropArea.x),
-          Math.round(cropArea.y),
-          Math.round(cropArea.width),
-          Math.round(cropArea.height),
-          0,
-          0,
-          Math.round(cropArea.width),
-          Math.round(cropArea.height),
-        );
-      }
-    } else {
-      exportCanvas.width = displayWidth;
-      exportCanvas.height = displayHeight;
-      // Fill with white background for JPEG
-      if (outputFormat === "jpeg") {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, displayWidth, displayHeight);
-      }
-      ctx.drawImage(compositeCanvas, 0, 0);
-    }
-
-    const mimeType =
-      outputFormat === "webp" ? "image/webp" : outputFormat === "jpeg" ? "image/jpeg" : "image/png";
-
-    exportCanvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
-        link.href = url;
-        link.download = `${projectName || "edited-image"}.${ext}`;
-        link.click();
-        URL.revokeObjectURL(url);
-      },
-      mimeType,
-      quality,
+  const toggleExportLayer = useCallback((layerId: string) => {
+    setExportLayerIds((prev) =>
+      prev.includes(layerId) ? prev.filter((id) => id !== layerId) : [...prev, layerId]
     );
-  }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
+  }, []);
+
+  const selectAllExportLayers = useCallback(() => {
+    setExportLayerIds(layers.map((layer) => layer.id));
+  }, [layers]);
+
+  const clearExportLayerSelection = useCallback(() => {
+    setExportLayerIds([]);
+  }, []);
+
+  const handleExport = useCallback(async () => {
+    if (isExporting || layers.length === 0) return;
+
+    const safeFileName = sanitizeFileName(exportFileName || (projectName || "edited-image"));
+    setIsExporting(true);
+
+    try {
+      if (exportMode === "merged") {
+        const visibleLayers = layers.filter((layer) => layer.visible);
+        if (visibleLayers.length === 0) {
+          alert(t.noVisibleLayersToExport);
+          return;
+        }
+
+        const canvas = renderLayersToExportCanvas(
+          visibleLayers,
+          exportBackground,
+          exportBackgroundColor
+        );
+        if (!canvas) throw new Error("Failed to render export canvas.");
+
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob(resolve, "image/png");
+        });
+        if (!blob) throw new Error("Failed to create image blob.");
+
+        downloadBlob(blob, `${safeFileName}.png`);
+      } else {
+        const selectedLayers = layers.filter((layer) => exportLayerIds.includes(layer.id));
+        if (selectedLayers.length === 0) {
+          alert(t.selectAtLeastOneLayerToExport);
+          return;
+        }
+
+        const JSZip = (await import("jszip")).default;
+        const zip = new JSZip();
+        const sortedSelectedLayers = [...selectedLayers].sort((a, b) => a.zIndex - b.zIndex);
+        const pattern = exportNamePattern.trim() || "{index}-{name}";
+
+        for (let i = 0; i < sortedSelectedLayers.length; i += 1) {
+          const layer = sortedSelectedLayers[i];
+          const layerCanvas = renderLayersToExportCanvas(
+            [layer],
+            exportBackground,
+            exportBackgroundColor
+          );
+          if (!layerCanvas) continue;
+
+          const layerBlob = await new Promise<Blob | null>((resolve) => {
+            layerCanvas.toBlob(resolve, "image/png");
+          });
+          if (!layerBlob) continue;
+
+          const safeLayerName = sanitizeFileName(layer.name || `layer-${i + 1}`);
+          const layerFileName = sanitizeFileName(
+            pattern
+              .replace(/\{index\}/g, String(i + 1).padStart(2, "0"))
+              .replace(/\{name\}/g, safeLayerName)
+          );
+
+          zip.file(`${layerFileName}.png`, await layerBlob.arrayBuffer());
+        }
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        downloadBlob(zipBlob, `${safeFileName}.zip`);
+      }
+
+      setIsExportModalOpen(false);
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [
+    isExporting,
+    layers,
+    exportFileName,
+    projectName,
+    exportMode,
+    exportLayerIds,
+    exportNamePattern,
+    exportBackground,
+    exportBackgroundColor,
+    renderLayersToExportCanvas,
+    t.noVisibleLayersToExport,
+    t.selectAtLeastOneLayerToExport,
+    t.exportFailed,
+  ]);
+
+  useEffect(() => {
+    if (!isExportModalOpen) return;
+
+    setExportLayerIds((prev) => prev.filter((id) => layers.some((layer) => layer.id === id)));
+  }, [isExportModalOpen, layers]);
 
   // Get cursor based on tool mode
   const getCursor = () => {
@@ -1625,25 +1692,6 @@ function ImageEditorContent() {
     isInitialized: isInitializedRef.current,
   });
 
-  // Cmd+S keyboard shortcut for save
-  useEffect(() => {
-    const handleSave = async (e: KeyboardEvent) => {
-      if (e.code === "KeyS" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        if (layers.length > 0) {
-          try {
-            await handleSaveProject();
-          } catch (error) {
-            alert(`${t.saveFailed}: ${(error as Error).message}`);
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleSave);
-    return () => window.removeEventListener("keydown", handleSave);
-  }, [layers.length, handleSaveProject, t.saveFailed]);
-
   // Load a saved project
   const handleLoadProject = useCallback(
     async (projectMeta: SavedImageProject) => {
@@ -1743,6 +1791,56 @@ function ImageEditorContent() {
     editCanvasRef.current = null;
     clearHistory();
   }, [layers.length, t]);
+
+  // File shortcuts: New / Save / Save As
+  useEffect(() => {
+    const handleFileShortcuts = async (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      const hasCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (!hasCmdOrCtrl) return;
+
+      if (e.code === "KeyN") {
+        e.preventDefault();
+        handleNewCanvas();
+        return;
+      }
+
+      if (e.code === "KeyS" && e.shiftKey) {
+        e.preventDefault();
+        if (layers.length > 0) {
+          try {
+            await handleSaveAsProject();
+          } catch (error) {
+            alert(`${t.saveFailed}: ${(error as Error).message}`);
+          }
+        }
+        return;
+      }
+
+      if (e.code === "KeyS") {
+        e.preventDefault();
+        if (layers.length > 0) {
+          try {
+            await handleSaveProject();
+          } catch (error) {
+            alert(`${t.saveFailed}: ${(error as Error).message}`);
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleFileShortcuts);
+    return () => window.removeEventListener("keydown", handleFileShortcuts);
+  }, [layers.length, handleNewCanvas, handleSaveProject, handleSaveAsProject, t.saveFailed]);
 
   const toolButtons: {
     mode: ToolMode;
@@ -1960,6 +2058,7 @@ function ImageEditorContent() {
           onLoad={() => setIsProjectListOpen(true)}
           onSave={handleSaveProject}
           onSaveAs={handleSaveAsProject}
+          onExport={openExportModal}
           onImportImage={() => fileInputRef.current?.click()}
           canSave={layers.length > 0}
           isLoading={isLoading || isSaving}
@@ -1980,6 +2079,7 @@ function ImageEditorContent() {
             load: t.load,
             save: t.save,
             saveAs: t.saveAs,
+            export: t.export,
             importImage: t.importImage,
             layers: t.layers,
             showRulers: t.showRulers,
@@ -2218,52 +2318,7 @@ function ImageEditorContent() {
             </button>
           </div>
 
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Output format */}
-          <div className="flex items-center gap-1">
-            <Select
-              value={outputFormat}
-              onChange={(value) => setOutputFormat(value as OutputFormat)}
-              options={[
-                { value: "png", label: "PNG" },
-                { value: "webp", label: "WebP" },
-                { value: "jpeg", label: "JPEG" },
-              ]}
-              size="sm"
-            />
-            {outputFormat !== "png" && (
-              <>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1"
-                  step="0.1"
-                  value={quality}
-                  onChange={(e) => setQuality(parseFloat(e.target.value))}
-                  className="w-12 accent-accent-primary"
-                />
-                <span className="text-xs w-6">{Math.round(quality * 100)}%</span>
-              </>
-            )}
-          </div>
-
           <div className="flex-1 min-w-0" />
-
-          <button
-            onClick={clearEdits}
-            className="px-2 py-1 bg-accent-warning hover:bg-accent-warning/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
-            title={t.resetEdit}
-          >
-            {t.reset}
-          </button>
-
-          <button
-            onClick={exportImage}
-            className="px-2 py-1 bg-accent-success hover:bg-accent-success/80 text-white rounded text-xs transition-colors shrink-0 whitespace-nowrap"
-          >
-            Export
-          </button>
           </div>
         </Scrollbar>
       )}
@@ -2326,6 +2381,51 @@ function ImageEditorContent() {
         {/* Mobile Pan Mode Toggle - draggable floating button */}
         {layers.length > 0 && <PanModeToggle />}
       </div>
+
+      <ExportModal
+        isOpen={isExportModalOpen}
+        isExporting={isExporting}
+        layers={layers}
+        selectedLayerIds={exportLayerIds}
+        mode={exportMode}
+        fileName={exportFileName}
+        namePattern={exportNamePattern}
+        background={exportBackground}
+        backgroundColor={exportBackgroundColor}
+        onClose={() => {
+          if (!isExporting) setIsExportModalOpen(false);
+        }}
+        onModeChange={setExportMode}
+        onFileNameChange={setExportFileName}
+        onNamePatternChange={setExportNamePattern}
+        onBackgroundChange={setExportBackground}
+        onBackgroundColorChange={setExportBackgroundColor}
+        onToggleLayer={toggleExportLayer}
+        onSelectAllLayers={selectAllExportLayers}
+        onClearLayerSelection={clearExportLayerSelection}
+        onExport={handleExport}
+        translations={{
+          title: t.export,
+          exportType: t.exportType,
+          mergeVisibleLayers: t.mergeVisibleLayers,
+          selectedLayersAsZip: t.selectedLayersAsZip,
+          fileNamePng: t.fileNamePng,
+          zipFileName: t.zipFileName,
+          layerFileNamePattern: t.layerFileNamePattern,
+          placeholdersAvailable: t.placeholdersAvailable,
+          background: t.background,
+          transparent: t.transparent,
+          solidColor: t.solidColor,
+          layerSelection: t.layerSelection,
+          selectAll: t.selectAll,
+          clear: t.clear,
+          noLayersAvailable: t.noLayersAvailable,
+          hiddenLabel: t.hiddenLabel,
+          cancel: t.cancel,
+          export: t.export,
+          exporting: t.exporting,
+        }}
+      />
 
       {/* Background Removal Modals */}
       <BackgroundRemovalModals
@@ -2436,6 +2536,7 @@ interface EditorMenuBarInnerProps {
   onLoad: () => void;
   onSave: () => void;
   onSaveAs: () => void;
+  onExport: () => void;
   onImportImage: () => void;
   canSave: boolean;
   isLoading?: boolean;
@@ -2457,6 +2558,7 @@ interface EditorMenuBarInnerProps {
     load: string;
     save: string;
     saveAs: string;
+    export: string;
     importImage: string;
     layers: string;
     showRulers: string;
