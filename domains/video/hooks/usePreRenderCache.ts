@@ -11,6 +11,10 @@ const cachedFrameSet = new Set<number>();
 let cacheVersion = 0;
 let totalFrameCount = 0;
 
+// Monotonically increasing counter — each pre-render loop gets a unique generation.
+// When a new loop starts, old loops detect the mismatch and exit.
+let renderGeneration = 0;
+
 // Simple event emitter for cache status updates
 type CacheStatusListener = () => void;
 const cacheListeners = new Set<CacheStatusListener>();
@@ -135,8 +139,6 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   }, [masks]);
 
   const isPreRenderingRef = useRef(false);
-  const cancelRef = useRef(false);
-  const versionRef = useRef(cacheVersion);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -167,12 +169,12 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
+    // Bump generation — any older loop will see the mismatch and exit
+    renderGeneration++;
+    const myGeneration = renderGeneration;
+
     if (isPreRenderingRef.current) return;
     isPreRenderingRef.current = true;
-    cancelRef.current = false;
-
-    const myVersion = cacheVersion;
-    versionRef.current = myVersion;
 
     // Init offscreen canvases
     if (!offscreenCanvasRef.current) {
@@ -218,7 +220,8 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     }
 
     for (const frameIdx of queue) {
-      if (cancelRef.current || versionRef.current !== myVersion) break;
+      // Check if this loop instance is still the active one
+      if (myGeneration !== renderGeneration) break;
       if (frameCache.size >= PRE_RENDER.MAX_FRAMES) break;
       if (cachedFrameSet.has(frameIdx)) continue;
 
@@ -248,8 +251,8 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         }
       }
 
-      // Check cancel again after async wait
-      if (cancelRef.current || versionRef.current !== myVersion) break;
+      // Check again after async wait
+      if (myGeneration !== renderGeneration) break;
 
       // Render composite frame to offscreen canvas
       oscCtx.clearRect(0, 0, cacheW, cacheH);
@@ -273,7 +276,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       try {
         const bitmap = await createImageBitmap(osc);
         // Final check before storing
-        if (cancelRef.current || versionRef.current !== myVersion) {
+        if (myGeneration !== renderGeneration) {
           bitmap.close();
           break;
         }
@@ -288,11 +291,15 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       await new Promise((r) => setTimeout(r, PRE_RENDER.BATCH_DELAY_MS));
     }
 
-    isPreRenderingRef.current = false;
+    // Only reset flag if we're still the active generation
+    if (myGeneration === renderGeneration) {
+      isPreRenderingRef.current = false;
+    }
   }, [currentTimeRef]);
 
   const stopPreRender = useCallback(() => {
-    cancelRef.current = true;
+    // Bump generation so any running loop exits at the next check
+    renderGeneration++;
     isPreRenderingRef.current = false;
   }, []);
 
@@ -349,5 +356,5 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     };
   }, [stopPreRender]);
 
-  return { getCachedFrame };
+  return { getCachedFrame, isPreRenderingRef };
 }
