@@ -73,14 +73,22 @@ export const SidebarIconsIcon: React.FC<IconProps> = ({ className = "w-5 h-5" })
 
 export const ArtkitIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* 붓 손잡이 */}
-    <path strokeLinecap="round" strokeWidth={2} d="M21 3l-9 9" />
-    {/* 붓끝 (두꺼운 브리슬) */}
-    <path strokeLinecap="round" strokeWidth={4} d="M12 12l-3.5 3.5" />
-    {/* 물감 점들 (팔레트처럼 붓을 감싸는 호) */}
-    <circle cx="4" cy="10" r="1.3" fill="currentColor" stroke="none" />
-    <circle cx="3" cy="15" r="1.3" fill="currentColor" stroke="none" />
-    <circle cx="5" cy="20" r="1.3" fill="currentColor" stroke="none" />
-    <circle cx="11" cy="22" r="1.3" fill="currentColor" stroke="none" />
+    {/* A - 붓 터치 왼쪽 다리 (곡선 끝 = 브러시 느낌) */}
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.5 3L4.5 17c-.5 1-1 2-1.5 2.5" />
+    {/* A - 오른쪽 다리 */}
+    <path strokeLinecap="round" strokeWidth={1.5} d="M8.5 3L11 20" opacity={0.5} />
+    {/* A - 가로줄 */}
+    <path strokeLinecap="round" strokeWidth={2} d="M5.5 14h4.5" />
+    {/* K - 세로줄 */}
+    <path strokeLinecap="round" strokeWidth={2.5} d="M14.5 20V3" />
+    {/* K - 위쪽 대각선 */}
+    <path strokeLinecap="round" strokeWidth={2} d="M14.5 12l5-5.5" />
+    {/* K - 아래쪽 대각선 */}
+    <path strokeLinecap="round" strokeWidth={1.5} d="M16 10l3.5 10" opacity={0.5} />
+    {/* 물감 점들 (AK 주위를 팔레트처럼 두르는 호) */}
+    <circle cx="1.5" cy="2" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="1" r="1" fill="currentColor" stroke="none" />
+    <circle cx="20.5" cy="5.5" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="22" cy="13" r="1" fill="currentColor" stroke="none" />
   </svg>
 );
