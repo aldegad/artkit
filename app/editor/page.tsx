@@ -49,6 +49,7 @@ import {
   useEditorSave,
   BackgroundRemovalModals,
   TransformDiscardConfirmModal,
+  ExportLayersModal,
   EditorToolOptions,
   EditorStatusBar,
   PanModeToggle,
@@ -209,6 +210,7 @@ function ImageEditorContent() {
 
   // Transform discard confirmation state
   const [showTransformDiscardConfirm, setShowTransformDiscardConfirm] = useState(false);
+  const [showExportLayersModal, setShowExportLayersModal] = useState(false);
   const pendingToolModeRef = useRef<EditorToolMode | null>(null);
   const previousToolModeRef = useRef<EditorToolMode | null>(null);
 
@@ -1417,7 +1419,7 @@ function ImageEditorContent() {
   }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
 
   // Export each selected layer individually at canvas size
-  const exportSelectedLayers = useCallback(() => {
+  const exportSelectedLayers = useCallback((backgroundColor: string | null) => {
     const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
     if (targetIds.length === 0) return;
 
@@ -1440,8 +1442,11 @@ function ImageEditorContent() {
       const ctx = exportCanvas.getContext("2d");
       if (!ctx) return;
 
-      // Fill with white background for JPEG
-      if (outputFormat === "jpeg") {
+      // Fill with background color if specified, or white for JPEG
+      if (backgroundColor) {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, displayWidth, displayHeight);
+      } else if (outputFormat === "jpeg") {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, displayWidth, displayHeight);
       }
@@ -1930,7 +1935,7 @@ function ImageEditorContent() {
           onSaveAs={handleSaveAsProject}
           onImportImage={() => fileInputRef.current?.click()}
           onExport={exportImage}
-          onExportLayers={exportSelectedLayers}
+          onExportLayers={() => setShowExportLayersModal(true)}
           canSave={layers.length > 0}
           hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
           isLoading={isLoading || isSaving}
@@ -2258,6 +2263,31 @@ function ImageEditorContent() {
           discard: "취소하고 전환",
           apply: "적용하고 전환",
           cancel: "돌아가기",
+        }}
+      />
+
+      {/* Export Layers Modal */}
+      <ExportLayersModal
+        show={showExportLayersModal}
+        onClose={() => setShowExportLayersModal(false)}
+        onExport={(backgroundColor: string | null) => {
+          setShowExportLayersModal(false);
+          exportSelectedLayers(backgroundColor);
+        }}
+        layerCount={
+          selectedLayerIds.length > 0
+            ? selectedLayerIds.length
+            : activeLayerId
+              ? 1
+              : 0
+        }
+        translations={{
+          title: t.exportLayersTitle,
+          backgroundColor: t.backgroundColor,
+          transparent: t.transparent,
+          export: t.export,
+          cancel: t.cancel,
+          layerCount: t.layerCount,
         }}
       />
 

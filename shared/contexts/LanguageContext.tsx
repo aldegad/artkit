@@ -71,6 +71,8 @@ interface Translations {
   storage: string;
   export: string;
   exportLayers: string;
+  exportLayersTitle: string;
+  backgroundColor: string;
   import: string;
   importComplete: string;
   added: string;
@@ -348,6 +350,8 @@ const translations: Record<Language, Translations> = {
     storage: "저장소",
     export: "내보내기",
     exportLayers: "레이어 개별 내보내기",
+    exportLayersTitle: "레이어 내보내기",
+    backgroundColor: "배경색",
     import: "가져오기",
     importComplete: "가져오기 완료!",
     added: "추가됨",
@@ -623,6 +627,8 @@ const translations: Record<Language, Translations> = {
     storage: "Storage",
     export: "Export",
     exportLayers: "Export Layers",
+    exportLayersTitle: "Export Layers",
+    backgroundColor: "Background Color",
     import: "Import",
     importComplete: "Import complete!",
     added: "added",
