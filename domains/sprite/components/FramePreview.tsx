@@ -6,6 +6,7 @@ import { useLanguage } from "../../../shared/contexts";
 import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
+import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 
 // ============================================
 // Icon Components
@@ -92,6 +93,32 @@ export default function FramePreviewContent() {
   });
 
   const viewportSync = viewport.useReactSync(16);
+
+  // ---- Sync viewport to Zustand store for autosave ----
+  const vpStore = useSpriteViewportStore();
+  const uiStore = useSpriteUIStore();
+
+  useEffect(() => {
+    const unsub = viewport.onViewportChange((state) => {
+      vpStore.setFrameEditZoom(state.zoom);
+      vpStore.setFrameEditPan(state.pan);
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewport]);
+
+  // Restore viewport from autosave on load
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || uiStore.isAutosaveLoading) return;
+    restoredRef.current = true;
+    const { frameEditZoom, frameEditPan } = useSpriteViewportStore.getState();
+    if (frameEditZoom > 0) {
+      viewport.setZoom(frameEditZoom);
+      viewport.setPan(frameEditPan);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiStore.isAutosaveLoading]);
 
   // ---- Render scheduler ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
@@ -451,43 +478,8 @@ export default function FramePreviewContent() {
             <EyedropperIcon />
           </button>
         </div>
-      </div>
 
-      {/* Tool options bar (below toolbar) */}
-      <div className="flex items-center gap-2 px-3 py-1 border-b border-border-default bg-surface-secondary/50 shrink-0">
-        {(editToolMode === "brush" || editToolMode === "eraser") && (
-          <>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="color"
-                value={brushColor}
-                onChange={(e) => setBrushColor(e.target.value)}
-                className="w-5 h-5 rounded cursor-pointer border border-border-default"
-                style={{ backgroundColor: brushColor }}
-              />
-              <span className="text-[10px] text-text-tertiary font-mono">{brushColor}</span>
-            </div>
-
-            <div className="h-4 w-px bg-border-default" />
-
-            <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-text-secondary">{t.size}:</label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={brushSize}
-                onChange={(e) => setBrushSize(Number(e.target.value))}
-                className="w-14 h-1 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="text-[10px] text-text-secondary w-3">{brushSize}</span>
-            </div>
-
-            <div className="h-4 w-px bg-border-default" />
-          </>
-        )}
-
-        {/* Zoom control (always visible) */}
+        {/* Zoom control */}
         <div className="flex items-center gap-1 ml-auto">
           <button
             onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
@@ -504,6 +496,37 @@ export default function FramePreviewContent() {
           </button>
         </div>
       </div>
+
+      {/* Tool options bar (below toolbar) - only shown for brush/eraser */}
+      {(editToolMode === "brush" || editToolMode === "eraser") && (
+        <div className="flex items-center gap-2 px-3 py-1 border-b border-border-default bg-surface-secondary/50 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="color"
+              value={brushColor}
+              onChange={(e) => setBrushColor(e.target.value)}
+              className="w-5 h-5 rounded cursor-pointer border border-border-default"
+              style={{ backgroundColor: brushColor }}
+            />
+            <span className="text-[10px] text-text-tertiary font-mono">{brushColor}</span>
+          </div>
+
+          <div className="h-4 w-px bg-border-default" />
+
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-text-secondary">{t.size}:</label>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className="w-14 h-1 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+            />
+            <span className="text-[10px] text-text-secondary w-3">{brushSize}</span>
+          </div>
+        </div>
+      )}
 
       {/* Preview area */}
       <div
