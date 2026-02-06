@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
-import { ImageDropZone } from "../../../shared/components";
+import { ImageDropZone, NumberScrubber } from "../../../shared/components";
 import { compositeFrame } from "../utils/compositor";
 
 // ============================================
@@ -423,8 +423,21 @@ export default function AnimationPreviewContent() {
 
           {/* Control area */}
           <div className="p-3 border-t border-border-default space-y-3">
-            {/* Playback controls */}
-            <div className="flex items-center justify-center gap-2">
+            {/* Playback controls with FPS (left) and Zoom (right) */}
+            <div className="flex items-center gap-2">
+              <NumberScrubber
+                value={fps}
+                onChange={setFps}
+                min={1}
+                max={60}
+                step={1}
+                label="FPS:"
+                format={(v) => String(Math.round(v))}
+                size="sm"
+              />
+
+              <div className="flex-1" />
+
               <button
                 onClick={handlePrev}
                 className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
@@ -447,38 +460,18 @@ export default function AnimationPreviewContent() {
               >
                 ▶
               </button>
-            </div>
 
-            {/* FPS & Zoom controls */}
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-text-secondary whitespace-nowrap">FPS:</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="30"
-                  value={fps}
-                  onChange={(e) => setFps(Number(e.target.value))}
-                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-                />
-                <span className="w-8 text-center text-text-primary">{fps}</span>
-              </div>
+              <div className="flex-1" />
 
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPreviewZoom((z) => Math.max(0.1, z * 0.8))}
-                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
-                </button>
-                <span className="text-xs w-10 text-center text-text-primary">{Math.round(previewZoom * 100)}%</span>
-                <button
-                  onClick={() => setPreviewZoom((z) => Math.min(20, z * 1.25))}
-                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
-                </button>
-              </div>
+              <NumberScrubber
+                value={previewZoom}
+                onChange={setPreviewZoom}
+                min={0.1}
+                max={20}
+                step={{ multiply: 1.25 }}
+                format={(v) => `${Math.round(v * 100)}%`}
+                size="sm"
+              />
             </div>
 
             {/* Background selector */}
