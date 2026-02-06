@@ -12,7 +12,7 @@ import { compositeFrame } from "../utils/compositor";
 
 export default function AnimationPreviewContent() {
   const {
-    tracks, fps, setFps, toolMode, getMaxFrameCount,
+    tracks, fps, toolMode, getMaxFrameCount,
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
     previewZoom, setPreviewZoom, previewPan, setPreviewPan,
@@ -423,21 +423,8 @@ export default function AnimationPreviewContent() {
 
           {/* Control area */}
           <div className="p-3 border-t border-border-default space-y-3">
-            {/* Playback controls with FPS (left) and Zoom (right) */}
+            {/* Playback controls and Zoom */}
             <div className="flex items-center gap-2">
-              <NumberScrubber
-                value={fps}
-                onChange={setFps}
-                min={1}
-                max={60}
-                step={1}
-                label="FPS:"
-                format={(v) => String(Math.round(v))}
-                size="sm"
-              />
-
-              <div className="flex-1" />
-
               <button
                 onClick={handlePrev}
                 className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
