@@ -79,16 +79,17 @@ export function PreRenderBar() {
         if (batchStartPx < 0) batchStartPx = px;
       } else {
         if (batchStartPx >= 0) {
-          ctx.fillRect(batchStartPx, 0, px - batchStartPx, h);
+          const clampedPx = Math.min(px, endPx);
+          ctx.fillRect(batchStartPx, 0, clampedPx - batchStartPx, h);
           batchStartPx = -1;
         }
       }
     }
 
-    // Flush last batch
+    // Flush last batch — clamp to duration boundary so green never exceeds gray
     if (batchStartPx >= 0) {
       const endFrameTime = (lastVisibleFrame + 1) / PRE_RENDER.FRAME_RATE;
-      const endFramePx = (endFrameTime - scrollX) * zoom;
+      const endFramePx = Math.min((endFrameTime - scrollX) * zoom, endPx);
       ctx.fillRect(batchStartPx, 0, endFramePx - batchStartPx, h);
     }
   }, [viewState, project.duration]);
