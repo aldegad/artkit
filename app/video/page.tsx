@@ -37,6 +37,14 @@ import {
   type VideoTrack,
 } from "../../domains/video";
 import Tooltip from "../../shared/components/Tooltip";
+import {
+  StopIcon,
+  StepBackwardIcon,
+  PlayIcon,
+  StepForwardIcon,
+  TrackMutedIcon,
+  TrackUnmutedIcon,
+} from "../../shared/components/icons";
 
 interface VideoProjectFile extends Partial<SavedVideoProject> {
   tracks?: VideoTrack[];
@@ -1081,19 +1089,9 @@ function VideoEditorContent() {
     }
 
     if (isCmd) {
-      if (key === "n") {
-        e.preventDefault();
-        void handleNew();
-        return;
-      }
       if (key === "z" && e.shiftKey) {
         e.preventDefault();
         handleRedo();
-        return;
-      }
-      if (key === "s" && e.shiftKey) {
-        e.preventDefault();
-        handleSaveAs();
         return;
       }
       if (key === "z") {
@@ -1196,9 +1194,7 @@ function VideoEditorContent() {
     stepForward,
     handleUndo,
     handleRedo,
-    handleNew,
     handleSave,
-    handleSaveAs,
     handleOpen,
     handleZoomIn,
     handleZoomOut,
@@ -1324,9 +1320,7 @@ function VideoEditorContent() {
               onClick={stop}
               className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="3" y="3" width="10" height="10" />
-              </svg>
+              <StopIcon />
             </button>
           </Tooltip>
 
@@ -1335,10 +1329,7 @@ function VideoEditorContent() {
               onClick={stepBackward}
               className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="2" y="3" width="2" height="10" />
-                <path d="M14 3L6 8L14 13V3Z" />
-              </svg>
+              <StepBackwardIcon />
             </button>
           </Tooltip>
 
@@ -1347,9 +1338,7 @@ function VideoEditorContent() {
               onClick={togglePlay}
               className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
             >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M4 2L14 8L4 14V2Z" />
-              </svg>
+              <PlayIcon />
             </button>
           </Tooltip>
 
@@ -1358,10 +1347,7 @@ function VideoEditorContent() {
               onClick={stepForward}
               className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             >
-              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M2 3L10 8L2 13V3Z" />
-                <rect x="12" y="3" width="2" height="10" />
-              </svg>
+              <StepForwardIcon />
             </button>
           </Tooltip>
         </div>
@@ -1451,13 +1437,11 @@ function VideoEditorContent() {
                 className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
                 title={(selectedAudioClip.audioMuted ?? false) ? "Unmute clip audio" : "Mute clip audio"}
               >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-                  {(selectedAudioClip.audioMuted ?? false) ? (
-                    <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
-                  ) : (
-                    <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
-                  )}
-                </svg>
+                {(selectedAudioClip.audioMuted ?? false) ? (
+                  <TrackMutedIcon className="w-4 h-4" />
+                ) : (
+                  <TrackUnmutedIcon className="w-4 h-4" />
+                )}
               </button>
               <input
                 type="range"

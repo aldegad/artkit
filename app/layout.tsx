@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ThemeProvider, LanguageProvider, KeymapProvider, AuthProvider } from "../shared/contexts";
+import { ThemeProvider, LanguageProvider, AuthProvider } from "../shared/contexts";
 import ClientLayout from "../components/layout/ClientLayout";
 import "./globals.css";
 
@@ -32,11 +32,9 @@ export default function RootLayout({
       <body className="antialiased min-h-screen bg-background text-foreground">
         <ThemeProvider>
           <LanguageProvider>
-            <KeymapProvider>
-              <AuthProvider>
-                <ClientLayout>{children}</ClientLayout>
-              </AuthProvider>
-            </KeymapProvider>
+            <AuthProvider>
+              <ClientLayout>{children}</ClientLayout>
+            </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

@@ -8,6 +8,7 @@ import { Track } from "./Track";
 import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { cn } from "@/shared/utils/cn";
+import { AddVideoTrackIcon, AddAudioTrackIcon, TrackVisibleIcon, TrackHiddenIcon, TrackMutedIcon, TrackUnmutedIcon } from "@/shared/components/icons";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE } from "../../constants";
 
@@ -157,20 +158,14 @@ export function Timeline({ className }: TimelineProps) {
                 className="h-5 w-5 flex items-center justify-center rounded bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
                 title="Add visual track (video/image)"
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M2 3h8v10H2V3zm10 2l4-2v10l-4-2V5z" />
-                  <path d="M8 1h1v3h3v1H9v3H8V5H5V4h3V1z" />
-                </svg>
+                <AddVideoTrackIcon className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => addTrack(undefined, "audio")}
                 className="h-5 w-5 flex items-center justify-center rounded bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
                 title="Add audio track"
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8z" />
-                  <path d="M11 1h1v2h2v1h-2v2h-1V4H9V3h2V1z" />
-                </svg>
+                <AddAudioTrackIcon className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -249,13 +244,7 @@ export function Timeline({ className }: TimelineProps) {
                     )}
                     title={track.visible ? "Hide track" : "Show track"}
                   >
-                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                      {track.visible ? (
-                        <path d="M8 3C4.5 3 1.5 6 0 8c1.5 2 4.5 5 8 5s6.5-3 8-5c-1.5-2-4.5-5-8-5zm0 8a3 3 0 110-6 3 3 0 010 6z" />
-                      ) : (
-                        <path d="M2 2l12 12M8 4c2 0 4 1 5.5 2.5L12 8c-.5-1-1.5-2-4-2-1 0-2 .3-2.5.8L4 5.3C5 4.5 6.5 4 8 4zM3.5 6.5L5 8c.5 1 1.5 2 3 2 .5 0 1-.1 1.5-.3l1.5 1.5c-1 .5-2 .8-3 .8-3.5 0-6.5-3-8-5 .5-.7 1.2-1.5 2-2.2l1.5 1.7z" />
-                      )}
-                    </svg>
+                    {track.visible ? <TrackVisibleIcon /> : <TrackHiddenIcon />}
                   </button>
 
                   {/* Audio mute toggle */}
@@ -267,13 +256,7 @@ export function Timeline({ className }: TimelineProps) {
                     )}
                     title={track.muted ? "Unmute track" : "Mute track"}
                   >
-                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                      {track.muted ? (
-                        <path d="M2 6h3l3-3v10l-3-3H2V6zm9.5-1L14 11.5l-1 1L10.5 6l1-1zm-1 6L13 8.5l1 1-2.5 2.5-1-1z" />
-                      ) : (
-                        <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8zm2.1 0c0-1.8-.7-3.4-1.9-4.6l.9-.9A7.1 7.1 0 0114.3 8a7.1 7.1 0 01-2.7 5.5l-.9-.9A5.8 5.8 0 0012.6 8z" />
-                      )}
-                    </svg>
+                    {track.muted ? <TrackMutedIcon /> : <TrackUnmutedIcon />}
                   </button>
 
                   {/* Track name */}

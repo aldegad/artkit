@@ -23,7 +23,6 @@ export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
 export { TransformDiscardConfirmModal } from "./components";
-export { ExportModal } from "./components";
 export { EditorMenuBar } from "./components";
 export { LayersPanelContent } from "./components";
 export { CanvasPanelContent } from "./components";

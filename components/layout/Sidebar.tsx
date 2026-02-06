@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation";
 import { useLanguage } from "../../shared/contexts";
 import SettingsMenu from "../SettingsMenu";
 import ArtkitLogo from "../icons/ArtkitLogo";
+import { SidebarEditorIcon, SidebarSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarVideoIcon, SidebarIconsIcon } from "../../shared/components/icons";
 
 interface Tool {
   id: string;
-  nameKey: "spriteEditor" | "imageEditor" | "imageConverter" | "soundEditor" | "videoEditor";
+  nameKey: "spriteEditor" | "imageEditor" | "imageConverter" | "soundEditor" | "videoEditor" | "iconShowcase";
   path: string;
   icon: React.ReactNode;
 }
@@ -18,86 +19,37 @@ const tools: Tool[] = [
     id: "editor",
     nameKey: "imageEditor",
     path: "/editor",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Image editing icon - picture with edit pencil */}
-        <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
-        <circle cx="8.5" cy="8.5" r="1.5" strokeWidth={2} />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M21 15l-5-5L5 21"
-        />
-      </svg>
-    ),
+    icon: <SidebarEditorIcon />,
   },
   {
     id: "sprite",
     nameKey: "spriteEditor",
     path: "/sprite",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Film strip / sprite frames icon */}
-        <rect x="2" y="4" width="20" height="16" rx="2" strokeWidth={2} />
-        <line x1="8" y1="4" x2="8" y2="20" strokeWidth={2} />
-        <line x1="16" y1="4" x2="16" y2="20" strokeWidth={2} />
-        <circle cx="5" cy="7" r="1" fill="currentColor" />
-        <circle cx="5" cy="17" r="1" fill="currentColor" />
-        <circle cx="12" cy="7" r="1" fill="currentColor" />
-        <circle cx="12" cy="17" r="1" fill="currentColor" />
-        <circle cx="19" cy="7" r="1" fill="currentColor" />
-        <circle cx="19" cy="17" r="1" fill="currentColor" />
-      </svg>
-    ),
+    icon: <SidebarSpriteIcon />,
   },
   {
     id: "converter",
     nameKey: "imageConverter",
     path: "/converter",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-        />
-      </svg>
-    ),
+    icon: <SidebarConverterIcon />,
   },
   {
     id: "sound",
     nameKey: "soundEditor",
     path: "/sound",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Sound wave / audio icon */}
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-        />
-      </svg>
-    ),
+    icon: <SidebarSoundIcon />,
   },
   {
     id: "video",
     nameKey: "videoEditor",
     path: "/video",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        {/* Video / film icon */}
-        <rect x="2" y="6" width="20" height="12" rx="2" strokeWidth={2} />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M10 9l5 3-5 3V9z"
-        />
-      </svg>
-    ),
+    icon: <SidebarVideoIcon />,
+  },
+  {
+    id: "icons",
+    nameKey: "iconShowcase",
+    path: "/icons",
+    icon: <SidebarIconsIcon />,
   },
 ];
 

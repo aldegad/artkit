@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditorState } from "../../contexts";
+import { PanIcon } from "@/shared/components/icons";
 
 const STORAGE_KEY = "artkit.editor.pan-toggle-position-v1";
 const BUTTON_SIZE = 48;
@@ -271,19 +272,7 @@ export function PanModeToggle() {
       title={isPanLocked ? "Touch pan lock ON (touch: pan/zoom only, pen: draw tools)" : "Touch pan lock OFF (tap to enable, drag to move)"}
     >
       {/* Move icon (4-way arrows) */}
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M12 3v18m0-18l-3 3m3-3l3 3m-3 15l-3-3m3 3l3-3M3 12h18m-18 0l3-3m-3 3l3 3m15-3l-3-3m3 3l-3 3"
-        />
-      </svg>
+      <PanIcon className="w-5 h-5" />
       {/* Active indicator */}
       {isPanLocked && (
         <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white" />

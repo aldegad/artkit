@@ -42,14 +42,15 @@ domains/
 ├── sprite/     # Sprite sheet editor (frame extraction, animation)
 ├── converter/  # Image format conversion
 ├── sound/      # Audio editing (trim, format conversion)
-└── video/      # Video editor (timeline, multi-track, masking)
+├── video/      # Video editor (timeline, multi-track, masking)
+└── icons/      # Icon showcase (browse, search, copy SVG, download)
 ```
 
 Each domain has: `hooks/`, `components/`, `contexts/`, `types/`, `utils/`, and a barrel export via `index.ts`.
 
 **shared/** contains cross-domain code:
 - `components/layout/` - Layout system (split panes, floating windows)
-- `components/icons/` - Shared icon components (SpinnerIcon, CheckIcon, ChevronDownIcon, etc.)
+- `components/icons/` - Shared icon library (~90 icons, categorized by function)
 - `components/MenuBar/` - Reusable menu bar with dropdown (MenuDropdown)
 - `components/BackgroundRemovalModals.tsx` - ML background removal UI
 - `components/` - UI components (Popover, Select, Tooltip, etc.)

@@ -3,74 +3,7 @@
 import React, { useState, useEffect, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
-
-// ============================================
-// Alignment Icons
-// ============================================
-
-const AlignLeftIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <line x1="4" y1="4" x2="4" y2="20" />
-    <rect x="7" y="6" width="10" height="4" rx="1" />
-    <rect x="7" y="14" width="6" height="4" rx="1" />
-  </svg>
-);
-
-const AlignCenterHIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <line x1="12" y1="4" x2="12" y2="20" strokeDasharray="2 2" />
-    <rect x="5" y="6" width="14" height="4" rx="1" />
-    <rect x="7" y="14" width="10" height="4" rx="1" />
-  </svg>
-);
-
-const AlignRightIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <line x1="20" y1="4" x2="20" y2="20" />
-    <rect x="7" y="6" width="10" height="4" rx="1" />
-    <rect x="11" y="14" width="6" height="4" rx="1" />
-  </svg>
-);
-
-const AlignTopIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <line x1="4" y1="4" x2="20" y2="4" />
-    <rect x="6" y="7" width="4" height="10" rx="1" />
-    <rect x="14" y="7" width="4" height="6" rx="1" />
-  </svg>
-);
-
-const AlignMiddleVIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <line x1="4" y1="12" x2="20" y2="12" strokeDasharray="2 2" />
-    <rect x="6" y="5" width="4" height="14" rx="1" />
-    <rect x="14" y="7" width="4" height="10" rx="1" />
-  </svg>
-);
-
-const AlignBottomIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <line x1="4" y1="20" x2="20" y2="20" />
-    <rect x="6" y="7" width="4" height="10" rx="1" />
-    <rect x="14" y="11" width="4" height="6" rx="1" />
-  </svg>
-);
-
-const DistributeHIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <rect x="4" y="8" width="4" height="8" rx="1" />
-    <rect x="10" y="8" width="4" height="8" rx="1" />
-    <rect x="16" y="8" width="4" height="8" rx="1" />
-  </svg>
-);
-
-const DistributeVIcon = () => (
-  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <rect x="8" y="4" width="8" height="4" rx="1" />
-    <rect x="8" y="10" width="8" height="4" rx="1" />
-    <rect x="8" y="16" width="8" height="4" rx="1" />
-  </svg>
-);
+import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon } from "@/shared/components/icons";
 
 // ============================================
 // Layer Thumbnail Component (memoized)
@@ -116,9 +49,7 @@ const LayerThumbnail = React.memo(function LayerThumbnail({
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
-          <svg className="w-5 h-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
+          <ImageIcon className="w-5 h-5 text-text-tertiary" />
         </div>
       )}
     </div>
@@ -296,9 +227,7 @@ export default function LayersPanelContent() {
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             title={t.addLayer}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <PlusIcon />
           </button>
           {/* Add Image Layer */}
           <input
@@ -313,9 +242,7 @@ export default function LayersPanelContent() {
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
             title="Add Image Layer"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
+            <ImageIcon />
           </button>
 
           {/* Alignment Toolbar */}
@@ -392,13 +319,7 @@ export default function LayersPanelContent() {
                     className={`p-1 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
                     title={layer.visible ? t.hideLayer : t.showLayer}
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {layer.visible ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      )}
-                    </svg>
+                    {layer.visible ? <EyeOpenIcon /> : <EyeClosedIcon />}
                   </button>
 
                   {/* Layer thumbnail */}
@@ -471,13 +392,7 @@ export default function LayersPanelContent() {
                       className={`p-1 rounded ${layer.locked ? "text-accent-warning" : "text-text-quaternary hover:text-text-primary"}`}
                       title={layer.locked ? t.unlockLayer : t.lockLayer}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        {layer.locked ? (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        ) : (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                        )}
-                      </svg>
+                      {layer.locked ? <LockClosedIcon className="w-3.5 h-3.5" /> : <LockOpenIcon className="w-3.5 h-3.5" />}
                     </button>
                     <button
                       onClick={(e) => {
@@ -487,9 +402,7 @@ export default function LayersPanelContent() {
                       className="p-1 rounded text-text-quaternary hover:text-text-primary"
                       title={t.duplicateLayer}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
+                      <DuplicateIcon className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={(e) => {
@@ -499,9 +412,7 @@ export default function LayersPanelContent() {
                       className="p-1 rounded text-text-quaternary hover:text-accent-danger"
                       title={t.deleteLayer}
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      <DeleteIcon className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

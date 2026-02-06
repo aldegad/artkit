@@ -90,9 +90,7 @@ export const CLIPBOARD_SHORTCUTS = {
  * File operation shortcuts
  */
 export const FILE_SHORTCUTS = {
-  new: { code: "KeyN", ctrlOrMeta: true } as const,
   save: { code: "KeyS", ctrlOrMeta: true } as const,
-  saveAs: { code: "KeyS", ctrlOrMeta: true, shift: true } as const,
 };
 
 /**

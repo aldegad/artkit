@@ -2,6 +2,7 @@
 
 import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
+import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon } from "@/shared/components/icons";
 
 interface PreviewControlsProps {
   className?: string;
@@ -44,9 +45,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
           className="p-2 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
           title="Stop"
         >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <rect x="3" y="3" width="10" height="10" />
-          </svg>
+          <StopIcon />
         </button>
 
         {/* Step backward */}
@@ -55,10 +54,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
           className="p-2 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
           title="Previous Frame"
         >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <rect x="2" y="3" width="2" height="10" />
-            <path d="M14 3L6 8L14 13V3Z" />
-          </svg>
+          <StepBackwardIcon />
         </button>
 
         {/* Play/Pause */}
@@ -68,14 +64,9 @@ export function PreviewControls({ className }: PreviewControlsProps) {
           title={playback.isPlaying ? "Pause" : "Play"}
         >
           {playback.isPlaying ? (
-            <svg className="w-5 h-5" viewBox="0 0 16 16" fill="currentColor">
-              <rect x="3" y="2" width="4" height="12" />
-              <rect x="9" y="2" width="4" height="12" />
-            </svg>
+            <PauseIcon className="w-5 h-5" />
           ) : (
-            <svg className="w-5 h-5" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4 2L14 8L4 14V2Z" />
-            </svg>
+            <PlayIcon className="w-5 h-5" />
           )}
         </button>
 
@@ -85,10 +76,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
           className="p-2 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
           title="Next Frame"
         >
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 3L10 8L2 13V3Z" />
-            <rect x="12" y="3" width="2" height="10" />
-          </svg>
+          <StepForwardIcon />
         </button>
       </div>
 
