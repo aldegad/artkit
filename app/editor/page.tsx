@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useCanvasViewport } from "../../shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "../../shared/contexts";
-import { HeaderContent } from "../../shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay } from "../../shared/components";
 import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "../../shared/components";
 import {
   MarqueeIcon,
@@ -205,6 +205,8 @@ function ImageEditorContent() {
 
   // Loading state for async operations
   const [isLoading, setIsLoading] = useState(false);
+  const [isAutosaveLoading, setIsAutosaveLoading] = useState(true);
+  const [saveCount, setSaveCount] = useState(0);
 
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false);
@@ -1495,6 +1497,7 @@ function ImageEditorContent() {
         console.error("Failed to load autosave:", error);
       }
       isInitializedRef.current = true;
+      setIsAutosaveLoading(false);
     };
     loadAutosave();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1557,9 +1560,18 @@ function ImageEditorContent() {
     const handleSave = async (e: KeyboardEvent) => {
       if (e.code === "KeyS" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        if (layers.length > 0) {
+        if (e.shiftKey) {
+          // Shift+Cmd+S = Save As
+          try {
+            await handleSaveAsProject();
+            setSaveCount((c) => c + 1);
+          } catch (error) {
+            alert(`${t.saveFailed}: ${(error as Error).message}`);
+          }
+        } else if (layers.length > 0) {
           try {
             await handleSaveProject();
+            setSaveCount((c) => c + 1);
           } catch (error) {
             alert(`${t.saveFailed}: ${(error as Error).message}`);
           }
@@ -1569,7 +1581,7 @@ function ImageEditorContent() {
 
     window.addEventListener("keydown", handleSave);
     return () => window.removeEventListener("keydown", handleSave);
-  }, [layers.length, handleSaveProject, t.saveFailed]);
+  }, [layers.length, handleSaveProject, handleSaveAsProject, t.saveFailed]);
 
   // Load a saved project
   const handleLoadProject = useCallback(
@@ -1773,7 +1785,18 @@ function ImageEditorContent() {
     <EditorLayoutProvider>
     <EditorLayersProvider value={layerContextValue}>
     <EditorCanvasProvider value={canvasContextValue}>
-    <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
+    <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
+      {/* Loading overlay during autosave restore */}
+      <LoadingOverlay isLoading={isAutosaveLoading} message={t.loading || "Loading..."} />
+
+      {/* Save toast notification */}
+      <SaveToast
+        isSaving={isSaving}
+        saveCount={saveCount}
+        savingLabel={t.saving || "Saving…"}
+        savedLabel={t.saved || "Saved"}
+      />
+
       {/* Header Slot Content */}
       <HeaderContent
         title={t.imageEditor}
@@ -1781,8 +1804,8 @@ function ImageEditorContent() {
           <EditorMenuBarInner
             onNew={handleNewCanvas}
             onLoad={() => setIsProjectListOpen(true)}
-            onSave={handleSaveProject}
-            onSaveAs={handleSaveAsProject}
+            onSave={async () => { await handleSaveProject(); setSaveCount((c) => c + 1); }}
+            onSaveAs={async () => { await handleSaveAsProject(); setSaveCount((c) => c + 1); }}
             onImportImage={() => fileInputRef.current?.click()}
             onExport={() => { setExportMode("single"); setShowExportModal(true); }}
             onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
