@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { ImageDropZone, NumberScrubber } from "../../../shared/components";
+import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon, CloseIcon } from "../../../shared/components/icons";
 import { compositeFrame } from "../utils/compositor";
 
 // ============================================
@@ -429,23 +430,23 @@ export default function AnimationPreviewContent() {
                 onClick={handlePrev}
                 className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
               >
-                ◀
+                <StepBackwardIcon className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
                   isPlaying
                     ? "bg-accent-danger hover:bg-accent-danger-hover"
                     : "bg-accent-primary hover:bg-accent-primary-hover"
                 }`}
               >
-                {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
+                {isPlaying ? <><PauseIcon className="w-4 h-4" /> {t.pause}</> : <><PlayIcon className="w-4 h-4" /> {t.play}</>}
               </button>
               <button
                 onClick={handleNext}
                 className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
               >
-                ▶
+                <StepForwardIcon className="w-4 h-4" />
               </button>
 
               <div className="flex-1" />
@@ -522,10 +523,10 @@ export default function AnimationPreviewContent() {
                     setBgImage(null);
                     setBgType("checkerboard");
                   }}
-                  className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-xs text-text-secondary transition-colors"
+                  className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-text-secondary transition-colors"
                   title={t.removeBgImage}
                 >
-                  ✕
+                  <CloseIcon className="w-3 h-3" />
                 </button>
               )}
             </div>

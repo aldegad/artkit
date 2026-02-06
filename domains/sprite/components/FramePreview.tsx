@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { NumberScrubber } from "../../../shared/components";
+import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
 
 // ============================================
 // Icon Components
@@ -596,20 +597,20 @@ export default function FramePreviewContent() {
         <div className="flex items-center justify-center gap-2">
           <button
             onClick={handlePrev}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
             disabled={validFrames.length === 0}
           >
-            ◀ {t.previous}
+            <StepBackwardIcon className="w-4 h-4" /> {t.previous}
           </button>
           <span className="px-4 text-sm text-text-primary">
             {validFrames.length > 0 ? `${currentFrameIndex + 1} / ${validFrames.length}` : "-"}
           </span>
           <button
             onClick={handleNext}
-            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
             disabled={validFrames.length === 0}
           >
-            {t.next} ▶
+            {t.next} <StepForwardIcon className="w-4 h-4" />
           </button>
         </div>
 
