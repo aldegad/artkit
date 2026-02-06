@@ -6,6 +6,23 @@ export { downloadDataUrl, downloadBlob, downloadJson, downloadText } from "./dow
 export { drawDab, drawLine, parseHexColor } from "./brushEngine";
 export type { DabParams, LineParams } from "./brushEngine";
 
+// Canvas viewport
+export { ViewportEmitter } from "./viewportEmitter";
+export type { ViewportState } from "./viewportEmitter";
+export {
+  screenToContent,
+  contentToCanvas,
+  calculateRenderOffset,
+  zoomAtPoint,
+  clampZoom,
+  calculateFitScale,
+  screenToCanvasPixel,
+  getTouchDistance,
+  getTouchCenter,
+  DEFAULT_VIEWPORT_CONFIG,
+} from "./canvasViewport";
+export type { ViewportConfig, ViewportTransform } from "./canvasViewport";
+
 // Autosave
 export { createAutosave, createIndexedDBStorage } from "./autosave";
 export type { AutosaveConfig, AutosaveStorage, BaseAutosaveData } from "./autosave";

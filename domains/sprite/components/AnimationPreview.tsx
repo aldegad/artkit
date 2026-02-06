@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
-import { ImageDropZone, NumberScrubber } from "../../../shared/components";
-import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon, CloseIcon } from "../../../shared/components/icons";
+import { ImageDropZone } from "../../../shared/components";
 import { compositeFrame } from "../utils/compositor";
+import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
+import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 
 // ============================================
 // Component
@@ -13,17 +14,15 @@ import { compositeFrame } from "../utils/compositor";
 
 export default function AnimationPreviewContent() {
   const {
-    tracks, fps, toolMode, getMaxFrameCount,
+    tracks, fps, setFps, toolMode, getMaxFrameCount,
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
-    previewZoom, setPreviewZoom, previewPan, setPreviewPan,
   } = useEditor();
   const { t } = useLanguage();
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
   const [bgColor, setBgColor] = useState("#000000");
@@ -31,17 +30,60 @@ export default function AnimationPreviewContent() {
   const [compositedDataUrl, setCompositedDataUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastMousePosRef = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewZoomRef = useRef(previewZoom);
-  const panRef = useRef(previewPan);
 
-  // Sync refs with state for synchronous access in event handlers
-  useEffect(() => { previewZoomRef.current = previewZoom; }, [previewZoom]);
-  useEffect(() => { panRef.current = previewPan; }, [previewPan]);
+  // Composited image ref for rendering without re-creating Image objects
+  const compositedImgRef = useRef<HTMLImageElement | null>(null);
 
   const maxFrameCount = getMaxFrameCount();
   const hasContent = maxFrameCount > 0;
+
+  // ---- Viewport (ref-based zoom/pan, no React re-renders for viewport changes) ----
+  const viewport = useCanvasViewport({
+    containerRef,
+    canvasRef,
+    contentSize: { width: 1, height: 1 },
+    config: { origin: "center", minZoom: 0.1, maxZoom: 20, wheelZoomFactor: 0.1 },
+    initial: { zoom: 2 },
+    enableWheel: true,
+    enablePinch: true,
+  });
+
+  // Throttled React state for UI display only (zoom %, CSS transform)
+  const viewportSync = viewport.useReactSync(16);
+
+  // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
+  const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
+
+  // Register render function
+  useEffect(() => {
+    setRenderFn(() => {
+      const canvas = canvasRef.current;
+      const img = compositedImgRef.current;
+      if (!canvas || !img || !img.complete || img.naturalWidth === 0) return;
+
+      const zoom = viewport.getZoom();
+      const w = img.width * zoom;
+      const h = img.height * zoom;
+
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, w, h);
+    });
+  }, [setRenderFn, viewport]);
+
+  // Subscribe viewport changes → render
+  useEffect(() => {
+    return viewport.onViewportChange(() => {
+      requestRender();
+    });
+  }, [viewport, requestRender]);
 
   // Preset colors for quick selection
   const presetColors = [
@@ -167,69 +209,6 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
-  // Wheel zoom - 마우스 커서 위치 기준 확대/축소 (uses refs for synchronous state)
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
-      e.preventDefault();
-
-      const container = containerRef.current;
-      const canvas = canvasRef.current;
-      if (!container || !canvas) return;
-
-      const currentZoom = previewZoomRef.current;
-      const currentPan = panRef.current;
-
-      const containerRect = container.getBoundingClientRect();
-      const mouseX = e.clientX - containerRect.left;
-      const mouseY = e.clientY - containerRect.top;
-
-      const containerWidth = containerRect.width;
-      const containerHeight = containerRect.height;
-      const canvasWidth = canvas.width;
-      const canvasHeight = canvas.height;
-
-      // Calculate image coordinates under cursor (before zoom)
-      const canvasTopLeftX = containerWidth / 2 + currentPan.x - canvasWidth / 2;
-      const canvasTopLeftY = containerHeight / 2 + currentPan.y - canvasHeight / 2;
-
-      const imageX = (mouseX - canvasTopLeftX) / currentZoom;
-      const imageY = (mouseY - canvasTopLeftY) / currentZoom;
-
-      // Calculate new zoom
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.1, Math.min(20, currentZoom * delta));
-
-      if (newZoom === currentZoom) return;
-
-      // New canvas size
-      const newCanvasWidth = (canvasWidth / currentZoom) * newZoom;
-      const newCanvasHeight = (canvasHeight / currentZoom) * newZoom;
-
-      // Calculate new pan to keep image point under cursor
-      const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newZoom;
-      const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newZoom;
-
-      // Update refs synchronously for fast consecutive events
-      previewZoomRef.current = newZoom;
-      panRef.current = { x: newPanX, y: newPanY };
-
-      setPreviewZoom(newZoom);
-      setPreviewPan({ x: newPanX, y: newPanY });
-    },
-    [],
-  );
-
-  // Register wheel event - include hasContent to re-attach when container appears
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    container.addEventListener("wheel", handleWheel, { passive: false });
-    return () => {
-      container.removeEventListener("wheel", handleWheel);
-    };
-  }, [handleWheel, hasContent]);
-
   // Animation playback
   useEffect(() => {
     if (!isPlaying || maxFrameCount === 0) return;
@@ -258,25 +237,20 @@ export default function AnimationPreviewContent() {
     return () => { cancelled = true; };
   }, [tracks, currentFrameIndex, maxFrameCount]);
 
-  // Draw composited frame to canvas
+  // Load composited image and trigger render
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !compositedDataUrl) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!compositedDataUrl) {
+      compositedImgRef.current = null;
+      return;
+    }
 
     const img = new Image();
     img.onload = () => {
-      canvas.width = img.width * previewZoom;
-      canvas.height = img.height * previewZoom;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      compositedImgRef.current = img;
+      requestRender();
     };
     img.src = compositedDataUrl;
-  }, [compositedDataUrl, previewZoom]);
+  }, [compositedDataUrl, requestRender]);
 
   const handlePrev = useCallback(() => {
     if (maxFrameCount === 0) return;
@@ -309,7 +283,7 @@ export default function AnimationPreviewContent() {
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         setIsPanning(false);
-        setIsDragging(false);
+        viewport.endPanDrag();
       }
     };
 
@@ -320,7 +294,7 @@ export default function AnimationPreviewContent() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [viewport]);
 
   // 손 툴 또는 스페이스바로 패닝 활성화
   const isHandMode = toolMode === "hand" || isPanning;
@@ -329,33 +303,29 @@ export default function AnimationPreviewContent() {
     (e: React.MouseEvent) => {
       if (isPanning || toolMode === "hand") {
         e.preventDefault();
-        setIsDragging(true);
-        lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+        viewport.startPanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isPanning, toolMode],
+    [isPanning, toolMode, viewport],
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (isDragging) {
-        const dx = e.clientX - lastMousePosRef.current.x;
-        const dy = e.clientY - lastMousePosRef.current.y;
-        setPreviewPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-        lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      if (viewport.isPanDragging()) {
+        viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isDragging, setPreviewPan],
+    [viewport],
   );
 
   const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+    viewport.endPanDrag();
+  }, [viewport]);
 
   // 커서 결정
   const getCursor = () => {
     if (isHandMode) {
-      return isDragging ? "grabbing" : "grab";
+      return viewport.isPanDragging() ? "grabbing" : "grab";
     }
     return "default";
   };
@@ -377,7 +347,11 @@ export default function AnimationPreviewContent() {
         >
           {/* Preview area */}
           <div
-            ref={containerRef}
+            ref={(el) => {
+              containerRef.current = el;
+              viewport.wheelRef(el);
+              viewport.pinchRef(el);
+            }}
             className={`flex-1 overflow-hidden relative ${bgType === "checkerboard" ? "checkerboard" : ""}`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -405,7 +379,7 @@ export default function AnimationPreviewContent() {
                   pointerEvents: isHandMode ? "none" : "auto",
                   left: "50%",
                   top: "50%",
-                  transform: `translate(calc(-50% + ${previewPan.x}px), calc(-50% + ${previewPan.y}px))`,
+                  transform: `translate(calc(-50% + ${viewportSync.pan.x}px), calc(-50% + ${viewportSync.pan.y}px))`,
                 }}
               />
             ) : null}
@@ -424,43 +398,62 @@ export default function AnimationPreviewContent() {
 
           {/* Control area */}
           <div className="p-3 border-t border-border-default space-y-3">
-            {/* Playback controls and Zoom */}
-            <div className="flex items-center gap-2">
+            {/* Playback controls */}
+            <div className="flex items-center justify-center gap-2">
               <button
                 onClick={handlePrev}
                 className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
               >
-                <StepBackwardIcon className="w-4 h-4" />
+                ◀
               </button>
               <button
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium text-white transition-colors ${
                   isPlaying
                     ? "bg-accent-danger hover:bg-accent-danger-hover"
                     : "bg-accent-primary hover:bg-accent-primary-hover"
                 }`}
               >
-                {isPlaying ? <><PauseIcon className="w-4 h-4" /> {t.pause}</> : <><PlayIcon className="w-4 h-4" /> {t.play}</>}
+                {isPlaying ? `⏸ ${t.pause}` : `▶ ${t.play}`}
               </button>
               <button
                 onClick={handleNext}
                 className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded-lg text-sm transition-colors"
               >
-                <StepForwardIcon className="w-4 h-4" />
+                ▶
               </button>
+            </div>
 
-              <div className="flex-1" />
+            {/* FPS & Zoom controls */}
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-text-secondary whitespace-nowrap">FPS:</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="30"
+                  value={fps}
+                  onChange={(e) => setFps(Number(e.target.value))}
+                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="w-8 text-center text-text-primary">{fps}</span>
+              </div>
 
-              <NumberScrubber
-                value={previewZoom}
-                onChange={setPreviewZoom}
-                min={0.1}
-                max={20}
-                step={{ multiply: 1.25 }}
-                format={(v) => `${Math.round(v * 100)}%`}
-                size="sm"
-                variant="zoom"
-              />
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
+                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+                </button>
+                <span className="text-xs w-10 text-center text-text-primary">{Math.round(viewportSync.zoom * 100)}%</span>
+                <button
+                  onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
+                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+                </button>
+              </div>
             </div>
 
             {/* Background selector */}
@@ -524,10 +517,10 @@ export default function AnimationPreviewContent() {
                     setBgImage(null);
                     setBgType("checkerboard");
                   }}
-                  className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-text-secondary transition-colors"
+                  className="px-1.5 py-0.5 rounded-lg border border-border-default hover:bg-interactive-hover text-xs text-text-secondary transition-colors"
                   title={t.removeBgImage}
                 >
-                  <CloseIcon className="w-3 h-3" />
+                  ✕
                 </button>
               )}
             </div>

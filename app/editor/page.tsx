@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useCanvasViewport } from "../../shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "../../shared/contexts";
 import { HeaderContent } from "../../shared/components";
 import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "../../shared/components";
@@ -27,7 +28,6 @@ import {
   SavedImageProject,
   UnifiedLayer,
   HistoryAdapter,
-  Point,
   GuideOrientation,
   createPaintLayer,
   ProjectListModal,
@@ -277,6 +277,39 @@ function ImageEditorContent() {
     const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
     return { width, height };
   }, [rotation, canvasSize]);
+
+  const displayDimensions = getDisplayDimensions();
+  const viewport = useCanvasViewport({
+    containerRef,
+    canvasRef,
+    contentSize: displayDimensions,
+    config: {
+      origin: "center",
+      minZoom: 0.1,
+      maxZoom: 10,
+      wheelZoomFactor: 0.1,
+    },
+  });
+
+  // Track last synced values to prevent infinite sync loops
+  const lastViewportSyncRef = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
+
+  // Forward sync: viewport (wheel/pinch) → context
+  useEffect(() => {
+    return viewport.onViewportChange((state) => {
+      lastViewportSyncRef.current = { zoom: state.zoom, pan: { ...state.pan } };
+      setZoom(state.zoom);
+      setPan(state.pan);
+    });
+  }, [viewport, setZoom, setPan]);
+
+  // Reverse sync: context (external changes like usePanZoomHandler, fitToScreen) → viewport
+  useEffect(() => {
+    const last = lastViewportSyncRef.current;
+    if (zoom === last.zoom && pan.x === last.pan.x && pan.y === last.pan.y) return;
+    lastViewportSyncRef.current = { zoom, pan: { ...pan } };
+    viewport.updateTransform({ zoom, pan });
+  }, [zoom, pan, viewport]);
 
   // Crop tool - using extracted hook
   const {
@@ -987,177 +1020,12 @@ function ImageEditorContent() {
   // isInHandle, getActiveToolMode, useMouseHandlers moved above canvas rendering useEffect
   // Keyboard shortcuts - moved to useKeyboardShortcuts hook
 
-  // Refs for wheel/touch handlers - direct ref updates for synchronous zoom/pan
-  // This avoids React's batched state updates causing stale values in fast events
-  const zoomRef = useRef(zoom);
-  const panRef = useRef(pan);
-  zoomRef.current = zoom;
-  panRef.current = pan;
-
-  // Refs for wheel and touch handler cleanup
-  const wheelHandlerRef = useRef<((e: WheelEvent) => void) | null>(null);
-  const touchHandlersRef = useRef<{
-    start: ((e: TouchEvent) => void) | null;
-    move: ((e: TouchEvent) => void) | null;
-    end: ((e: TouchEvent) => void) | null;
-  }>({ start: null, move: null, end: null });
-  const currentCanvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  // Canvas ref callback to attach wheel and touch listeners when canvas is mounted
+  // Canvas ref callback - attaches shared viewport wheel/pinch handlers
   const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
-    // Remove listeners from previous canvas if exists
-    if (currentCanvasRef.current) {
-      if (wheelHandlerRef.current) {
-        currentCanvasRef.current.removeEventListener("wheel", wheelHandlerRef.current);
-        wheelHandlerRef.current = null;
-      }
-      if (touchHandlersRef.current.start) {
-        currentCanvasRef.current.removeEventListener("touchstart", touchHandlersRef.current.start);
-        currentCanvasRef.current.removeEventListener("touchmove", touchHandlersRef.current.move!);
-        currentCanvasRef.current.removeEventListener("touchend", touchHandlersRef.current.end!);
-        touchHandlersRef.current = { start: null, move: null, end: null };
-      }
-    }
-
-    // Update the refs
     canvasRef.current = canvas;
-    currentCanvasRef.current = canvas;
-
-    if (canvas) {
-      const wheelHandler = (e: WheelEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const currentZoom = zoomRef.current;
-        const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-        const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomFactor));
-
-        const rect = canvas.getBoundingClientRect();
-        // Convert CSS coordinates to canvas pixel coordinates
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const mouseX = (e.clientX - rect.left) * scaleX;
-        const mouseY = (e.clientY - rect.top) * scaleY;
-        const scale = newZoom / currentZoom;
-
-        // Zoom centered on cursor position
-        // mouseX/Y is relative to canvas top-left, but pan is relative to canvas center
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-
-        // Calculate new pan using ref (synchronous) for accurate fast zoom
-        const currentPan = panRef.current;
-        const newPan = {
-          x: currentPan.x * scale + (1 - scale) * (mouseX - centerX),
-          y: currentPan.y * scale + (1 - scale) * (mouseY - centerY),
-        };
-
-        // Update refs synchronously for fast consecutive events
-        panRef.current = newPan;
-        zoomRef.current = newZoom;
-
-        // Trigger React render
-        setPan(newPan);
-        setZoom(newZoom);
-      };
-
-      wheelHandlerRef.current = wheelHandler;
-      canvas.addEventListener("wheel", wheelHandler, { passive: false });
-
-      // Touch pinch zoom state
-      let lastTouchDistance = 0;
-      let lastTouchCenter = { x: 0, y: 0 };
-      let isPinching = false;
-
-      const getTouchDistance = (touches: TouchList) => {
-        if (touches.length < 2) return 0;
-        const dx = touches[1].clientX - touches[0].clientX;
-        const dy = touches[1].clientY - touches[0].clientY;
-        return Math.sqrt(dx * dx + dy * dy);
-      };
-
-      const getTouchCenter = (touches: TouchList, rect: DOMRect, scaleX: number, scaleY: number) => {
-        if (touches.length < 2) return { x: 0, y: 0 };
-        const centerClientX = (touches[0].clientX + touches[1].clientX) / 2;
-        const centerClientY = (touches[0].clientY + touches[1].clientY) / 2;
-        return {
-          x: (centerClientX - rect.left) * scaleX,
-          y: (centerClientY - rect.top) * scaleY,
-        };
-      };
-
-      const touchStartHandler = (e: TouchEvent) => {
-        if (e.touches.length === 2) {
-          e.preventDefault();
-          isPinching = true;
-          lastTouchDistance = getTouchDistance(e.touches);
-          const rect = canvas.getBoundingClientRect();
-          const scaleX = canvas.width / rect.width;
-          const scaleY = canvas.height / rect.height;
-          lastTouchCenter = getTouchCenter(e.touches, rect, scaleX, scaleY);
-        }
-      };
-
-      const touchMoveHandler = (e: TouchEvent) => {
-        if (!isPinching || e.touches.length !== 2) return;
-        e.preventDefault();
-
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-
-        const newDistance = getTouchDistance(e.touches);
-        const newCenter = getTouchCenter(e.touches, rect, scaleX, scaleY);
-
-        // Calculate zoom
-        const currentZoom = zoomRef.current;
-        const zoomDelta = newDistance / lastTouchDistance;
-        const newZoom = Math.max(0.1, Math.min(10, currentZoom * zoomDelta));
-        const scale = newZoom / currentZoom;
-
-        // Calculate pan delta (for two-finger drag)
-        const panDeltaX = newCenter.x - lastTouchCenter.x;
-        const panDeltaY = newCenter.y - lastTouchCenter.y;
-
-        // Zoom centered on pinch center point
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-
-        // Calculate new pan using ref (synchronous) for accurate fast zoom
-        const currentPan = panRef.current;
-        const newPan = {
-          x: currentPan.x * scale + (1 - scale) * (lastTouchCenter.x - centerX) + panDeltaX,
-          y: currentPan.y * scale + (1 - scale) * (lastTouchCenter.y - centerY) + panDeltaY,
-        };
-
-        // Update refs synchronously for fast consecutive events
-        panRef.current = newPan;
-        zoomRef.current = newZoom;
-
-        // Trigger React render
-        setPan(newPan);
-        setZoom(newZoom);
-
-        lastTouchDistance = newDistance;
-        lastTouchCenter = newCenter;
-      };
-
-      const touchEndHandler = (e: TouchEvent) => {
-        if (e.touches.length < 2) {
-          isPinching = false;
-        }
-      };
-
-      touchHandlersRef.current = {
-        start: touchStartHandler,
-        move: touchMoveHandler,
-        end: touchEndHandler,
-      };
-      canvas.addEventListener("touchstart", touchStartHandler, { passive: false });
-      canvas.addEventListener("touchmove", touchMoveHandler, { passive: false });
-      canvas.addEventListener("touchend", touchEndHandler);
-    }
-  }, []);
+    viewport.wheelRef(canvas);
+    viewport.pinchRef(canvas);
+  }, [canvasRef, viewport]);
 
   // Update crop area when aspect ratio changes - moved to useCropTool hook
 

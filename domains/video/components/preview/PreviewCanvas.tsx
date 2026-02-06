@@ -2,14 +2,14 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
-import { useVideoElements, usePlaybackTick, usePreRenderCache } from "../../hooks";
+import { useVideoElements, usePlaybackTick } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { PREVIEW, PLAYBACK } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
-import { renderCompositeFrame } from "../../utils/compositeRenderer";
+import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -55,6 +55,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
+  // Shared viewport hook — fitOnMount auto-calculates baseScale
+  // enableWheel/Pinch are off for now; flip to true for manual zoom later
+  const viewport = useCanvasViewport({
+    containerRef: previewContainerRef,
+    canvasRef: previewCanvasRef,
+    contentSize: project.canvasSize,
+    config: { origin: "center", minZoom: 0.1, maxZoom: 10 },
+    fitOnMount: true,
+    fitPadding: 40,
+    enableWheel: false,
+    enablePinch: false,
+  });
+
   const previewGeometryRef = useRef({
     offsetX: 0,
     offsetY: 0,
@@ -86,21 +99,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Use the shared ref from VideoStateContext as source of truth for current time
   const currentTimeRef = stateTimeRef;
-
-  // Pre-render cache
-  const { getCachedFrame } = usePreRenderCache({
-    tracks,
-    clips,
-    getClipAtTime,
-    getMaskAtTimeForTrack,
-    videoElements: videoElementsRef.current,
-    imageCache: imageCacheRef.current,
-    maskImageCache: savedMaskImgCacheRef.current,
-    projectSize: project.canvasSize,
-    projectDuration: project.duration || 10,
-    isPlaying: playback.isPlaying,
-    currentTimeRef,
-  });
 
   // Cache for getComputedStyle results (avoid forcing style recalc every frame)
   const cssColorsRef = useRef<{ surfacePrimary: string; borderDefault: string } | null>(null);
@@ -306,17 +304,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.fillStyle = surfacePrimary;
     ctx.fillRect(0, 0, width, height);
 
-    // Calculate preview area (fit project canvas to container)
+    // Calculate preview area from shared viewport transform
     const projectWidth = project.canvasSize.width;
     const projectHeight = project.canvasSize.height;
-    const scale = Math.min(
-      (width - 40) / projectWidth,
-      (height - 40) / projectHeight
-    );
+    const vt = viewport.getTransform();
+    const scale = vt.baseScale * vt.zoom;
     const previewWidth = projectWidth * scale;
     const previewHeight = projectHeight * scale;
-    const offsetX = (width - previewWidth) / 2;
-    const offsetY = (height - previewHeight) / 2;
+    const offsetX = (width - previewWidth) / 2 + vt.pan.x * vt.zoom;
+    const offsetY = (height - previewHeight) / 2 + vt.pan.y * vt.zoom;
     previewGeometryRef.current = { offsetX, offsetY, scale, previewWidth, previewHeight };
 
     // Draw checkerboard for transparency
@@ -327,88 +323,151 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     drawCheckerboard(ctx, width, height);
     ctx.restore();
 
-    // Try cached frame first (during playback for smooth output)
-    const cachedBitmap = playback.isPlaying ? getCachedFrame(ct) : null;
+    // Draw bottom track first (background), top track last (foreground).
+    // Use array order directly — tracks[0] is the topmost track in the timeline.
+    const sortedTracks = [...tracks].reverse();
 
-    if (cachedBitmap) {
-      // Use pre-rendered cached frame
-      ctx.drawImage(cachedBitmap, offsetX, offsetY, previewWidth, previewHeight);
-    } else {
-      // Lazy-init mask temp canvas
-      if (!maskTempCanvasRef.current) {
-        maskTempCanvasRef.current = document.createElement("canvas");
-      }
-
-      // Render composited frame in real-time
-      renderCompositeFrame(ctx, {
-        time: ct,
-        tracks,
-        getClipAtTime,
-        getMaskAtTimeForTrack,
-        videoElements: videoElementsRef.current,
-        imageCache: imageCacheRef.current,
-        maskImageCache: savedMaskImgCacheRef.current,
-        maskTempCanvas: maskTempCanvasRef.current,
-        projectSize: project.canvasSize,
-        renderRect: { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-        liveMaskCanvas: maskContextCanvasRef.current,
-        isPlaying: playback.isPlaying,
-        onMaskImageLoad: () => renderRef.current(),
-      });
-    }
-
-    // --- UI Overlays (mask tint + selection highlight) ---
     const selectedVisualClipId = selectedClipIds.find((clipId) => {
       const selected = clips.find((clip) => clip.id === clipId);
       return !!selected && selected.type !== "audio";
     }) || null;
 
-    const sortedTracks = [...tracks].reverse();
+    // Composite each track
     for (const track of sortedTracks) {
       if (!track.visible) continue;
-      const clip = getClipAtTime(track.id, ct);
-      if (!clip || !clip.visible || clip.type === "audio") continue;
 
-      // Mask overlay when selected or editing
-      const maskResult = getMaskAtTimeForTrack(clip.trackId, ct);
-      if (maskResult && activeTrackId === clip.trackId && activeMaskId) {
-        let clipMaskSource: CanvasImageSource | null = null;
-        if (maskResult === "__live_canvas__" && maskContextCanvasRef.current) {
-          clipMaskSource = maskContextCanvasRef.current;
-        } else if (maskResult !== "__live_canvas__") {
-          const maskImg = savedMaskImgCacheRef.current.get(maskResult);
-          if (maskImg?.complete && maskImg.naturalWidth > 0) {
-            clipMaskSource = maskImg;
+      const clip = getClipAtTime(track.id, ct);
+      if (!clip || !clip.visible) continue;
+
+      // Get the video/image element for this clip
+      const videoElement = videoElementsRef.current.get(clip.sourceUrl);
+
+      // Determine source element
+      let sourceEl: CanvasImageSource | null = null;
+
+      if (clip.type === "video" && videoElement) {
+        if (videoElement.readyState < 2) {
+          continue;
+        }
+        if (!playback.isPlaying) {
+          const clipTime = ct - clip.startTime;
+          const sourceTime = clip.trimIn + clipTime;
+          if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
+            videoElement.currentTime = sourceTime;
+            continue;
           }
         }
-        if (clipMaskSource) {
-          const maskW = project.canvasSize.width;
-          const maskH = project.canvasSize.height;
-          if (!maskOverlayCanvasRef.current) {
-            maskOverlayCanvasRef.current = document.createElement("canvas");
-          }
-          const overlayCanvas = maskOverlayCanvasRef.current;
-          if (overlayCanvas.width !== maskW || overlayCanvas.height !== maskH) {
-            overlayCanvas.width = maskW;
-            overlayCanvas.height = maskH;
-          }
-          const overlayCtx = overlayCanvas.getContext("2d");
-          if (overlayCtx) {
-            overlayCtx.clearRect(0, 0, maskW, maskH);
-            overlayCtx.globalCompositeOperation = "source-over";
-            overlayCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
-            overlayCtx.globalCompositeOperation = "source-in";
-            overlayCtx.fillStyle = isEditingMask
-              ? "rgba(255, 60, 60, 0.35)"
-              : "rgba(168, 85, 247, 0.3)";
-            overlayCtx.fillRect(0, 0, maskW, maskH);
-            ctx.drawImage(overlayCanvas, offsetX, offsetY, previewWidth, previewHeight);
-          }
+        sourceEl = videoElement;
+      } else if (clip.type === "image") {
+        let img = imageCacheRef.current.get(clip.sourceUrl);
+        if (!img) {
+          img = new Image();
+          img.src = clip.sourceUrl;
+          imageCacheRef.current.set(clip.sourceUrl, img);
+        }
+        if (img.complete && img.naturalWidth > 0) {
+          sourceEl = img;
         }
       }
 
-      // Selection highlight
-      if (selectedVisualClipId && clip.id === selectedVisualClipId) {
+      if (sourceEl) {
+        const drawX = offsetX + clip.position.x * scale;
+        const drawY = offsetY + clip.position.y * scale;
+        const drawW = clip.sourceSize.width * scale * clip.scale;
+        const drawH = clip.sourceSize.height * scale * clip.scale;
+
+        // Check for mask on this track at current time
+        const maskResult = getMaskAtTimeForTrack(clip.trackId, ct);
+        let clipMaskSource: CanvasImageSource | null = null;
+
+        if (maskResult === "__live_canvas__" && maskContextCanvasRef.current) {
+          // Live editing: use mask canvas directly
+          clipMaskSource = maskContextCanvasRef.current;
+        } else if (maskResult && maskResult !== "__live_canvas__") {
+          // Saved keyframe data
+          let maskImg = savedMaskImgCacheRef.current.get(maskResult);
+          if (!maskImg) {
+            maskImg = new Image();
+            maskImg.src = maskResult;
+            savedMaskImgCacheRef.current.set(maskResult, maskImg);
+            maskImg.onload = () => {
+              renderRef.current();
+            };
+          }
+          if (maskImg.complete && maskImg.naturalWidth > 0) {
+            clipMaskSource = maskImg;
+          }
+        }
+
+        if (clipMaskSource) {
+          // Draw with mask using offscreen compositing
+          if (!maskTempCanvasRef.current) {
+            maskTempCanvasRef.current = document.createElement("canvas");
+          }
+          const tmpCanvas = maskTempCanvasRef.current;
+          // Mask is project-canvas sized
+          const maskW = project.canvasSize.width;
+          const maskH = project.canvasSize.height;
+          if (tmpCanvas.width !== maskW || tmpCanvas.height !== maskH) {
+            tmpCanvas.width = maskW;
+            tmpCanvas.height = maskH;
+          }
+          const tmpCtx = tmpCanvas.getContext("2d");
+          if (tmpCtx) {
+            tmpCtx.clearRect(0, 0, maskW, maskH);
+            tmpCtx.globalCompositeOperation = "source-over";
+            tmpCtx.globalAlpha = 1;
+            // Draw clip at its position within the project canvas
+            tmpCtx.drawImage(
+              sourceEl,
+              clip.position.x,
+              clip.position.y,
+              clip.sourceSize.width * clip.scale,
+              clip.sourceSize.height * clip.scale
+            );
+            tmpCtx.globalCompositeOperation = "destination-in";
+            tmpCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
+            tmpCtx.globalCompositeOperation = "source-over";
+
+            ctx.globalAlpha = clip.opacity / 100;
+            ctx.drawImage(tmpCanvas, offsetX, offsetY, previewWidth, previewHeight);
+            ctx.globalAlpha = 1;
+          }
+
+          // Draw mask overlay when selected or editing
+          const showOverlay = activeTrackId === clip.trackId && activeMaskId && clipMaskSource;
+          if (showOverlay) {
+            if (!maskOverlayCanvasRef.current) {
+              maskOverlayCanvasRef.current = document.createElement("canvas");
+            }
+            const overlayCanvas = maskOverlayCanvasRef.current;
+            if (overlayCanvas.width !== maskW || overlayCanvas.height !== maskH) {
+              overlayCanvas.width = maskW;
+              overlayCanvas.height = maskH;
+            }
+            const overlayCtx = overlayCanvas.getContext("2d");
+            if (overlayCtx) {
+              overlayCtx.clearRect(0, 0, maskW, maskH);
+              overlayCtx.globalCompositeOperation = "source-over";
+              overlayCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
+              // Tint: red when editing, purple when selected
+              overlayCtx.globalCompositeOperation = "source-in";
+              overlayCtx.fillStyle = isEditingMask
+                ? "rgba(255, 60, 60, 0.35)"
+                : "rgba(168, 85, 247, 0.3)";
+              overlayCtx.fillRect(0, 0, maskW, maskH);
+
+              ctx.drawImage(overlayCanvas, offsetX, offsetY, previewWidth, previewHeight);
+            }
+          }
+        } else {
+          ctx.globalAlpha = clip.opacity / 100;
+          ctx.drawImage(sourceEl, drawX, drawY, drawW, drawH);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      if (selectedVisualClipId && clip.id === selectedVisualClipId && clip.type !== "audio") {
         const boxX = offsetX + clip.position.x * scale;
         const boxY = offsetY + clip.position.y * scale;
         const boxW = clip.sourceSize.width * scale * clip.scale;
@@ -767,18 +826,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     renderRef.current();
   }, [invalidateCssCache]);
 
-  // Handle resize
+  // Handle resize — recalculate fit scale via viewport, then re-render
   useEffect(() => {
     const container = previewContainerRef.current;
     if (!container) return;
 
     const resizeObserver = new ResizeObserver(() => {
+      viewport.fitToContainer(40);
       requestAnimationFrame(() => renderRef.current());
     });
 
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
-  }, [previewContainerRef]);
+  }, [previewContainerRef, viewport]);
 
   return (
     <div

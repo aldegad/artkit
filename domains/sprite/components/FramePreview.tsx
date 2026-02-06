@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
-import { NumberScrubber } from "../../../shared/components";
-import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
+import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
+import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 
 // ============================================
 // Icon Components
@@ -60,15 +60,10 @@ export default function FramePreviewContent() {
     setBrushColor,
     brushSize,
     setBrushSize,
-    frameEditZoom,
-    setFrameEditZoom,
-    frameEditPan,
-    setFrameEditPan,
   } = useEditor();
   const { t } = useLanguage();
 
   const [isPanning, setIsPanning] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [editToolMode, setEditToolMode] = useState<EditToolMode>("brush");
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -79,100 +74,79 @@ export default function FramePreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const originalImageRef = useRef<HTMLImageElement | null>(null);
+  const frameImgRef = useRef<HTMLImageElement | null>(null);
 
   const validFrames = frames.filter((f) => f.imageData);
   const currentFrame = validFrames[currentFrameIndex];
 
+  // ---- Viewport (ref-based zoom/pan) ----
+  const viewport = useCanvasViewport({
+    containerRef,
+    canvasRef,
+    contentSize: { width: 1, height: 1 },
+    config: { origin: "center", minZoom: 0.1, maxZoom: 20, wheelZoomFactor: 0.1 },
+    initial: { zoom: 3 },
+    enableWheel: true,
+    enablePinch: true,
+  });
+
+  const viewportSync = viewport.useReactSync(16);
+
+  // ---- Render scheduler ----
+  const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
+
+  // Register render function
+  useEffect(() => {
+    setRenderFn(() => {
+      const canvas = canvasRef.current;
+      const img = frameImgRef.current;
+      if (!canvas || !img || !img.complete || img.naturalWidth === 0) return;
+
+      const zoom = viewport.getZoom();
+      const w = img.width * zoom;
+      const h = img.height * zoom;
+
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, w, h);
+    });
+  }, [setRenderFn, viewport]);
+
+  // Subscribe viewport changes → render
+  useEffect(() => {
+    return viewport.onViewportChange(() => {
+      requestRender();
+    });
+  }, [viewport, requestRender]);
+
   // Reset pan when frame changes
   useEffect(() => {
-    setFrameEditPan({ x: 0, y: 0 });
+    viewport.setPan({ x: 0, y: 0 });
     setHasDrawn(false);
-  }, [currentFrameIndex, setFrameEditPan]);
+  }, [currentFrameIndex, viewport]);
 
-  // Load original image when frame changes
+  // Load image when frame changes or imageData updates (after drawing)
   useEffect(() => {
     if (!currentFrame?.imageData) {
       originalImageRef.current = null;
+      frameImgRef.current = null;
       return;
     }
 
     const img = new Image();
     img.onload = () => {
       originalImageRef.current = img;
+      frameImgRef.current = img;
+      requestRender();
     };
     img.src = currentFrame.imageData;
-  }, [currentFrame?.imageData]);
-
-  // Wheel zoom
-  const handleWheel = useCallback(
-    (e: WheelEvent) => {
-      e.preventDefault();
-
-      const container = containerRef.current;
-      const canvas = canvasRef.current;
-      if (!container || !canvas) return;
-
-      const containerRect = container.getBoundingClientRect();
-      const mouseX = e.clientX - containerRect.left;
-      const mouseY = e.clientY - containerRect.top;
-
-      const containerWidth = containerRect.width;
-      const containerHeight = containerRect.height;
-      const canvasWidth = canvas.width;
-      const canvasHeight = canvas.height;
-
-      const canvasTopLeftX = containerWidth / 2 + frameEditPan.x - canvasWidth / 2;
-      const canvasTopLeftY = containerHeight / 2 + frameEditPan.y - canvasHeight / 2;
-
-      const imageX = (mouseX - canvasTopLeftX) / frameEditZoom;
-      const imageY = (mouseY - canvasTopLeftY) / frameEditZoom;
-
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.1, Math.min(20, frameEditZoom * delta));
-
-      if (newZoom === frameEditZoom) return;
-
-      const newCanvasWidth = (canvasWidth / frameEditZoom) * newZoom;
-      const newCanvasHeight = (canvasHeight / frameEditZoom) * newZoom;
-
-      const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newZoom;
-      const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newZoom;
-
-      setFrameEditZoom(newZoom);
-      setFrameEditPan({ x: newPanX, y: newPanY });
-    },
-    [frameEditPan, frameEditZoom, setFrameEditZoom, setFrameEditPan],
-  );
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    container.addEventListener("wheel", handleWheel, { passive: false });
-    return () => {
-      container.removeEventListener("wheel", handleWheel);
-    };
-  }, [handleWheel]);
-
-  // Draw preview canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !currentFrame?.imageData) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width * frameEditZoom;
-      canvas.height = img.height * frameEditZoom;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, 0, 0, img.width * frameEditZoom, img.height * frameEditZoom);
-    };
-    img.src = currentFrame.imageData;
-  }, [currentFrame, frameEditZoom]);
+  }, [currentFrame?.imageData, requestRender]);
 
   const handlePrev = useCallback(() => {
     if (validFrames.length > 0) {
@@ -205,12 +179,13 @@ export default function FramePreviewContent() {
       const scaleX = canvas.width / contentWidth;
       const scaleY = canvas.height / contentHeight;
 
-      const x = Math.floor(((e.clientX - rect.left - borderLeft) * scaleX) / frameEditZoom);
-      const y = Math.floor(((e.clientY - rect.top - borderTop) * scaleY) / frameEditZoom);
+      const zoom = viewport.getZoom();
+      const x = Math.floor(((e.clientX - rect.left - borderLeft) * scaleX) / zoom);
+      const y = Math.floor(((e.clientY - rect.top - borderTop) * scaleY) / zoom);
 
       return { x, y };
     },
-    [frameEditZoom],
+    [viewport],
   );
 
   // Draw pixel on canvas
@@ -232,10 +207,10 @@ export default function FramePreviewContent() {
 
         // Draw the new pixel(s) based on brush size
         const halfSize = Math.floor(brushSize / 2);
-        for (let dx = -halfSize; dx <= halfSize; dx++) {
-          for (let dy = -halfSize; dy <= halfSize; dy++) {
-            const px = x + dx;
-            const py = y + dy;
+        for (let bx = -halfSize; bx <= halfSize; bx++) {
+          for (let by = -halfSize; by <= halfSize; by++) {
+            const px = x + bx;
+            const py = y + by;
             if (px >= 0 && px < tempCanvas.width && py >= 0 && py < tempCanvas.height) {
               if (isEraser) {
                 tempCtx.clearRect(px, py, 1, 1);
@@ -336,14 +311,14 @@ export default function FramePreviewContent() {
         if (!coords) return;
 
         // Draw line from last point to current point
-        const dx = coords.x - lastMousePosRef.current.x;
-        const dy = coords.y - lastMousePosRef.current.y;
-        const steps = Math.max(Math.abs(dx), Math.abs(dy));
+        const lineDx = coords.x - lastMousePosRef.current.x;
+        const lineDy = coords.y - lastMousePosRef.current.y;
+        const steps = Math.max(Math.abs(lineDx), Math.abs(lineDy));
 
         if (steps > 0) {
           for (let i = 1; i <= steps; i++) {
-            const x = Math.round(lastMousePosRef.current.x + (dx * i) / steps);
-            const y = Math.round(lastMousePosRef.current.y + (dy * i) / steps);
+            const x = Math.round(lastMousePosRef.current.x + (lineDx * i) / steps);
+            const y = Math.round(lastMousePosRef.current.y + (lineDy * i) / steps);
             drawPixel(x, y, brushColor, editToolMode === "eraser");
           }
         }
@@ -387,7 +362,7 @@ export default function FramePreviewContent() {
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         setIsPanning(false);
-        setIsDragging(false);
+        viewport.endPanDrag();
       }
     };
 
@@ -398,45 +373,42 @@ export default function FramePreviewContent() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [viewport]);
 
   const handleContainerMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (isPanning || toolMode === "hand") {
         e.preventDefault();
-        setIsDragging(true);
-        lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+        viewport.startPanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isPanning, toolMode],
+    [isPanning, toolMode, viewport],
   );
 
   const handleContainerMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (isDragging) {
-        const dx = e.clientX - lastMousePosRef.current.x;
-        const dy = e.clientY - lastMousePosRef.current.y;
-        setFrameEditPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-        lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      if (viewport.isPanDragging()) {
+        viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isDragging, setFrameEditPan],
+    [viewport],
   );
 
   const handleContainerMouseUp = useCallback(() => {
-    setIsDragging(false);
+    viewport.endPanDrag();
     setIsDrawing(false);
-  }, []);
+  }, [viewport]);
 
   const isHandMode = toolMode === "hand" || isPanning;
 
-  // Container cursor - always visible
   const getContainerCursor = () => {
     if (isHandMode) {
-      return isDragging ? "grabbing" : "grab";
+      return viewport.isPanDragging() ? "grabbing" : "grab";
     }
     return "default";
   };
+
+  const currentZoom = viewportSync.zoom;
 
   return (
     <div className="flex flex-col h-full bg-surface-primary">
@@ -497,20 +469,27 @@ export default function FramePreviewContent() {
         <div className="h-6 w-px bg-border-default" />
 
         {/* Brush size */}
-        <NumberScrubber
-          value={brushSize}
-          onChange={(v) => setBrushSize(Math.round(v))}
-          min={1}
-          max={10}
-          step={1}
-          label={`${t.size}:`}
-          size="sm"
-        />
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-text-secondary">{t.size}:</label>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            className="w-16 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+          />
+          <span className="text-xs text-text-secondary w-4">{brushSize}</span>
+        </div>
       </div>
 
       {/* Preview area */}
       <div
-        ref={containerRef}
+        ref={(el) => {
+          containerRef.current = el;
+          viewport.wheelRef(el);
+          viewport.pinchRef(el);
+        }}
         className="flex-1 overflow-hidden checkerboard relative"
         onMouseDown={handleContainerMouseDown}
         onMouseMove={handleContainerMouseMove}
@@ -524,7 +503,7 @@ export default function FramePreviewContent() {
             style={{
               left: "50%",
               top: "50%",
-              transform: `translate(calc(-50% + ${frameEditPan.x}px), calc(-50% + ${frameEditPan.y}px))`,
+              transform: `translate(calc(-50% + ${viewportSync.pan.x}px), calc(-50% + ${viewportSync.pan.y}px))`,
             }}
           >
             <canvas
@@ -549,8 +528,8 @@ export default function FramePreviewContent() {
                   style={{
                     left: cursorPos.x,
                     top: cursorPos.y,
-                    width: brushSize * frameEditZoom,
-                    height: brushSize * frameEditZoom,
+                    width: brushSize * currentZoom,
+                    height: brushSize * currentZoom,
                     transform: "translate(-50%, -50%)",
                     border:
                       editToolMode === "eraser" ? "2px solid #f87171" : `2px solid ${brushColor}`,
@@ -597,35 +576,38 @@ export default function FramePreviewContent() {
         <div className="flex items-center justify-center gap-2">
           <button
             onClick={handlePrev}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
+            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
             disabled={validFrames.length === 0}
           >
-            <StepBackwardIcon className="w-4 h-4" /> {t.previous}
+            ◀ {t.previous}
           </button>
           <span className="px-4 text-sm text-text-primary">
             {validFrames.length > 0 ? `${currentFrameIndex + 1} / ${validFrames.length}` : "-"}
           </span>
           <button
             onClick={handleNext}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
+            className="px-3 py-1.5 bg-interactive-default hover:bg-interactive-hover rounded text-sm transition-colors"
             disabled={validFrames.length === 0}
           >
-            {t.next} <StepForwardIcon className="w-4 h-4" />
+            {t.next} ▶
           </button>
         </div>
 
         {/* Zoom control */}
-        <div className="flex items-center justify-center">
-          <NumberScrubber
-            value={frameEditZoom}
-            onChange={setFrameEditZoom}
-            min={0.1}
-            max={20}
-            step={{ multiply: 1.25 }}
-            format={(v) => `${Math.round(v * 100)}%`}
-            size="sm"
-            variant="zoom"
-          />
+        <div className="flex items-center justify-center gap-1 text-sm">
+          <button
+            onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
+            className="p-1 hover:bg-interactive-hover rounded transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+          </button>
+          <span className="text-xs w-10 text-center text-text-primary">{Math.round(currentZoom * 100)}%</span>
+          <button
+            onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
+            className="p-1 hover:bg-interactive-hover rounded transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+          </button>
         </div>
 
         {/* Frame name */}
