@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback } from "react";
-import { VideoTrack, Clip } from "../types";
+import { useEffect, useRef, useCallback, useMemo } from "react";
+import { VideoTrack, Clip, MaskData } from "../types";
 import { Size } from "@/shared/types";
 import { PRE_RENDER } from "../constants";
 import { renderCompositeFrame } from "../utils/compositeRenderer";
@@ -97,6 +97,7 @@ interface UsePreRenderCacheParams {
   clips: Clip[];
   getClipAtTime: (trackId: string, time: number) => Clip | null;
   getMaskAtTimeForTrack: (trackId: string, time: number) => string | null;
+  masks: Map<string, MaskData>;
   videoElements: Map<string, HTMLVideoElement>;
   imageCache: Map<string, HTMLImageElement>;
   maskImageCache: Map<string, HTMLImageElement>;
@@ -112,6 +113,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     clips,
     getClipAtTime,
     getMaskAtTimeForTrack,
+    masks,
     videoElements,
     imageCache,
     maskImageCache,
@@ -120,6 +122,15 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     isPlaying,
     currentTimeRef,
   } = params;
+
+  // Stable fingerprint for mask data — only changes when actual mask content changes
+  const maskFingerprint = useMemo(() => {
+    const parts: string[] = [];
+    for (const [id, mask] of masks) {
+      parts.push(`${id}:${mask.maskData?.length ?? 0}`);
+    }
+    return parts.join("|");
+  }, [masks]);
 
   const isPreRenderingRef = useRef(false);
   const cancelRef = useRef(false);
@@ -147,15 +158,10 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   useEffect(() => { projectSizeRef.current = projectSize; }, [projectSize]);
   useEffect(() => { projectDurationRef.current = projectDuration; }, [projectDuration]);
 
-  // Invalidate cache when structure changes
+  // Invalidate cache when structure or mask data changes
   useEffect(() => {
     clearCache();
-  }, [tracks, clips, projectSize]);
-
-  // Separate effect for mask changes - subscribe to getMaskAtTimeForTrack identity change
-  useEffect(() => {
-    clearCache();
-  }, [getMaskAtTimeForTrack]);
+  }, [tracks, clips, projectSize, maskFingerprint]);
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
@@ -312,7 +318,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [tracks, clips, getMaskAtTimeForTrack, projectSize, isPlaying, startPreRender, stopPreRender]);
+  }, [tracks, clips, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender]);
 
   // Get cached frame for a given time
   const getCachedFrame = useCallback((time: number): ImageBitmap | null => {

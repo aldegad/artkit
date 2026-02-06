@@ -49,6 +49,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     activeTrackId,
     maskCanvasRef: maskContextCanvasRef,
     getMaskAtTimeForTrack,
+    masks,
     brushSettings,
     setBrushMode,
     saveMaskData,
@@ -128,11 +129,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     clips,
     getClipAtTime,
     getMaskAtTimeForTrack,
+    masks,
     videoElements: videoElementsRef.current,
     imageCache: imageCacheRef.current,
     maskImageCache: savedMaskImgCacheRef.current,
     projectSize: project.canvasSize,
-    projectDuration: project.duration || 10,
+    projectDuration: project.duration || 1,
     isPlaying: playback.isPlaying,
     currentTimeRef,
   });
@@ -360,8 +362,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     drawCheckerboard(ctx, width, height);
     ctx.restore();
 
-    // Try cached frame first (during playback for smooth output)
-    const cachedBitmap = playback.isPlaying ? getCachedFrame(ct) : null;
+    // Try cached frame first (any state — instant display on seek/scrub)
+    const cachedBitmap = getCachedFrame(ct);
 
     if (cachedBitmap) {
       // Use pre-rendered cached frame — skip per-track compositing

@@ -350,7 +350,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       tracks: tracks.map(cloneTrack),
       clips: clips.map(cloneClip),
       masks: masks.length > 0 ? [...masks] : projectRef.current.masks,
-      duration: Math.max(duration, 10),
+      duration: Math.max(duration, 1),
     });
   }, [tracks, clips, masks, setProject]);
 
