@@ -129,7 +129,18 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     currentTimeRef,
   } = params;
 
-  // Stable fingerprint for mask data — only changes when actual mask content changes
+  // Stable fingerprints — only change when actual content changes, not on reference changes.
+  // This prevents cache invalidation on unrelated React re-renders (e.g. seek).
+  const trackFingerprint = useMemo(() => {
+    return tracks.map(t => `${t.id}:${t.visible}:${t.zIndex}`).join("|");
+  }, [tracks]);
+
+  const clipFingerprint = useMemo(() => {
+    return clips.map(c =>
+      `${c.id}:${c.trackId}:${c.startTime}:${c.duration}:${c.trimIn}:${c.trimOut}:${c.sourceUrl}:${c.position.x}:${c.position.y}:${c.scale}:${c.opacity}:${c.visible}`
+    ).join("|");
+  }, [clips]);
+
   const maskFingerprint = useMemo(() => {
     const parts: string[] = [];
     for (const [id, mask] of masks) {
@@ -162,10 +173,11 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   useEffect(() => { projectSizeRef.current = projectSize; }, [projectSize]);
   useEffect(() => { projectDurationRef.current = projectDuration; }, [projectDuration]);
 
-  // Invalidate cache when structure or mask data changes
+  // Invalidate cache when structure or mask data changes.
+  // Use fingerprints (not raw references) to avoid false invalidation on React re-renders.
   useEffect(() => {
     clearCache();
-  }, [tracks, clips, projectSize, maskFingerprint]);
+  }, [trackFingerprint, clipFingerprint, projectSize, maskFingerprint]);
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
@@ -328,7 +340,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [tracks, clips, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender]);
+  }, [trackFingerprint, clipFingerprint, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender]);
 
   // Restart pre-render from new position when user seeks while paused.
   // This stops the pre-render loop from fighting over video elements
