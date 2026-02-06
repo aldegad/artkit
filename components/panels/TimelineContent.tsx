@@ -7,6 +7,7 @@ import { ExportDropdown } from "../timeline";
 import { SpriteTrack } from "../../domains/sprite/types";
 import { compositeFrame } from "../../domains/sprite/utils/compositor";
 import { generateCompositedSpriteSheet } from "../../domains/sprite/utils/export";
+import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon } from "../../shared/components/icons";
 
 // ============================================
 // Multi-Track Timeline
@@ -150,9 +151,9 @@ export default function TimelineContent() {
         <button
           onClick={() => setIsPlaying(!isPlaying)}
           disabled={maxFrameCount === 0}
-          className="px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover disabled:opacity-40 text-white rounded text-xs transition-colors"
+          className="p-1.5 bg-accent-primary hover:bg-accent-primary-hover disabled:opacity-40 text-white rounded transition-colors"
         >
-          {isPlaying ? "⏹" : "▶"}
+          {isPlaying ? <StopIcon className="w-3.5 h-3.5" /> : <PlayIcon className="w-3.5 h-3.5" />}
         </button>
 
         {/* FPS */}
@@ -221,12 +222,12 @@ export default function TimelineContent() {
                     e.stopPropagation();
                     updateTrack(track.id, { visible: !track.visible });
                   }}
-                  className={`w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors ${
+                  className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
                     track.visible ? "text-text-primary" : "text-text-tertiary opacity-50"
                   }`}
                   title={track.visible ? "Hide" : "Show"}
                 >
-                  {track.visible ? "👁" : "👁‍🗨"}
+                  {track.visible ? <EyeOpenIcon className="w-3.5 h-3.5" /> : <EyeClosedIcon className="w-3.5 h-3.5" />}
                 </button>
 
                 {/* Lock toggle */}
@@ -235,12 +236,12 @@ export default function TimelineContent() {
                     e.stopPropagation();
                     updateTrack(track.id, { locked: !track.locked });
                   }}
-                  className={`w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors ${
+                  className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
                     track.locked ? "text-accent-warning" : "text-text-tertiary"
                   }`}
                   title={track.locked ? "Unlock" : "Lock"}
                 >
-                  {track.locked ? "🔒" : "🔓"}
+                  {track.locked ? <LockClosedIcon className="w-3.5 h-3.5" /> : <LockOpenIcon className="w-3.5 h-3.5" />}
                 </button>
 
                 {/* Track name */}
