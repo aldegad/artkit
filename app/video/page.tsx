@@ -4,6 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { downloadBlob, downloadJson } from "../../shared/utils";
 import {
+  createRectFromDrag,
+  getRectHandleAtPosition,
+  resizeRectByHandle,
+  type RectHandle,
+} from "../../domains/editor/utils/rectTransform";
+import {
   VideoStateProvider,
   VideoRefsProvider,
   TimelineProvider,
@@ -38,6 +44,13 @@ interface VideoProjectFile extends Partial<SavedVideoProject> {
   timelineView?: TimelineViewState;
   currentTime?: number;
   toolMode?: string;
+}
+
+interface VideoCropArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 function sanitizeFileName(name: string): string {
@@ -131,6 +144,11 @@ function VideoEditorContent() {
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const timelineAreaRef = useRef<HTMLDivElement>(null);
+  const cropOverlayRef = useRef<HTMLDivElement>(null);
+  const cropDragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const cropDragTypeRef = useRef<"none" | "create" | "move" | "resize">("none");
+  const cropResizeHandleRef = useRef<RectHandle | null>(null);
+  const cropOriginalAreaRef = useRef<VideoCropArea | null>(null);
   const timelineResizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const exportAudioContextRef = useRef<AudioContext | null>(null);
   const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -147,6 +165,9 @@ function VideoEditorContent() {
   const [canvasWidthInput, setCanvasWidthInput] = useState("");
   const [canvasHeightInput, setCanvasHeightInput] = useState("");
   const [canvasResizeMode, setCanvasResizeMode] = useState<"resize" | "crop">("resize");
+  const [cropArea, setCropArea] = useState<VideoCropArea | null>(null);
+  const [cropOverlaySize, setCropOverlaySize] = useState({ width: 0, height: 0 });
+  const [cropExpandMode, setCropExpandMode] = useState(false);
   const audioHistorySavedRef = useRef(false);
 
   useEffect(() => {
@@ -185,6 +206,33 @@ function VideoEditorContent() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizingTimeline]);
+
+  useEffect(() => {
+    const element = cropOverlayRef.current;
+    if (!element) return;
+
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect();
+      setCropOverlaySize({ width: rect.width, height: rect.height });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [isTimelineVisible, clips.length]);
+
+  useEffect(() => {
+    if (toolMode !== "crop") return;
+    setCropArea((prev) =>
+      prev || {
+        x: 0,
+        y: 0,
+        width: project.canvasSize.width,
+        height: project.canvasSize.height,
+      }
+    );
+  }, [toolMode, project.canvasSize.width, project.canvasSize.height]);
 
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
@@ -605,6 +653,217 @@ function VideoEditorContent() {
     setProject,
   ]);
 
+  const getCropPreviewMetrics = useCallback(() => {
+    const width = cropOverlaySize.width;
+    const height = cropOverlaySize.height;
+    if (width <= 0 || height <= 0) return null;
+
+    const projectWidth = project.canvasSize.width;
+    const projectHeight = project.canvasSize.height;
+    if (projectWidth <= 0 || projectHeight <= 0) return null;
+
+    const availableWidth = Math.max(20, width - 40);
+    const availableHeight = Math.max(20, height - 40);
+    const scale = Math.min(availableWidth / projectWidth, availableHeight / projectHeight);
+    const previewWidth = projectWidth * scale;
+    const previewHeight = projectHeight * scale;
+    const offsetX = (width - previewWidth) / 2;
+    const offsetY = (height - previewHeight) / 2;
+
+    return { scale, offsetX, offsetY, previewWidth, previewHeight };
+  }, [cropOverlaySize.width, cropOverlaySize.height, project.canvasSize.width, project.canvasSize.height]);
+
+  const screenPointToCanvasPoint = useCallback((clientX: number, clientY: number) => {
+    const overlay = cropOverlayRef.current;
+    const metrics = getCropPreviewMetrics();
+    if (!overlay || !metrics) return null;
+
+    const rect = overlay.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+
+    return {
+      x: (localX - metrics.offsetX) / metrics.scale,
+      y: (localY - metrics.offsetY) / metrics.scale,
+    };
+  }, [getCropPreviewMetrics]);
+
+  const clampCropArea = useCallback((area: VideoCropArea): VideoCropArea => {
+    if (cropExpandMode) return area;
+
+    const canvasWidth = project.canvasSize.width;
+    const canvasHeight = project.canvasSize.height;
+
+    const x = Math.max(0, Math.min(area.x, canvasWidth - 1));
+    const y = Math.max(0, Math.min(area.y, canvasHeight - 1));
+    const maxWidth = Math.max(1, canvasWidth - x);
+    const maxHeight = Math.max(1, canvasHeight - y);
+
+    return {
+      x,
+      y,
+      width: Math.max(1, Math.min(area.width, maxWidth)),
+      height: Math.max(1, Math.min(area.height, maxHeight)),
+    };
+  }, [cropExpandMode, project.canvasSize.width, project.canvasSize.height]);
+
+  const handleApplyCrop = useCallback(() => {
+    if (!cropArea) return;
+
+    const newWidth = Math.max(1, Math.round(cropArea.width));
+    const newHeight = Math.max(1, Math.round(cropArea.height));
+    const offsetX = Math.round(cropArea.x);
+    const offsetY = Math.round(cropArea.y);
+
+    saveToHistory();
+
+    const updatedClips = clips.map((clip) => {
+      if (clip.type === "audio") return clip;
+      return {
+        ...clip,
+        position: {
+          x: clip.position.x - offsetX,
+          y: clip.position.y - offsetY,
+        },
+      };
+    });
+
+    restoreClips(updatedClips);
+    setProject({
+      ...project,
+      canvasSize: { width: newWidth, height: newHeight },
+    });
+
+    setCropArea(null);
+    setToolMode("select");
+  }, [cropArea, saveToHistory, clips, restoreClips, setProject, project, setToolMode]);
+
+  const handleCancelCrop = useCallback(() => {
+    setCropArea(null);
+    setToolMode("select");
+  }, [setToolMode]);
+
+  const handleCropOverlayPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (toolMode !== "crop") return;
+
+    const point = screenPointToCanvasPoint(event.clientX, event.clientY);
+    if (!point) return;
+
+    if (cropArea) {
+      const hit = getRectHandleAtPosition(point, cropArea, {
+        handleSize: 8,
+        includeMove: true,
+      });
+
+      if (hit === "move") {
+        cropDragTypeRef.current = "move";
+        cropDragStartRef.current = point;
+        cropOriginalAreaRef.current = { ...cropArea };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        return;
+      }
+
+      if (hit) {
+        cropDragTypeRef.current = "resize";
+        cropResizeHandleRef.current = hit;
+        cropDragStartRef.current = point;
+        cropOriginalAreaRef.current = { ...cropArea };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        return;
+      }
+    }
+
+    // Start creating a new crop area.
+    cropDragTypeRef.current = "create";
+    cropDragStartRef.current = point;
+    cropResizeHandleRef.current = null;
+    cropOriginalAreaRef.current = null;
+    setCropArea({ x: point.x, y: point.y, width: 0, height: 0 });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }, [toolMode, screenPointToCanvasPoint, cropArea]);
+
+  const handleCropOverlayPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (toolMode !== "crop") return;
+    const dragType = cropDragTypeRef.current;
+    if (dragType === "none") return;
+
+    const point = screenPointToCanvasPoint(event.clientX, event.clientY);
+    if (!point) return;
+
+    const start = cropDragStartRef.current;
+    const original = cropOriginalAreaRef.current;
+    if (!start) return;
+
+    if (dragType === "create") {
+      const bounds = cropExpandMode
+        ? undefined
+        : {
+            minX: 0,
+            minY: 0,
+            maxX: project.canvasSize.width,
+            maxY: project.canvasSize.height,
+          };
+
+      const area = createRectFromDrag(
+        { x: start.x, y: start.y },
+        { x: point.x, y: point.y },
+        { bounds, round: false }
+      );
+      setCropArea(clampCropArea(area));
+      return;
+    }
+
+    if (!original) return;
+
+    if (dragType === "move") {
+      const dx = point.x - start.x;
+      const dy = point.y - start.y;
+      setCropArea((prev) => {
+        const next = prev
+          ? { ...prev, x: original.x + dx, y: original.y + dy }
+          : { ...original, x: original.x + dx, y: original.y + dy };
+        return clampCropArea(next);
+      });
+      return;
+    }
+
+    if (dragType === "resize" && cropResizeHandleRef.current) {
+      const dx = point.x - start.x;
+      const dy = point.y - start.y;
+      const resized = resizeRectByHandle(
+        original,
+        cropResizeHandleRef.current,
+        { dx, dy },
+        {
+          minWidth: 1,
+          minHeight: 1,
+          keepAspect: false,
+        }
+      );
+      setCropArea(clampCropArea(resized));
+    }
+  }, [
+    toolMode,
+    screenPointToCanvasPoint,
+    cropExpandMode,
+    project.canvasSize.width,
+    project.canvasSize.height,
+    clampCropArea,
+  ]);
+
+  const handleCropOverlayPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    cropDragTypeRef.current = "none";
+    cropDragStartRef.current = null;
+    cropResizeHandleRef.current = null;
+    cropOriginalAreaRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+  }, []);
+
   // Edit menu handlers
   const handleUndo = useCallback(() => {
     undo();
@@ -755,6 +1014,9 @@ function VideoEditorContent() {
 
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
+    if (toolMode === "crop" && mode !== "crop") {
+      setCropArea(null);
+    }
     if (mode === "mask" && selectedClipIds.length > 0) {
       const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
       if (selectedClip) {
@@ -762,7 +1024,7 @@ function VideoEditorContent() {
       }
     }
     setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode]);
+  }, [toolMode, selectedClipIds, clips, startMaskEdit, setToolMode]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -778,6 +1040,19 @@ function VideoEditorContent() {
 
     const isCmd = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
+
+    if (toolMode === "crop") {
+      if (key === "enter") {
+        e.preventDefault();
+        handleApplyCrop();
+        return;
+      }
+      if (key === "escape") {
+        e.preventDefault();
+        handleCancelCrop();
+        return;
+      }
+    }
 
     if (isCmd) {
       if (key === "z" && e.shiftKey) {
@@ -851,6 +1126,9 @@ function VideoEditorContent() {
       case "t":
         setToolMode("trim");
         break;
+      case "r":
+        handleToolModeChange("crop");
+        break;
       case "m":
         handleToolModeChange("mask");
         break;
@@ -892,6 +1170,9 @@ function VideoEditorContent() {
     handlePaste,
     handleDelete,
     handleDuplicate,
+    toolMode,
+    handleApplyCrop,
+    handleCancelCrop,
   ]);
 
   const menuTranslations = {
@@ -919,6 +1200,8 @@ function VideoEditorContent() {
   const toolbarTranslations = {
     select: t.select,
     selectDesc: t.selectDesc,
+    crop: t.crop,
+    cropDesc: t.cropToolTip,
     trim: t.trim,
     trimDesc: t.trimDesc,
     razor: t.razor,
@@ -926,6 +1209,17 @@ function VideoEditorContent() {
     mask: t.mask,
     maskDesc: t.maskDesc,
   };
+
+  const cropPreviewMetrics = getCropPreviewMetrics();
+  const cropScreenArea =
+    cropArea && cropPreviewMetrics
+      ? {
+          x: cropPreviewMetrics.offsetX + cropArea.x * cropPreviewMetrics.scale,
+          y: cropPreviewMetrics.offsetY + cropArea.y * cropPreviewMetrics.scale,
+          width: cropArea.width * cropPreviewMetrics.scale,
+          height: cropArea.height * cropPreviewMetrics.scale,
+        }
+      : null;
 
   return (
     <div
@@ -1034,7 +1328,42 @@ function VideoEditorContent() {
           </Tooltip>
         </div>
 
-        {selectedAudioClip && (
+        {toolMode === "crop" && (
+          <>
+            <div className="h-4 w-px bg-border-default mx-1" />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCropExpandMode((prev) => !prev)}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  cropExpandMode
+                    ? "bg-accent/20 text-accent hover:bg-accent/30"
+                    : "bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+                }`}
+                title="Allow crop area outside canvas"
+              >
+                Expand
+              </button>
+              <span className="text-xs text-text-secondary min-w-[96px] text-right">
+                {cropArea ? `${Math.round(cropArea.width)} x ${Math.round(cropArea.height)}` : "No crop"}
+              </span>
+              <button
+                onClick={handleCancelCrop}
+                className="px-2 py-1 text-xs rounded bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyCrop}
+                disabled={!cropArea}
+                className="px-2 py-1 text-xs rounded bg-accent text-white hover:bg-accent-hover disabled:opacity-60"
+              >
+                Apply
+              </button>
+            </div>
+          </>
+        )}
+
+        {selectedAudioClip && toolMode !== "crop" && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
             <div className="flex items-center gap-2 min-w-[220px]">
@@ -1083,6 +1412,93 @@ function VideoEditorContent() {
             ) : (
               <div className="flex-1 relative">
                 <PreviewCanvas />
+
+                {toolMode === "crop" && (
+                  <div
+                    ref={cropOverlayRef}
+                    className="absolute inset-0 z-20 cursor-crosshair"
+                    onPointerDown={handleCropOverlayPointerDown}
+                    onPointerMove={handleCropOverlayPointerMove}
+                    onPointerUp={handleCropOverlayPointerUp}
+                    onPointerCancel={handleCropOverlayPointerUp}
+                  >
+                    {cropScreenArea && (
+                      <>
+                        <div
+                          className="absolute bg-black/55 pointer-events-none"
+                          style={{
+                            left: 0,
+                            top: 0,
+                            width: "100%",
+                            height: Math.max(0, cropScreenArea.y),
+                          }}
+                        />
+                        <div
+                          className="absolute bg-black/55 pointer-events-none"
+                          style={{
+                            left: 0,
+                            top: cropScreenArea.y,
+                            width: Math.max(0, cropScreenArea.x),
+                            height: Math.max(0, cropScreenArea.height),
+                          }}
+                        />
+                        <div
+                          className="absolute bg-black/55 pointer-events-none"
+                          style={{
+                            left: cropScreenArea.x + cropScreenArea.width,
+                            top: cropScreenArea.y,
+                            right: 0,
+                            height: Math.max(0, cropScreenArea.height),
+                          }}
+                        />
+                        <div
+                          className="absolute bg-black/55 pointer-events-none"
+                          style={{
+                            left: 0,
+                            top: cropScreenArea.y + cropScreenArea.height,
+                            width: "100%",
+                            bottom: 0,
+                          }}
+                        />
+
+                        <div
+                          className="absolute border border-white/90 pointer-events-none"
+                          style={{
+                            left: cropScreenArea.x,
+                            top: cropScreenArea.y,
+                            width: cropScreenArea.width,
+                            height: cropScreenArea.height,
+                          }}
+                        >
+                          <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/35" />
+                          <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/35" />
+                          <div className="absolute top-1/3 left-0 right-0 h-px bg-white/35" />
+                          <div className="absolute top-2/3 left-0 right-0 h-px bg-white/35" />
+                        </div>
+
+                        {[
+                          { x: cropScreenArea.x, y: cropScreenArea.y },
+                          { x: cropScreenArea.x + cropScreenArea.width / 2, y: cropScreenArea.y },
+                          { x: cropScreenArea.x + cropScreenArea.width, y: cropScreenArea.y },
+                          { x: cropScreenArea.x + cropScreenArea.width, y: cropScreenArea.y + cropScreenArea.height / 2 },
+                          { x: cropScreenArea.x + cropScreenArea.width, y: cropScreenArea.y + cropScreenArea.height },
+                          { x: cropScreenArea.x + cropScreenArea.width / 2, y: cropScreenArea.y + cropScreenArea.height },
+                          { x: cropScreenArea.x, y: cropScreenArea.y + cropScreenArea.height },
+                          { x: cropScreenArea.x, y: cropScreenArea.y + cropScreenArea.height / 2 },
+                        ].map((handle, index) => (
+                          <div
+                            key={`crop-handle-${index}`}
+                            className="absolute w-2.5 h-2.5 bg-white border border-black/60 rounded-sm pointer-events-none"
+                            style={{
+                              left: handle.x - 5,
+                              top: handle.y - 5,
+                            }}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {/* Mask Controls Panel (floating) */}
                 {isEditingMask && (
@@ -1318,7 +1734,7 @@ function VideoEditorContent() {
               seek(0);
             }
 
-            if (parsed.toolMode === "select" || parsed.toolMode === "trim" || parsed.toolMode === "razor" || parsed.toolMode === "mask" || parsed.toolMode === "move" || parsed.toolMode === "pan") {
+            if (parsed.toolMode === "select" || parsed.toolMode === "crop" || parsed.toolMode === "trim" || parsed.toolMode === "razor" || parsed.toolMode === "mask" || parsed.toolMode === "move" || parsed.toolMode === "pan") {
               setToolMode(parsed.toolMode);
             }
 
