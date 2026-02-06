@@ -966,133 +966,138 @@ function VideoEditorContent() {
     }
   }, [isEditingMask, toolMode, setToolMode]);
 
-  // Keyboard shortcuts
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === "INPUT" ||
-      target.tagName === "SELECT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable
-    ) {
-      return;
-    }
+  // Keyboard shortcuts - global listener to work regardless of focus
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
 
-    const isCmd = e.metaKey || e.ctrlKey;
-    const key = e.key.toLowerCase();
+      const isCmd = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
 
-    if (isCmd) {
-      if (key === "z" && e.shiftKey) {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-      if (key === "z") {
-        e.preventDefault();
-        handleUndo();
-        return;
-      }
-      if (key === "y") {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-      if (key === "s") {
-        e.preventDefault();
-        handleSave();
-        return;
-      }
-      if (key === "o") {
-        e.preventDefault();
-        handleOpen();
-        return;
-      }
-      if (key === "=") {
-        e.preventDefault();
-        handleZoomIn();
-        return;
-      }
-      if (key === "-") {
-        e.preventDefault();
-        handleZoomOut();
-        return;
-      }
-      if (key === "0") {
-        e.preventDefault();
-        handleFitToScreen();
-        return;
-      }
-      if (key === "c") {
-        e.preventDefault();
-        handleCopy();
-        return;
-      }
-      if (key === "x") {
-        e.preventDefault();
-        handleCut();
-        return;
-      }
-      if (key === "v") {
-        e.preventDefault();
-        handlePaste();
-        return;
-      }
-    }
-
-    switch (key) {
-      case " ":
-        e.preventDefault();
-        togglePlay();
-        break;
-      case "v":
-        setToolMode("select");
-        break;
-      case "c":
-        setToolMode("razor");
-        break;
-      case "t":
-        setToolMode("trim");
-        break;
-      case "r":
-        handleToolModeChange("crop");
-        break;
-      case "m":
-        handleToolModeChange("mask");
-        break;
-      case "enter":
-        if (toolMode === "crop") {
+      if (isCmd) {
+        if (key === "z" && e.shiftKey) {
           e.preventDefault();
-          handleApplyCrop();
+          handleRedo();
+          return;
         }
-        break;
-      case "arrowleft":
-        stepBackward();
-        break;
-      case "arrowright":
-        stepForward();
-        break;
-      case "d":
-        if (e.shiftKey) {
+        if (key === "z") {
           e.preventDefault();
-          handleDuplicate();
+          handleUndo();
+          return;
         }
-        break;
-      case "escape":
-        if (activeMaskId) {
-          deselectMask();
+        if (key === "y") {
+          e.preventDefault();
+          handleRedo();
+          return;
         }
-        if (isEditingMask) {
-          endMaskEdit();
+        if (key === "s") {
+          e.preventDefault();
+          handleSave();
+          return;
         }
-        break;
-      case "delete":
-      case "backspace":
-        e.preventDefault();
-        handleDelete();
-        break;
-      default:
-        break;
-    }
+        if (key === "o") {
+          e.preventDefault();
+          handleOpen();
+          return;
+        }
+        if (key === "=") {
+          e.preventDefault();
+          handleZoomIn();
+          return;
+        }
+        if (key === "-") {
+          e.preventDefault();
+          handleZoomOut();
+          return;
+        }
+        if (key === "0") {
+          e.preventDefault();
+          handleFitToScreen();
+          return;
+        }
+        if (key === "c") {
+          e.preventDefault();
+          handleCopy();
+          return;
+        }
+        if (key === "x") {
+          e.preventDefault();
+          handleCut();
+          return;
+        }
+        if (key === "v") {
+          e.preventDefault();
+          handlePaste();
+          return;
+        }
+      }
+
+      switch (key) {
+        case " ":
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "v":
+          setToolMode("select");
+          break;
+        case "c":
+          setToolMode("razor");
+          break;
+        case "t":
+          setToolMode("trim");
+          break;
+        case "r":
+          handleToolModeChange("crop");
+          break;
+        case "m":
+          handleToolModeChange("mask");
+          break;
+        case "enter":
+          if (toolMode === "crop") {
+            e.preventDefault();
+            handleApplyCrop();
+          }
+          break;
+        case "arrowleft":
+          stepBackward();
+          break;
+        case "arrowright":
+          stepForward();
+          break;
+        case "d":
+          if (e.shiftKey) {
+            e.preventDefault();
+            handleDuplicate();
+          }
+          break;
+        case "escape":
+          if (activeMaskId) {
+            deselectMask();
+          }
+          if (isEditingMask) {
+            endMaskEdit();
+          }
+          break;
+        case "delete":
+        case "backspace":
+          e.preventDefault();
+          handleDelete();
+          break;
+        default:
+          break;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [
     togglePlay,
     setToolMode,
@@ -1159,8 +1164,6 @@ function VideoEditorContent() {
   return (
     <div
       className="h-full bg-background text-text-primary flex flex-col overflow-hidden"
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
     >
       {/* Header Slot - Menu Bar + Project Info */}
       <HeaderSlot>
