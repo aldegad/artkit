@@ -453,6 +453,58 @@ export default function FramePreviewContent() {
         </div>
       </div>
 
+      {/* Tool options bar (below toolbar) */}
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-border-default bg-surface-secondary/50 shrink-0">
+        {(editToolMode === "brush" || editToolMode === "eraser") && (
+          <>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="color"
+                value={brushColor}
+                onChange={(e) => setBrushColor(e.target.value)}
+                className="w-5 h-5 rounded cursor-pointer border border-border-default"
+                style={{ backgroundColor: brushColor }}
+              />
+              <span className="text-[10px] text-text-tertiary font-mono">{brushColor}</span>
+            </div>
+
+            <div className="h-4 w-px bg-border-default" />
+
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-text-secondary">{t.size}:</label>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={brushSize}
+                onChange={(e) => setBrushSize(Number(e.target.value))}
+                className="w-14 h-1 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-[10px] text-text-secondary w-3">{brushSize}</span>
+            </div>
+
+            <div className="h-4 w-px bg-border-default" />
+          </>
+        )}
+
+        {/* Zoom control (always visible) */}
+        <div className="flex items-center gap-1 ml-auto">
+          <button
+            onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
+            className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+          </button>
+          <span className="text-[10px] w-8 text-center text-text-primary tabular-nums">{Math.round(currentZoom * 100)}%</span>
+          <button
+            onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
+            className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+          </button>
+        </div>
+      </div>
+
       {/* Preview area */}
       <div
         ref={(el) => {
@@ -561,57 +613,6 @@ export default function FramePreviewContent() {
         </button>
       </div>
 
-      {/* Tool options bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-default bg-surface-secondary">
-        {(editToolMode === "brush" || editToolMode === "eraser") && (
-          <>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="color"
-                value={brushColor}
-                onChange={(e) => setBrushColor(e.target.value)}
-                className="w-6 h-6 rounded cursor-pointer border border-border-default"
-                style={{ backgroundColor: brushColor }}
-              />
-              <span className="text-[10px] text-text-tertiary font-mono">{brushColor}</span>
-            </div>
-
-            <div className="h-4 w-px bg-border-default" />
-
-            <div className="flex items-center gap-1.5">
-              <label className="text-[10px] text-text-secondary">{t.size}:</label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={brushSize}
-                onChange={(e) => setBrushSize(Number(e.target.value))}
-                className="w-14 h-1 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="text-[10px] text-text-secondary w-3">{brushSize}</span>
-            </div>
-
-            <div className="h-4 w-px bg-border-default" />
-          </>
-        )}
-
-        {/* Zoom control (always visible) */}
-        <div className="flex items-center gap-1 ml-auto">
-          <button
-            onClick={() => viewport.setZoom(Math.max(0.1, viewport.getZoom() * 0.8))}
-            className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
-          </button>
-          <span className="text-[10px] w-8 text-center text-text-primary tabular-nums">{Math.round(currentZoom * 100)}%</span>
-          <button
-            onClick={() => viewport.setZoom(Math.min(20, viewport.getZoom() * 1.25))}
-            className="p-0.5 hover:bg-interactive-hover rounded transition-colors"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
