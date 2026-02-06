@@ -136,6 +136,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     projectSize: project.canvasSize,
     projectDuration: project.duration || 1,
     isPlaying: playback.isPlaying,
+    currentTime: playback.currentTime,
     currentTimeRef,
   });
 
