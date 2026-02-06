@@ -26,6 +26,8 @@ import {
   BackgroundRemovalIcon,
   UndoIcon,
   RedoIcon,
+  MinusIcon,
+  PlusIcon,
 } from "../../shared/components/icons";
 import {
   saveProject as saveProjectToDB,
@@ -47,6 +49,7 @@ function SpriteEditorMain() {
     setImageSize,
     imageSize,
     imageRef,
+    zoom,
     setScale,
     setZoom,
     setPan,
@@ -772,6 +775,25 @@ function SpriteEditorMain() {
                 <RedoIcon className="w-4 h-4" />
               </button>
             </Tooltip>
+          </div>
+
+          <div className="h-4 w-px bg-border-default mx-1" />
+
+          {/* Zoom display (main canvas) */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setZoom((z: number) => Math.max(0.1, z * 0.8))}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+            >
+              <MinusIcon className="w-4 h-4" />
+            </button>
+            <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => setZoom((z: number) => Math.min(20, z * 1.25))}
+              className="p-1 hover:bg-interactive-hover rounded transition-colors"
+            >
+              <PlusIcon className="w-4 h-4" />
+            </button>
           </div>
 
           <div className="h-4 w-px bg-border-default mx-1" />
