@@ -4,6 +4,7 @@
 
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
 import { Point, Size, SpriteTrack } from "../types";
+import { migrateAutosaveV1ToV2 } from "./migration";
 
 export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -35,8 +36,17 @@ const spriteAutosave = createAutosave<AutosaveData>({
 export async function loadAutosaveData(): Promise<AutosaveData | null> {
   try {
     const data = await spriteAutosave.load();
-    // If data has no tracks array, it's old format — discard
-    if (data && !Array.isArray(data.tracks)) {
+    if (!data) return null;
+
+    // V1 format (flat frames) → migrate to V2 (tracks)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const migratedTracks = migrateAutosaveV1ToV2(data as any);
+    if (migratedTracks) {
+      data.tracks = migratedTracks;
+    }
+
+    // Still no tracks → corrupted data
+    if (!Array.isArray(data.tracks)) {
       await spriteAutosave.clear();
       return null;
     }

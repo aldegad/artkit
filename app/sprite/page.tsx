@@ -12,6 +12,7 @@ import {
   FrameBackgroundRemovalModals,
 } from "../../domains/sprite";
 import type { SavedSpriteProject } from "../../domains/sprite";
+import { migrateFramesToTracks } from "../../domains/sprite/utils/migration";
 import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
@@ -436,12 +437,18 @@ function SpriteEditorMain() {
     t,
   ]);
 
-  // Load project
+  // Load project (with V1→V2 migration support)
   const loadProject = useCallback(
     (project: (typeof savedProjects)[0]) => {
       setImageSrc(project.imageSrc);
       setImageSize(project.imageSize);
-      restoreTracks(project.tracks, project.nextFrameId);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = project as any;
+      const tracks = Array.isArray(project.tracks)
+        ? project.tracks
+        : migrateFramesToTracks(raw.frames ?? []);
+      restoreTracks(tracks, project.nextFrameId);
       setProjectName(project.name);
       setCurrentProjectId(project.id);
       setCurrentPoints([]);

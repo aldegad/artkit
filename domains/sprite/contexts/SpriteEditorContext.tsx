@@ -286,6 +286,10 @@ export function useEditor() {
     setDraggedFrameId: dragStore.setDraggedFrameId,
     dragOverIndex: dragStore.dragOverIndex,
     setDragOverIndex: dragStore.setDragOverIndex,
+    draggedTrackId: dragStore.draggedTrackId,
+    setDraggedTrackId: dragStore.setDraggedTrackId,
+    dragOverTrackIndex: dragStore.dragOverTrackIndex,
+    setDragOverTrackIndex: dragStore.setDragOverTrackIndex,
     editingOffsetFrameId: dragStore.editingOffsetFrameId,
     setEditingOffsetFrameId: dragStore.setEditingOffsetFrameId,
     offsetDragStart: dragStore.offsetDragStart,
@@ -329,10 +333,15 @@ export function useEditor() {
     setCurrentProjectId: uiStore.setCurrentProjectId,
     newProject,
 
-    // Clipboard
+    // Clipboard (frame)
     copyFrame,
     pasteFrame,
     clipboardFrame: uiStore.clipboardFrame,
+
+    // Clipboard (track)
+    copyTrack: uiStore.copyTrack,
+    getClipboardTrack: uiStore.getClipboardTrack,
+    clipboardTrack: uiStore.clipboardTrack,
 
     // Refs
     ...refs,
@@ -458,6 +467,10 @@ export function useEditorDrag() {
     setDraggedFrameId: store.setDraggedFrameId,
     dragOverIndex: store.dragOverIndex,
     setDragOverIndex: store.setDragOverIndex,
+    draggedTrackId: store.draggedTrackId,
+    setDraggedTrackId: store.setDraggedTrackId,
+    dragOverTrackIndex: store.dragOverTrackIndex,
+    setDragOverTrackIndex: store.setDragOverTrackIndex,
     editingOffsetFrameId: store.editingOffsetFrameId,
     setEditingOffsetFrameId: store.setEditingOffsetFrameId,
     offsetDragStart: store.offsetDragStart,
@@ -593,7 +606,28 @@ export function useEditorClipboard() {
     trackStore.setCurrentFrameIndex(insertIndex);
   }, [uiStore, trackStore]);
 
-  return { copyFrame, pasteFrame, clipboardFrame: uiStore.clipboardFrame };
+  const copyTrack = useCallback(() => {
+    const activeTrack = trackStore.getActiveTrack();
+    if (activeTrack) {
+      uiStore.copyTrack(activeTrack);
+    }
+  }, [trackStore, uiStore]);
+
+  const pasteTrack = useCallback(() => {
+    const clipboard = uiStore.getClipboardTrack();
+    if (!clipboard) return;
+    trackStore.pushHistory();
+    trackStore.addTrack(clipboard.name + " (Copy)", clipboard.frames);
+  }, [uiStore, trackStore]);
+
+  return {
+    copyFrame,
+    pasteFrame,
+    clipboardFrame: uiStore.clipboardFrame,
+    copyTrack,
+    pasteTrack,
+    clipboardTrack: uiStore.clipboardTrack,
+  };
 }
 
 // Keep for backwards compatibility - now just returns refs from context
