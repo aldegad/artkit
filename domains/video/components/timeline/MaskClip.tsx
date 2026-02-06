@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { MaskData } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useMask } from "../../contexts";
@@ -12,7 +12,7 @@ interface MaskClipProps {
 
 export function MaskClip({ mask }: MaskClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
-  const { activeMaskId } = useMask();
+  const { activeMaskId, selectMask } = useMask();
 
   const isActive = activeMaskId === mask.id;
   const x = timeToPixel(mask.startTime);
@@ -31,17 +31,23 @@ export function MaskClip({ mask }: MaskClipProps) {
     });
   }, [mask.keyframes, mask.duration, durationToWidth]);
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    selectMask(mask.id);
+  }, [selectMask, mask.id]);
+
   return (
     <div
       className={cn(
         "absolute top-0.5 bottom-0.5 rounded cursor-pointer",
         "bg-purple-600/70 hover:bg-purple-500/70",
-        isActive && "ring-1 ring-purple-300"
+        isActive && "ring-1 ring-purple-300 bg-purple-500/80"
       )}
       style={{
         left: x,
         width,
       }}
+      onClick={handleClick}
     >
       <div className="px-1.5 py-0.5 text-[10px] text-white/80 truncate leading-tight">
         Mask

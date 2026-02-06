@@ -170,7 +170,7 @@ function VideoEditorContent() {
     canUndo,
     canRedo,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, masks: masksMap } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, masks: masksMap } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -737,12 +737,18 @@ function VideoEditorContent() {
   }, [playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, addClips, selectClips]);
 
   const handleDelete = useCallback(() => {
+    // Delete selected mask if one is active (and not currently editing it)
+    if (activeMaskId && !isEditingMask) {
+      deleteMask(activeMaskId);
+      return;
+    }
+
     if (selectedClipIds.length === 0) return;
 
     saveToHistory();
     selectedClipIds.forEach((id) => removeClip(id));
     deselectAll();
-  }, [selectedClipIds, saveToHistory, removeClip, deselectAll]);
+  }, [selectedClipIds, saveToHistory, removeClip, deselectAll, activeMaskId, isEditingMask, deleteMask]);
 
   const handleDuplicate = useCallback(() => {
     if (selectedClipIds.length === 0) return;
@@ -1051,6 +1057,14 @@ function VideoEditorContent() {
           handleDuplicate();
         }
         break;
+      case "escape":
+        if (activeMaskId) {
+          deselectMask();
+        }
+        if (isEditingMask) {
+          endMaskEdit();
+        }
+        break;
       case "delete":
       case "backspace":
         e.preventDefault();
@@ -1065,6 +1079,10 @@ function VideoEditorContent() {
     handleToolModeChange,
     toolMode,
     handleApplyCrop,
+    activeMaskId,
+    deselectMask,
+    isEditingMask,
+    endMaskEdit,
     stepBackward,
     stepForward,
     handleUndo,

@@ -35,6 +35,8 @@ interface MaskContextValue {
   masks: Map<string, MaskData>;
 
   // Actions
+  selectMask: (maskId: string) => void;
+  deselectMask: () => void;
   startMaskEdit: (trackId: string, canvasSize: Size, currentTime: number) => string;
   endMaskEdit: () => void;
   addMask: (trackId: string, size: Size, startTime: number, duration: number) => string;
@@ -85,6 +87,21 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const setBrushMode = useCallback((mode: "paint" | "erase") => {
     setBrushSettingsState((prev) => ({ ...prev, mode }));
   }, []);
+
+  // Select a mask (highlight without entering edit mode)
+  const selectMask = useCallback((maskId: string) => {
+    const mask = masks.get(maskId);
+    if (!mask) return;
+    setActiveMaskId(maskId);
+    setActiveTrackId(mask.trackId);
+  }, [masks]);
+
+  // Deselect mask
+  const deselectMask = useCallback(() => {
+    if (isEditingMask) return; // don't deselect while editing
+    setActiveMaskId(null);
+    setActiveTrackId(null);
+  }, [isEditingMask]);
 
   // Create a new mask for a track
   const addMask = useCallback((trackId: string, size: Size, startTime: number, duration: number): string => {
@@ -364,6 +381,8 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setBrushHardness,
     setBrushMode,
     masks,
+    selectMask,
+    deselectMask,
     startMaskEdit,
     endMaskEdit,
     addMask,
