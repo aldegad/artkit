@@ -1,6 +1,7 @@
 "use client";
 
-import { useLanguage, HeaderSlot } from "../../shared/contexts";
+import { useLanguage } from "../../shared/contexts";
+import { HeaderContent } from "../../shared/components";
 import {
   SoundEditorProvider,
   useSoundEditor,
@@ -19,11 +20,10 @@ function SoundEditorContent() {
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden">
       {/* Header Slot */}
-      <HeaderSlot>
-        <h1 className="text-sm font-semibold whitespace-nowrap">{t.soundEditor}</h1>
-        {audioBuffer && (
+      <HeaderContent
+        title={t.soundEditor}
+        info={audioBuffer ? (
           <>
-            <div className="h-4 w-px bg-border-default" />
             <span className="text-sm text-text-secondary truncate max-w-[150px]" title={fileName || ""}>
               {fileName}
             </span>
@@ -31,8 +31,8 @@ function SoundEditorContent() {
               ({formatDuration(duration)})
             </span>
           </>
-        )}
-      </HeaderSlot>
+        ) : undefined}
+      />
 
       {/* Main Content */}
       {!audioBuffer ? (

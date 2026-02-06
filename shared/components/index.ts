@@ -18,6 +18,9 @@ export * from "./layout";
 // Icons
 export * from "./icons";
 
+// Header
+export { HeaderContent } from "./HeaderContent";
+
 // MenuBar
 export { MenuDropdown } from "./MenuBar";
 export type { MenuItem, MenuDropdownProps } from "./MenuBar";
