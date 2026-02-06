@@ -3,7 +3,6 @@
 import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon } from "@/shared/components/icons";
-import Tooltip from "@/shared/components/Tooltip";
 
 interface PreviewControlsProps {
   className?: string;
@@ -40,45 +39,37 @@ export function PreviewControls({ className }: PreviewControlsProps) {
 
       {/* Transport controls */}
       <div className="flex items-center gap-1">
-        <Tooltip content="Stop">
-          <button
-            onClick={stop}
-            className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <StopIcon />
-          </button>
-        </Tooltip>
+        <button
+          onClick={stop}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <StopIcon />
+        </button>
 
-        <Tooltip content="Previous Frame">
-          <button
-            onClick={stepBackward}
-            className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <StepBackwardIcon />
-          </button>
-        </Tooltip>
+        <button
+          onClick={stepBackward}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <StepBackwardIcon />
+        </button>
 
-        <Tooltip content={playback.isPlaying ? "Pause" : "Play"} shortcut="Space">
-          <button
-            onClick={togglePlay}
-            className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
-          >
-            {playback.isPlaying ? (
-              <PauseIcon className="w-4 h-4" />
-            ) : (
-              <PlayIcon className="w-4 h-4" />
-            )}
-          </button>
-        </Tooltip>
+        <button
+          onClick={togglePlay}
+          className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
+        >
+          {playback.isPlaying ? (
+            <PauseIcon className="w-4 h-4" />
+          ) : (
+            <PlayIcon className="w-4 h-4" />
+          )}
+        </button>
 
-        <Tooltip content="Next Frame">
-          <button
-            onClick={stepForward}
-            className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
-          >
-            <StepForwardIcon />
-          </button>
-        </Tooltip>
+        <button
+          onClick={stepForward}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <StepForwardIcon />
+        </button>
       </div>
 
       {/* Duration display */}
