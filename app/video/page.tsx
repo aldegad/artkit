@@ -134,7 +134,9 @@ function VideoEditorContent() {
     toolMode,
     setToolMode,
     selectedClipIds,
+    selectedMaskIds,
     selectClips,
+    selectMasksForTimeline,
     deselectAll,
     togglePlay,
     play,
@@ -180,7 +182,7 @@ function VideoEditorContent() {
     canRedo,
     isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, deselectMask, restoreMasks, masks: masksMap, saveMaskData } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, duplicateMask, deselectMask, restoreMasks, masks: masksMap, saveMaskData, updateMaskTime } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -227,6 +229,7 @@ function VideoEditorContent() {
     currentTime: playback.currentTime,
     toolMode,
     selectedClipIds,
+    selectedMaskIds,
     previewCanvasRef,
     setCurrentProjectId,
     setSavedProjects,
@@ -801,38 +804,68 @@ function VideoEditorContent() {
   }, [playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, addClips, selectClips]);
 
   const handleDelete = useCallback(() => {
-    // Delete selected mask if one is active
-    if (activeMaskId) {
-      if (isEditingMask) endMaskEdit();
+    // Delete selected mask if one is active (editing mode)
+    if (activeMaskId && isEditingMask) {
+      endMaskEdit();
       deleteMask(activeMaskId);
       return;
     }
 
-    if (selectedClipIds.length === 0) return;
+    const hasClips = selectedClipIds.length > 0;
+    const hasMasks = selectedMaskIds.length > 0;
+
+    // Also handle active mask (non-editing) if nothing else selected
+    if (!hasClips && !hasMasks) {
+      if (activeMaskId) {
+        deleteMask(activeMaskId);
+      }
+      return;
+    }
 
     saveToHistory();
     selectedClipIds.forEach((id) => removeClip(id));
+    selectedMaskIds.forEach((id) => deleteMask(id));
     deselectAll();
-  }, [selectedClipIds, saveToHistory, removeClip, deselectAll, activeMaskId, isEditingMask, deleteMask, endMaskEdit]);
+  }, [selectedClipIds, selectedMaskIds, saveToHistory, removeClip, deselectAll, activeMaskId, isEditingMask, deleteMask, endMaskEdit]);
 
   const handleDuplicate = useCallback(() => {
-    if (selectedClipIds.length === 0) return;
-
-    const selectedClips = clips.filter((clip) => selectedClipIds.includes(clip.id));
-    if (selectedClips.length === 0) return;
+    const hasClips = selectedClipIds.length > 0;
+    const hasMasks = selectedMaskIds.length > 0;
+    if (!hasClips && !hasMasks) return;
 
     saveToHistory();
 
-    const duplicated = selectedClips.map((clip) => ({
-      ...cloneClip(clip),
-      id: crypto.randomUUID(),
-      startTime: clip.startTime + 0.25,
-      name: `${clip.name} (Copy)`,
-    }));
+    const duplicatedClipIds: string[] = [];
+    const duplicatedMaskIds: string[] = [];
 
-    addClips(duplicated);
-    selectClips(duplicated.map((clip) => clip.id));
-  }, [selectedClipIds, clips, saveToHistory, addClips, selectClips]);
+    // Duplicate clips
+    if (hasClips) {
+      const selectedClips = clips.filter((clip) => selectedClipIds.includes(clip.id));
+      const duplicated = selectedClips.map((clip) => ({
+        ...cloneClip(clip),
+        id: crypto.randomUUID(),
+        startTime: clip.startTime + 0.25,
+        name: `${clip.name} (Copy)`,
+      }));
+      addClips(duplicated);
+      duplicatedClipIds.push(...duplicated.map((c) => c.id));
+    }
+
+    // Duplicate masks
+    for (const mid of selectedMaskIds) {
+      const newId = duplicateMask(mid);
+      if (newId) {
+        const source = masksMap.get(mid);
+        if (source) {
+          updateMaskTime(newId, source.startTime + 0.25, source.duration);
+        }
+        duplicatedMaskIds.push(newId);
+      }
+    }
+
+    if (duplicatedClipIds.length > 0) selectClips(duplicatedClipIds);
+    if (duplicatedMaskIds.length > 0) selectMasksForTimeline(duplicatedMaskIds);
+  }, [selectedClipIds, selectedMaskIds, clips, saveToHistory, addClips, selectClips, selectMasksForTimeline, duplicateMask, masksMap, updateMaskTime]);
 
   const beginAudioAdjustment = useCallback(() => {
     if (audioHistorySavedRef.current) return;
@@ -1186,7 +1219,7 @@ function VideoEditorContent() {
             onCopy={handleCopy}
             onPaste={handlePaste}
             onDelete={handleDelete}
-            hasSelection={selectedClipIds.length > 0}
+            hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0}
             hasClipboard={hasClipboard}
             onZoomIn={handleZoomIn}
             onZoomOut={handleZoomOut}
@@ -1214,7 +1247,7 @@ function VideoEditorContent() {
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
           onDelete={handleDelete}
-          hasSelection={selectedClipIds.length > 0 || !!activeMaskId}
+          hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId}
           translations={toolbarTranslations}
         />
 
