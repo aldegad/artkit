@@ -40,6 +40,15 @@ import {
   type VideoTrack,
 } from "../../domains/video";
 import {
+  matchesShortcut,
+  matchesVideoToolShortcut,
+  hasCmdOrCtrl,
+  VIDEO_EDIT_SHORTCUTS,
+  VIDEO_ZOOM_SHORTCUTS,
+  VIDEO_CONTEXT_SHORTCUTS,
+  PLAYBACK_SHORTCUTS,
+} from "../../domains/video/constants/videoKeyboardShortcuts";
+import {
   getVideoStorageProvider,
   type VideoStorageInfo,
 } from "../../services/videoProjectStorage";
@@ -1017,120 +1026,68 @@ function VideoEditorContent() {
         return;
       }
 
-      const isCmd = e.metaKey || e.ctrlKey;
-      const key = e.key.toLowerCase();
-
-      if (isCmd) {
-        if (key === "z" && e.shiftKey) {
-          e.preventDefault();
-          handleRedo();
-          return;
+      // --- Modifier shortcuts (Cmd/Ctrl) ---
+      if (hasCmdOrCtrl(e)) {
+        // Redo: Cmd+Shift+Z or Cmd+Y
+        for (const redo of VIDEO_EDIT_SHORTCUTS.redo) {
+          if (matchesShortcut(e, redo)) { e.preventDefault(); handleRedo(); return; }
         }
-        if (key === "z") {
-          e.preventDefault();
-          handleUndo();
-          return;
-        }
-        if (key === "y") {
-          e.preventDefault();
-          handleRedo();
-          return;
-        }
-        if (key === "s") {
-          e.preventDefault();
-          handleSave();
-          return;
-        }
-        if (key === "o") {
-          e.preventDefault();
-          handleOpen();
-          return;
-        }
-        if (key === "=") {
-          e.preventDefault();
-          handleZoomIn();
-          return;
-        }
-        if (key === "-") {
-          e.preventDefault();
-          handleZoomOut();
-          return;
-        }
-        if (key === "0") {
-          e.preventDefault();
-          handleFitToScreen();
-          return;
-        }
-        if (key === "c") {
-          e.preventDefault();
-          handleCopy();
-          return;
-        }
-        if (key === "x") {
-          e.preventDefault();
-          handleCut();
-          return;
-        }
-        if (key === "v") {
-          e.preventDefault();
-          handlePaste();
-          return;
-        }
+        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.undo)) { e.preventDefault(); handleUndo(); return; }
+        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.save)) { e.preventDefault(); handleSave(); return; }
+        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.open)) { e.preventDefault(); handleOpen(); return; }
+        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.copy)) { e.preventDefault(); handleCopy(); return; }
+        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.cut)) { e.preventDefault(); handleCut(); return; }
+        if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.paste)) { e.preventDefault(); handlePaste(); return; }
+        if (matchesShortcut(e, VIDEO_ZOOM_SHORTCUTS.zoomIn)) { e.preventDefault(); handleZoomIn(); return; }
+        if (matchesShortcut(e, VIDEO_ZOOM_SHORTCUTS.zoomOut)) { e.preventDefault(); handleZoomOut(); return; }
+        if (matchesShortcut(e, VIDEO_ZOOM_SHORTCUTS.fitToScreen)) { e.preventDefault(); handleFitToScreen(); return; }
+        return;
       }
 
-      switch (key) {
-        case " ":
+      // --- Shift shortcuts ---
+      if (matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.duplicate)) {
+        e.preventDefault();
+        handleDuplicate();
+        return;
+      }
+
+      // --- Tool shortcuts (single key, no modifiers) ---
+      const matchedTool = matchesVideoToolShortcut(e);
+      if (matchedTool) {
+        handleToolModeChange(matchedTool);
+        return;
+      }
+
+      // --- Playback & context shortcuts (e.code based) ---
+      if (e.code === PLAYBACK_SHORTCUTS.togglePlay) {
+        e.preventDefault();
+        togglePlay();
+        return;
+      }
+      if (e.code === PLAYBACK_SHORTCUTS.stepBackward) {
+        stepBackward();
+        return;
+      }
+      if (e.code === PLAYBACK_SHORTCUTS.stepForward) {
+        stepForward();
+        return;
+      }
+      if (e.code === VIDEO_CONTEXT_SHORTCUTS.applyCrop) {
+        if (toolMode === "crop") {
           e.preventDefault();
-          togglePlay();
-          break;
-        case "v":
-          handleToolModeChange("select");
-          break;
-        case "c":
-          handleToolModeChange("razor");
-          break;
-        case "t":
-          handleToolModeChange("trim");
-          break;
-        case "r":
-          handleToolModeChange("crop");
-          break;
-        case "m":
-          handleToolModeChange("mask");
-          break;
-        case "enter":
-          if (toolMode === "crop") {
-            e.preventDefault();
-            handleApplyCrop();
-          }
-          break;
-        case "arrowleft":
-          stepBackward();
-          break;
-        case "arrowright":
-          stepForward();
-          break;
-        case "d":
-          if (e.shiftKey) {
-            e.preventDefault();
-            handleDuplicate();
-          }
-          break;
-        case "escape":
-          if (activeMaskId) {
-            deselectMask();
-          }
-          if (isEditingMask) {
-            endMaskEdit();
-          }
-          break;
-        case "delete":
-        case "backspace":
-          e.preventDefault();
-          handleDelete();
-          break;
-        default:
-          break;
+          handleApplyCrop();
+        }
+        return;
+      }
+      if (e.code === VIDEO_CONTEXT_SHORTCUTS.cancel) {
+        if (activeMaskId) deselectMask();
+        if (isEditingMask) endMaskEdit();
+        return;
+      }
+      if (VIDEO_CONTEXT_SHORTCUTS.delete.includes(e.code)) {
+        e.preventDefault();
+        handleDelete();
+        return;
       }
     };
 
@@ -1138,7 +1095,6 @@ function VideoEditorContent() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [
     togglePlay,
-    setToolMode,
     handleToolModeChange,
     toolMode,
     handleApplyCrop,
@@ -1197,7 +1153,7 @@ function VideoEditorContent() {
     maskDesc: t.maskDesc,
   };
 
-  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask", "move", "pan"];
+  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask", "move"];
 
   return (
     <div
