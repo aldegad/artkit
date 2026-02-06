@@ -15,16 +15,15 @@ export default function AnimationPreviewContent() {
     tracks, fps, setFps, toolMode, getMaxFrameCount,
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
+    previewZoom, setPreviewZoom, previewPan, setPreviewPan,
   } = useEditor();
   const { t } = useLanguage();
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
-  const [previewScale, setPreviewScale] = useState(2);
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
@@ -33,12 +32,12 @@ export default function AnimationPreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewScaleRef = useRef(previewScale);
-  const panRef = useRef(pan);
+  const previewZoomRef = useRef(previewZoom);
+  const panRef = useRef(previewPan);
 
   // Sync refs with state for synchronous access in event handlers
-  useEffect(() => { previewScaleRef.current = previewScale; }, [previewScale]);
-  useEffect(() => { panRef.current = pan; }, [pan]);
+  useEffect(() => { previewZoomRef.current = previewZoom; }, [previewZoom]);
+  useEffect(() => { panRef.current = previewPan; }, [previewPan]);
 
   const maxFrameCount = getMaxFrameCount();
   const hasContent = maxFrameCount > 0;
@@ -176,7 +175,7 @@ export default function AnimationPreviewContent() {
       const canvas = canvasRef.current;
       if (!container || !canvas) return;
 
-      const currentScale = previewScaleRef.current;
+      const currentZoom = previewZoomRef.current;
       const currentPan = panRef.current;
 
       const containerRect = container.getBoundingClientRect();
@@ -192,29 +191,29 @@ export default function AnimationPreviewContent() {
       const canvasTopLeftX = containerWidth / 2 + currentPan.x - canvasWidth / 2;
       const canvasTopLeftY = containerHeight / 2 + currentPan.y - canvasHeight / 2;
 
-      const imageX = (mouseX - canvasTopLeftX) / currentScale;
-      const imageY = (mouseY - canvasTopLeftY) / currentScale;
+      const imageX = (mouseX - canvasTopLeftX) / currentZoom;
+      const imageY = (mouseY - canvasTopLeftY) / currentZoom;
 
-      // Calculate new scale
+      // Calculate new zoom
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.max(1, Math.min(20, currentScale * delta));
+      const newZoom = Math.max(0.1, Math.min(20, currentZoom * delta));
 
-      if (newScale === currentScale) return;
+      if (newZoom === currentZoom) return;
 
       // New canvas size
-      const newCanvasWidth = (canvasWidth / currentScale) * newScale;
-      const newCanvasHeight = (canvasHeight / currentScale) * newScale;
+      const newCanvasWidth = (canvasWidth / currentZoom) * newZoom;
+      const newCanvasHeight = (canvasHeight / currentZoom) * newZoom;
 
       // Calculate new pan to keep image point under cursor
-      const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newScale;
-      const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newScale;
+      const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newZoom;
+      const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newZoom;
 
       // Update refs synchronously for fast consecutive events
-      previewScaleRef.current = newScale;
+      previewZoomRef.current = newZoom;
       panRef.current = { x: newPanX, y: newPanY };
 
-      setPreviewScale(newScale);
-      setPan({ x: newPanX, y: newPanY });
+      setPreviewZoom(newZoom);
+      setPreviewPan({ x: newPanX, y: newPanY });
     },
     [],
   );
@@ -268,15 +267,15 @@ export default function AnimationPreviewContent() {
 
     const img = new Image();
     img.onload = () => {
-      canvas.width = img.width * previewScale;
-      canvas.height = img.height * previewScale;
+      canvas.width = img.width * previewZoom;
+      canvas.height = img.height * previewZoom;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     };
     img.src = compositedDataUrl;
-  }, [compositedDataUrl, previewScale]);
+  }, [compositedDataUrl, previewZoom]);
 
   const handlePrev = useCallback(() => {
     if (maxFrameCount === 0) return;
@@ -341,11 +340,11 @@ export default function AnimationPreviewContent() {
       if (isDragging) {
         const dx = e.clientX - lastMousePosRef.current.x;
         const dy = e.clientY - lastMousePosRef.current.y;
-        setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+        setPreviewPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
         lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       }
     },
-    [isDragging],
+    [isDragging, setPreviewPan],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -405,7 +404,7 @@ export default function AnimationPreviewContent() {
                   pointerEvents: isHandMode ? "none" : "auto",
                   left: "50%",
                   top: "50%",
-                  transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
+                  transform: `translate(calc(-50% + ${previewPan.x}px), calc(-50% + ${previewPan.y}px))`,
                 }}
               />
             ) : null}
@@ -450,7 +449,7 @@ export default function AnimationPreviewContent() {
               </button>
             </div>
 
-            {/* FPS & Scale controls */}
+            {/* FPS & Zoom controls */}
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2 flex-1">
                 <span className="text-text-secondary whitespace-nowrap">FPS:</span>
@@ -465,18 +464,20 @@ export default function AnimationPreviewContent() {
                 <span className="w-8 text-center text-text-primary">{fps}</span>
               </div>
 
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-text-secondary whitespace-nowrap">{t.scale}:</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="20"
-                  step="0.5"
-                  value={previewScale}
-                  onChange={(e) => setPreviewScale(Number(e.target.value))}
-                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-                />
-                <span className="w-8 text-center text-text-primary">{previewScale}x</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPreviewZoom((z) => Math.max(0.1, z * 0.8))}
+                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+                </button>
+                <span className="text-xs w-10 text-center text-text-primary">{Math.round(previewZoom * 100)}%</span>
+                <button
+                  onClick={() => setPreviewZoom((z) => Math.min(20, z * 1.25))}
+                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+                </button>
               </div>
             </div>
 

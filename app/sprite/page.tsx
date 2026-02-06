@@ -51,6 +51,8 @@ function SpriteEditorMain() {
     setScale,
     setZoom,
     setPan,
+    previewZoom,
+    setPreviewZoom,
     toolMode,
     setSpriteToolMode,
     currentPoints,
@@ -62,7 +64,6 @@ function SpriteEditorMain() {
     selectedFrameId,
     selectedPointIndex,
     currentFrameIndex,
-    zoom,
     fps,
     setIsSpacePressed,
     projectName,
@@ -782,14 +783,14 @@ function SpriteEditorMain() {
           {/* Zoom controls */}
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
+              onClick={() => setPreviewZoom((z) => Math.max(0.1, z * 0.8))}
               className="p-1 hover:bg-interactive-hover rounded transition-colors"
             >
               <MinusIcon className="w-4 h-4" />
             </button>
-            <span className="text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <span className="text-xs w-10 text-center">{Math.round(previewZoom * 100)}%</span>
             <button
-              onClick={() => setZoom((z) => Math.min(10, z * 1.25))}
+              onClick={() => setPreviewZoom((z) => Math.min(20, z * 1.25))}
               className="p-1 hover:bg-interactive-hover rounded transition-colors"
             >
               <PlusIcon className="w-4 h-4" />

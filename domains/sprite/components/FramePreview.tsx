@@ -58,13 +58,15 @@ export default function FramePreviewContent() {
     setBrushColor,
     brushSize,
     setBrushSize,
+    frameEditZoom,
+    setFrameEditZoom,
+    frameEditPan,
+    setFrameEditPan,
   } = useEditor();
   const { t } = useLanguage();
 
-  const [previewScale, setPreviewScale] = useState(3);
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [editToolMode, setEditToolMode] = useState<EditToolMode>("brush");
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -81,9 +83,9 @@ export default function FramePreviewContent() {
 
   // Reset pan when frame changes
   useEffect(() => {
-    setPan({ x: 0, y: 0 });
+    setFrameEditPan({ x: 0, y: 0 });
     setHasDrawn(false);
-  }, [currentFrameIndex]);
+  }, [currentFrameIndex, setFrameEditPan]);
 
   // Load original image when frame changes
   useEffect(() => {
@@ -117,27 +119,27 @@ export default function FramePreviewContent() {
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
 
-      const canvasTopLeftX = containerWidth / 2 + pan.x - canvasWidth / 2;
-      const canvasTopLeftY = containerHeight / 2 + pan.y - canvasHeight / 2;
+      const canvasTopLeftX = containerWidth / 2 + frameEditPan.x - canvasWidth / 2;
+      const canvasTopLeftY = containerHeight / 2 + frameEditPan.y - canvasHeight / 2;
 
-      const imageX = (mouseX - canvasTopLeftX) / previewScale;
-      const imageY = (mouseY - canvasTopLeftY) / previewScale;
+      const imageX = (mouseX - canvasTopLeftX) / frameEditZoom;
+      const imageY = (mouseY - canvasTopLeftY) / frameEditZoom;
 
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.max(1, Math.min(20, previewScale * delta));
+      const newZoom = Math.max(0.1, Math.min(20, frameEditZoom * delta));
 
-      if (newScale === previewScale) return;
+      if (newZoom === frameEditZoom) return;
 
-      const newCanvasWidth = (canvasWidth / previewScale) * newScale;
-      const newCanvasHeight = (canvasHeight / previewScale) * newScale;
+      const newCanvasWidth = (canvasWidth / frameEditZoom) * newZoom;
+      const newCanvasHeight = (canvasHeight / frameEditZoom) * newZoom;
 
-      const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newScale;
-      const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newScale;
+      const newPanX = mouseX - containerWidth / 2 + newCanvasWidth / 2 - imageX * newZoom;
+      const newPanY = mouseY - containerHeight / 2 + newCanvasHeight / 2 - imageY * newZoom;
 
-      setPreviewScale(newScale);
-      setPan({ x: newPanX, y: newPanY });
+      setFrameEditZoom(newZoom);
+      setFrameEditPan({ x: newPanX, y: newPanY });
     },
-    [pan, previewScale],
+    [frameEditPan, frameEditZoom, setFrameEditZoom, setFrameEditPan],
   );
 
   useEffect(() => {
@@ -160,15 +162,15 @@ export default function FramePreviewContent() {
 
     const img = new Image();
     img.onload = () => {
-      canvas.width = img.width * previewScale;
-      canvas.height = img.height * previewScale;
+      canvas.width = img.width * frameEditZoom;
+      canvas.height = img.height * frameEditZoom;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, 0, 0, img.width * previewScale, img.height * previewScale);
+      ctx.drawImage(img, 0, 0, img.width * frameEditZoom, img.height * frameEditZoom);
     };
     img.src = currentFrame.imageData;
-  }, [currentFrame, previewScale]);
+  }, [currentFrame, frameEditZoom]);
 
   const handlePrev = useCallback(() => {
     if (validFrames.length > 0) {
@@ -201,12 +203,12 @@ export default function FramePreviewContent() {
       const scaleX = canvas.width / contentWidth;
       const scaleY = canvas.height / contentHeight;
 
-      const x = Math.floor(((e.clientX - rect.left - borderLeft) * scaleX) / previewScale);
-      const y = Math.floor(((e.clientY - rect.top - borderTop) * scaleY) / previewScale);
+      const x = Math.floor(((e.clientX - rect.left - borderLeft) * scaleX) / frameEditZoom);
+      const y = Math.floor(((e.clientY - rect.top - borderTop) * scaleY) / frameEditZoom);
 
       return { x, y };
     },
-    [previewScale],
+    [frameEditZoom],
   );
 
   // Draw pixel on canvas
@@ -412,11 +414,11 @@ export default function FramePreviewContent() {
       if (isDragging) {
         const dx = e.clientX - lastMousePosRef.current.x;
         const dy = e.clientY - lastMousePosRef.current.y;
-        setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+        setFrameEditPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
         lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       }
     },
-    [isDragging],
+    [isDragging, setFrameEditPan],
   );
 
   const handleContainerMouseUp = useCallback(() => {
@@ -523,7 +525,7 @@ export default function FramePreviewContent() {
             style={{
               left: "50%",
               top: "50%",
-              transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
+              transform: `translate(calc(-50% + ${frameEditPan.x}px), calc(-50% + ${frameEditPan.y}px))`,
             }}
           >
             <canvas
@@ -548,8 +550,8 @@ export default function FramePreviewContent() {
                   style={{
                     left: cursorPos.x,
                     top: cursorPos.y,
-                    width: brushSize * previewScale,
-                    height: brushSize * previewScale,
+                    width: brushSize * frameEditZoom,
+                    height: brushSize * frameEditZoom,
                     transform: "translate(-50%, -50%)",
                     border:
                       editToolMode === "eraser" ? "2px solid #f87171" : `2px solid ${brushColor}`,
@@ -613,21 +615,21 @@ export default function FramePreviewContent() {
           </button>
         </div>
 
-        {/* Scale control */}
-        <div className="flex items-center gap-4 text-sm">
-          <div className="flex items-center gap-2 flex-1">
-            <span className="text-text-secondary">{t.scale}:</span>
-            <input
-              type="range"
-              min="1"
-              max="20"
-              step="0.5"
-              value={previewScale}
-              onChange={(e) => setPreviewScale(Number(e.target.value))}
-              className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-            />
-            <span className="w-8 text-center text-text-primary">{previewScale}x</span>
-          </div>
+        {/* Zoom control */}
+        <div className="flex items-center justify-center gap-1 text-sm">
+          <button
+            onClick={() => setFrameEditZoom((z) => Math.max(0.1, z * 0.8))}
+            className="p-1 hover:bg-interactive-hover rounded transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+          </button>
+          <span className="text-xs w-10 text-center text-text-primary">{Math.round(frameEditZoom * 100)}%</span>
+          <button
+            onClick={() => setFrameEditZoom((z) => Math.min(20, z * 1.25))}
+            className="p-1 hover:bg-interactive-hover rounded transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+          </button>
         </div>
 
         {/* Frame name */}
