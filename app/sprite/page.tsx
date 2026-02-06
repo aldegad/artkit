@@ -13,7 +13,6 @@ import {
 } from "../../domains/sprite";
 import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
-import { LayersPanelContent } from "../../components/panels";
 import { useLanguage, HeaderSlot } from "../../shared/contexts";
 import { Tooltip, Scrollbar } from "../../shared/components";
 import {
@@ -86,11 +85,9 @@ function SpriteEditorMain() {
     newProject,
     copyFrame,
     pasteFrame,
-    addCompositionLayer,
   } = useEditor();
 
   // Panel visibility states
-  const [isLayersPanelOpen, setIsLayersPanelOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
   const [isFrameEditOpen, setIsFrameEditOpen] = useState(true);
 
@@ -146,7 +143,7 @@ function SpriteEditorMain() {
     loadProjects();
   }, [setSavedSpriteProjects]);
 
-  // Image upload handler - adds image as a composition layer
+  // Image upload handler - sets as main sprite image
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -155,40 +152,30 @@ function SpriteEditorMain() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
-        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        // Add as composition layer
-        addCompositionLayer(src, fileName);
+        setImageSrc(src);
+        setCurrentPoints([]);
+        setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
 
-        // Also set as main image if no main image exists (for sprite extraction)
-        if (!imageSrc) {
-          setImageSrc(src);
-          setCurrentPoints([]);
-          setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+        const img = new Image();
+        img.onload = () => {
+          setImageSize({ width: img.width, height: img.height });
+          imageRef.current = img;
 
-          const img = new Image();
-          img.onload = () => {
-            setImageSize({ width: img.width, height: img.height });
-            imageRef.current = img;
-
-            const maxWidth = 900;
-            const newScale = Math.min(maxWidth / img.width, 1);
-            setScale(newScale);
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
-          };
-          img.src = src;
-        }
-
-        // Open layers panel to show the new layer
-        setIsLayersPanelOpen(true);
+          const maxWidth = 900;
+          const newScale = Math.min(maxWidth / img.width, 1);
+          setScale(newScale);
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+        };
+        img.src = src;
       };
       reader.readAsDataURL(file);
 
       // Reset input so same file can be selected again
       e.target.value = "";
     },
-    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames, addCompositionLayer, imageSrc],
+    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
   );
 
   // Extract frame image helper
@@ -657,10 +644,8 @@ function SpriteEditorMain() {
           onImportImage={() => imageInputRef.current?.click()}
           onImportSheet={() => setIsSpriteSheetImportOpen(true)}
           onImportVideo={() => setIsVideoImportOpen(true)}
-          onToggleLayers={() => setIsLayersPanelOpen(!isLayersPanelOpen)}
           onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
           onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
-          isLayersOpen={isLayersPanelOpen}
           isPreviewOpen={isPreviewOpen}
           isFrameEditOpen={isFrameEditOpen}
           canSave={frames.length > 0 && frames.some((f) => f.imageData)}
@@ -674,7 +659,6 @@ function SpriteEditorMain() {
             importImage: t.importImage,
             importSheet: t.importSheet,
             importVideo: t.importVideo,
-            layers: t.layers,
             preview: t.animation,
             frameEdit: t.frameWindow,
           }}
@@ -1070,25 +1054,6 @@ function SpriteEditorMain() {
         }}
       />
 
-      {/* Layers Panel (Floating) */}
-      {isLayersPanelOpen && (
-        <div className="fixed right-4 top-20 w-72 h-[500px] bg-surface-primary border border-border-default rounded-xl shadow-xl z-40 flex flex-col overflow-hidden">
-          {/* Panel Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border-default bg-surface-secondary">
-            <h3 className="text-sm font-medium text-text-primary">{t.layers}</h3>
-            <button
-              onClick={() => setIsLayersPanelOpen(false)}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-            >
-              ×
-            </button>
-          </div>
-          {/* Panel Content */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <LayersPanelContent />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

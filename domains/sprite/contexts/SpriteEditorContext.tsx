@@ -10,7 +10,6 @@ import {
   useSpriteToolStore,
   useSpriteDragStore,
   useSpriteUIStore,
-  useSpriteLayerStore,
 } from "../stores";
 
 // ============================================
@@ -57,7 +56,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const frameStore = useSpriteFrameStore();
   const viewportStore = useSpriteViewportStore();
   const uiStore = useSpriteUIStore();
-  const layerStore = useSpriteLayerStore();
 
   // Autosave: Load saved data on mount
   useEffect(() => {
@@ -79,10 +77,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
         // Restore UI state
         if (data.projectName) uiStore.setProjectName(data.projectName);
-
-        // Restore layer state
-        if (data.compositionLayers) layerStore.setCompositionLayers(data.compositionLayers);
-        if (data.activeLayerId !== undefined) layerStore.setActiveLayerId(data.activeLayerId);
       }
       isInitializedRef.current = true;
     };
@@ -113,8 +107,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
         pan: viewportStore.pan,
         scale: viewportStore.scale,
         projectName: uiStore.projectName,
-        compositionLayers: layerStore.compositionLayers,
-        activeLayerId: layerStore.activeLayerId,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
 
@@ -134,8 +126,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
     viewportStore.pan,
     viewportStore.scale,
     uiStore.projectName,
-    layerStore.compositionLayers,
-    layerStore.activeLayerId,
   ]);
 
   const refsValue: EditorRefsContextValue = {
@@ -174,7 +164,6 @@ export function useEditor() {
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
   const uiStore = useSpriteUIStore();
-  const layerStore = useSpriteLayerStore();
 
   // New project function
   const newProject = useCallback(() => {
@@ -183,10 +172,9 @@ export function useEditor() {
     toolStore.reset();
     dragStore.reset();
     uiStore.reset();
-    layerStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, layerStore, refs.imageRef]);
+  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
   // Copy/Paste functions
   const copyFrame = useCallback(() => {
@@ -306,14 +294,6 @@ export function useEditor() {
     brushSize: toolStore.brushSize,
     setBrushSize: toolStore.setBrushSize,
 
-    // Background Removal
-    isBackgroundRemovalMode: toolStore.isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode: toolStore.setIsBackgroundRemovalMode,
-    eraserTolerance: toolStore.eraserTolerance,
-    setEraserTolerance: toolStore.setEraserTolerance,
-    eraserMode: toolStore.eraserMode,
-    setEraserMode: toolStore.setEraserMode,
-
     // History (Undo/Redo)
     canUndo: frameStore.canUndo,
     canRedo: frameStore.canRedo,
@@ -334,17 +314,6 @@ export function useEditor() {
     copyFrame,
     pasteFrame,
     clipboardFrame: uiStore.clipboardFrame,
-
-    // Composition Layers
-    compositionLayers: layerStore.compositionLayers,
-    setCompositionLayers: layerStore.setCompositionLayers,
-    activeLayerId: layerStore.activeLayerId,
-    setActiveLayerId: layerStore.setActiveLayerId,
-    addCompositionLayer: layerStore.addCompositionLayer,
-    removeCompositionLayer: layerStore.removeCompositionLayer,
-    updateCompositionLayer: layerStore.updateCompositionLayer,
-    reorderCompositionLayers: layerStore.reorderCompositionLayers,
-    duplicateCompositionLayer: layerStore.duplicateCompositionLayer,
 
     // Refs
     ...refs,
@@ -477,18 +446,6 @@ export function useEditorBrush() {
   };
 }
 
-export function useEditorBackgroundRemoval() {
-  const store = useSpriteToolStore();
-  return {
-    isBackgroundRemovalMode: store.isBackgroundRemovalMode,
-    setIsBackgroundRemovalMode: store.setIsBackgroundRemovalMode,
-    eraserTolerance: store.eraserTolerance,
-    setEraserTolerance: store.setEraserTolerance,
-    eraserMode: store.eraserMode,
-    setEraserMode: store.setEraserMode,
-  };
-}
-
 export function useEditorHistory() {
   const store = useSpriteFrameStore();
   return {
@@ -506,7 +463,6 @@ export function useEditorProject() {
   const viewportStore = useSpriteViewportStore();
   const toolStore = useSpriteToolStore();
   const dragStore = useSpriteDragStore();
-  const layerStore = useSpriteLayerStore();
   const refs = useEditorRefs();
 
   const newProject = useCallback(() => {
@@ -515,10 +471,9 @@ export function useEditorProject() {
     toolStore.reset();
     dragStore.reset();
     uiStore.reset();
-    layerStore.reset();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, layerStore, refs.imageRef]);
+  }, [frameStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
 
   return {
     projectName: uiStore.projectName,
@@ -568,18 +523,3 @@ export function useEditorClipboard() {
 
 // Keep for backwards compatibility - now just returns refs from context
 export { useEditorRefs as useEditorRefsHook };
-
-export function useEditorUnifiedLayers() {
-  const store = useSpriteLayerStore();
-  return {
-    compositionLayers: store.compositionLayers,
-    setCompositionLayers: store.setCompositionLayers,
-    activeLayerId: store.activeLayerId,
-    setActiveLayerId: store.setActiveLayerId,
-    addCompositionLayer: store.addCompositionLayer,
-    removeCompositionLayer: store.removeCompositionLayer,
-    updateCompositionLayer: store.updateCompositionLayer,
-    reorderCompositionLayers: store.reorderCompositionLayers,
-    duplicateCompositionLayer: store.duplicateCompositionLayer,
-  };
-}

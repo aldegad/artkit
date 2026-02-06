@@ -3,7 +3,7 @@
 // ============================================
 
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
-import { Point, Size, SpriteFrame, UnifiedLayer } from "../types";
+import { Point, Size, SpriteFrame } from "../types";
 
 export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
@@ -19,8 +19,6 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
-  compositionLayers?: UnifiedLayer[];
-  activeLayerId?: string | null;
 }
 
 // Create autosave storage using shared abstraction

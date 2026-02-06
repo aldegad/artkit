@@ -5,7 +5,6 @@ import SpriteCanvas from "../SpriteCanvas";
 import TimelineContent from "../../../../components/panels/TimelineContent";
 import AnimationPreview from "../AnimationPreview";
 import FramePreview from "../FramePreview";
-import LayersPanelContent from "../../../../components/panels/LayersPanelContent";
 
 // ============================================
 // Panel Metadata
@@ -43,12 +42,6 @@ const PANEL_META: Record<string, PanelMeta> = {
     defaultSize: { width: 450, height: 480 },
     minSize: 200,
   },
-  layers: {
-    title: "Layers",
-    showHeader: true,
-    defaultSize: { width: 280, height: 400 },
-    minSize: 200,
-  },
 };
 
 // ============================================
@@ -61,7 +54,6 @@ let panelComponents: Record<string, () => ReactNode> = {
   timeline: () => <TimelineContent />,
   preview: () => <AnimationPreview />,
   "frame-edit": () => <FramePreview />,
-  layers: () => <LayersPanelContent />,
 };
 
 // Listeners for panel updates

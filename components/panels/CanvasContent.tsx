@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useState, DragEvent } from "react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { useTheme } from "../../shared/contexts";
-import { Point, SpriteFrame, UnifiedLayer } from "../../types";
+import { Point, SpriteFrame } from "../../types";
 import { getBoundingBox, isPointInPolygon } from "../../utils/geometry";
 import ImageDropZone from "../ImageDropZone";
 
@@ -47,10 +47,6 @@ export default function CanvasContent() {
     canvasRef,
     canvasContainerRef,
     didPanOrDragRef,
-    compositionLayers,
-    activeLayerId,
-    updateCompositionLayer,
-    addCompositionLayer,
   } = useEditor();
 
   // Get current theme for canvas redraw
@@ -62,14 +58,7 @@ export default function CanvasContent() {
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Composition layer images cache
-  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
-
-  // Layer dragging state
-  const [isDraggingLayer, setIsDraggingLayer] = useState(false);
-  const [layerDragStart, setLayerDragStart] = useState<Point>({ x: 0, y: 0 });
-
-  // Handle file drop for image upload - adds as composition layer
+  // Handle file drop for image upload - sets as main image
   const handleFileDrop = useCallback(
     (file: File) => {
       if (!file.type.startsWith("image/")) return;
@@ -77,34 +66,27 @@ export default function CanvasContent() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
-        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
 
-        // Add as composition layer
-        addCompositionLayer(src, fileName);
+        setImageSrc(src);
+        setCurrentPoints([]);
+        setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
 
-        // Also set as main image if no main image exists (for sprite extraction)
-        if (!imageSrc) {
-          setImageSrc(src);
-          setCurrentPoints([]);
-          setFrames((prev) => prev.map((frame) => ({ ...frame, points: [] })));
+        const img = new Image();
+        img.onload = () => {
+          setImageSize({ width: img.width, height: img.height });
+          imageRef.current = img;
 
-          const img = new Image();
-          img.onload = () => {
-            setImageSize({ width: img.width, height: img.height });
-            imageRef.current = img;
-
-            const maxWidth = 900;
-            const newScale = Math.min(maxWidth / img.width, 1);
-            setScale(newScale);
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
-          };
-          img.src = src;
-        }
+          const maxWidth = 900;
+          const newScale = Math.min(maxWidth / img.width, 1);
+          setScale(newScale);
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+        };
+        img.src = src;
       };
       reader.readAsDataURL(file);
     },
-    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames, addCompositionLayer, imageSrc],
+    [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
   );
 
   // Drag event handlers
@@ -171,55 +153,6 @@ export default function CanvasContent() {
     img.src = imageSrc;
   }, [imageSrc, imageRef]);
 
-  // Load composition layer images
-  useEffect(() => {
-    const newLayerImages = new Map<string, HTMLImageElement>();
-    let loadedCount = 0;
-    const totalLayers = compositionLayers.length;
-
-    if (totalLayers === 0) {
-      setLayerImages(new Map());
-      return;
-    }
-
-    compositionLayers.forEach((layer) => {
-      if (!layer.paintData) {
-        loadedCount++;
-        if (loadedCount === totalLayers) {
-          setLayerImages(newLayerImages);
-        }
-        return;
-      }
-
-      // Check if we already have this image cached
-      const existingImg = layerImages.get(layer.id);
-      if (existingImg && existingImg.src === layer.paintData) {
-        newLayerImages.set(layer.id, existingImg);
-        loadedCount++;
-        if (loadedCount === totalLayers) {
-          setLayerImages(newLayerImages);
-        }
-        return;
-      }
-
-      const img = new Image();
-      img.onload = () => {
-        newLayerImages.set(layer.id, img);
-        loadedCount++;
-        if (loadedCount === totalLayers) {
-          setLayerImages(newLayerImages);
-        }
-      };
-      img.onerror = () => {
-        loadedCount++;
-        if (loadedCount === totalLayers) {
-          setLayerImages(newLayerImages);
-        }
-      };
-      img.src = layer.paintData;
-    });
-  }, [compositionLayers]);
-
   // Coordinate transforms
   const screenToImage = useCallback(
     (screenX: number, screenY: number): Point => {
@@ -253,41 +186,6 @@ export default function CanvasContent() {
       return Math.hypot(screen1.x - screen2.x, screen1.y - screen2.y) < threshold;
     },
     [imageToScreen],
-  );
-
-  // Check if point is inside a composition layer (for layer selection/dragging)
-  const getLayerAtPoint = useCallback(
-    (screenX: number, screenY: number): UnifiedLayer | null => {
-      const canvas = canvasRef.current;
-      if (!canvas) return null;
-
-      const rect = canvas.getBoundingClientRect();
-      const canvasX = screenX - rect.left;
-      const canvasY = screenY - rect.top;
-
-      // Check layers in reverse order (top to bottom visually)
-      const sortedLayers = [...compositionLayers].sort((a, b) => b.zIndex - a.zIndex);
-      for (const layer of sortedLayers) {
-        if (!layer.visible || !layer.originalSize || !layer.position) continue;
-
-        const layerScale = layer.scale ?? 1;
-        const layerWidth = layer.originalSize.width * layerScale * scale * zoom;
-        const layerHeight = layer.originalSize.height * layerScale * scale * zoom;
-        const layerX = pan.x + layer.position.x * scale * zoom;
-        const layerY = pan.y + layer.position.y * scale * zoom;
-
-        if (
-          canvasX >= layerX &&
-          canvasX <= layerX + layerWidth &&
-          canvasY >= layerY &&
-          canvasY <= layerY + layerHeight
-        ) {
-          return layer;
-        }
-      }
-      return null;
-    },
-    [canvasRef, compositionLayers, scale, zoom, pan],
   );
 
   // Extract frame image
@@ -372,51 +270,8 @@ export default function CanvasContent() {
       }
     }
 
-    // Draw composition layers (sorted by zIndex, lower first)
-    const sortedLayers = [...compositionLayers].sort((a, b) => a.zIndex - b.zIndex);
-    sortedLayers.forEach((layer) => {
-      if (!layer.visible || !layer.originalSize || !layer.position) return;
-      const layerImg = layerImages.get(layer.id);
-      if (!layerImg) return;
-
-      const layerScale = layer.scale ?? 1;
-      const layerRotation = layer.rotation ?? 0;
-      const layerWidth = layer.originalSize.width * layerScale * scale * zoom;
-      const layerHeight = layer.originalSize.height * layerScale * scale * zoom;
-      const layerX = pan.x + layer.position.x * scale * zoom;
-      const layerY = pan.y + layer.position.y * scale * zoom;
-
-      ctx.save();
-      ctx.globalAlpha = layer.opacity / 100;
-
-      // Apply rotation if needed
-      if (layerRotation !== 0) {
-        const centerX = layerX + layerWidth / 2;
-        const centerY = layerY + layerHeight / 2;
-        ctx.translate(centerX, centerY);
-        ctx.rotate((layerRotation * Math.PI) / 180);
-        ctx.translate(-centerX, -centerY);
-      }
-
-      ctx.drawImage(layerImg, layerX, layerY, layerWidth, layerHeight);
-
-      // Draw selection border for active layer
-      if (layer.id === activeLayerId) {
-        ctx.strokeStyle = "#00aaff";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(layerX, layerY, layerWidth, layerHeight);
-        ctx.setLineDash([]);
-      }
-
-      ctx.restore();
-    });
-
-    // Draw main sprite image only if no composition layers exist
-    // (when composition layers exist, they replace the main image)
-    if (compositionLayers.length === 0) {
-      ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
-    }
+    // Draw main sprite image
+    ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
 
     // Draw saved frame polygons
     frames.forEach((frame, idx) => {
@@ -515,9 +370,6 @@ export default function CanvasContent() {
     imageToScreen,
     resizeCounter, // Trigger redraw on container resize
     resolvedTheme, // Trigger redraw on theme change
-    compositionLayers,
-    layerImages,
-    activeLayerId,
   ]);
 
   // Canvas click handler
@@ -610,17 +462,6 @@ export default function CanvasContent() {
         return;
       }
 
-      // Check for layer dragging (when clicking on active layer)
-      if (toolMode === "select" && e.button === 0 && activeLayerId) {
-        const clickedLayer = getLayerAtPoint(e.clientX, e.clientY);
-        if (clickedLayer && clickedLayer.id === activeLayerId && !clickedLayer.locked) {
-          setIsDraggingLayer(true);
-          setLayerDragStart({ x: e.clientX, y: e.clientY });
-          e.preventDefault();
-          return;
-        }
-      }
-
       if (toolMode === "select" && e.button === 0) {
         const point = screenToImage(e.clientX, e.clientY);
 
@@ -656,8 +497,6 @@ export default function CanvasContent() {
       setIsDragging,
       setDragStart,
       didPanOrDragRef,
-      activeLayerId,
-      getLayerAtPoint,
     ],
   );
 
@@ -672,25 +511,6 @@ export default function CanvasContent() {
         }
         setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
         setLastPanPoint({ x: e.clientX, y: e.clientY });
-        return;
-      }
-
-      // Handle layer dragging
-      if (isDraggingLayer && activeLayerId) {
-        didPanOrDragRef.current = true;
-        const dx = (e.clientX - layerDragStart.x) / (scale * zoom);
-        const dy = (e.clientY - layerDragStart.y) / (scale * zoom);
-
-        const activeLayer = compositionLayers.find((l) => l.id === activeLayerId);
-        if (activeLayer?.position) {
-          updateCompositionLayer(activeLayerId, {
-            position: {
-              x: activeLayer.position.x + dx,
-              y: activeLayer.position.y + dy,
-            },
-          });
-        }
-        setLayerDragStart({ x: e.clientX, y: e.clientY });
         return;
       }
 
@@ -736,13 +556,6 @@ export default function CanvasContent() {
       selectedPointIndex,
       setDragStart,
       didPanOrDragRef,
-      isDraggingLayer,
-      activeLayerId,
-      layerDragStart,
-      scale,
-      zoom,
-      updateCompositionLayer,
-      compositionLayers,
     ],
   );
 
@@ -759,7 +572,6 @@ export default function CanvasContent() {
     }
     setIsPanning(false);
     setIsDragging(false);
-    setIsDraggingLayer(false);
   }, [isDragging, selectedFrameId, setFrames, extractFrameImage, setIsPanning, setIsDragging]);
 
   // Wheel zoom
@@ -824,7 +636,7 @@ export default function CanvasContent() {
                   : "cursor-grab"
                 : toolMode === "pen"
                   ? "cursor-crosshair"
-                  : isDragging || isDraggingLayer
+                  : isDragging
                     ? "cursor-grabbing"
                     : "cursor-default"
             }`}

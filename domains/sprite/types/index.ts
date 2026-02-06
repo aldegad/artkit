@@ -85,10 +85,6 @@ export interface SpriteEditorState {
   // Timeline
   timelineMode: TimelineMode;
 
-  // Background Removal
-  isBackgroundRemovalMode: boolean;
-  eraserTolerance: number;
-
   // Project
   projectName: string;
   currentProjectId: string | null;
