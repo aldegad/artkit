@@ -124,12 +124,15 @@ export default function AnimationPreviewContent() {
   // Throttled React state for UI display only (zoom %, CSS transform)
   const viewportSync = viewport.useReactSync(16);
 
+  // Extract stable references from viewport
+  const { onViewportChange: onAnimViewportChange, setZoom: setAnimVpZoom, setPan: setAnimVpPan } = viewport;
+
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const unsub = viewport.onViewportChange((state) => {
+    const unsub = onAnimViewportChange((state) => {
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = setTimeout(() => {
         const store = useSpriteViewportStore.getState();
@@ -141,7 +144,7 @@ export default function AnimationPreviewContent() {
       unsub();
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
-  }, [viewport]);
+  }, [onAnimViewportChange]);
 
   // Restore viewport from autosave on load
   const restoredRef = useRef(false);
@@ -150,10 +153,10 @@ export default function AnimationPreviewContent() {
     restoredRef.current = true;
     const { animPreviewZoom, animPreviewPan } = useSpriteViewportStore.getState();
     if (animPreviewZoom > 0) {
-      viewport.setZoom(animPreviewZoom);
-      viewport.setPan(animPreviewPan);
+      setAnimVpZoom(animPreviewZoom);
+      setAnimVpPan(animPreviewPan);
     }
-  }, [isAutosaveLoading, viewport]);
+  }, [isAutosaveLoading, setAnimVpZoom, setAnimVpPan]);
 
   // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
