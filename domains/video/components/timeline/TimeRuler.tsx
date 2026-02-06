@@ -15,7 +15,7 @@ interface TimeRulerProps {
 export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { viewState } = useTimeline();
+  const { viewState, setScrollX } = useTimeline();
   const { playback, seek } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
 
@@ -124,8 +124,13 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       } else {
         seek(time);
       }
+
+      // Auto-scroll to keep playhead visible
+      if (time < viewState.scrollX) {
+        setScrollX(time);
+      }
     },
-    [pixelToTime, seek, onSeek]
+    [pixelToTime, seek, onSeek, viewState.scrollX, setScrollX]
   );
 
   useEffect(() => {

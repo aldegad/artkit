@@ -40,6 +40,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     removeClip,
     addClips,
     saveToHistory,
+    setScrollX,
   } = useTimeline();
   const { seek, selectClip, deselectAll, toolMode } = useVideoState();
   const { pixelToTime, timeToPixel, zoom } = useVideoCoordinates();
@@ -238,7 +239,11 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           }
         } else {
           // Click on empty area - seek and deselect
-          seek(Math.max(0, time));
+          const seekTime = Math.max(0, time);
+          seek(seekTime);
+          if (seekTime < viewState.scrollX) {
+            setScrollX(seekTime);
+          }
           deselectAll();
           setDragState({
             type: "playhead",
@@ -280,9 +285,15 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     const deltaTime = time - dragState.startTime;
 
     switch (dragState.type) {
-      case "playhead":
-        seek(Math.max(0, time));
+      case "playhead": {
+        const seekTime = Math.max(0, time);
+        seek(seekTime);
+        // Auto-scroll to keep playhead visible when seeking before visible area
+        if (seekTime < viewState.scrollX) {
+          setScrollX(seekTime);
+        }
         break;
+      }
 
       case "clip-move":
         if (dragState.clipId) {
