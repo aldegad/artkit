@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/soohongkim/Documents/workspace/personal/artkit-agent2 merge main --no-edit)"
+    ]
+  }
+}

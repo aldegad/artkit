@@ -250,10 +250,9 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     const containerRect = tracksContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
     const x = e.clientX - containerRect.left;
+    const y = e.clientY - containerRect.top;
     const time = pixelToTime(x);
     const deltaTime = time - dragState.startTime;
-
-    const y = e.clientY - containerRect.top;
 
     switch (dragState.type) {
       case "playhead":

@@ -54,7 +54,8 @@ interface TimelineContextValue {
     sourceUrl: string,
     sourceDuration: number,
     sourceSize: Size,
-    startTime?: number
+    startTime?: number,
+    canvasSize?: Size
   ) => string;
   addAudioClip: (
     trackId: string,
@@ -68,7 +69,8 @@ interface TimelineContextValue {
     sourceUrl: string,
     sourceSize: Size,
     startTime?: number,
-    duration?: number
+    duration?: number,
+    canvasSize?: Size
   ) => string;
   removeClip: (clipId: string) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
@@ -468,7 +470,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceUrl: string,
       sourceDuration: number,
       sourceSize: Size,
-      startTime: number = 0
+      startTime: number = 0,
+      canvasSize?: Size
     ): string => {
       const track = tracks.find((t) => t.id === trackId) || null;
       const resolvedTrackId =
@@ -477,7 +480,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           : tracks.find((t) => t.type !== "audio")?.id || trackId;
 
       const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
-      const fitted = getFittedVisualTransform(sourceSize, projectRef.current.canvasSize);
+      const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
       const clip: Clip = {
         ...baseClip,
         position: fitted.position,
@@ -518,7 +521,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceUrl: string,
       sourceSize: Size,
       startTime: number = 0,
-      duration: number = 5
+      duration: number = 5,
+      canvasSize?: Size
     ): string => {
       const track = tracks.find((t) => t.id === trackId) || null;
       const resolvedTrackId =
@@ -527,7 +531,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           : tracks.find((t) => t.type !== "audio")?.id || trackId;
 
       const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
-      const fitted = getFittedVisualTransform(sourceSize, projectRef.current.canvasSize);
+      const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
       const clip: Clip = {
         ...baseClip,
         position: fitted.position,

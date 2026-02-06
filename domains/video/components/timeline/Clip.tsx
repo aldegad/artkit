@@ -85,12 +85,12 @@ export function Clip({ clip }: ClipProps) {
 
   const clipColor = useMemo(() => {
     if (clip.type === "video") {
-      return "bg-blue-600/80";
+      return "bg-clip-video";
     }
     if (clip.type === "audio") {
-      return "bg-amber-600/85";
+      return "bg-clip-audio";
     }
-    return "bg-green-600/80";
+    return "bg-clip-image";
   }, [clip.type]);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ export function Clip({ clip }: ClipProps) {
       className={cn(
         "absolute top-1 bottom-1 rounded cursor-pointer transition-all",
         clipColor,
-        isSelected && "ring-2 ring-white ring-offset-1 ring-offset-transparent",
+        isSelected && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent",
         !clip.visible && "opacity-50"
       )}
       style={{
@@ -130,7 +130,7 @@ export function Clip({ clip }: ClipProps) {
       }}
     >
       {/* Clip name */}
-      <div className="px-2 py-1 text-xs text-white truncate">
+      <div className="px-2 py-1 text-xs text-clip-text truncate">
         {clip.name}
       </div>
 
@@ -140,7 +140,7 @@ export function Clip({ clip }: ClipProps) {
           {waveform.map((value, idx) => (
             <div
               key={`${clip.id}-wave-${idx}`}
-              className="bg-white/70 rounded-sm flex-1"
+              className="bg-clip-waveform rounded-sm flex-1"
               style={{ height: `${Math.round(value * 100)}%` }}
             />
           ))}
@@ -152,11 +152,11 @@ export function Clip({ clip }: ClipProps) {
         <>
           {/* Left trim handle */}
           <div
-            className="absolute left-0 top-0 bottom-0 w-1.5 bg-white/50 hover:bg-white/80 cursor-ew-resize rounded-l"
+            className="absolute left-0 top-0 bottom-0 w-1.5 bg-clip-trim-handle hover:bg-clip-trim-handle-hover cursor-ew-resize rounded-l"
           />
           {/* Right trim handle */}
           <div
-            className="absolute right-0 top-0 bottom-0 w-1.5 bg-white/50 hover:bg-white/80 cursor-ew-resize rounded-r"
+            className="absolute right-0 top-0 bottom-0 w-1.5 bg-clip-trim-handle hover:bg-clip-trim-handle-hover cursor-ew-resize rounded-r"
           />
         </>
       )}
@@ -164,11 +164,11 @@ export function Clip({ clip }: ClipProps) {
       {/* Type indicator */}
       <div className="absolute bottom-1 right-1">
         {clip.type === "video" ? (
-          <VideoClipIcon className="w-3 h-3 text-white/60" />
+          <VideoClipIcon className="w-3 h-3 text-clip-text-muted" />
         ) : clip.type === "audio" ? (
-          <AudioClipIcon className="w-3 h-3 text-white/70" />
+          <AudioClipIcon className="w-3 h-3 text-clip-text-muted" />
         ) : (
-          <ImageClipIcon className="w-3 h-3 text-white/60" />
+          <ImageClipIcon className="w-3 h-3 text-clip-text-muted" />
         )}
       </div>
     </div>

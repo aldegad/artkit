@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLanguage, useAuth, HeaderSlot } from "../../shared/contexts";
-import { Tooltip, Select, Scrollbar } from "../../shared/components";
+import { Tooltip, Scrollbar, ExportModal } from "../../shared/components";
 import {
   MarqueeIcon,
   MoveIcon,
@@ -49,7 +49,6 @@ import {
   useEditorSave,
   BackgroundRemovalModals,
   TransformDiscardConfirmModal,
-  ExportLayersModal,
   EditorToolOptions,
   EditorStatusBar,
   PanModeToggle,
@@ -208,9 +207,12 @@ function ImageEditorContent() {
   // Loading state for async operations
   const [isLoading, setIsLoading] = useState(false);
 
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportMode, setExportMode] = useState<"single" | "layers">("single");
+
   // Transform discard confirmation state
   const [showTransformDiscardConfirm, setShowTransformDiscardConfirm] = useState(false);
-  const [showExportLayersModal, setShowExportLayersModal] = useState(false);
   const pendingToolModeRef = useRef<EditorToolMode | null>(null);
   const previousToolModeRef = useRef<EditorToolMode | null>(null);
 
@@ -219,8 +221,6 @@ function ImageEditorContent() {
     state: {
       canvasSize,
       rotation,
-      outputFormat,
-      quality,
       toolMode,
       zoom,
       pan,
@@ -238,8 +238,6 @@ function ImageEditorContent() {
     },
     setCanvasSize,
     setRotation,
-    setOutputFormat,
-    setQuality,
     setToolMode,
     setZoom,
     setPan,
@@ -1299,8 +1297,7 @@ function ImageEditorContent() {
     }, 0);
   }, [cropArea, layers, activeLayerId, rotation, setLayers, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
 
-  const exportImage = useCallback(() => {
-    // Check if we have any layers to export
+  const exportImage = useCallback((fileName: string, fmt: OutputFormat, q: number) => {
     if (layers.length === 0) return;
 
     const exportCanvas = document.createElement("canvas");
@@ -1309,21 +1306,16 @@ function ImageEditorContent() {
 
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
-    // Create composite canvas from all visible layers
     const compositeCanvas = document.createElement("canvas");
     compositeCanvas.width = displayWidth;
     compositeCanvas.height = displayHeight;
     const compositeCtx = compositeCanvas.getContext("2d");
     if (!compositeCtx) return;
 
-    // Draw all visible layers in order (bottom to top)
     layers.forEach((layer) => {
       if (!layer.visible) return;
-
       const layerCanvas = layerCanvasesRef.current.get(layer.id);
       if (!layerCanvas) return;
-
-      // Apply layer opacity
       compositeCtx.globalAlpha = layer.opacity;
       compositeCtx.drawImage(layerCanvas, 0, 0);
       compositeCtx.globalAlpha = 1;
@@ -1333,7 +1325,6 @@ function ImageEditorContent() {
       exportCanvas.width = Math.round(cropArea.width);
       exportCanvas.height = Math.round(cropArea.height);
 
-      // Check if crop extends beyond canvas (canvas expand mode)
       const extendsLeft = cropArea.x < 0;
       const extendsTop = cropArea.y < 0;
       const extendsRight = cropArea.x + cropArea.width > displayWidth;
@@ -1341,137 +1332,130 @@ function ImageEditorContent() {
       const extendsCanvas = extendsLeft || extendsTop || extendsRight || extendsBottom;
 
       if (extendsCanvas) {
-        // Fill with white background for JPEG (which doesn't support transparency)
-        if (outputFormat === "jpeg") {
+        if (fmt === "jpeg") {
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, cropArea.width, cropArea.height);
         }
-        // For PNG/WebP, leave transparent (canvas is transparent by default)
-
-        // Calculate the intersection of crop area with canvas
         const srcX = Math.max(0, cropArea.x);
         const srcY = Math.max(0, cropArea.y);
         const srcRight = Math.min(displayWidth, cropArea.x + cropArea.width);
         const srcBottom = Math.min(displayHeight, cropArea.y + cropArea.height);
         const srcWidth = srcRight - srcX;
         const srcHeight = srcBottom - srcY;
-
-        // Calculate destination position (where to draw in export canvas)
         const destX = srcX - cropArea.x;
         const destY = srcY - cropArea.y;
 
-        // Only draw if there's actual intersection with canvas
         if (srcWidth > 0 && srcHeight > 0) {
-          ctx.drawImage(
-            compositeCanvas,
-            srcX,
-            srcY,
-            srcWidth,
-            srcHeight,
-            destX,
-            destY,
-            srcWidth,
-            srcHeight,
-          );
+          ctx.drawImage(compositeCanvas, srcX, srcY, srcWidth, srcHeight, destX, destY, srcWidth, srcHeight);
         }
       } else {
-        // Normal crop within canvas bounds
         ctx.drawImage(
           compositeCanvas,
-          Math.round(cropArea.x),
-          Math.round(cropArea.y),
-          Math.round(cropArea.width),
-          Math.round(cropArea.height),
-          0,
-          0,
-          Math.round(cropArea.width),
-          Math.round(cropArea.height),
+          Math.round(cropArea.x), Math.round(cropArea.y),
+          Math.round(cropArea.width), Math.round(cropArea.height),
+          0, 0,
+          Math.round(cropArea.width), Math.round(cropArea.height),
         );
       }
     } else {
       exportCanvas.width = displayWidth;
       exportCanvas.height = displayHeight;
-      // Fill with white background for JPEG
-      if (outputFormat === "jpeg") {
+      if (fmt === "jpeg") {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, displayWidth, displayHeight);
       }
       ctx.drawImage(compositeCanvas, 0, 0);
     }
 
-    const mimeType =
-      outputFormat === "webp" ? "image/webp" : outputFormat === "jpeg" ? "image/jpeg" : "image/png";
+    const mimeType = fmt === "webp" ? "image/webp" : fmt === "jpeg" ? "image/jpeg" : "image/png";
+    const ext = fmt === "jpeg" ? "jpg" : fmt;
 
     exportCanvas.toBlob(
       (blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
         link.href = url;
-        link.download = `${projectName || "edited-image"}.${ext}`;
+        link.download = `${fileName}.${ext}`;
         link.click();
         URL.revokeObjectURL(url);
       },
       mimeType,
-      quality,
+      q,
     );
-  }, [layers, layerCanvasesRef, cropArea, outputFormat, quality, projectName, getDisplayDimensions]);
+  }, [layers, layerCanvasesRef, cropArea, getDisplayDimensions]);
 
-  // Export each selected layer individually at canvas size
-  const exportSelectedLayers = useCallback((backgroundColor: string | null) => {
+  // Export each selected layer individually at canvas size, bundled as ZIP
+  const exportSelectedLayers = useCallback(async (fileName: string, fmt: OutputFormat, q: number, backgroundColor: string | null) => {
     const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
     if (targetIds.length === 0) return;
 
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const mimeType =
-      outputFormat === "webp" ? "image/webp" : outputFormat === "jpeg" ? "image/jpeg" : "image/png";
-    const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+    const mimeType = fmt === "webp" ? "image/webp" : fmt === "jpeg" ? "image/jpeg" : "image/png";
+    const ext = fmt === "jpeg" ? "jpg" : fmt;
 
-    targetIds.forEach((layerId) => {
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+
+    const blobPromises = targetIds.map((layerId) => {
       const layer = layers.find((l) => l.id === layerId);
-      if (!layer) return;
+      if (!layer) return null;
 
       const layerCanvas = layerCanvasesRef.current.get(layerId);
-      if (!layerCanvas) return;
+      if (!layerCanvas) return null;
 
-      // Create export canvas at full canvas size
       const exportCanvas = document.createElement("canvas");
       exportCanvas.width = displayWidth;
       exportCanvas.height = displayHeight;
       const ctx = exportCanvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) return null;
 
-      // Fill with background color if specified, or white for JPEG
       if (backgroundColor) {
         ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, displayWidth, displayHeight);
-      } else if (outputFormat === "jpeg") {
+      } else if (fmt === "jpeg") {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, displayWidth, displayHeight);
       }
 
-      // Draw layer at its position within the canvas
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
       ctx.globalAlpha = layer.opacity;
       ctx.drawImage(layerCanvas, posX, posY);
 
-      exportCanvas.toBlob(
-        (blob) => {
-          if (!blob) return;
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `${layer.name || "layer"}.${ext}`;
-          link.click();
-          URL.revokeObjectURL(url);
-        },
-        mimeType,
-        quality,
-      );
+      return new Promise<void>((resolve) => {
+        exportCanvas.toBlob(
+          (blob) => {
+            if (blob) {
+              zip.file(`${layer.name || "layer"}.${ext}`, blob);
+            }
+            resolve();
+          },
+          mimeType,
+          q,
+        );
+      });
     });
-  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, outputFormat, quality, getDisplayDimensions]);
+
+    await Promise.all(blobPromises.filter(Boolean));
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(zipBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileName}.zip`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
+
+  // Handle export from modal
+  const handleExportFromModal = useCallback((fileName: string, fmt: OutputFormat, q: number, backgroundColor: string | null) => {
+    if (exportMode === "single") {
+      exportImage(fileName, fmt, q);
+    } else {
+      exportSelectedLayers(fileName, fmt, q, backgroundColor);
+    }
+  }, [exportMode, exportImage, exportSelectedLayers]);
 
   // Get cursor based on tool mode
   const getCursor = () => {
@@ -1934,8 +1918,8 @@ function ImageEditorContent() {
           onSave={handleSaveProject}
           onSaveAs={handleSaveAsProject}
           onImportImage={() => fileInputRef.current?.click()}
-          onExport={exportImage}
-          onExportLayers={() => setShowExportLayersModal(true)}
+          onExport={() => { setExportMode("single"); setShowExportModal(true); }}
+          onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
           canSave={layers.length > 0}
           hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
           isLoading={isLoading || isSaving}
@@ -2138,36 +2122,6 @@ function ImageEditorContent() {
             </button>
           </div>
 
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Output format */}
-          <div className="flex items-center gap-1">
-            <Select
-              value={outputFormat}
-              onChange={(value) => setOutputFormat(value as OutputFormat)}
-              options={[
-                { value: "png", label: "PNG" },
-                { value: "webp", label: "WebP" },
-                { value: "jpeg", label: "JPEG" },
-              ]}
-              size="sm"
-            />
-            {outputFormat !== "png" && (
-              <>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1"
-                  step="0.1"
-                  value={quality}
-                  onChange={(e) => setQuality(parseFloat(e.target.value))}
-                  className="w-12 accent-accent-primary"
-                />
-                <span className="text-xs w-6">{Math.round(quality * 100)}%</span>
-              </>
-            )}
-          </div>
-
           <div className="flex-1 min-w-0" />
           </div>
         </Scrollbar>
@@ -2232,6 +2186,24 @@ function ImageEditorContent() {
         {layers.length > 0 && <PanModeToggle />}
       </div>
 
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExportFromModal}
+        defaultFileName={projectName || "Untitled"}
+        mode={exportMode}
+        translations={{
+          export: t.export,
+          cancel: t.cancel,
+          fileName: t.projectName,
+          format: t.format,
+          quality: t.quality,
+          backgroundColor: t.background,
+          transparent: t.transparent,
+        }}
+      />
+
       {/* Background Removal Modals */}
       <BackgroundRemovalModals
         showConfirm={showBgRemovalConfirm}
@@ -2263,31 +2235,6 @@ function ImageEditorContent() {
           discard: "취소하고 전환",
           apply: "적용하고 전환",
           cancel: "돌아가기",
-        }}
-      />
-
-      {/* Export Layers Modal */}
-      <ExportLayersModal
-        show={showExportLayersModal}
-        onClose={() => setShowExportLayersModal(false)}
-        onExport={(backgroundColor: string | null) => {
-          setShowExportLayersModal(false);
-          exportSelectedLayers(backgroundColor);
-        }}
-        layerCount={
-          selectedLayerIds.length > 0
-            ? selectedLayerIds.length
-            : activeLayerId
-              ? 1
-              : 0
-        }
-        translations={{
-          title: t.exportLayersTitle,
-          backgroundColor: t.backgroundColor,
-          transparent: t.transparent,
-          export: t.export,
-          cancel: t.cancel,
-          layerCount: t.layerCount,
         }}
       />
 

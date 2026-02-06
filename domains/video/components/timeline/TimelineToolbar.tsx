@@ -2,7 +2,8 @@
 
 import { useTimeline } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
-import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, TimelineZoomOutIcon, TimelineZoomInIcon } from "@/shared/components/icons";
+import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, SnapOffIcon, TimelineZoomOutIcon, TimelineZoomInIcon } from "@/shared/components/icons";
+import Tooltip from "@/shared/components/Tooltip";
 import { TIMELINE } from "../../constants";
 
 interface TimelineToolbarProps {
@@ -28,61 +29,66 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
       )}
     >
       {/* Add track */}
-      <button
-        onClick={() => addTrack(undefined, "video")}
-        className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-        title="Add Visual Track (video/image)"
-      >
-        <AddVideoTrackIcon />
-      </button>
+      <Tooltip content="Add Video/Image Track">
+        <button
+          onClick={() => addTrack(undefined, "video")}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+        >
+          <AddVideoTrackIcon />
+        </button>
+      </Tooltip>
 
-      <button
-        onClick={() => addTrack(undefined, "audio")}
-        className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-        title="Add Audio Track"
-      >
-        <AddAudioTrackIcon />
-      </button>
+      <Tooltip content="Add Audio Track">
+        <button
+          onClick={() => addTrack(undefined, "audio")}
+          className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+        >
+          <AddAudioTrackIcon />
+        </button>
+      </Tooltip>
 
       <div className="w-px h-4 bg-border" />
 
       {/* Snap toggle */}
-      <button
-        onClick={toggleSnap}
-        className={cn(
-          "p-1.5 rounded transition-colors",
-          viewState.snapEnabled
-            ? "bg-accent/20 text-accent"
-            : "hover:bg-surface-tertiary text-text-secondary"
-        )}
-        title={viewState.snapEnabled ? "Snap On" : "Snap Off"}
-      >
-        <SnapIcon />
-      </button>
+      <Tooltip content={viewState.snapEnabled ? "Snap: ON — Clips snap to edges" : "Snap: OFF — Free positioning"}>
+        <button
+          onClick={toggleSnap}
+          className={cn(
+            "p-1.5 rounded transition-colors",
+            viewState.snapEnabled
+              ? "bg-accent/20 text-accent"
+              : "hover:bg-surface-tertiary text-text-secondary"
+          )}
+        >
+          {viewState.snapEnabled ? <SnapIcon /> : <SnapOffIcon />}
+        </button>
+      </Tooltip>
 
       <div className="flex-1" />
 
       {/* Zoom controls */}
       <div className="flex items-center gap-1">
-        <button
-          onClick={handleZoomOut}
-          className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-          title="Zoom Out"
-        >
-          <TimelineZoomOutIcon />
-        </button>
+        <Tooltip content="Zoom Out">
+          <button
+            onClick={handleZoomOut}
+            className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+          >
+            <TimelineZoomOutIcon />
+          </button>
+        </Tooltip>
 
         <span className="text-xs text-text-secondary min-w-[60px] text-center">
           {Math.round(viewState.zoom)}px/s
         </span>
 
-        <button
-          onClick={handleZoomIn}
-          className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-          title="Zoom In"
-        >
-          <TimelineZoomInIcon />
-        </button>
+        <Tooltip content="Zoom In">
+          <button
+            onClick={handleZoomIn}
+            className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+          >
+            <TimelineZoomInIcon />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

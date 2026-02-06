@@ -71,6 +71,7 @@ import {
   AddVideoTrackIcon,
   AddAudioTrackIcon,
   SnapIcon,
+  SnapOffIcon,
   TimelineZoomInIcon,
   TimelineZoomOutIcon,
   VideoClipIcon,
@@ -194,7 +195,8 @@ const iconRegistry: IconMeta[] = [
   // Video Timeline
   { name: "AddVideoTrackIcon", component: AddVideoTrackIcon, category: "videoTimeline", tags: ["add", "video", "track", "new"] },
   { name: "AddAudioTrackIcon", component: AddAudioTrackIcon, category: "videoTimeline", tags: ["add", "audio", "track", "new"] },
-  { name: "SnapIcon", component: SnapIcon, category: "videoTimeline", tags: ["snap", "magnet", "align", "grid"] },
+  { name: "SnapIcon", component: SnapIcon, category: "videoTimeline", tags: ["snap", "magnet", "align", "grid", "on"] },
+  { name: "SnapOffIcon", component: SnapOffIcon, category: "videoTimeline", tags: ["snap", "magnet", "align", "grid", "off", "disabled"] },
   { name: "TimelineZoomInIcon", component: TimelineZoomInIcon, category: "videoTimeline", tags: ["timeline", "zoom", "in", "plus"] },
   { name: "TimelineZoomOutIcon", component: TimelineZoomOutIcon, category: "videoTimeline", tags: ["timeline", "zoom", "out", "minus"] },
   { name: "VideoClipIcon", component: VideoClipIcon, category: "videoTimeline", tags: ["video", "clip", "film", "movie"] },

@@ -103,6 +103,17 @@
   --waveform-handle: #60a5fa;
   --waveform-playhead: #FF8C00;
   --waveform-trim-fill: rgba(59, 130, 246, 0.1);
+
+  /* Video Clips */
+  --clip-video: rgba(37, 99, 235, 0.8);
+  --clip-audio: rgba(217, 119, 6, 0.85);
+  --clip-image: rgba(22, 163, 74, 0.8);
+  --clip-text: #ffffff;
+  --clip-text-muted: rgba(255, 255, 255, 0.6);
+  --clip-waveform: rgba(255, 255, 255, 0.4);
+  --clip-trim-handle: rgba(255, 255, 255, 0.3);
+  --clip-trim-handle-hover: rgba(255, 255, 255, 0.6);
+  --clip-selection-ring: var(--accent-primary);
 }
 
 /* =============================================
@@ -207,6 +218,17 @@
   --waveform-handle: #93c5fd;
   --waveform-playhead: #FF8C00;
   --waveform-trim-fill: rgba(96, 165, 250, 0.1);
+
+  /* Video Clips */
+  --clip-video: rgba(59, 130, 246, 0.75);
+  --clip-audio: rgba(245, 158, 11, 0.8);
+  --clip-image: rgba(34, 197, 94, 0.75);
+  --clip-text: #ffffff;
+  --clip-text-muted: rgba(255, 255, 255, 0.5);
+  --clip-waveform: rgba(255, 255, 255, 0.35);
+  --clip-trim-handle: rgba(255, 255, 255, 0.25);
+  --clip-trim-handle-hover: rgba(255, 255, 255, 0.5);
+  --clip-selection-ring: var(--accent-primary);
 }
 
 /* =============================================
@@ -246,6 +268,17 @@
   /* Canvas Colors */
   --color-canvas-selection: var(--canvas-selection);
   --color-canvas-text-on-color: var(--canvas-text-on-color);
+
+  /* Video Clip Colors */
+  --color-clip-video: var(--clip-video);
+  --color-clip-audio: var(--clip-audio);
+  --color-clip-image: var(--clip-image);
+  --color-clip-text: var(--clip-text);
+  --color-clip-text-muted: var(--clip-text-muted);
+  --color-clip-waveform: var(--clip-waveform);
+  --color-clip-trim-handle: var(--clip-trim-handle);
+  --color-clip-trim-handle-hover: var(--clip-trim-handle-hover);
+  --color-clip-selection-ring: var(--clip-selection-ring);
 }
 
 /* =============================================

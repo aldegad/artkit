@@ -98,6 +98,7 @@ export {
   AddVideoTrackIcon,
   AddAudioTrackIcon,
   SnapIcon,
+  SnapOffIcon,
   TimelineZoomInIcon,
   TimelineZoomOutIcon,
   VideoClipIcon,
