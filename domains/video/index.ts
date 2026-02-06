@@ -49,6 +49,8 @@ export {
   useTimeline,
   MaskProvider,
   useMask,
+  VideoLayoutProvider,
+  useVideoLayout,
 } from "./contexts";
 
 // Hooks
@@ -74,6 +76,12 @@ export {
   MaskControls,
   VideoMenuBar,
   VideoToolbar,
+  VideoSplitContainer,
+  VideoFloatingWindows,
+  registerVideoPanelComponent,
+  clearVideoPanelComponents,
+  VideoPreviewPanelContent,
+  VideoTimelinePanelContent,
 } from "./components";
 
 // Utils

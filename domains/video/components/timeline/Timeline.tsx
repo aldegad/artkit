@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
 import { useVideoCoordinates, useTimelineInput } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
@@ -18,7 +18,17 @@ interface TimelineProps {
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
-  const { tracks, getClipsInTrack, viewState, setScrollX, setZoom, updateTrack } = useTimeline();
+  const {
+    tracks,
+    getClipsInTrack,
+    viewState,
+    setScrollX,
+    setZoom,
+    updateTrack,
+    removeTrack,
+    reorderTracks,
+    saveToHistory,
+  } = useTimeline();
   const { project } = useVideoState();
   useVideoCoordinates();
 
@@ -31,9 +41,63 @@ export function Timeline({ className }: TimelineProps) {
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
+  const [trackHeaderWidth, setTrackHeaderWidth] = useState(180);
+  const [isHeaderResizing, setIsHeaderResizing] = useState(false);
+  const resizeStartRef = useRef({ x: 0, width: 180 });
 
   // Calculate total tracks height
   const totalTracksHeight = tracks.reduce((sum, t) => sum + t.height, 0);
+
+  const headerWidthStyle = { width: trackHeaderWidth };
+  const headerWidthPx = `${trackHeaderWidth}px`;
+
+  const handleTrackDrop = useCallback((fromTrackId: string, toTrackId: string) => {
+    if (!fromTrackId || !toTrackId || fromTrackId === toTrackId) return;
+    const fromIndex = tracks.findIndex((track) => track.id === fromTrackId);
+    const toIndex = tracks.findIndex((track) => track.id === toTrackId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+    saveToHistory();
+    reorderTracks(fromIndex, toIndex);
+  }, [tracks, saveToHistory, reorderTracks]);
+
+  const handleStartHeaderResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resizeStartRef.current = { x: e.clientX, width: trackHeaderWidth };
+    setIsHeaderResizing(true);
+  }, [trackHeaderWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("video-timeline-track-header-width");
+    if (!stored) return;
+
+    const parsed = Number(stored);
+    if (Number.isFinite(parsed)) {
+      setTrackHeaderWidth(Math.max(132, Math.min(360, parsed)));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isHeaderResizing || typeof window === "undefined") return;
+
+    const handleMove = (event: MouseEvent) => {
+      const delta = event.clientX - resizeStartRef.current.x;
+      const nextWidth = Math.max(132, Math.min(360, resizeStartRef.current.width + delta));
+      setTrackHeaderWidth(nextWidth);
+      window.localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
+    };
+
+    const handleUp = () => {
+      setIsHeaderResizing(false);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [isHeaderResizing]);
 
   // Handle mouse down - combine timeline input with middle-mouse scroll
   const handleMouseDown = useCallback(
@@ -114,6 +178,7 @@ export function Timeline({ className }: TimelineProps) {
       {/* Timeline container */}
       <div
         ref={containerRef}
+        data-video-timeline-root=""
         className="flex-1 overflow-hidden"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -124,7 +189,7 @@ export function Timeline({ className }: TimelineProps) {
         {/* Track headers + ruler row */}
         <div className="flex border-b border-border">
           {/* Track header column */}
-          <div className="w-32 flex-shrink-0 bg-surface-secondary border-r border-border">
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border" style={headerWidthStyle}>
             <div className="h-6" /> {/* Ruler spacer */}
           </div>
 
@@ -137,14 +202,28 @@ export function Timeline({ className }: TimelineProps) {
         {/* Tracks area */}
         <div className="flex overflow-hidden" style={{ height: `calc(100% - 24px)` }}>
           {/* Track headers */}
-          <div className="w-32 flex-shrink-0 bg-surface-secondary border-r border-border overflow-y-auto">
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border overflow-y-auto" style={headerWidthStyle}>
             {tracks.map((track) => (
               <div
                 key={track.id}
                 className="flex items-center px-2 border-b border-border"
                 style={{ height: track.height }}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData("text/plain", track.id);
+                  event.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const fromTrackId = event.dataTransfer.getData("text/plain");
+                  handleTrackDrop(fromTrackId, track.id);
+                }}
               >
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   {/* Visibility toggle */}
                   <button
                     onClick={() => updateTrack(track.id, { visible: !track.visible })}
@@ -185,15 +264,36 @@ export function Timeline({ className }: TimelineProps) {
                   <span className="text-xs text-text-secondary truncate">
                     {track.name}
                   </span>
+
+                  <button
+                    onClick={() => {
+                      saveToHistory();
+                      removeTrack(track.id);
+                    }}
+                    className="p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                    title="Delete track"
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M3 4h10v1H3V4zm1 2h8v7H4V6zm2-3h4l1 1H5l1-1z" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))}
           </div>
 
+          {/* Track header/content resize handle */}
+          <div
+            className="w-1 shrink-0 cursor-ew-resize bg-border hover:bg-accent transition-colors"
+            onMouseDown={handleStartHeaderResize}
+            title="Resize track headers"
+          />
+
           {/* Tracks content */}
           <div
             ref={tracksContainerRef}
             className="flex-1 overflow-auto relative"
+            style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
           >
             {/* Background for click handling */}
             <div

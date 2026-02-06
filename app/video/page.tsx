@@ -8,17 +8,20 @@ import {
   VideoRefsProvider,
   TimelineProvider,
   MaskProvider,
+  VideoLayoutProvider,
   useVideoState,
   useVideoRefs,
   useTimeline,
   useMask,
-  PreviewCanvas,
-  PreviewControls,
-  Timeline,
-  AssetDropZone,
-  MaskControls,
+  useVideoLayout,
   VideoMenuBar,
   VideoToolbar,
+  VideoSplitContainer,
+  VideoFloatingWindows,
+  registerVideoPanelComponent,
+  clearVideoPanelComponents,
+  VideoPreviewPanelContent,
+  VideoTimelinePanelContent,
   clearVideoAutosave,
   saveMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
@@ -28,9 +31,11 @@ import {
   type Clip,
   type SavedVideoProject,
   type TimelineViewState,
+  type VideoToolMode,
   type VideoTrack,
 } from "../../domains/video";
 import Tooltip from "../../shared/components/Tooltip";
+import { LayoutNode, isSplitNode, isPanelNode } from "../../types/layout";
 
 interface VideoProjectFile extends Partial<SavedVideoProject> {
   tracks?: VideoTrack[];
@@ -79,6 +84,32 @@ function normalizeLoadedClip(clip: Clip): Clip {
   return clip;
 }
 
+function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | null {
+  if (isPanelNode(node) && node.panelId === panelId) {
+    return node.id;
+  }
+
+  if (isSplitNode(node)) {
+    for (const child of node.children) {
+      const found = findPanelNodeIdByPanelId(child, panelId);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function VideoDockableArea() {
+  const { layoutState } = useVideoLayout();
+
+  return (
+    <>
+      <VideoSplitContainer node={layoutState.root} />
+      <VideoFloatingWindows />
+    </>
+  );
+}
+
 function VideoEditorContent() {
   const { t } = useLanguage();
   const {
@@ -101,6 +132,10 @@ function VideoEditorContent() {
     clipboardRef,
     hasClipboard,
     setHasClipboard,
+    cropArea,
+    setCropArea,
+    canvasExpandMode,
+    setCanvasExpandMode,
   } = useVideoState();
   const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -126,20 +161,27 @@ function VideoEditorContent() {
     canUndo,
     canRedo,
   } = useTimeline();
-  const { isEditingMask, startMaskEdit } = useMask();
+  const { startMaskEdit } = useMask();
+  const {
+    layoutState,
+    isPanelOpen,
+    addPanel,
+    removePanel,
+    openFloatingWindow,
+    closeFloatingWindow,
+  } = useVideoLayout();
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
-  const timelineAreaRef = useRef<HTMLDivElement>(null);
   const exportAudioContextRef = useRef<AudioContext | null>(null);
   const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
   const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
 
-  const [isTimelineVisible, setIsTimelineVisible] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
   const audioHistorySavedRef = useRef(false);
+  const visualHistorySavedRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -153,11 +195,22 @@ function VideoEditorContent() {
     };
   }, []);
 
+  useEffect(() => {
+    registerVideoPanelComponent("preview", () => <VideoPreviewPanelContent />);
+    registerVideoPanelComponent("timeline", () => <VideoTimelinePanelContent />);
+
+    return () => {
+      clearVideoPanelComponents();
+    };
+  }, []);
+
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
     ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
+  const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const isTimelineVisible = isPanelOpen("timeline");
 
   const buildSavedProject = useCallback(
     (nameOverride?: string): SavedVideoProject => {
@@ -626,6 +679,16 @@ function VideoEditorContent() {
     audioHistorySavedRef.current = false;
   }, []);
 
+  const beginVisualAdjustment = useCallback(() => {
+    if (visualHistorySavedRef.current) return;
+    saveToHistory();
+    visualHistorySavedRef.current = true;
+  }, [saveToHistory]);
+
+  const endVisualAdjustment = useCallback(() => {
+    visualHistorySavedRef.current = false;
+  }, []);
+
   const handleToggleSelectedClipMute = useCallback(() => {
     if (!selectedAudioClip) return;
     saveToHistory();
@@ -644,6 +707,65 @@ function VideoEditorContent() {
     [selectedAudioClip, updateClip]
   );
 
+  const handleSelectedVisualScaleChange = useCallback((scalePercent: number) => {
+    if (!selectedVisualClip) return;
+    updateClip(selectedVisualClip.id, {
+      scale: Math.max(0.05, Math.min(8, scalePercent / 100)),
+    });
+  }, [selectedVisualClip, updateClip]);
+
+  const handleSelectedVisualRotationChange = useCallback((rotationDeg: number) => {
+    if (!selectedVisualClip) return;
+    updateClip(selectedVisualClip.id, {
+      rotation: Math.max(-360, Math.min(360, rotationDeg)),
+    });
+  }, [selectedVisualClip, updateClip]);
+
+  const handleSelectAllCrop = useCallback(() => {
+    setCropArea({
+      x: 0,
+      y: 0,
+      width: project.canvasSize.width,
+      height: project.canvasSize.height,
+    });
+  }, [setCropArea, project.canvasSize.width, project.canvasSize.height]);
+
+  const handleClearCrop = useCallback(() => {
+    setCropArea(null);
+    setCanvasExpandMode(false);
+  }, [setCropArea, setCanvasExpandMode]);
+
+  const handleApplyCrop = useCallback(() => {
+    if (!cropArea) return;
+
+    const width = Math.max(1, Math.round(cropArea.width));
+    const height = Math.max(1, Math.round(cropArea.height));
+    if (width < 2 || height < 2) return;
+
+    const offsetX = Math.round(cropArea.x);
+    const offsetY = Math.round(cropArea.y);
+
+    saveToHistory();
+
+    for (const clip of clips) {
+      if (clip.type === "audio") continue;
+      updateClip(clip.id, {
+        position: {
+          x: clip.position.x - offsetX,
+          y: clip.position.y - offsetY,
+        },
+      });
+    }
+
+    setProject({
+      ...project,
+      canvasSize: { width, height },
+    });
+
+    setCropArea(null);
+    setCanvasExpandMode(false);
+  }, [cropArea, clips, saveToHistory, updateClip, setProject, project, setCropArea, setCanvasExpandMode]);
+
   // View menu handlers
   const handleZoomIn = useCallback(() => {
     setZoom(viewState.zoom * 1.25);
@@ -654,7 +776,8 @@ function VideoEditorContent() {
   }, [setZoom, viewState.zoom]);
 
   const handleFitToScreen = useCallback(() => {
-    const width = timelineAreaRef.current?.clientWidth;
+    const timelineRoot = document.querySelector("[data-video-timeline-root]") as HTMLDivElement | null;
+    const width = timelineRoot?.clientWidth;
     if (!width) {
       setZoom(TIMELINE.DEFAULT_ZOOM);
       setScrollX(0);
@@ -668,8 +791,26 @@ function VideoEditorContent() {
   }, [project.duration, setZoom, setScrollX]);
 
   const handleToggleTimeline = useCallback(() => {
-    setIsTimelineVisible((prev) => !prev);
-  }, []);
+    const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
+    if (timelineWindow) {
+      closeFloatingWindow(timelineWindow.id);
+      return;
+    }
+
+    const timelinePanelNodeId = findPanelNodeIdByPanelId(layoutState.root, "timeline");
+    if (timelinePanelNodeId) {
+      removePanel(timelinePanelNodeId);
+      return;
+    }
+
+    const previewPanelNodeId = findPanelNodeIdByPanelId(layoutState.root, "preview");
+    if (previewPanelNodeId) {
+      addPanel(previewPanelNodeId, "timeline", "bottom");
+      return;
+    }
+
+    openFloatingWindow("timeline", { x: 140, y: 140 });
+  }, [layoutState, closeFloatingWindow, removePanel, addPanel, openFloatingWindow]);
 
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
@@ -679,8 +820,16 @@ function VideoEditorContent() {
         startMaskEdit(selectedClip.id, selectedClip.sourceSize);
       }
     }
+    if (mode === "crop" && !cropArea) {
+      setCropArea({
+        x: 0,
+        y: 0,
+        width: project.canvasSize.width,
+        height: project.canvasSize.height,
+      });
+    }
     setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode]);
+  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize.width, project.canvasSize.height]);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -769,8 +918,17 @@ function VideoEditorContent() {
       case "t":
         setToolMode("trim");
         break;
+      case "r":
+        handleToolModeChange("crop");
+        break;
       case "m":
         handleToolModeChange("mask");
+        break;
+      case "enter":
+        if (toolMode === "crop") {
+          e.preventDefault();
+          handleApplyCrop();
+        }
         break;
       case "arrowleft":
         stepBackward();
@@ -796,6 +954,8 @@ function VideoEditorContent() {
     togglePlay,
     setToolMode,
     handleToolModeChange,
+    toolMode,
+    handleApplyCrop,
     stepBackward,
     stepForward,
     handleUndo,
@@ -841,9 +1001,13 @@ function VideoEditorContent() {
     trimDesc: t.trimDesc,
     razor: t.razor,
     razorDesc: t.razorDesc,
+    crop: t.crop,
+    cropDesc: t.cropToolTip || "Crop and expand canvas",
     mask: t.mask,
     maskDesc: t.maskDesc,
   };
+
+  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask", "move", "pan"];
 
   return (
     <div
@@ -889,7 +1053,7 @@ function VideoEditorContent() {
       </HeaderSlot>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border">
+      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border overflow-x-auto">
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
@@ -946,6 +1110,52 @@ function VideoEditorContent() {
         </div>
 
         <div className="h-4 w-px bg-border-default mx-1" />
+        {toolMode === "crop" && (
+          <>
+            <div className="flex items-center gap-2 min-w-[380px]">
+              <button
+                onClick={handleSelectAllCrop}
+                className="px-2 py-1 text-xs rounded bg-surface-tertiary hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                title="Select full canvas"
+              >
+                Select All
+              </button>
+              <button
+                onClick={handleClearCrop}
+                className="px-2 py-1 text-xs rounded bg-surface-tertiary hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                title="Clear crop area"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setCanvasExpandMode(!canvasExpandMode)}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  canvasExpandMode
+                    ? "bg-accent/20 text-accent hover:bg-accent/30"
+                    : "bg-surface-tertiary text-text-secondary hover:bg-interactive-hover"
+                }`}
+                title={canvasExpandMode ? "Expand mode on" : "Expand mode off"}
+              >
+                Expand {canvasExpandMode ? "On" : "Off"}
+              </button>
+              {cropArea && (
+                <span className="text-xs text-text-tertiary font-mono">
+                  {Math.round(cropArea.width)} x {Math.round(cropArea.height)} @ {Math.round(cropArea.x)},{Math.round(cropArea.y)}
+                </span>
+              )}
+              <button
+                onClick={handleApplyCrop}
+                disabled={!cropArea}
+                className="px-2 py-1 text-xs rounded bg-accent-primary text-white hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Apply crop"
+              >
+                Apply Crop
+              </button>
+            </div>
+            <div className="h-4 w-px bg-border-default mx-1" />
+          </>
+        )}
+
         <button
           onClick={() => setIncludeAudioOnExport((prev) => !prev)}
           className={`px-2 py-1 text-xs rounded transition-colors ${
@@ -957,6 +1167,42 @@ function VideoEditorContent() {
         >
           Export Audio {includeAudioOnExport ? "On" : "Off"}
         </button>
+
+        {selectedVisualClip && toolMode !== "crop" && (
+          <>
+            <div className="h-4 w-px bg-border-default mx-1" />
+            <div className="flex items-center gap-2 min-w-[250px]">
+              <span className="text-xs text-text-secondary">Scale</span>
+              <input
+                type="range"
+                min={5}
+                max={400}
+                value={Math.round((selectedVisualClip.scale || 1) * 100)}
+                onMouseDown={beginVisualAdjustment}
+                onTouchStart={beginVisualAdjustment}
+                onMouseUp={endVisualAdjustment}
+                onTouchEnd={endVisualAdjustment}
+                onChange={(e) => handleSelectedVisualScaleChange(Number(e.target.value))}
+                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+              />
+              <span className="text-xs text-text-secondary w-10 text-right">
+                {Math.round((selectedVisualClip.scale || 1) * 100)}%
+              </span>
+            </div>
+            <div className="flex items-center gap-1 min-w-[132px]">
+              <span className="text-xs text-text-secondary">Rotate</span>
+              <input
+                type="number"
+                value={Math.round(selectedVisualClip.rotation || 0)}
+                onFocus={beginVisualAdjustment}
+                onBlur={endVisualAdjustment}
+                onChange={(e) => handleSelectedVisualRotationChange(Number(e.target.value))}
+                className="w-16 px-2 py-1 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary focus:outline-none focus:border-accent-primary"
+              />
+              <span className="text-xs text-text-tertiary">deg</span>
+            </div>
+          </>
+        )}
 
         {selectedAudioClip && (
           <>
@@ -995,39 +1241,9 @@ function VideoEditorContent() {
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Preview Area */}
-        <div className="flex-1 min-h-0 flex">
-          <div className="flex-1 flex flex-col bg-surface-primary relative">
-            {!hasContent ? (
-              <div className="flex-1 flex items-center justify-center p-8">
-                <AssetDropZone className="max-w-md w-full" />
-              </div>
-            ) : (
-              <div className="flex-1 relative">
-                <PreviewCanvas />
-
-                {/* Mask Controls Panel (floating) */}
-                {isEditingMask && (
-                  <div className="absolute top-4 right-4 z-10">
-                    <MaskControls />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Preview Controls */}
-            {hasContent && <PreviewControls />}
-          </div>
-        </div>
-
-        {/* Timeline Area */}
-        {isTimelineVisible && (
-          <div ref={timelineAreaRef} className="h-64 border-t border-border shrink-0">
-            <Timeline className="h-full" />
-          </div>
-        )}
+      {/* Main Content (shared docking/split system) */}
+      <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
+        <VideoDockableArea />
       </div>
 
       {/* Hidden file input for media import */}
@@ -1105,8 +1321,8 @@ function VideoEditorContent() {
               seek(0);
             }
 
-            if (parsed.toolMode === "select" || parsed.toolMode === "trim" || parsed.toolMode === "razor" || parsed.toolMode === "mask" || parsed.toolMode === "move" || parsed.toolMode === "pan") {
-              setToolMode(parsed.toolMode);
+            if (parsed.toolMode && supportedToolModes.includes(parsed.toolMode as VideoToolMode)) {
+              setToolMode(parsed.toolMode as VideoToolMode);
             }
 
             selectClips([]);
@@ -1126,7 +1342,9 @@ function VideoEditorContent() {
 function VideoEditorWithMask() {
   return (
     <MaskProvider>
-      <VideoEditorContent />
+      <VideoLayoutProvider>
+        <VideoEditorContent />
+      </VideoLayoutProvider>
     </MaskProvider>
   );
 }

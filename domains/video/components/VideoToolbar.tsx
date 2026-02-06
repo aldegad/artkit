@@ -22,6 +22,8 @@ interface VideoToolbarProps {
     trimDesc: string;
     razor: string;
     razorDesc: string;
+    crop: string;
+    cropDesc: string;
     mask: string;
     maskDesc: string;
   };
@@ -66,6 +68,18 @@ export default function VideoToolbar({
       icon: (
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+        </svg>
+      ),
+    },
+    {
+      mode: "crop",
+      name: t.crop,
+      description: t.cropDesc,
+      shortcut: "R",
+      keys: ["Drag: Set area", "Enter: Apply crop"],
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6M4 4v6M20 4h-6M20 4v6M4 20h6M4 20v-6M20 20h-6M20 20v-6" />
         </svg>
       ),
     },

@@ -84,6 +84,7 @@ export type VideoToolMode =
   | "move"
   | "trim"
   | "razor" // Split clip
+  | "crop"
   | "mask"
   | "pan";
 
