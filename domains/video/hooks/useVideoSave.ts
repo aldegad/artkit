@@ -37,6 +37,7 @@ export interface UseVideoSaveOptions {
   currentTime: number;
   toolMode: string;
   selectedClipIds: string[];
+  selectedMaskIds: string[];
   previewCanvasRef: React.RefObject<HTMLCanvasElement | null>;
 
   // Callbacks
@@ -81,6 +82,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     currentTime,
     toolMode,
     selectedClipIds,
+    selectedMaskIds,
     previewCanvasRef,
     setCurrentProjectId,
     setSavedProjects,
@@ -202,6 +204,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         currentTime,
         toolMode: toolMode as import("../types").VideoToolMode,
         selectedClipIds,
+        selectedMaskIds,
       });
     }, VIDEO_AUTOSAVE_DEBOUNCE_MS);
 
@@ -222,6 +225,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     currentTime,
     toolMode,
     selectedClipIds,
+    selectedMaskIds,
   ]);
 
   return {

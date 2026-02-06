@@ -6,9 +6,16 @@ import { useVideoCoordinates } from "./useVideoCoordinates";
 import { TimelineDragType, Clip } from "../types";
 import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 
+interface DragItem {
+  type: "clip" | "mask";
+  id: string;
+  originalStartTime: number;
+}
+
 interface DragState {
   type: TimelineDragType;
   clipId: string | null;
+  items: DragItem[];
   startX: number;
   startY: number;
   startTime: number;
@@ -20,6 +27,7 @@ interface DragState {
 const INITIAL_DRAG_STATE: DragState = {
   type: "none",
   clipId: null,
+  items: [],
   startX: 0,
   startY: 0,
   startTime: 0,
@@ -42,7 +50,16 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     saveToHistory,
     setScrollX,
   } = useTimeline();
-  const { seek, selectClip, deselectAll, toolMode } = useVideoState();
+  const {
+    seek,
+    selectClip,
+    selectClips,
+    selectMasksForTimeline,
+    deselectAll,
+    toolMode,
+    selectedClipIds,
+    selectedMaskIds,
+  } = useVideoState();
   const { pixelToTime, timeToPixel, zoom } = useVideoCoordinates();
 
   // Snap a time value to nearby snap points (time 0 + clip edges)
@@ -72,7 +89,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const { getMasksForTrack } = useMask();
+  const { getMasksForTrack, duplicateMask, updateMaskTime, masks } = useMask();
 
   const getTrackAtY = useCallback(
     (y: number): { trackId: string | null; inMaskLane: boolean } => {
@@ -130,6 +147,23 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     [getTrackAtY, clips, pixelToTime, timeToPixel]
   );
 
+  // Build drag items from selected clips and masks
+  const buildDragItems = useCallback(
+    (activeClipIds: string[], activeMaskIds: string[]): DragItem[] => {
+      const items: DragItem[] = [];
+      for (const cid of activeClipIds) {
+        const c = clips.find((cl) => cl.id === cid);
+        if (c) items.push({ type: "clip", id: cid, originalStartTime: c.startTime });
+      }
+      for (const mid of activeMaskIds) {
+        const m = masks.get(mid);
+        if (m) items.push({ type: "mask", id: mid, originalStartTime: m.startTime });
+      }
+      return items;
+    },
+    [clips, masks]
+  );
+
   // Handle mouse down
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -167,6 +201,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             setDragState({
               type: "clip-trim-start",
               clipId: clip.id,
+              items: [],
               startX: x,
               startY: y,
               startTime: time,
@@ -180,6 +215,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             setDragState({
               type: "clip-trim-end",
               clipId: clip.id,
+              items: [],
               startX: x,
               startY: y,
               startTime: time,
@@ -226,26 +262,98 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             } else {
               saveToHistory();
 
-              // Alt+Drag: duplicate clip and drag the copy
-              let dragClipId = clip.id;
-              if (e.altKey && toolMode === "select") {
-                const newId = duplicateClip(clip.id, clip.trackId);
-                if (newId) {
-                  dragClipId = newId;
-                }
+              const isAlreadySelected = selectedClipIds.includes(clip.id);
+
+              // Determine effective selection after this click
+              let activeClipIds: string[];
+              let activeMaskIds: string[];
+
+              if (isAlreadySelected) {
+                // Already selected — preserve current multi-selection
+                activeClipIds = selectedClipIds;
+                activeMaskIds = selectedMaskIds;
+              } else if (e.shiftKey) {
+                // Shift+click — add to selection
+                activeClipIds = [...selectedClipIds, clip.id];
+                activeMaskIds = selectedMaskIds;
+                selectClip(clip.id, true);
+              } else {
+                // Plain click — single select
+                activeClipIds = [clip.id];
+                activeMaskIds = [];
+                selectClip(clip.id, false);
               }
 
-              setDragState({
-                type: "clip-move",
-                clipId: dragClipId,
-                startX: x,
-                startY: y,
-                startTime: time,
-                originalClipStart: clip.startTime,
-                originalClipDuration: clip.duration,
-                originalTrimIn: clip.trimIn,
-              });
-              selectClip(dragClipId, e.shiftKey);
+              let primaryClipId = clip.id;
+
+              if (e.altKey && toolMode === "select") {
+                // Alt+Drag: duplicate ALL selected items and drag the copies
+                const newClipIds: string[] = [];
+                const newMaskIds: string[] = [];
+
+                for (const cid of activeClipIds) {
+                  const c = clips.find((cl) => cl.id === cid);
+                  const newId = duplicateClip(cid, c?.trackId);
+                  if (newId) newClipIds.push(newId);
+                }
+
+                for (const mid of activeMaskIds) {
+                  const newId = duplicateMask(mid);
+                  if (newId) newMaskIds.push(newId);
+                }
+
+                // Map original primary to new primary
+                const primaryIndex = activeClipIds.indexOf(clip.id);
+                primaryClipId = primaryIndex >= 0 && primaryIndex < newClipIds.length
+                  ? newClipIds[primaryIndex]
+                  : newClipIds[0] || clip.id;
+
+                // Select duplicated items
+                if (newClipIds.length > 0) selectClips(newClipIds);
+                if (newMaskIds.length > 0) selectMasksForTimeline(newMaskIds);
+
+                // Build items from originals' positions (duplicates start at same position)
+                const items: DragItem[] = [];
+                for (let i = 0; i < newClipIds.length; i++) {
+                  const origClip = clips.find((c) => c.id === activeClipIds[i]);
+                  if (origClip) {
+                    items.push({ type: "clip", id: newClipIds[i], originalStartTime: origClip.startTime });
+                  }
+                }
+                for (let i = 0; i < newMaskIds.length; i++) {
+                  const origMask = masks.get(activeMaskIds[i]);
+                  if (origMask) {
+                    items.push({ type: "mask", id: newMaskIds[i], originalStartTime: origMask.startTime });
+                  }
+                }
+
+                setDragState({
+                  type: "clip-move",
+                  clipId: primaryClipId,
+                  items,
+                  startX: x,
+                  startY: y,
+                  startTime: time,
+                  originalClipStart: clip.startTime,
+                  originalClipDuration: clip.duration,
+                  originalTrimIn: clip.trimIn,
+                });
+              } else {
+                // Normal drag: move all selected items
+                const items = buildDragItems(activeClipIds, activeMaskIds);
+
+                setDragState({
+                  type: "clip-move",
+                  clipId: primaryClipId,
+                  items,
+                  startX: x,
+                  startY: y,
+                  startTime: time,
+                  originalClipStart: clip.startTime,
+                  originalClipDuration: clip.duration,
+                  originalTrimIn: clip.trimIn,
+                });
+              }
             }
           }
         } else {
@@ -259,6 +367,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           setDragState({
             type: "playhead",
             clipId: null,
+            items: [],
             startX: x,
             startY: y,
             startTime: time,
@@ -275,12 +384,20 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       findClipAtPosition,
       toolMode,
       selectClip,
+      selectClips,
+      selectMasksForTimeline,
+      selectedClipIds,
+      selectedMaskIds,
       seek,
       deselectAll,
       duplicateClip,
+      duplicateMask,
       removeClip,
       addClips,
       saveToHistory,
+      clips,
+      masks,
+      buildDragItems,
     ]
   );
 
@@ -306,25 +423,45 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
         break;
       }
 
-      case "clip-move":
-        if (dragState.clipId) {
-          const rawStart = Math.max(0, dragState.originalClipStart + deltaTime);
-          const snappedStart = snapToPoints(rawStart, dragState.clipId);
-          // Also snap end edge: if end snaps, adjust start accordingly
-          const rawEnd = rawStart + dragState.originalClipDuration;
-          const snappedEnd = snapToPoints(rawEnd, dragState.clipId);
-          const endAdjusted = Math.max(0, snappedEnd - dragState.originalClipDuration);
-          // Use whichever snap is closer
-          const startDelta = Math.abs(snappedStart - rawStart);
-          const endDelta = Math.abs(snappedEnd - rawEnd);
-          const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
-          const clip = clips.find((c) => c.id === dragState.clipId);
-          if (clip) {
-            const targetTrackId = getTrackAtY(y).trackId || clip.trackId;
-            moveClip(dragState.clipId, targetTrackId, finalStart);
+      case "clip-move": {
+        if (!dragState.clipId || dragState.items.length === 0) break;
+
+        // Calculate snap based on primary clip
+        const rawStart = Math.max(0, dragState.originalClipStart + deltaTime);
+        const snappedStart = snapToPoints(rawStart, dragState.clipId);
+        // Also snap end edge: if end snaps, adjust start accordingly
+        const rawEnd = rawStart + dragState.originalClipDuration;
+        const snappedEnd = snapToPoints(rawEnd, dragState.clipId);
+        const endAdjusted = Math.max(0, snappedEnd - dragState.originalClipDuration);
+        // Use whichever snap is closer
+        const startDelta = Math.abs(snappedStart - rawStart);
+        const endDelta = Math.abs(snappedEnd - rawEnd);
+        const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
+
+        // Time delta from primary clip's original position
+        const timeDelta = finalStart - dragState.originalClipStart;
+
+        // Move all items by the same time delta
+        for (const item of dragState.items) {
+          const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
+          if (item.type === "clip") {
+            const c = clips.find((cl) => cl.id === item.id);
+            if (c) {
+              // Only primary clip changes track; others stay on their tracks
+              const targetTrackId = item.id === dragState.clipId
+                ? (getTrackAtY(y).trackId || c.trackId)
+                : c.trackId;
+              moveClip(item.id, targetTrackId, newStartTime);
+            }
+          } else if (item.type === "mask") {
+            const m = masks.get(item.id);
+            if (m) {
+              updateMaskTime(item.id, newStartTime, m.duration);
+            }
           }
         }
         break;
+      }
 
       case "clip-trim-start":
         if (dragState.clipId) {
