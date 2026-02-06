@@ -3,7 +3,7 @@
 import { useVideoState } from "../../contexts";
 import { usePlaybackTime } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon } from "@/shared/components/icons";
+import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon, LoopIcon } from "@/shared/components/icons";
 import { PLAYBACK } from "../../constants";
 
 interface PreviewControlsProps {
@@ -15,6 +15,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
     playback,
     stop,
     togglePlay,
+    toggleLoop,
     stepForward,
     stepBackward,
     project,
@@ -81,6 +82,20 @@ export function PreviewControls({ className }: PreviewControlsProps) {
       <div className="font-mono text-xs text-text-tertiary min-w-[68px] text-right">
         / {formatTime(project.duration || 0)}
       </div>
+
+      {/* Loop toggle */}
+      <button
+        onClick={toggleLoop}
+        className={cn(
+          "p-1.5 rounded transition-colors ml-1",
+          playback.loop
+            ? "bg-accent/20 text-accent hover:bg-accent/30"
+            : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
+        )}
+        title={playback.loop ? "Loop: On" : "Loop: Off"}
+      >
+        <LoopIcon className="w-4 h-4" />
+      </button>
     </div>
   );
 }

@@ -58,6 +58,7 @@ interface VideoStateContextValue extends VideoState {
   stepForward: () => void;
   stepBackward: () => void;
   setPlaybackRate: (rate: number) => void;
+  toggleLoop: () => void;
 
   // Tool actions
   setToolMode: (mode: VideoToolMode) => void;
@@ -210,12 +211,17 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const play = useCallback(() => {
     if (isPlayingRef.current) return;
 
+    // If at the end, restart from beginning
+    if (currentTimeRef.current >= projectDurationRef.current) {
+      currentTimeRef.current = 0;
+    }
+
     isPlayingRef.current = true;
     lastFrameTimeRef.current = performance.now();
 
     setState((prev) => ({
       ...prev,
-      playback: { ...prev.playback, isPlaying: true },
+      playback: { ...prev.playback, isPlaying: true, currentTime: currentTimeRef.current },
     }));
 
     animationFrameRef.current = requestAnimationFrame(updatePlayback);
@@ -286,6 +292,13 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const toggleLoop = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      playback: { ...prev.playback, loop: !prev.playback.loop },
+    }));
+  }, []);
+
   // Tool actions
   const setToolMode = useCallback((mode: VideoToolMode) => {
     setState((prev) => ({ ...prev, toolMode: mode }));
@@ -343,6 +356,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     stepForward,
     stepBackward,
     setPlaybackRate,
+    toggleLoop,
     setToolMode,
     selectClip,
     selectClips,
