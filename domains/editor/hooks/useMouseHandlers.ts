@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, RefObject } from "react";
 import { EditorToolMode, CropArea, Point, DragType, Guide } from "../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
+import { HANDLE_SIZE } from "../constants";
+import { getRectHandleAtPosition } from "../utils/rectTransform";
 import {
   buildContext,
   FloatingLayer,
@@ -648,22 +650,9 @@ function getInputDevice(e: React.MouseEvent | React.PointerEvent): "mouse" | "to
 // Helper function to get resize handle name for crop
 function getResizeHandleName(imagePos: Point, cropArea: CropArea | null): string | null {
   if (!cropArea) return null;
-
-  const handles = [
-    { x: cropArea.x, y: cropArea.y, name: "nw" },
-    { x: cropArea.x + cropArea.width / 2, y: cropArea.y, name: "n" },
-    { x: cropArea.x + cropArea.width, y: cropArea.y, name: "ne" },
-    { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height / 2, name: "e" },
-    { x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height, name: "se" },
-    { x: cropArea.x + cropArea.width / 2, y: cropArea.y + cropArea.height, name: "s" },
-    { x: cropArea.x, y: cropArea.y + cropArea.height, name: "sw" },
-    { x: cropArea.x, y: cropArea.y + cropArea.height / 2, name: "w" },
-  ];
-
-  for (const handle of handles) {
-    if (Math.abs(imagePos.x - handle.x) <= 10 && Math.abs(imagePos.y - handle.y) <= 10) {
-      return handle.name;
-    }
-  }
-  return null;
+  const hit = getRectHandleAtPosition(imagePos, cropArea, {
+    handleSize: HANDLE_SIZE.HIT_AREA,
+    includeMove: false,
+  });
+  return hit === "move" ? null : hit;
 }

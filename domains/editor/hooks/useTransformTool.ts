@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
+import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "../utils/rectTransform";
 import { HANDLE_SIZE as HANDLE_SIZE_CONST } from "../constants";
 
 // ============================================
@@ -97,11 +98,7 @@ interface UseTransformToolReturn {
 // ============================================
 
 // Handle size for interaction detection (from shared constants)
-const HANDLE_SIZE = HANDLE_SIZE_CONST.HIT_AREA;
-
-function isInHandle(pos: Point, handle: Point, size: number = HANDLE_SIZE): boolean {
-  return Math.abs(pos.x - handle.x) <= size && Math.abs(pos.y - handle.y) <= size;
-}
+const HANDLE_HIT_AREA = HANDLE_SIZE_CONST.HIT_AREA;
 
 // ============================================
 // Hook Implementation
@@ -164,37 +161,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   const getHandleAtPosition = useCallback(
     (pos: Point): TransformHandle => {
       if (!transformState.bounds) return null;
-
-      const { x, y, width, height } = transformState.bounds;
-
-      const handles: { pos: Point; name: TransformHandle }[] = [
-        { pos: { x, y }, name: "nw" },
-        { pos: { x: x + width / 2, y }, name: "n" },
-        { pos: { x: x + width, y }, name: "ne" },
-        { pos: { x: x + width, y: y + height / 2 }, name: "e" },
-        { pos: { x: x + width, y: y + height }, name: "se" },
-        { pos: { x: x + width / 2, y: y + height }, name: "s" },
-        { pos: { x, y: y + height }, name: "sw" },
-        { pos: { x, y: y + height / 2 }, name: "w" },
-      ];
-
-      for (const handle of handles) {
-        if (isInHandle(pos, handle.pos)) {
-          return handle.name;
-        }
-      }
-
-      // Check if inside bounds (for move)
-      if (
-        pos.x >= x &&
-        pos.x <= x + width &&
-        pos.y >= y &&
-        pos.y <= y + height
-      ) {
-        return "move";
-      }
-
-      return null;
+      return getRectHandleAtPosition(pos, transformState.bounds, {
+        handleSize: HANDLE_HIT_AREA,
+        includeMove: true,
+      }) as TransformHandle;
     },
     [transformState.bounds]
   );
@@ -625,159 +595,18 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             targetAspect = ratioValue;
           }
         }
-
-        switch (currentHandle) {
-          case "se":
-            newBounds.width = Math.max(10, orig.width + dx);
-            newBounds.height = Math.max(10, orig.height + dy);
-            if (keepAspect) {
-              // Use the larger dimension change
-              const scaleX = newBounds.width / orig.width;
-              const scaleY = newBounds.height / orig.height;
-              if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / targetAspect;
-              } else {
-                newBounds.width = newBounds.height * targetAspect;
-              }
-            }
-            if (fromCenter) {
-              const widthChange = newBounds.width - orig.width;
-              const heightChange = newBounds.height - orig.height;
-              newBounds.x = orig.x - widthChange / 2;
-              newBounds.y = orig.y - heightChange / 2;
-              newBounds.width = orig.width + widthChange;
-              newBounds.height = orig.height + heightChange;
-            }
-            break;
-
-          case "nw":
-            newBounds.x = orig.x + dx;
-            newBounds.y = orig.y + dy;
-            newBounds.width = Math.max(10, orig.width - dx);
-            newBounds.height = Math.max(10, orig.height - dy);
-            if (keepAspect) {
-              const scaleX = newBounds.width / orig.width;
-              const scaleY = newBounds.height / orig.height;
-              if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / targetAspect;
-                newBounds.y = orig.y + orig.height - newBounds.height;
-              } else {
-                newBounds.width = newBounds.height * targetAspect;
-                newBounds.x = orig.x + orig.width - newBounds.width;
-              }
-            }
-            if (fromCenter) {
-              const widthChange = newBounds.width - orig.width;
-              const heightChange = newBounds.height - orig.height;
-              newBounds.x = orig.x - widthChange / 2;
-              newBounds.y = orig.y - heightChange / 2;
-              newBounds.width = orig.width + widthChange;
-              newBounds.height = orig.height + heightChange;
-            }
-            break;
-
-          case "ne":
-            newBounds.y = orig.y + dy;
-            newBounds.width = Math.max(10, orig.width + dx);
-            newBounds.height = Math.max(10, orig.height - dy);
-            if (keepAspect) {
-              const scaleX = newBounds.width / orig.width;
-              const scaleY = newBounds.height / orig.height;
-              if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / targetAspect;
-                newBounds.y = orig.y + orig.height - newBounds.height;
-              } else {
-                newBounds.width = newBounds.height * targetAspect;
-              }
-            }
-            if (fromCenter) {
-              const widthChange = newBounds.width - orig.width;
-              const heightChange = newBounds.height - orig.height;
-              newBounds.x = orig.x - widthChange / 2;
-              newBounds.y = orig.y - heightChange / 2;
-              newBounds.width = orig.width + widthChange;
-              newBounds.height = orig.height + heightChange;
-            }
-            break;
-
-          case "sw":
-            newBounds.x = orig.x + dx;
-            newBounds.width = Math.max(10, orig.width - dx);
-            newBounds.height = Math.max(10, orig.height + dy);
-            if (keepAspect) {
-              const scaleX = newBounds.width / orig.width;
-              const scaleY = newBounds.height / orig.height;
-              if (Math.abs(scaleX - 1) > Math.abs(scaleY - 1)) {
-                newBounds.height = newBounds.width / targetAspect;
-              } else {
-                newBounds.width = newBounds.height * targetAspect;
-                newBounds.x = orig.x + orig.width - newBounds.width;
-              }
-            }
-            if (fromCenter) {
-              const widthChange = newBounds.width - orig.width;
-              const heightChange = newBounds.height - orig.height;
-              newBounds.x = orig.x - widthChange / 2;
-              newBounds.y = orig.y - heightChange / 2;
-              newBounds.width = orig.width + widthChange;
-              newBounds.height = orig.height + heightChange;
-            }
-            break;
-
-          case "n":
-            newBounds.y = orig.y + dy;
-            newBounds.height = Math.max(10, orig.height - dy);
-            if (keepAspect) {
-              newBounds.width = newBounds.height * targetAspect;
-              newBounds.x = orig.x + (orig.width - newBounds.width) / 2;
-            }
-            if (fromCenter) {
-              const heightChange = newBounds.height - orig.height;
-              newBounds.y = orig.y - heightChange / 2;
-              newBounds.height = orig.height + heightChange;
-            }
-            break;
-
-          case "s":
-            newBounds.height = Math.max(10, orig.height + dy);
-            if (keepAspect) {
-              newBounds.width = newBounds.height * targetAspect;
-              newBounds.x = orig.x + (orig.width - newBounds.width) / 2;
-            }
-            if (fromCenter) {
-              const heightChange = newBounds.height - orig.height;
-              newBounds.y = orig.y - heightChange / 2;
-              newBounds.height = orig.height + heightChange;
-            }
-            break;
-
-          case "e":
-            newBounds.width = Math.max(10, orig.width + dx);
-            if (keepAspect) {
-              newBounds.height = newBounds.width / targetAspect;
-              newBounds.y = orig.y + (orig.height - newBounds.height) / 2;
-            }
-            if (fromCenter) {
-              const widthChange = newBounds.width - orig.width;
-              newBounds.x = orig.x - widthChange / 2;
-              newBounds.width = orig.width + widthChange;
-            }
-            break;
-
-          case "w":
-            newBounds.x = orig.x + dx;
-            newBounds.width = Math.max(10, orig.width - dx);
-            if (keepAspect) {
-              newBounds.height = newBounds.width / targetAspect;
-              newBounds.y = orig.y + (orig.height - newBounds.height) / 2;
-            }
-            if (fromCenter) {
-              const widthChange = newBounds.width - orig.width;
-              newBounds.x = orig.x - widthChange / 2;
-              newBounds.width = orig.width + widthChange;
-            }
-            break;
-        }
+        newBounds = resizeRectByHandle(
+          orig,
+          currentHandle as RectHandle,
+          { dx, dy },
+          {
+            minWidth: 10,
+            minHeight: 10,
+            keepAspect,
+            targetAspect,
+            fromCenter,
+          }
+        );
       }
 
       setTransformState((prev) => ({
