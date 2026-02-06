@@ -11,6 +11,7 @@ export { Select } from "./Select";
 export type { SelectProps, SelectOption } from "./Select";
 export { Scrollbar } from "./Scrollbar";
 export type { ScrollbarProps } from "./Scrollbar";
+export { NumberScrubber } from "./NumberScrubber";
 
 // Layout Components
 export * from "./layout";
