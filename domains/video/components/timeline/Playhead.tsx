@@ -1,7 +1,8 @@
 "use client";
 
+import { useRef } from "react";
 import { useVideoState } from "../../contexts";
-import { useVideoCoordinates } from "../../hooks";
+import { useVideoCoordinates, usePlaybackTick } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { TIMELINE } from "../../constants";
 
@@ -13,20 +14,35 @@ interface PlayheadProps {
 export function Playhead({ className, height }: PlayheadProps) {
   const { playback } = useVideoState();
   const { timeToPixel } = useVideoCoordinates();
+  const divRef = useRef<HTMLDivElement>(null);
 
-  const x = timeToPixel(playback.currentTime);
+  // Initial position from state (for first render and when paused)
+  const initialX = timeToPixel(playback.currentTime);
+
+  // Update DOM directly during playback — no React re-renders
+  usePlaybackTick((time) => {
+    if (!divRef.current) return;
+    const x = timeToPixel(time);
+    if (x < 0) {
+      divRef.current.style.display = "none";
+    } else {
+      divRef.current.style.display = "";
+      divRef.current.style.left = `${x}px`;
+    }
+  });
 
   // Don't render if off-screen
-  if (x < 0) return null;
+  if (initialX < 0) return null;
 
   return (
     <div
+      ref={divRef}
       className={cn(
         "absolute top-0 pointer-events-none z-20",
         className
       )}
       style={{
-        left: x,
+        left: initialX,
         height,
         width: TIMELINE.PLAYHEAD_WIDTH,
         backgroundColor: "var(--waveform-playhead, #FF8C00)",

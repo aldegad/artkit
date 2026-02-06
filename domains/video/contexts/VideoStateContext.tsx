@@ -18,6 +18,7 @@ import {
   ClipboardData,
 } from "../types";
 import { PLAYBACK } from "../constants";
+import { playbackTick } from "../utils/playbackTick";
 
 interface VideoState {
   // Project
@@ -111,16 +112,23 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const lastFrameTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
 
-  // Sync refs with state
-  useEffect(() => {
-    currentTimeRef.current = state.playback.currentTime;
-  }, [state.playback.currentTime]);
-
+  // Sync isPlayingRef with state
   useEffect(() => {
     isPlayingRef.current = state.playback.isPlaying;
   }, [state.playback.isPlaying]);
 
-  // Playback animation loop
+  // Playback-rate and loop refs to avoid recreating the RAF callback
+  const playbackRateRef = useRef(state.playback.playbackRate);
+  const loopRef = useRef(state.playback.loop);
+  const loopStartRef = useRef(state.playback.loopStart);
+  const projectDurationRef = useRef(state.project.duration || 10);
+
+  useEffect(() => { playbackRateRef.current = state.playback.playbackRate; }, [state.playback.playbackRate]);
+  useEffect(() => { loopRef.current = state.playback.loop; }, [state.playback.loop]);
+  useEffect(() => { loopStartRef.current = state.playback.loopStart; }, [state.playback.loopStart]);
+  useEffect(() => { projectDurationRef.current = state.project.duration || 10; }, [state.project.duration]);
+
+  // Playback animation loop — emits tick events instead of setState every frame
   const updatePlayback = useCallback(() => {
     if (!isPlayingRef.current) return;
 
@@ -128,41 +136,38 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     const deltaMs = now - lastFrameTimeRef.current;
     lastFrameTimeRef.current = now;
 
-    const deltaSeconds = (deltaMs / 1000) * state.playback.playbackRate;
+    const deltaSeconds = (deltaMs / 1000) * playbackRateRef.current;
     const newTime = currentTimeRef.current + deltaSeconds;
 
     // Check for end of project
-    const projectDuration = state.project.duration || 10;
-    if (newTime >= projectDuration) {
-      if (state.playback.loop) {
-        currentTimeRef.current = state.playback.loopStart;
+    const duration = projectDurationRef.current;
+    if (newTime >= duration) {
+      if (loopRef.current) {
+        currentTimeRef.current = loopStartRef.current;
       } else {
-        currentTimeRef.current = projectDuration;
+        currentTimeRef.current = duration;
         isPlayingRef.current = false;
+        // Sync final time to React state when playback ends
         setState((prev) => ({
           ...prev,
           playback: {
             ...prev.playback,
             isPlaying: false,
-            currentTime: projectDuration,
+            currentTime: duration,
           },
         }));
+        playbackTick.emit(duration);
         return;
       }
     } else {
       currentTimeRef.current = newTime;
     }
 
-    setState((prev) => ({
-      ...prev,
-      playback: {
-        ...prev.playback,
-        currentTime: currentTimeRef.current,
-      },
-    }));
+    // Emit tick to subscribers (canvas, playhead, ruler) — no React re-render
+    playbackTick.emit(currentTimeRef.current);
 
     animationFrameRef.current = requestAnimationFrame(updatePlayback);
-  }, [state.playback.playbackRate, state.playback.loop, state.playback.loopStart, state.project.duration]);
+  }, []); // Stable callback — reads all values from refs
 
   // Cleanup animation frame on unmount
   useEffect(() => {
@@ -224,9 +229,10 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       animationFrameRef.current = null;
     }
 
+    // Sync final time back to React state
     setState((prev) => ({
       ...prev,
-      playback: { ...prev.playback, isPlaying: false },
+      playback: { ...prev.playback, isPlaying: false, currentTime: currentTimeRef.current },
     }));
   }, []);
 
@@ -254,14 +260,15 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, [play, pause]);
 
   const seek = useCallback((time: number) => {
-    const clampedTime = Math.max(0, Math.min(time, state.project.duration || 10));
+    const clampedTime = Math.max(0, Math.min(time, projectDurationRef.current));
     currentTimeRef.current = clampedTime;
 
     setState((prev) => ({
       ...prev,
       playback: { ...prev.playback, currentTime: clampedTime },
     }));
-  }, [state.project.duration]);
+    playbackTick.emit(clampedTime);
+  }, []);
 
   const stepForward = useCallback(() => {
     seek(currentTimeRef.current + PLAYBACK.FRAME_STEP);

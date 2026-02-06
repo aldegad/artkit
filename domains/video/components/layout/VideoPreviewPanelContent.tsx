@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useMask, useTimeline } from "../../contexts";
 import { useMediaImport } from "../../hooks";
 import { MaskControls } from "../mask";
-import { PreviewCanvas, PreviewControls } from "../preview";
+import { PreviewCanvas, PreviewControls, BufferIndicator } from "../preview";
 import ImageDropZone from "@/shared/components/ImageDropZone";
 import { SUPPORTED_VIDEO_FORMATS, SUPPORTED_IMAGE_FORMATS, SUPPORTED_AUDIO_FORMATS } from "../../constants";
 import { useLanguage } from "@/shared/contexts";
@@ -71,6 +71,7 @@ export function VideoPreviewPanelContent() {
         >
           <div className="flex-1 min-h-0 relative">
             <PreviewCanvas />
+            <BufferIndicator />
             {isEditingMask && (
               <div className="absolute top-4 right-4 z-10">
                 <MaskControls />

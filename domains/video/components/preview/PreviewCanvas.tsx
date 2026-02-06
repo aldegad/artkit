@@ -2,10 +2,10 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
-import { useVideoElements } from "../../hooks";
+import { useVideoElements, usePlaybackTick } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
-import { PREVIEW } from "../../constants";
+import { PREVIEW, PLAYBACK } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
@@ -25,6 +25,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cropArea,
     setCropArea,
     canvasExpandMode,
+    currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
   const wasPlayingRef = useRef(false);
@@ -80,9 +81,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
 
-  // Ref for current time so the sync interval can read it without being a dependency
-  const currentTimeRef = useRef(playback.currentTime);
-  currentTimeRef.current = playback.currentTime;
+  // Use the shared ref from VideoStateContext as source of truth for current time
+  const currentTimeRef = stateTimeRef;
+
+  // Cache for getComputedStyle results (avoid forcing style recalc every frame)
+  const cssColorsRef = useRef<{ surfacePrimary: string; borderDefault: string } | null>(null);
+  const invalidateCssCache = useCallback(() => { cssColorsRef.current = null; }, []);
 
   // Handle playback state changes - sync video/audio elements.
   // Runs only when play state or clip/track structure changes, NOT every frame.
@@ -145,8 +149,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        // Only seek when drift is significant (0.3s), not on minor differences
-        if (Math.abs(video.currentTime - sourceTime) > 0.3) {
+        if (Math.abs(video.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
           video.currentTime = sourceTime;
         }
 
@@ -172,7 +175,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(audio.currentTime - sourceTime) > 0.3) {
+        if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
           audio.currentTime = sourceTime;
         }
 
@@ -186,7 +189,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     syncMedia(); // Initial sync when playback starts
     // Periodic re-sync for clip boundaries and drift correction (not every frame)
-    const intervalId = setInterval(syncMedia, 250);
+    const intervalId = setInterval(syncMedia, PLAYBACK.SYNC_INTERVAL_MS);
     wasPlayingRef.current = true;
 
     return () => clearInterval(intervalId);
@@ -253,19 +256,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // During playback, skip render if any video clip isn't decoded yet.
-    // This keeps the previous frame visible instead of showing a blank flash.
-    if (playback.isPlaying) {
-      for (const track of tracks) {
-        if (!track.visible) continue;
-        const clip = getClipAtTime(track.id, playback.currentTime);
-        if (!clip || !clip.visible || clip.type !== "video") continue;
-        const videoElement = videoElementsRef.current.get(clip.sourceUrl);
-        if (!videoElement || videoElement.readyState < 2) {
-          return;
-        }
-      }
-    }
+    // Read current time from ref (source of truth during playback)
+    const ct = currentTimeRef.current;
 
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
@@ -282,9 +274,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const width = rect.width;
     const height = rect.height;
     const colors = getCanvasColorsSync();
-    const rootStyle = getComputedStyle(document.documentElement);
-    const surfacePrimary = rootStyle.getPropertyValue("--surface-primary").trim() || "#1a1a1a";
-    const borderDefault = rootStyle.getPropertyValue("--border-default").trim() || "#333333";
+    // Cache getComputedStyle results to avoid per-frame style recalculation
+    if (!cssColorsRef.current) {
+      const rootStyle = getComputedStyle(document.documentElement);
+      cssColorsRef.current = {
+        surfacePrimary: rootStyle.getPropertyValue("--surface-primary").trim() || "#1a1a1a",
+        borderDefault: rootStyle.getPropertyValue("--border-default").trim() || "#333333",
+      };
+    }
+    const { surfacePrimary, borderDefault } = cssColorsRef.current;
 
     // Clear with background color
     ctx.fillStyle = surfacePrimary;
@@ -324,7 +322,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     for (const track of sortedTracks) {
       if (!track.visible) continue;
 
-      const clip = getClipAtTime(track.id, playback.currentTime);
+      const clip = getClipAtTime(track.id, ct);
       if (!clip || !clip.visible) continue;
 
       // Get the video/image element for this clip
@@ -338,7 +336,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           continue;
         }
         if (!playback.isPlaying) {
-          const clipTime = playback.currentTime - clip.startTime;
+          const clipTime = ct - clip.startTime;
           const sourceTime = clip.trimIn + clipTime;
           if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
             videoElement.currentTime = sourceTime;
@@ -365,7 +363,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const drawH = clip.sourceSize.height * scale * clip.scale;
 
         // Check for mask on this track at current time
-        const maskResult = getMaskAtTimeForTrack(clip.trackId, playback.currentTime);
+        const maskResult = getMaskAtTimeForTrack(clip.trackId, ct);
         let clipMaskSource: CanvasImageSource | null = null;
 
         if (maskResult === "__live_canvas__" && maskContextCanvasRef.current) {
@@ -581,7 +579,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     for (const track of sortedTracks) {
       if (!track.visible || track.locked) continue;
-      const clip = getClipAtTime(track.id, playback.currentTime);
+      const clip = getClipAtTime(track.id, currentTimeRef.current);
       if (!clip || !clip.visible || clip.type === "audio") continue;
 
       const width = clip.sourceSize.width * clip.scale;
@@ -610,7 +608,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     return null;
-  }, [tracks, getClipAtTime, playback.currentTime]);
+  }, [tracks, getClipAtTime, currentTimeRef]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (toolMode === "mask" && isEditingMask && activeTrackId) {
@@ -793,10 +791,21 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     setIsDraggingCrop(false);
   }, [endDraw, setBrushMode]);
 
-  // Render on playback time change
+  // Render on playback tick (driven by RAF, not React state) — no re-renders
+  usePlaybackTick(() => {
+    renderRef.current();
+  });
+
+  // Render on structural changes (tracks, clips, selection, etc.)
   useEffect(() => {
     renderRef.current();
-  }, [playback.currentTime, playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize, isEditingMask, activeTrackId]);
+  }, [playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize, isEditingMask, activeTrackId]);
+
+  // Invalidate CSS color cache on theme changes
+  useEffect(() => {
+    invalidateCssCache();
+    renderRef.current();
+  }, [invalidateCssCache]);
 
   // Handle resize
   useEffect(() => {

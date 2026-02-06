@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
-import { useVideoCoordinates } from "../../hooks";
+import { useVideoCoordinates, usePlaybackTick } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/hooks";
 import { TIMELINE } from "../../constants";
@@ -16,7 +16,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { viewState, setScrollX } = useTimeline();
-  const { playback, seek } = useVideoState();
+  const { seek, currentTimeRef } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
 
   const render = useCallback(() => {
@@ -97,8 +97,8 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       }
     }
 
-    // Draw playhead marker
-    const playheadX = timeToPixel(playback.currentTime);
+    // Draw playhead marker — read from ref (no React state dependency)
+    const playheadX = timeToPixel(currentTimeRef.current);
     if (playheadX >= 0 && playheadX <= width) {
       ctx.fillStyle = colors.waveformPlayhead;
       ctx.beginPath();
@@ -108,7 +108,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       ctx.closePath();
       ctx.fill();
     }
-  }, [viewState.zoom, viewState.scrollX, playback.currentTime, timeToPixel]);
+  }, [viewState.zoom, viewState.scrollX, timeToPixel, currentTimeRef]);
 
   // Handle click to seek
   const handleClick = useCallback(
@@ -133,9 +133,15 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     [pixelToTime, seek, onSeek, viewState.scrollX, setScrollX]
   );
 
+  // Render on structural changes (zoom, scroll)
   useEffect(() => {
     render();
   }, [render]);
+
+  // Render on playback tick — driven by RAF, not React state
+  usePlaybackTick(() => {
+    render();
+  });
 
   useEffect(() => {
     const container = containerRef.current;
