@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
 import { useVideoCoordinates, useTimelineInput } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
@@ -33,6 +33,8 @@ export function Timeline({ className }: TimelineProps) {
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
   const [dragTrackId, setDragTrackId] = useState<string | null>(null);
   const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
+  const [headerWidth, setHeaderWidth] = useState(136);
+  const [isResizingHeader, setIsResizingHeader] = useState(false);
 
   // Calculate total tracks height
   const totalTracksHeight = tracks.reduce((sum, t) => sum + t.height, 0);
@@ -80,6 +82,28 @@ export function Timeline({ className }: TimelineProps) {
     handleTimelineMouseUp();
   }, [handleTimelineMouseUp]);
 
+  useEffect(() => {
+    if (!isResizingHeader) return;
+
+    const onMouseMove = (event: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const next = Math.max(96, Math.min(260, event.clientX - rect.left));
+      setHeaderWidth(next);
+    };
+
+    const onMouseUp = () => {
+      setIsResizingHeader(false);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isResizingHeader]);
+
   // Handle wheel for horizontal scroll/zoom
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
@@ -126,24 +150,41 @@ export function Timeline({ className }: TimelineProps) {
         {/* Track headers + ruler row */}
         <div className="flex border-b border-border">
           {/* Track header column */}
-          <div className="w-32 flex-shrink-0 bg-surface-secondary border-r border-border">
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border" style={{ width: headerWidth }}>
             <div className="h-6 px-1 flex items-center gap-1">
               <button
                 onClick={() => addTrack(undefined, "video")}
-                className="h-5 px-1.5 rounded text-[10px] bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
+                className="h-5 w-5 flex items-center justify-center rounded bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
                 title="Add visual track (video/image)"
               >
-                + Visual
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M2 3h8v10H2V3zm10 2l4-2v10l-4-2V5z" />
+                  <path d="M8 1h1v3h3v1H9v3H8V5H5V4h3V1z" />
+                </svg>
               </button>
               <button
                 onClick={() => addTrack(undefined, "audio")}
-                className="h-5 px-1.5 rounded text-[10px] bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
+                className="h-5 w-5 flex items-center justify-center rounded bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
                 title="Add audio track"
               >
-                + Audio
+                <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M2 6h3l3-3v10l-3-3H2V6zm8.5 2a3.5 3.5 0 00-1.2-2.6l.9-.9A4.8 4.8 0 0111.8 8a4.8 4.8 0 01-1.6 3.5l-.9-.9A3.5 3.5 0 0010.5 8z" />
+                  <path d="M11 1h1v2h2v1h-2v2h-1V4H9V3h2V1z" />
+                </svg>
               </button>
             </div>
           </div>
+
+          <div
+            className={cn(
+              "w-1 cursor-col-resize bg-border/40 hover:bg-accent/60",
+              isResizingHeader && "bg-accent"
+            )}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizingHeader(true);
+            }}
+          />
 
           {/* Ruler */}
           <div className="flex-1 overflow-hidden">
@@ -154,7 +195,7 @@ export function Timeline({ className }: TimelineProps) {
         {/* Tracks area */}
         <div className="flex overflow-hidden" style={{ height: `calc(100% - 24px)` }}>
           {/* Track headers */}
-          <div className="w-32 flex-shrink-0 bg-surface-secondary border-r border-border overflow-y-auto">
+          <div className="flex-shrink-0 bg-surface-secondary border-r border-border overflow-y-auto" style={{ width: headerWidth }}>
             {tracks.map((track) => (
               <div
                 key={track.id}
@@ -264,6 +305,17 @@ export function Timeline({ className }: TimelineProps) {
               </div>
             ))}
           </div>
+
+          <div
+            className={cn(
+              "w-1 cursor-col-resize bg-border/40 hover:bg-accent/60",
+              isResizingHeader && "bg-accent"
+            )}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizingHeader(true);
+            }}
+          />
 
           {/* Tracks content */}
           <div

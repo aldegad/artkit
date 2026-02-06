@@ -15,14 +15,23 @@ interface PreviewCanvasProps {
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { previewCanvasRef, videoElementsRef, audioElementsRef } = useVideoRefs();
-  const { playback, project } = useVideoState();
-  const { tracks, clips, getClipAtTime } = useTimeline();
+  const { playback, project, selectedClipIds, toolMode } = useVideoState();
+  const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
   const { getMaskForClip, getMaskAtTime } = useMask();
   const [videoReadyCount, setVideoReadyCount] = useState(0);
   const wasPlayingRef = useRef(false);
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const maskImageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const maskBlendCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const draggingClipRef = useRef<{
+    clipId: string;
+    startClientX: number;
+    startClientY: number;
+    startPosX: number;
+    startPosY: number;
+    previewScale: number;
+  } | null>(null);
+  const hasSavedMoveHistoryRef = useRef(false);
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
@@ -359,6 +368,103 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     videoReadyCount,
   ]);
 
+  const getPreviewMetrics = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return null;
+
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+
+    const projectWidth = project.canvasSize.width;
+    const projectHeight = project.canvasSize.height;
+    if (projectWidth <= 0 || projectHeight <= 0) return null;
+
+    const scale = Math.min(
+      (width - 40) / projectWidth,
+      (height - 40) / projectHeight
+    );
+    const previewWidth = projectWidth * scale;
+    const previewHeight = projectHeight * scale;
+    const offsetX = (width - previewWidth) / 2;
+    const offsetY = (height - previewHeight) / 2;
+
+    return { rect, scale, offsetX, offsetY };
+  }, [project.canvasSize.width, project.canvasSize.height]);
+
+  const findDraggableSelectedClip = useCallback(() => {
+    if (selectedClipIds.length === 0) return null;
+    const visualSelected = clips.filter(
+      (clip) => selectedClipIds.includes(clip.id) && clip.type !== "audio"
+    );
+    if (visualSelected.length === 0) return null;
+
+    const trackOrder = new Map(tracks.map((track) => [track.id, track.zIndex]));
+    visualSelected.sort((a, b) => (trackOrder.get(b.trackId) || 0) - (trackOrder.get(a.trackId) || 0));
+    return visualSelected[0];
+  }, [selectedClipIds, clips, tracks]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (playback.isPlaying) return;
+    if (toolMode !== "select" && toolMode !== "move") return;
+
+    const clip = findDraggableSelectedClip();
+    if (!clip) return;
+
+    const metrics = getPreviewMetrics();
+    if (!metrics) return;
+
+    const localX = event.clientX - metrics.rect.left;
+    const localY = event.clientY - metrics.rect.top;
+    const drawX = metrics.offsetX + clip.position.x * metrics.scale;
+    const drawY = metrics.offsetY + clip.position.y * metrics.scale;
+    const drawW = clip.sourceSize.width * clip.scale * metrics.scale;
+    const drawH = clip.sourceSize.height * clip.scale * metrics.scale;
+    const inside = localX >= drawX && localX <= drawX + drawW && localY >= drawY && localY <= drawY + drawH;
+    if (!inside) return;
+
+    draggingClipRef.current = {
+      clipId: clip.id,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startPosX: clip.position.x,
+      startPosY: clip.position.y,
+      previewScale: metrics.scale,
+    };
+    hasSavedMoveHistoryRef.current = false;
+    (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }, [playback.isPlaying, toolMode, findDraggableSelectedClip, getPreviewMetrics]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = draggingClipRef.current;
+    if (!drag) return;
+
+    if (!hasSavedMoveHistoryRef.current) {
+      saveToHistory();
+      hasSavedMoveHistoryRef.current = true;
+    }
+
+    const deltaX = (event.clientX - drag.startClientX) / Math.max(0.0001, drag.previewScale);
+    const deltaY = (event.clientY - drag.startClientY) / Math.max(0.0001, drag.previewScale);
+    updateClip(drag.clipId, {
+      position: {
+        x: drag.startPosX + deltaX,
+        y: drag.startPosY + deltaY,
+      },
+    });
+  }, [saveToHistory, updateClip]);
+
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingClipRef.current) {
+      draggingClipRef.current = null;
+      hasSavedMoveHistoryRef.current = false;
+      try {
+        (event.currentTarget as HTMLDivElement).releasePointerCapture(event.pointerId);
+      } catch {}
+    }
+  }, []);
+
   // Render on playback time change
   useEffect(() => {
     render();
@@ -381,6 +487,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     <div
       ref={containerRef}
       className={cn("relative w-full h-full overflow-hidden", className)}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       <canvas
         ref={previewCanvasRef}

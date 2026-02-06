@@ -131,15 +131,22 @@ function VideoEditorContent() {
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const timelineAreaRef = useRef<HTMLDivElement>(null);
+  const timelineResizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const exportAudioContextRef = useRef<AudioContext | null>(null);
   const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
   const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
 
   const [isTimelineVisible, setIsTimelineVisible] = useState(true);
+  const [timelineHeight, setTimelineHeight] = useState(260);
+  const [isResizingTimeline, setIsResizingTimeline] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [includeAudioOnExport, setIncludeAudioOnExport] = useState(true);
+  const [isCanvasModalOpen, setIsCanvasModalOpen] = useState(false);
+  const [canvasWidthInput, setCanvasWidthInput] = useState("");
+  const [canvasHeightInput, setCanvasHeightInput] = useState("");
+  const [canvasResizeMode, setCanvasResizeMode] = useState<"resize" | "crop">("resize");
   const audioHistorySavedRef = useRef(false);
 
   useEffect(() => {
@@ -153,6 +160,31 @@ function VideoEditorContent() {
       exportGainNodesRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isResizingTimeline) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const resizeState = timelineResizeStateRef.current;
+      if (!resizeState) return;
+
+      const delta = resizeState.startY - event.clientY;
+      const nextHeight = Math.max(160, Math.min(520, resizeState.startHeight + delta));
+      setTimelineHeight(nextHeight);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingTimeline(false);
+      timelineResizeStateRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingTimeline]);
 
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
@@ -191,9 +223,7 @@ function VideoEditorContent() {
 
       let targetVideoTrackId = tracks.find((track) => track.type === "video")?.id || null;
       let targetAudioTrackId = tracks.find((track) => track.type === "audio")?.id || null;
-      const hasExistingVisualClip = clips.some((clip) => clip.type !== "audio");
       let insertTime = playback.currentTime;
-      let visualImportedCount = 0;
 
       for (const file of files) {
         const isVideo =
@@ -234,13 +264,6 @@ function VideoEditorContent() {
             continue;
           }
 
-          if (!hasExistingVisualClip && visualImportedCount === 0) {
-            setProject({
-              ...project,
-              canvasSize: metadata.size,
-            });
-          }
-
           const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime));
           try {
             await saveMediaBlob(clipId, file);
@@ -249,7 +272,6 @@ function VideoEditorContent() {
           }
 
           insertTime += metadata.duration;
-          visualImportedCount += 1;
           continue;
         }
 
@@ -312,13 +334,6 @@ function VideoEditorContent() {
           continue;
         }
 
-        if (!hasExistingVisualClip && visualImportedCount === 0) {
-          setProject({
-            ...project,
-            canvasSize: size,
-          });
-        }
-
         const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5);
         try {
           await saveMediaBlob(clipId, file);
@@ -327,7 +342,6 @@ function VideoEditorContent() {
         }
 
         insertTime += 5;
-        visualImportedCount += 1;
       }
     },
     [
@@ -335,9 +349,7 @@ function VideoEditorContent() {
       tracks,
       addTrack,
       playback.currentTime,
-      clips,
       project,
-      setProject,
       addVideoClip,
       addAudioClip,
       addImageClip,
@@ -538,6 +550,60 @@ function VideoEditorContent() {
     await handleExport();
     setIsExportModalOpen(false);
   }, [handleExport]);
+
+  const openCanvasModal = useCallback(() => {
+    setCanvasWidthInput(String(project.canvasSize.width));
+    setCanvasHeightInput(String(project.canvasSize.height));
+    setCanvasResizeMode("resize");
+    setIsCanvasModalOpen(true);
+  }, [project.canvasSize.width, project.canvasSize.height]);
+
+  const closeCanvasModal = useCallback(() => {
+    if (isExporting) return;
+    setIsCanvasModalOpen(false);
+  }, [isExporting]);
+
+  const applyCanvasSize = useCallback(() => {
+    const width = Math.max(1, Math.round(Number(canvasWidthInput)));
+    const height = Math.max(1, Math.round(Number(canvasHeightInput)));
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+
+    const currentWidth = project.canvasSize.width;
+    const currentHeight = project.canvasSize.height;
+
+    if (canvasResizeMode === "crop") {
+      const offsetX = (width - currentWidth) / 2;
+      const offsetY = (height - currentHeight) / 2;
+      const updatedClips = clips.map((clip) => {
+        if (clip.type === "audio") return clip;
+        return {
+          ...clip,
+          position: {
+            x: clip.position.x + offsetX,
+            y: clip.position.y + offsetY,
+          },
+        };
+      });
+
+      saveToHistory();
+      restoreClips(updatedClips);
+    }
+
+    setProject({
+      ...project,
+      canvasSize: { width, height },
+    });
+    setIsCanvasModalOpen(false);
+  }, [
+    canvasWidthInput,
+    canvasHeightInput,
+    canvasResizeMode,
+    project,
+    clips,
+    saveToHistory,
+    restoreClips,
+    setProject,
+  ]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
@@ -902,6 +968,13 @@ function VideoEditorContent() {
         <span className="text-xs text-text-tertiary whitespace-nowrap ml-1">
           ({project.canvasSize.width}x{project.canvasSize.height})
         </span>
+        <button
+          onClick={openCanvasModal}
+          className="ml-2 px-2 py-0.5 text-xs rounded bg-surface-tertiary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary/80 transition-colors"
+          title="Canvas size and crop settings"
+        >
+          Canvas
+        </button>
       </HeaderSlot>
 
       {/* Toolbar */}
@@ -1027,9 +1100,29 @@ function VideoEditorContent() {
 
         {/* Timeline Area */}
         {isTimelineVisible && (
-          <div ref={timelineAreaRef} className="h-64 border-t border-border shrink-0">
-            <Timeline className="h-full" />
-          </div>
+          <>
+            <div
+              className={`h-2 shrink-0 border-t border-border bg-surface-secondary cursor-row-resize ${
+                isResizingTimeline ? "bg-accent/40" : "hover:bg-accent/20"
+              }`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                timelineResizeStateRef.current = {
+                  startY: e.clientY,
+                  startHeight: timelineHeight,
+                };
+                setIsResizingTimeline(true);
+              }}
+              title="Drag to resize timeline panel"
+            />
+            <div
+              ref={timelineAreaRef}
+              className="border-t border-border shrink-0"
+              style={{ height: timelineHeight }}
+            >
+              <Timeline className="h-full" />
+            </div>
+          </>
         )}
       </div>
 
@@ -1068,6 +1161,82 @@ function VideoEditorContent() {
                 className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent-hover disabled:opacity-60"
               >
                 {isExporting ? "Exporting..." : "Export"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCanvasModalOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-surface-primary shadow-xl">
+            <div className="px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-medium text-text-primary">Canvas Settings</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Resize canvas or center-crop relative to current composition.
+              </p>
+            </div>
+
+            <div className="px-4 py-3 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-text-secondary">
+                  Width
+                  <input
+                    type="number"
+                    min={1}
+                    value={canvasWidthInput}
+                    onChange={(e) => setCanvasWidthInput(e.target.value)}
+                    className="mt-1 w-full rounded border border-border bg-surface-tertiary px-2 py-1 text-sm text-text-primary"
+                  />
+                </label>
+                <label className="text-xs text-text-secondary">
+                  Height
+                  <input
+                    type="number"
+                    min={1}
+                    value={canvasHeightInput}
+                    onChange={(e) => setCanvasHeightInput(e.target.value)}
+                    className="mt-1 w-full rounded border border-border bg-surface-tertiary px-2 py-1 text-sm text-text-primary"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-sm text-text-primary">
+                  <input
+                    type="radio"
+                    name="canvas-mode"
+                    checked={canvasResizeMode === "resize"}
+                    onChange={() => setCanvasResizeMode("resize")}
+                    className="h-4 w-4"
+                  />
+                  Resize only (keep clip coordinates)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-text-primary">
+                  <input
+                    type="radio"
+                    name="canvas-mode"
+                    checked={canvasResizeMode === "crop"}
+                    onChange={() => setCanvasResizeMode("crop")}
+                    className="h-4 w-4"
+                  />
+                  Center crop/expand (shift clips with canvas center)
+                </label>
+              </div>
+            </div>
+
+            <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
+              <button
+                onClick={closeCanvasModal}
+                className="px-3 py-1.5 text-sm rounded bg-surface-tertiary text-text-secondary hover:bg-surface-tertiary/80"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={applyCanvasSize}
+                className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent-hover"
+              >
+                Apply
               </button>
             </div>
           </div>
