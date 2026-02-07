@@ -11,6 +11,7 @@ import { removeBackground } from "../../../utils/backgroundRemoval";
 interface UseFrameBackgroundRemovalOptions {
   frames: SpriteFrame[];
   currentFrameIndex: number;
+  selectedFrameIds: number[];
   setFrames: Dispatch<SetStateAction<SpriteFrame[]>>;
   pushHistory: () => void;
   translations: {
@@ -25,7 +26,7 @@ interface UseFrameBackgroundRemovalReturn {
   isRemovingBackground: boolean;
   bgRemovalProgress: number;
   bgRemovalStatus: string;
-  handleRemoveBackground: (mode: "current" | "all") => Promise<void>;
+  handleRemoveBackground: (mode: "current" | "selected" | "all") => Promise<void>;
 }
 
 // ============================================
@@ -38,6 +39,7 @@ export function useFrameBackgroundRemoval(
   const {
     frames,
     currentFrameIndex,
+    selectedFrameIds,
     setFrames,
     pushHistory,
     translations: t,
@@ -47,24 +49,30 @@ export function useFrameBackgroundRemoval(
   const [bgRemovalProgress, setBgRemovalProgress] = useState(0);
   const [bgRemovalStatus, setBgRemovalStatus] = useState("");
 
-  const handleRemoveBackground = useCallback(async (mode: "current" | "all") => {
+  const handleRemoveBackground = useCallback(async (mode: "current" | "selected" | "all") => {
     if (isRemovingBackground) return;
 
     // Determine which frames to process
-    const validFrames = frames.filter((f) => f.imageData);
     const framesToProcess: SpriteFrame[] = [];
 
     if (mode === "current") {
-      const currentFrame = validFrames[currentFrameIndex];
-      if (!currentFrame) {
+      const currentFrame = frames[currentFrameIndex];
+      if (!currentFrame?.imageData) {
         alert(t.selectFrameForBgRemoval || "No frame available.");
         return;
       }
-      if (!currentFrame.imageData) {
-        alert(t.frameImageNotFound || "Frame image not found.");
+      framesToProcess.push(currentFrame);
+    } else if (mode === "selected") {
+      const selectedSet = new Set(selectedFrameIds);
+      for (const frame of frames) {
+        if (selectedSet.has(frame.id) && frame.imageData) {
+          framesToProcess.push(frame);
+        }
+      }
+      if (framesToProcess.length === 0) {
+        alert(t.selectFrameForBgRemoval || "No selected frames with images found.");
         return;
       }
-      framesToProcess.push(currentFrame);
     } else {
       for (const frame of frames) {
         if (frame.imageData) {
@@ -121,7 +129,7 @@ export function useFrameBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, frames, currentFrameIndex, setFrames, pushHistory, t]);
+  }, [isRemovingBackground, frames, currentFrameIndex, selectedFrameIds, setFrames, pushHistory, t]);
 
   return {
     isRemovingBackground,
