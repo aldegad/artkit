@@ -12,7 +12,7 @@ import {
   getRectHandleAtPosition,
   resizeRectByHandle,
   type RectHandle,
-} from "../../utils/rectTransform";
+} from "@/shared/utils/rectTransform";
 
 export interface UseCropHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
