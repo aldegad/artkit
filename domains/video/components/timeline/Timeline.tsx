@@ -9,7 +9,7 @@ import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
-import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon } from "@/shared/components/icons";
+import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
@@ -319,6 +319,30 @@ export function Timeline({ className }: TimelineProps) {
                         {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
                         {track.muted ? "Unmute" : "Mute"}
                       </button>
+                      <div className="h-px bg-border-default mx-1" />
+                      <button
+                        onClick={() => {
+                          const idx = tracks.findIndex(t => t.id === track.id);
+                          if (idx > 0) { saveToHistory(); reorderTracks(idx, idx - 1); }
+                        }}
+                        disabled={tracks.findIndex(t => t.id === track.id) === 0}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
+                      >
+                        <ChevronDownIcon className="w-3 h-3 rotate-180" />
+                        Move Up
+                      </button>
+                      <button
+                        onClick={() => {
+                          const idx = tracks.findIndex(t => t.id === track.id);
+                          if (idx < tracks.length - 1) { saveToHistory(); reorderTracks(idx, idx + 1); }
+                        }}
+                        disabled={tracks.findIndex(t => t.id === track.id) === tracks.length - 1}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
+                      >
+                        <ChevronDownIcon className="w-3 h-3" />
+                        Move Down
+                      </button>
+                      <div className="h-px bg-border-default mx-1" />
                       <button
                         onClick={() => { saveToHistory(); removeTrack(track.id); }}
                         className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-red-400"
@@ -347,7 +371,7 @@ export function Timeline({ className }: TimelineProps) {
           {/* Tracks content */}
           <div
             ref={tracksContainerRef}
-            className="flex-1 overflow-auto relative touch-none"
+            className="flex-1 overflow-auto relative touch-pan-y"
             style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
             onPointerDown={handleTimelinePointerDown}
           >
