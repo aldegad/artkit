@@ -2,9 +2,9 @@
 
 import { useRef } from "react";
 import Link from "next/link";
+import { Dancing_Script } from "next/font/google";
 import { useLanguage, useTheme } from "../shared/contexts";
 import ArtkitLogo from "../components/icons/ArtkitLogo";
-import ArtkitWordmark from "../components/icons/ArtkitWordmark";
 import {
   SidebarEditorIcon,
   SidebarVideoIcon,
@@ -15,6 +15,12 @@ import {
   SunIcon,
   MoonIcon,
 } from "../shared/components/icons";
+
+const heroFont = Dancing_Script({
+  subsets: ["latin"],
+  weight: "700",
+  display: "swap",
+});
 
 const tools = [
   {
@@ -136,16 +142,13 @@ export default function LandingPage() {
           {t.landingBadge}
         </div>
 
-        {/* Wordmark */}
-        <div
-          className="relative z-10 animate-landing-wordmark"
+        {/* Title */}
+        <h1
+          className={`${heroFont.className} relative z-10 text-7xl sm:text-8xl md:text-9xl lg:text-[140px] landing-gradient-text animate-landing-slide-up leading-[1.1]`}
           style={{ animationDelay: "0.25s" }}
         >
-          <ArtkitWordmark
-            className="w-64 sm:w-80 md:w-96 lg:w-[480px]"
-            gradient
-          />
-        </div>
+          Artkit
+        </h1>
 
         {/* Tagline */}
         <p
