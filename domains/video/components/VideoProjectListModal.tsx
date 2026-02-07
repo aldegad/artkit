@@ -23,7 +23,6 @@ interface VideoProjectListModalProps {
   currentProjectId: string | null;
   onLoadProject: (project: SavedVideoProject) => void;
   onDeleteProject: (projectId: string) => void;
-  onImportFile?: () => void;
   storageInfo: StorageInfo;
   isLoading?: boolean;
   loadProgress?: SaveLoadProgress | null;
@@ -31,7 +30,6 @@ interface VideoProjectListModalProps {
     savedProjects: string;
     noSavedProjects: string;
     delete: string;
-    importFile?: string;
     loading?: string;
   };
 }
@@ -57,7 +55,6 @@ export default function VideoProjectListModal({
   currentProjectId,
   onLoadProject,
   onDeleteProject,
-  onImportFile,
   storageInfo,
   isLoading,
   loadProgress,
@@ -88,16 +85,6 @@ export default function VideoProjectListModal({
     </div>
   );
 
-  const footerContent = onImportFile ? (
-    <button
-      onClick={onImportFile}
-      disabled={isLoading}
-      className="text-sm text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-    >
-      {t.importFile || "Import from file..."}
-    </button>
-  ) : undefined;
-
   return (
     <Modal
       isOpen={isOpen}
@@ -106,7 +93,6 @@ export default function VideoProjectListModal({
       width="480px"
       maxHeight="80vh"
       contentClassName="flex-1 flex flex-col min-h-0"
-      footer={footerContent}
     >
         {/* Loading overlay */}
         {isLoading && (
