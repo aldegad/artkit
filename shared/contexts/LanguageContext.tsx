@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useSyncExternalStore, useCallback, ReactNode } from "react";
 
 export type Language = "ko" | "en";
 
@@ -900,20 +900,47 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const STORAGE_KEY = "artkit-language";
 
-function getInitialLanguage(): Language {
-  if (typeof window === "undefined") return "ko";
+// useSyncExternalStore용 리스너 (같은 탭 내 변경 감지)
+let languageListeners: (() => void)[] = [];
+
+function emitLanguageChange() {
+  languageListeners.forEach((l) => l());
+}
+
+function subscribeToLanguage(callback: () => void) {
+  languageListeners.push(callback);
+  // 다른 탭에서의 변경도 감지
+  const handler = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) callback();
+  };
+  window.addEventListener("storage", handler);
+  return () => {
+    languageListeners = languageListeners.filter((l) => l !== callback);
+    window.removeEventListener("storage", handler);
+  };
+}
+
+function getLanguageSnapshot(): Language {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored === "ko" || stored === "en") return stored;
   return "ko";
 }
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+function getLanguageServerSnapshot(): Language {
+  return "ko";
+}
 
-  const setLanguage = (lang: Language) => {
-    setLanguageState(lang);
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  const language = useSyncExternalStore(
+    subscribeToLanguage,
+    getLanguageSnapshot,
+    getLanguageServerSnapshot,
+  );
+
+  const setLanguage = useCallback((lang: Language) => {
     localStorage.setItem(STORAGE_KEY, lang);
-  };
+    emitLanguageChange();
+  }, []);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t: translations[language] }}>
