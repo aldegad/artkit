@@ -8,7 +8,7 @@ import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../..
 import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
-import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
+import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 
 // Background icon for popover trigger
 const BackgroundPatternIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -90,6 +90,8 @@ export default function AnimationPreviewContent() {
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
     isPlaying, setIsPlaying,
+    currentFrameIndex: storeFrameIndex,
+    setCurrentFrameIndex: setStoreFrameIndex,
   } = useEditor();
   const { t } = useLanguage();
 
@@ -326,39 +328,46 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
-  // Helper: find next non-disabled frame index across all tracks
-  const findNextEnabledFrame = useCallback(
-    (current: number, direction: 1 | -1): number => {
-      if (maxFrameCount === 0) return 0;
-      let next = ((current + direction) % maxFrameCount + maxFrameCount) % maxFrameCount;
-      let checked = 0;
-      while (checked < maxFrameCount) {
-        // Check if any visible track has a non-disabled frame at this index
-        const allDisabled = tracks
-          .filter((t) => t.visible && t.frames.length > 0)
-          .every((t) => {
-            const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
-            return idx === -1 || t.frames[idx]?.disabled;
-          });
-        if (!allDisabled) return next;
-        next = ((next + direction) % maxFrameCount + maxFrameCount) % maxFrameCount;
-        checked++;
-      }
-      return current; // all frames disabled, stay put
-    },
-    [tracks, maxFrameCount],
-  );
+  // Sync store → local when not playing (user clicked in FrameStrip)
+  useEffect(() => {
+    if (!isPlaying) {
+      setCurrentFrameIndex(storeFrameIndex);
+    }
+  }, [storeFrameIndex, isPlaying]);
 
-  // Animation playback
+  // Sync local → store when playing (for FrameStrip visual feedback)
+  useEffect(() => {
+    if (isPlaying) {
+      setStoreFrameIndex(currentFrameIndex);
+    }
+  }, [currentFrameIndex, isPlaying, setStoreFrameIndex]);
+
+  // Animation playback - reads tracks directly from store to avoid stale closures
   useEffect(() => {
     if (!isPlaying || maxFrameCount === 0) return;
 
     const interval = setInterval(() => {
-      setCurrentFrameIndex((prev) => findNextEnabledFrame(prev, 1));
+      const latestTracks = useSpriteTrackStore.getState().tracks;
+      setCurrentFrameIndex((prev) => {
+        let next = (prev + 1) % maxFrameCount;
+        let checked = 0;
+        while (checked < maxFrameCount) {
+          const allDisabled = latestTracks
+            .filter((t) => t.visible && t.frames.length > 0)
+            .every((t) => {
+              const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+              return idx === -1 || t.frames[idx]?.disabled;
+            });
+          if (!allDisabled) return next;
+          next = (next + 1) % maxFrameCount;
+          checked++;
+        }
+        return prev; // all frames disabled, stay put
+      });
     }, 1000 / fps);
 
     return () => clearInterval(interval);
-  }, [isPlaying, fps, maxFrameCount, findNextEnabledFrame]);
+  }, [isPlaying, fps, maxFrameCount]);
 
   // Composite current frame from all tracks
   useEffect(() => {
@@ -394,13 +403,45 @@ export default function AnimationPreviewContent() {
 
   const handlePrev = useCallback(() => {
     if (maxFrameCount === 0) return;
-    setCurrentFrameIndex((prev) => findNextEnabledFrame(prev, -1));
-  }, [maxFrameCount, findNextEnabledFrame]);
+    const latestTracks = useSpriteTrackStore.getState().tracks;
+    setCurrentFrameIndex((prev) => {
+      let next = ((prev - 1) % maxFrameCount + maxFrameCount) % maxFrameCount;
+      let checked = 0;
+      while (checked < maxFrameCount) {
+        const allDisabled = latestTracks
+          .filter((t) => t.visible && t.frames.length > 0)
+          .every((t) => {
+            const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+            return idx === -1 || t.frames[idx]?.disabled;
+          });
+        if (!allDisabled) return next;
+        next = ((next - 1) % maxFrameCount + maxFrameCount) % maxFrameCount;
+        checked++;
+      }
+      return prev;
+    });
+  }, [maxFrameCount]);
 
   const handleNext = useCallback(() => {
     if (maxFrameCount === 0) return;
-    setCurrentFrameIndex((prev) => findNextEnabledFrame(prev, 1));
-  }, [maxFrameCount, findNextEnabledFrame]);
+    const latestTracks = useSpriteTrackStore.getState().tracks;
+    setCurrentFrameIndex((prev) => {
+      let next = (prev + 1) % maxFrameCount;
+      let checked = 0;
+      while (checked < maxFrameCount) {
+        const allDisabled = latestTracks
+          .filter((t) => t.visible && t.frames.length > 0)
+          .every((t) => {
+            const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+            return idx === -1 || t.frames[idx]?.disabled;
+          });
+        if (!allDisabled) return next;
+        next = (next + 1) % maxFrameCount;
+        checked++;
+      }
+      return prev;
+    });
+  }, [maxFrameCount]);
 
   // 스페이스바 패닝 기능
   useEffect(() => {

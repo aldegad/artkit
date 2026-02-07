@@ -22,6 +22,7 @@ export default function FrameStrip() {
     setSelectedFrameIds,
     toggleSelectedFrameId,
     selectFrameRange,
+    isPlaying,
     setIsPlaying,
     timelineMode,
     setTimelineMode,
@@ -471,16 +472,16 @@ export default function FrameStrip() {
                   className={`
                     relative rounded-lg border-2 transition-all
                     ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
-                    ${idx === currentFrameIndex ? "border-accent-primary shadow-sm" : selectedFrameIds.includes(frame.id) ? "border-accent-primary/50 bg-accent-primary/10" : "border-border-default"}
+                    ${isPlaying && idx === currentFrameIndex ? "border-accent-warning shadow-sm shadow-accent-warning/30" : selectedFrameIds.includes(frame.id) ? "border-accent-warning/60 bg-accent-warning/15" : idx === currentFrameIndex ? "border-accent-primary shadow-sm" : "border-border-default"}
                     ${dragOverIndex === idx ? "border-accent-primary! scale-105" : ""}
                     ${draggedFrameId === frame.id ? "opacity-50" : ""}
                     ${editingOffsetFrameId === frame.id ? "border-accent-warning!" : ""}
                     ${frame.disabled ? "opacity-40" : ""}
                   `}
                 >
-                  {/* Frame number - only on active frame */}
+                  {/* Frame number - on active or playing frame */}
                   {idx === currentFrameIndex && (
-                    <div className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 bg-text-primary text-surface-primary">
+                    <div className={`absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 ${isPlaying ? "bg-accent-warning text-white" : "bg-text-primary text-surface-primary"}`}>
                       {idx + 1}
                     </div>
                   )}
