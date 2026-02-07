@@ -11,14 +11,14 @@ import {
   SpriteFrame,
   useFrameBackgroundRemoval,
   FrameBackgroundRemovalModals,
-} from "../../domains/sprite";
-import type { SavedSpriteProject } from "../../domains/sprite";
-import { migrateFramesToTracks } from "../../domains/sprite/utils/migration";
-import SpriteMenuBar from "../../domains/sprite/components/SpriteMenuBar";
-import VideoImportModal from "../../domains/sprite/components/VideoImportModal";
-import { useLanguage } from "../../shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay } from "../../shared/components";
-import { Tooltip, Scrollbar } from "../../shared/components";
+} from "@/domains/sprite";
+import type { SavedSpriteProject } from "@/domains/sprite";
+import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
+import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
+import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
+import { useLanguage } from "@/shared/contexts";
+import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
+import { Tooltip, Scrollbar } from "@/shared/components";
 import {
   BrushIcon,
   CursorIcon,
@@ -26,7 +26,7 @@ import {
   BackgroundRemovalIcon,
   UndoIcon,
   RedoIcon,
-} from "../../shared/components/icons";
+} from "@/shared/components/icons";
 import {
   saveProject as saveProjectToDB,
   getAllProjects,
@@ -34,7 +34,7 @@ import {
   migrateFromLocalStorage,
   getStorageInfo,
   formatBytes,
-} from "../../utils/storage";
+} from "@/utils/storage";
 
 // ============================================
 // Main Editor Component
