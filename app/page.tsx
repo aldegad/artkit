@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import LandingPage from "./LandingPage";
 
 export default function Home() {
-  redirect("/editor");
+  return <LandingPage />;
 }

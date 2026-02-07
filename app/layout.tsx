@@ -4,8 +4,40 @@ import ClientLayout from "../components/layout/ClientLayout";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Artkit",
-  description: "Web-based graphics editor - Sprite Editor, Image Editor, Image Converter",
+  title: {
+    default: "Artkit - Web-based Creative Toolkit",
+    template: "%s | Artkit",
+  },
+  description:
+    "Free web-based creative tools. Edit images, video, sprites, and sound right in your browser. No installation required.",
+  keywords: [
+    "image editor",
+    "video editor",
+    "sprite editor",
+    "sound editor",
+    "online editor",
+    "web tools",
+    "image converter",
+    "pixel art",
+  ],
+  authors: [{ name: "Soo Hong Kim" }],
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    url: "https://artkit.web.app",
+    siteName: "Artkit",
+    title: "Artkit - Web-based Creative Toolkit",
+    description:
+      "Free web-based creative tools for images, video, sprites, and sound.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Artkit - Web-based Creative Toolkit",
+    description:
+      "Free web-based creative tools for images, video, sprites, and sound.",
+  },
+  robots: { index: true, follow: true },
+  metadataBase: new URL("https://artkit.web.app"),
 };
 
 export default function RootLayout({
@@ -16,6 +48,26 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              name: "Artkit",
+              url: "https://artkit.web.app",
+              description:
+                "Free web-based creative tools for images, video, sprites, and sound.",
+              applicationCategory: "MultimediaApplication",
+              operatingSystem: "Web Browser",
+              offers: {
+                "@type": "Offer",
+                price: "0",
+                priceCurrency: "USD",
+              },
+            }),
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
