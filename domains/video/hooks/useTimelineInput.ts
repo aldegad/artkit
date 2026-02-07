@@ -169,6 +169,10 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     (e: React.PointerEvent) => {
       const containerRect = tracksContainerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
+
+      // Capture pointer for reliable touch tracking (prevents browser from canceling)
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
       const x = e.clientX - containerRect.left;
       const y = e.clientY - containerRect.top;
       const time = pixelToTime(x);
