@@ -1169,6 +1169,7 @@ function VideoEditorContent() {
   return (
     <div
       className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative"
+      onContextMenu={(e) => e.preventDefault()}
     >
       {/* Loading overlay during autosave restore */}
       <LoadingOverlay isLoading={!isAutosaveInitialized} message={t.loading || "Loading..."} />
