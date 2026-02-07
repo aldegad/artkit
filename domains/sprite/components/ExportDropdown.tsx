@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useLanguage } from "../../shared/contexts";
-import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
-import { SpriteTrack } from "../../domains/sprite/types";
+import { useLanguage } from "@/shared/contexts";
+import { useEditor } from "../contexts/SpriteEditorContext";
+import { SpriteTrack } from "../types";
 import {
   downloadCompositedFramesAsZip,
   downloadCompositedSpriteSheet,
-} from "../../domains/sprite/utils/export";
-import { SpinnerIcon, ExportIcon, ChevronDownIcon } from "../../shared/components";
+} from "../utils/export";
+import { SpinnerIcon, ExportIcon, ChevronDownIcon } from "@/shared/components";
 
 // ============================================
 // Types
