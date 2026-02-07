@@ -423,17 +423,24 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             setScrollX(seekTime);
           }
           deselectAll();
-          setDragState({
-            type: "playhead",
-            clipId: null,
-            items: [],
-            startX: x,
-            startY: contentY,
-            startTime: time,
-            originalClipStart: 0,
-            originalClipDuration: 0,
-            originalTrimIn: 0,
-          });
+
+          // For touch: DON'T enter playhead drag state.
+          // Setting dragState attaches document-level pointermove listeners which
+          // interfere with the browser's ability to start native vertical scrolling
+          // (touch-action: pan-y). Touch users can drag-seek via TimeRuler instead.
+          if (e.pointerType !== "touch") {
+            setDragState({
+              type: "playhead",
+              clipId: null,
+              items: [],
+              startX: x,
+              startY: contentY,
+              startTime: time,
+              originalClipStart: 0,
+              originalClipDuration: 0,
+              originalTrimIn: 0,
+            });
+          }
         }
       }
     },
@@ -488,9 +495,13 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       case "clip-move": {
         if (!dragState.clipId || dragState.items.length === 0) break;
 
-        // Cancel long-press timer if user starts moving horizontally
-        if (longPressTimerRef.current && Math.abs(x - dragState.startX) > 5) {
-          cancelLongPress();
+        // Cancel long-press timer if user starts moving (horizontal or vertical)
+        if (longPressTimerRef.current) {
+          const dx = Math.abs(x - dragState.startX);
+          const dy = Math.abs(contentY - dragState.startY);
+          if (dx > 5 || dy > 5) {
+            cancelLongPress();
+          }
         }
 
         // Calculate snap based on primary clip
