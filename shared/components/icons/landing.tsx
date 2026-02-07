@@ -82,27 +82,10 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
       fill="currentColor"
       opacity={0.25}
     />
-    {/* Play triangle on clip */}
-    <path d="M7 7.5v7l6-3.5z" fill="currentColor" opacity={0.4} />
-    {/* Thumbnail frames */}
-    <rect
-      x="15"
-      y="7"
-      width="5"
-      height="7"
-      rx="1"
-      fill="currentColor"
-      opacity={0.15}
-    />
-    <rect
-      x="22"
-      y="7"
-      width="5"
-      height="7"
-      rx="1"
-      fill="currentColor"
-      opacity={0.15}
-    />
+    {/* Thumbnail frames inside clip */}
+    <rect x="5" y="7" width="5" height="7" rx="1" fill="currentColor" opacity={0.15} />
+    <rect x="12" y="7" width="5" height="7" rx="1" fill="currentColor" opacity={0.15} />
+    <rect x="19" y="7" width="5" height="7" rx="1" fill="currentColor" opacity={0.15} />
     {/* Short clip after gap */}
     <rect
       x="34"
@@ -164,6 +147,10 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
       strokeWidth={2}
       opacity={0.55}
     />
+
+    {/* Play button overlay - centered, YouTube-style */}
+    <circle cx="24" cy="22" r="8" fill="currentColor" opacity={0.15} />
+    <path d="M21 18v8l7-4z" fill="currentColor" opacity={0.65} />
   </svg>
 );
 
