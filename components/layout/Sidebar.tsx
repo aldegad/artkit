@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "../../shared/contexts";
-import SettingsMenu from "../SettingsMenu";
+import { SettingsMenu } from "../../shared/components";
 import ArtkitLogo from "../icons/ArtkitLogo";
 import { LandingImageIcon, LandingVideoIcon, LandingSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarIconsIcon } from "../../shared/components/icons";
 
@@ -101,7 +101,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
 
       <div className="w-8 h-px bg-border-default" />
 
-      <SettingsMenu />
+      <SettingsMenu variant="sidebar" />
     </div>
   );
 }

@@ -2,9 +2,13 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useTheme, useLanguage } from "../contexts";
-import { MenuIcon, SunIcon, MoonIcon, SystemIcon } from "./icons";
+import { MenuIcon, CogIcon, SunIcon, MoonIcon, SystemIcon } from "./icons";
 
-export default function SettingsMenu() {
+interface SettingsMenuProps {
+  variant?: "sidebar" | "default";
+}
+
+export default function SettingsMenu({ variant = "default" }: SettingsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -36,18 +40,30 @@ export default function SettingsMenu() {
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen]);
 
+  const isSidebar = variant === "sidebar";
+
   return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-lg bg-interactive-default hover:bg-interactive-hover transition-colors"
+        className={`p-2 rounded-lg transition-colors ${
+          isSidebar
+            ? "text-text-secondary hover:bg-interactive-hover hover:text-text-primary"
+            : "bg-interactive-default hover:bg-interactive-hover"
+        }`}
         title={t.settings}
       >
-        <MenuIcon className="w-5 h-5 text-text-primary" />
+        {isSidebar ? (
+          <CogIcon className="w-5 h-5" />
+        ) : (
+          <MenuIcon className="w-5 h-5 text-text-primary" />
+        )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-48 bg-surface-primary border border-border-default rounded-xl shadow-lg z-50 overflow-hidden">
+        <div className={`absolute w-48 bg-surface-primary border border-border-default rounded-xl shadow-lg z-50 overflow-hidden ${
+          isSidebar ? "left-full bottom-0 ml-2" : "right-0 top-full mt-2"
+        }`}>
           {/* Theme section */}
           <div className="p-3 border-b border-border-default">
             <div className="text-xs font-medium text-text-tertiary mb-2">{t.theme}</div>
