@@ -1141,8 +1141,10 @@ function ImageEditorContent() {
       if (!layer.visible) return;
       const layerCanvas = layerCanvasesRef.current.get(layer.id);
       if (!layerCanvas) return;
-      compositeCtx.globalAlpha = layer.opacity;
-      compositeCtx.drawImage(layerCanvas, 0, 0);
+      compositeCtx.globalAlpha = layer.opacity / 100;
+      const posX = layer.position?.x || 0;
+      const posY = layer.position?.y || 0;
+      compositeCtx.drawImage(layerCanvas, posX, posY);
       compositeCtx.globalAlpha = 1;
     });
 
