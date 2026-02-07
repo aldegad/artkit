@@ -32,22 +32,4 @@ export type {
   Size,
   UnifiedLayer,
   BoundingBox,
-  LayoutState,
-  SplitNode,
-  PanelNode,
-  FloatingWindow,
-  DropTarget,
-  ResizeState,
-  SplitDirection,
-} from "./types";
-
-// Layout utilities
-export {
-  DEFAULT_LAYOUT,
-  findNode,
-  updateNodeSizes,
-  addPanelToLayout,
-  removePanelFromLayout,
-  generateId,
-  isSplitNode,
 } from "./types";
