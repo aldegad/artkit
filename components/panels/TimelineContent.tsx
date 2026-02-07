@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useCallback, useState, useRef } from "react";
+import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
 import { Scrollbar, NumberScrubber } from "../../shared/components";
 import { ExportDropdown } from "../timeline";
 import { SpriteTrack } from "../../domains/sprite/types";
 import { compositeFrame } from "../../domains/sprite/utils/compositor";
+import { useSpriteTrackStore } from "../../domains/sprite/stores/useSpriteTrackStore";
 import { generateCompositedSpriteSheet } from "../../domains/sprite/utils/export";
 import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon } from "../../shared/components/icons";
 
@@ -99,7 +100,23 @@ export default function TimelineContent() {
     const animate = (timestamp: number) => {
       if (timestamp - lastFrameTimeRef.current >= frameDuration) {
         lastFrameTimeRef.current = timestamp;
-        setCurrentFrameIndex((prev: number) => (prev + 1) % maxFrames);
+        setCurrentFrameIndex((prev: number) => {
+          const latestTracks = useSpriteTrackStore.getState().tracks;
+          let next = (prev + 1) % maxFrames;
+          let checked = 0;
+          while (checked < maxFrames) {
+            const allDisabled = latestTracks
+              .filter((t) => t.visible && t.frames.length > 0)
+              .every((t) => {
+                const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+                return idx === -1 || t.frames[idx]?.disabled;
+              });
+            if (!allDisabled) return next;
+            next = (next + 1) % maxFrames;
+            checked++;
+          }
+          return prev;
+        });
       }
       animationRef.current = requestAnimationFrame(animate);
     };
@@ -219,16 +236,44 @@ export default function TimelineContent() {
 
   const maxFrameCount = getMaxFrameCount();
 
+  // Per-track enabled (non-disabled) frame indices — disabled frames are "trimmed" from timeline
+  const trackEnabledIndicesMap = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const track of tracks) {
+      map.set(
+        track.id,
+        track.frames
+          .map((f, i) => (f.disabled ? -1 : i))
+          .filter((i) => i >= 0),
+      );
+    }
+    return map;
+  }, [tracks]);
+
+  const maxEnabledCount = useMemo(() => {
+    let max = 0;
+    for (const indices of trackEnabledIndicesMap.values()) {
+      if (indices.length > max) max = indices.length;
+    }
+    return max;
+  }, [trackEnabledIndicesMap]);
+
+  const activeEnabledIndices = trackEnabledIndicesMap.get(activeTrackId ?? "") ?? [];
+
   // ---- Scrubbing (drag-to-navigate) ----
   const [isScrubbing, setIsScrubbing] = useState(false);
 
-  const getFrameFromClientX = useCallback((clientX: number) => {
+  const getFrameFromClientX = useCallback((clientX: number, overrideTrackId?: string) => {
     const el = rulerRef.current;
     if (!el) return -1;
     const rect = el.getBoundingClientRect();
     const x = clientX - rect.left + el.scrollLeft;
-    return Math.max(0, Math.min(maxFrameCount - 1, Math.floor(x / CELL_WIDTH)));
-  }, [maxFrameCount]);
+    const visualIdx = Math.max(0, Math.min(maxEnabledCount - 1, Math.floor(x / CELL_WIDTH)));
+    const tId = overrideTrackId || activeTrackId;
+    const enabledIndices = trackEnabledIndicesMap.get(tId ?? "") ??
+      ([...trackEnabledIndicesMap.values()][0] ?? []);
+    return enabledIndices[visualIdx] ?? -1;
+  }, [maxEnabledCount, activeTrackId, trackEnabledIndicesMap]);
 
   const getFrameFnRef = useRef(getFrameFromClientX);
   getFrameFnRef.current = getFrameFromClientX;
@@ -239,7 +284,7 @@ export default function TimelineContent() {
     setIsScrubbing(true);
     setIsPlaying(false);
     if (trackId) setActiveTrackId(trackId);
-    const idx = getFrameFromClientX(e.clientX);
+    const idx = getFrameFromClientX(e.clientX, trackId);
     if (idx >= 0) setCurrentFrameIndex(idx);
   }, [getFrameFromClientX, setIsPlaying, setCurrentFrameIndex, setActiveTrackId]);
 
@@ -289,7 +334,9 @@ export default function TimelineContent() {
 
         {/* Frame counter */}
         <span className="text-[10px] text-text-secondary">
-          {maxFrameCount > 0 ? `${currentFrameIndex + 1}/${maxFrameCount}` : "—"}
+          {maxEnabledCount > 0
+            ? `${(activeEnabledIndices.indexOf(currentFrameIndex) + 1) || "—"}/${maxEnabledCount}`
+            : "—"}
         </span>
 
         {/* Preview */}
@@ -332,20 +379,23 @@ export default function TimelineContent() {
           className="flex-1 overflow-hidden h-6 cursor-ew-resize"
           onMouseDown={(e) => handleScrubStart(e)}
         >
-          <div className="flex items-end h-full bg-surface-secondary" style={{ width: maxFrameCount * CELL_WIDTH }}>
-            {Array.from({ length: maxFrameCount }).map((_, i) => (
-              <div
-                key={i}
-                className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] pointer-events-none transition-colors ${
-                  i === currentFrameIndex
-                    ? "text-accent-primary font-bold bg-accent-primary/10"
-                    : "text-text-tertiary"
-                }`}
-                style={{ width: CELL_WIDTH, height: "100%" }}
-              >
-                {i + 1}
-              </div>
-            ))}
+          <div className="flex items-end h-full bg-surface-secondary" style={{ width: maxEnabledCount * CELL_WIDTH }}>
+            {Array.from({ length: maxEnabledCount }).map((_, i) => {
+              const isCurrent = activeEnabledIndices[i] === currentFrameIndex;
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] pointer-events-none transition-colors ${
+                    isCurrent
+                      ? "text-accent-primary font-bold bg-accent-primary/10"
+                      : "text-text-tertiary"
+                  }`}
+                  style={{ width: CELL_WIDTH, height: "100%" }}
+                >
+                  {i + 1}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -447,32 +497,34 @@ export default function TimelineContent() {
 
         {/* Right: Frame content (scrollable) */}
         <Scrollbar ref={scrollbarRef} className="flex-1 min-w-0">
-          <div style={{ minWidth: maxFrameCount * CELL_WIDTH }}>
-            {tracks.map((track: SpriteTrack) => (
-              <div
-                key={track.id}
-                className={`flex border-b border-border-default transition-colors cursor-pointer ${
-                  track.id === activeTrackId ? "bg-accent-primary/5" : ""
-                } ${!track.visible ? "opacity-40" : ""}`}
-                style={{ height: TRACK_HEIGHT }}
-                onMouseDown={(e) => handleScrubStart(e, track.id)}
-              >
-                {/* Frame cells */}
-                {Array.from({ length: Math.max(maxFrameCount, track.frames.length) }).map(
-                  (_, frameIdx) => {
-                    const frame = track.frames[frameIdx];
-                    const isCurrentFrame = frameIdx === currentFrameIndex;
+          <div style={{ minWidth: maxEnabledCount * CELL_WIDTH }}>
+            {tracks.map((track: SpriteTrack) => {
+              const enabledIndices = trackEnabledIndicesMap.get(track.id) ?? [];
+              return (
+                <div
+                  key={track.id}
+                  className={`flex border-b border-border-default transition-colors cursor-pointer ${
+                    track.id === activeTrackId ? "bg-accent-primary/5" : ""
+                  } ${!track.visible ? "opacity-40" : ""}`}
+                  style={{ height: TRACK_HEIGHT }}
+                  onMouseDown={(e) => handleScrubStart(e, track.id)}
+                >
+                  {/* Frame cells (only enabled frames — disabled are trimmed) */}
+                  {Array.from({ length: maxEnabledCount }).map((_, visualIdx) => {
+                    const absIdx = enabledIndices[visualIdx];
+                    const frame = absIdx !== undefined ? track.frames[absIdx] : undefined;
+                    const isCurrentFrame = absIdx !== undefined && absIdx === currentFrameIndex;
 
                     return (
                       <div
-                        key={frameIdx}
+                        key={visualIdx}
                         className={`shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors pointer-events-none ${
                           isCurrentFrame ? "bg-accent-primary/10" : ""
                         }`}
                         style={{ width: CELL_WIDTH, height: TRACK_HEIGHT }}
                       >
                         {frame ? (
-                          <div className={`relative w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary ${frame.disabled ? "opacity-30" : ""}`}>
+                          <div className="w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary">
                             {frame.imageData ? (
                               <img
                                 src={frame.imageData}
@@ -482,14 +534,7 @@ export default function TimelineContent() {
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[8px] text-text-tertiary">
-                                {frameIdx + 1}
-                              </div>
-                            )}
-                            {frame.disabled && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="bg-accent-warning/80 text-white text-[6px] font-bold px-1 rounded">
-                                  SKIP
-                                </div>
+                                {visualIdx + 1}
                               </div>
                             )}
                           </div>
@@ -498,10 +543,10 @@ export default function TimelineContent() {
                         )}
                       </div>
                     );
-                  },
-                )}
-              </div>
-            ))}
+                  })}
+                </div>
+              );
+            })}
 
             {/* Empty state */}
             {tracks.length === 0 && (
