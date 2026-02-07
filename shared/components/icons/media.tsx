@@ -70,6 +70,16 @@ export const LoopIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+export const LoopOffIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
+    <path d="M11.5 1.5L14 4L11.5 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.4" />
+    <path d="M14 4H5.5C3.567 4 2 5.567 2 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.4" />
+    <path d="M4.5 14.5L2 12L4.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.4" />
+    <path d="M2 12H10.5C12.433 12 14 10.433 14 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.4" />
+    <path d="M2.5 13.5L13.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+  </svg>
+);
+
 export const VolumeMutedIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6m0-6l6 6" />

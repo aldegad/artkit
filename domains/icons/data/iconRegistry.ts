@@ -17,6 +17,8 @@ import {
   PlayIcon24,
   PauseIcon24,
   StopIcon24,
+  LoopIcon,
+  LoopOffIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
   // Editor Tools
@@ -137,6 +139,8 @@ const iconRegistry: IconMeta[] = [
   { name: "PlayIcon24", component: PlayIcon24, category: "media", tags: ["play", "start", "resume", "24", "large"] },
   { name: "PauseIcon24", component: PauseIcon24, category: "media", tags: ["pause", "hold", "24", "large"] },
   { name: "StopIcon24", component: StopIcon24, category: "media", tags: ["stop", "end", "24", "large"] },
+  { name: "LoopIcon", component: LoopIcon, category: "media", tags: ["loop", "repeat", "cycle", "on"] },
+  { name: "LoopOffIcon", component: LoopOffIcon, category: "media", tags: ["loop", "repeat", "cycle", "off", "disabled", "no-repeat"] },
   { name: "VolumeOnIcon", component: VolumeOnIcon, category: "media", tags: ["volume", "sound", "audio", "on", "unmute"] },
   { name: "VolumeMutedIcon", component: VolumeMutedIcon, category: "media", tags: ["volume", "sound", "audio", "muted", "off"] },
 
