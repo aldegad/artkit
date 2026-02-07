@@ -139,3 +139,10 @@ export {
   SidebarIconsIcon,
   ArtkitIcon,
 } from "./sidebar";
+
+// Landing Page (premium detail icons)
+export {
+  LandingImageIcon,
+  LandingVideoIcon,
+  LandingSpriteIcon,
+} from "./landing";
