@@ -12,7 +12,6 @@ interface VideoMenuBarProps {
   // File menu
   onNew: () => void;
   onLoad: () => void;
-  onImportFile?: () => void;
   onSave: () => void;
   onSaveAs: () => void;
   onImportMedia: () => void;
@@ -47,7 +46,6 @@ interface VideoMenuBarProps {
     saveAs: string;
     importMedia: string;
     exportVideo: string;
-    importFile?: string;
     undo: string;
     redo: string;
     cut: string;
@@ -64,7 +62,6 @@ interface VideoMenuBarProps {
 export default function VideoMenuBar({
   onNew,
   onLoad,
-  onImportFile,
   onSave,
   onSaveAs,
   onImportMedia,
@@ -96,7 +93,6 @@ export default function VideoMenuBar({
   const fileMenuItems: MenuItem[] = [
     { label: t.new, onClick: onNew, shortcut: d(COMMON_SHORTCUTS.newFile) },
     { label: t.load, onClick: onLoad, shortcut: d(COMMON_SHORTCUTS.open) },
-    ...(onImportFile ? [{ label: t.importFile || "Import from File", onClick: onImportFile }] : []),
     { divider: true },
     { label: t.save, onClick: onSave, disabled: !canSave || isSaving, shortcut: d(COMMON_SHORTCUTS.save) },
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave || isSaving, shortcut: d(COMMON_SHORTCUTS.saveAs) },
