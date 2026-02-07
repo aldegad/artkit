@@ -27,6 +27,26 @@ export type { ViewportConfig, ViewportTransform } from "./canvasViewport";
 export { createAutosave, createIndexedDBStorage } from "./autosave";
 export type { AutosaveConfig, AutosaveStorage, BaseAutosaveData } from "./autosave";
 
+// Rect transform
+export {
+  getRectHandles,
+  isPointInRect,
+  getRectHandleAtPosition,
+  resizeRectByHandle,
+  createRectFromDrag,
+  clampRectToBounds,
+} from "./rectTransform";
+export type {
+  Rect,
+  RectHandle,
+  RectHit,
+  RectHandlePoint,
+  RectBounds,
+  GetRectHandleAtPositionOptions,
+  ResizeRectByHandleOptions,
+  CreateRectFromDragOptions,
+} from "./rectTransform";
+
 // Keyboard shortcuts
 export {
   COMMON_SHORTCUTS,

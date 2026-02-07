@@ -5,7 +5,7 @@ import { EditorToolMode, CropArea, Point, DragType, Guide } from "../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { HANDLE_SIZE } from "../constants";
-import { getRectHandleAtPosition } from "../utils/rectTransform";
+import { getRectHandleAtPosition } from "@/shared/utils/rectTransform";
 import {
   buildContext,
   FloatingLayer,

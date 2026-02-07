@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
-import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "../utils/rectTransform";
+import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
 import { HANDLE_SIZE as HANDLE_SIZE_CONST } from "../constants";
 
 // ============================================

@@ -5,7 +5,7 @@
 import { useCallback } from "react";
 import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, SelectionHandlerOptions, FloatingLayer } from "./types";
-import { createRectFromDrag } from "../../utils/rectTransform";
+import { createRectFromDrag } from "@/shared/utils/rectTransform";
 
 export interface UseSelectionHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
