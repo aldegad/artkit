@@ -4,15 +4,14 @@ import { IconProps } from "./types";
 /**
  * Landing page premium icons
  * 32x32 viewBox, fill-heavy design with depth layers
- * More detailed and distinctive than sidebar toolbar icons
  */
 
-// Image Editor - Layered canvas with bold brush stroke
+// Image Editor - Layered canvas with bold brush
 export const LandingImageIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
   <svg className={className} viewBox="0 0 32 32" fill="none">
-    {/* Back layer (offset canvas) */}
+    {/* Back layer (depth) */}
     <rect
       x="8"
       y="1"
@@ -21,7 +20,7 @@ export const LandingImageIcon: React.FC<IconProps> = ({
       rx="2.5"
       stroke="currentColor"
       strokeWidth={1.5}
-      opacity={0.2}
+      opacity={0.18}
     />
 
     {/* Front canvas */}
@@ -32,7 +31,7 @@ export const LandingImageIcon: React.FC<IconProps> = ({
       height="22"
       rx="2.5"
       fill="currentColor"
-      opacity={0.08}
+      opacity={0.07}
     />
     <rect
       x="3"
@@ -45,76 +44,66 @@ export const LandingImageIcon: React.FC<IconProps> = ({
     />
 
     {/* Sun */}
-    <circle cx="8" cy="11" r="2.5" fill="currentColor" opacity={0.25} />
+    <circle cx="8" cy="11" r="2.5" fill="currentColor" opacity={0.3} />
 
-    {/* Mountain silhouette (filled) */}
+    {/* Mountain silhouette */}
     <path
       d="M3 25l5-7 3.5 2.5 5.5-8 4 6v6.5H3z"
       fill="currentColor"
-      opacity={0.15}
+      opacity={0.18}
     />
 
-    {/* Paintbrush - bold diagonal stroke */}
+    {/* Paintbrush handle */}
     <path
-      d="M19 24L29.5 6"
+      d="M20 23L30 5"
       stroke="currentColor"
-      strokeWidth={3.5}
+      strokeWidth={3}
       strokeLinecap="round"
-      opacity={0.6}
+      opacity={0.55}
     />
 
-    {/* Brush tip with paint blob */}
-    <circle cx="18" cy="25.5" r="3" fill="currentColor" opacity={0.75} />
-
-    {/* Paint splatter */}
-    <circle cx="15.5" cy="29.5" r="1.5" fill="currentColor" opacity={0.3} />
-    <circle cx="28" cy="18" r="2" fill="currentColor" opacity={0.2} />
+    {/* Brush tip paint blob */}
+    <circle cx="19" cy="24.5" r="3.5" fill="currentColor" opacity={0.75} />
   </svg>
 );
 
-// Video Editor - Clapperboard with play button
+// Video Editor - Clapperboard with play
 export const LandingVideoIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
   <svg className={className} viewBox="0 0 32 32" fill="none">
-    {/* Clapper hinge (top part) */}
+    {/* Clapper hinge (top) */}
     <path
       d="M4 3h24l2 7H2L4 3z"
       fill="currentColor"
-      opacity={0.4}
+      opacity={0.35}
       stroke="currentColor"
       strokeWidth={1.5}
       strokeLinejoin="round"
     />
 
-    {/* Clapper diagonal stripes */}
+    {/* Clapper stripes (2 bold) */}
     <line
-      x1="9"
+      x1="11"
       y1="3"
-      x2="11.5"
+      x2="13.5"
       y2="10"
       stroke="currentColor"
-      strokeWidth={2}
-      opacity={0.2}
+      strokeWidth={2.5}
+      opacity={0.25}
     />
     <line
-      x1="16"
+      x1="20"
       y1="3"
-      x2="18.5"
+      x2="22.5"
       y2="10"
       stroke="currentColor"
-      strokeWidth={2}
-      opacity={0.2}
+      strokeWidth={2.5}
+      opacity={0.25}
     />
-    <line
-      x1="23"
-      y1="3"
-      x2="25.5"
-      y2="10"
-      stroke="currentColor"
-      strokeWidth={2}
-      opacity={0.2}
-    />
+
+    {/* Hinge pivot */}
+    <circle cx="5" cy="10" r="1.5" fill="currentColor" opacity={0.4} />
 
     {/* Board body */}
     <rect
@@ -124,7 +113,7 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
       height="19"
       rx="2.5"
       fill="currentColor"
-      opacity={0.08}
+      opacity={0.07}
     />
     <rect
       x="2"
@@ -136,12 +125,12 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
       strokeWidth={1.5}
     />
 
-    {/* Play triangle */}
-    <path d="M12 15v9l8-4.5L12 15z" fill="currentColor" opacity={0.5} />
+    {/* Play triangle (prominent) */}
+    <path d="M12 15v9l8-4.5L12 15z" fill="currentColor" opacity={0.6} />
   </svg>
 );
 
-// Sprite Editor - Fanned animation frames with motion trail
+// Sprite Editor - Fanned animation frames with motion
 export const LandingSpriteIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
@@ -159,7 +148,7 @@ export const LandingSpriteIcon: React.FC<IconProps> = ({
       transform="rotate(12 14.5 12)"
     />
 
-    {/* Middle frame (rotated counter-clockwise) */}
+    {/* Middle frame */}
     <rect
       x="5.5"
       y="3"
@@ -180,7 +169,7 @@ export const LandingSpriteIcon: React.FC<IconProps> = ({
       height="20"
       rx="2.5"
       fill="currentColor"
-      opacity={0.1}
+      opacity={0.08}
     />
     <rect
       x="4"
@@ -192,31 +181,29 @@ export const LandingSpriteIcon: React.FC<IconProps> = ({
       strokeWidth={1.5}
     />
 
-    {/* Sprite pixel element on front frame */}
+    {/* Sprite element on front frame */}
     <rect
-      x="8"
+      x="7.5"
       y="9"
-      width="7"
-      height="7"
-      rx="1"
+      width="8"
+      height="8"
+      rx="1.5"
       fill="currentColor"
-      opacity={0.12}
+      opacity={0.1}
     />
     <rect
-      x="9.5"
+      x="9"
       y="10.5"
-      width="4"
-      height="4"
+      width="5"
+      height="5"
+      rx="0.5"
       fill="currentColor"
-      opacity={0.4}
+      opacity={0.45}
     />
 
-    {/* Motion trail dots (cascading opacity) */}
-    <circle cx="23" cy="10" r="1.8" fill="currentColor" opacity={0.15} />
-    <circle cx="26" cy="14" r="2.2" fill="currentColor" opacity={0.3} />
-    <circle cx="28" cy="19" r="2.8" fill="currentColor" opacity={0.5} />
-
-    {/* Play indicator */}
-    <path d="M24 26l5 3-5 3v-6z" fill="currentColor" opacity={0.3} />
+    {/* Horizontal motion trail (animation feel) */}
+    <circle cx="23" cy="14" r="1.5" fill="currentColor" opacity={0.12} />
+    <circle cx="26" cy="14" r="2" fill="currentColor" opacity={0.28} />
+    <circle cx="29.5" cy="14" r="2.5" fill="currentColor" opacity={0.5} />
   </svg>
 );
