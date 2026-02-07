@@ -15,6 +15,7 @@ import {
   SunIcon,
   MoonIcon,
 } from "../shared/components/icons";
+import InteractiveDotGrid from "../components/landing/InteractiveDotGrid";
 
 const tools = [
   {
@@ -125,8 +126,10 @@ export default function LandingPage() {
 
       {/* ── Hero ── */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-14 landing-mesh-bg">
-        {/* Dot grid overlay */}
-        <div className="absolute inset-0 landing-dot-grid opacity-30 dark:opacity-15 pointer-events-none" />
+        {/* Interactive dot grid canvas */}
+        <div className="absolute inset-0 overflow-hidden">
+          <InteractiveDotGrid />
+        </div>
 
         {/* Badge */}
         <div
