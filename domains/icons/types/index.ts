@@ -16,4 +16,5 @@ export type IconCategory =
   | "videoTimeline"
   | "videoTools"
   | "crop"
-  | "sidebar";
+  | "sidebar"
+  | "brand";

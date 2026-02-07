@@ -99,19 +99,15 @@ export {
   MagicWandIcon,
 } from "./brushPresets";
 
-// Video Timeline (16x16)
+// Video Timeline
 export {
   AddVideoTrackIcon,
   AddAudioTrackIcon,
   SnapIcon,
   SnapOffIcon,
-  TimelineZoomInIcon,
-  TimelineZoomOutIcon,
   VideoClipIcon,
   AudioClipIcon,
   ImageClipIcon,
-  TrackVisibleIcon,
-  TrackHiddenIcon,
   TrackMutedIcon,
   TrackUnmutedIcon,
   FilmStripIcon,
@@ -122,7 +118,6 @@ export {
   TrimToolIcon,
   RazorToolIcon,
   MaskToolIcon,
-  VideoCropToolIcon,
 } from "./videoTools";
 
 // Crop
@@ -136,7 +131,7 @@ export {
 
 // Sidebar Navigation
 export {
-  SidebarEditorIcon,
+  SidebarImageIcon,
   SidebarSpriteIcon,
   SidebarConverterIcon,
   SidebarSoundIcon,

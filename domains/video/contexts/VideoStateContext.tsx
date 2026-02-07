@@ -19,7 +19,7 @@ import {
 } from "../types";
 import { PLAYBACK } from "../constants";
 import { playbackTick } from "../utils/playbackTick";
-import type { AspectRatio } from "@/domains/editor/types";
+import type { AspectRatio } from "@/domains/image/types";
 
 interface VideoState {
   // Project
