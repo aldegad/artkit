@@ -72,85 +72,24 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
   <svg className={className} viewBox="0 0 48 48" fill="none">
-    {/* Track 1 - Main video clip */}
-    <rect
-      x="3"
-      y="5"
-      width="28"
-      height="11"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.25}
-    />
-    {/* Thumbnail frames inside clip */}
-    <rect x="5" y="7" width="5" height="7" rx="1" fill="currentColor" opacity={0.15} />
-    <rect x="12" y="7" width="5" height="7" rx="1" fill="currentColor" opacity={0.15} />
-    <rect x="19" y="7" width="5" height="7" rx="1" fill="currentColor" opacity={0.15} />
-    {/* Short clip after gap */}
-    <rect
-      x="34"
-      y="5"
-      width="11"
-      height="11"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.12}
-    />
+    {/* Track 1 - Video */}
+    <rect x="1" y="2" width="32" height="13" rx="3" fill="currentColor" opacity={0.35} />
+    <rect x="36" y="2" width="11" height="13" rx="3" fill="currentColor" opacity={0.2} />
 
     {/* Track 2 - B-roll */}
-    <rect
-      x="10"
-      y="19"
-      width="22"
-      height="10"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.18}
-    />
-    <rect
-      x="35"
-      y="19"
-      width="10"
-      height="10"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.1}
-    />
+    <rect x="7" y="18" width="26" height="12" rx="3" fill="currentColor" opacity={0.25} />
+    <rect x="36" y="18" width="11" height="12" rx="3" fill="currentColor" opacity={0.15} />
 
-    {/* Track 3 - Audio waveform */}
-    <rect
-      x="3"
-      y="32"
-      width="34"
-      height="9"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.08}
-    />
-    {/* Waveform bars */}
-    <line x1="8" y1="34.5" x2="8" y2="38.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
-    <line x1="13" y1="33.5" x2="13" y2="39.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
-    <line x1="18" y1="35" x2="18" y2="38" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
-    <line x1="23" y1="33" x2="23" y2="40" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
-    <line x1="28" y1="34.5" x2="28" y2="38.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
-    <line x1="33" y1="35.5" x2="33" y2="37.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+    {/* Track 3 - Audio */}
+    <rect x="1" y="33" width="34" height="12" rx="3" fill="currentColor" opacity={0.15} />
 
-    {/* Playhead knob */}
-    <path d="M25 1l3 4 3-4z" fill="currentColor" opacity={0.7} />
-    {/* Playhead line */}
-    <line
-      x1="28"
-      y1="4"
-      x2="28"
-      y2="44"
-      stroke="currentColor"
-      strokeWidth={2}
-      opacity={0.55}
-    />
+    {/* Playhead */}
+    <path d="M27 0l3 4 3-4z" fill="currentColor" opacity={0.8} />
+    <line x1="30" y1="3" x2="30" y2="47" stroke="currentColor" strokeWidth={2.5} opacity={0.7} />
 
-    {/* Play button overlay - centered, YouTube-style */}
-    <circle cx="24" cy="22" r="13" fill="currentColor" opacity={0.15} />
-    <path d="M19 14v16l14-8z" fill="currentColor" opacity={0.6} />
+    {/* Play button overlay - centered */}
+    <circle cx="24" cy="24" r="14" fill="currentColor" opacity={0.18} />
+    <path d="M19 15v18l16-9z" fill="currentColor" opacity={0.75} />
   </svg>
 );
 
