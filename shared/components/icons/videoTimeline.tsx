@@ -89,6 +89,14 @@ export const ImageClipIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) =>
   </svg>
 );
 
+export const FilmStripIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <rect x="2" y="4" width="20" height="16" rx="2" strokeWidth={2} />
+    <path strokeWidth={2} d="M6 4v16M18 4v16" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M2 8h4M2 12h4M2 16h4M18 8h4M18 12h4M18 16h4" />
+  </svg>
+);
+
 export const TrackVisibleIcon: React.FC<IconProps> = ({ className = "w-3 h-3" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
