@@ -24,7 +24,7 @@ const tools = [
     descKey: "landingEditorDesc" as const,
     Icon: LandingImageIcon,
     accent: "#3B82F6",
-    accentBg: "rgba(59, 130, 246, 0.12)",
+    accentBg: "rgba(59, 130, 246, 0.06)",
   },
   {
     id: "video",
@@ -33,7 +33,7 @@ const tools = [
     descKey: "landingVideoDesc" as const,
     Icon: LandingVideoIcon,
     accent: "#8B5CF6",
-    accentBg: "rgba(139, 92, 246, 0.12)",
+    accentBg: "rgba(139, 92, 246, 0.06)",
   },
   {
     id: "sprite",
@@ -42,7 +42,7 @@ const tools = [
     descKey: "landingSpriteDesc" as const,
     Icon: LandingSpriteIcon,
     accent: "#10B981",
-    accentBg: "rgba(16, 185, 129, 0.12)",
+    accentBg: "rgba(16, 185, 129, 0.06)",
   },
   {
     id: "sound",
@@ -51,7 +51,7 @@ const tools = [
     descKey: "landingSoundDesc" as const,
     Icon: SidebarSoundIcon,
     accent: "#EC4899",
-    accentBg: "rgba(236, 72, 153, 0.12)",
+    accentBg: "rgba(236, 72, 153, 0.06)",
   },
   {
     id: "converter",
@@ -60,7 +60,7 @@ const tools = [
     descKey: "landingConverterDesc" as const,
     Icon: SidebarConverterIcon,
     accent: "#06B6D4",
-    accentBg: "rgba(6, 182, 212, 0.12)",
+    accentBg: "rgba(6, 182, 212, 0.06)",
   },
   {
     id: "icons",
@@ -69,7 +69,7 @@ const tools = [
     descKey: "landingIconsDesc" as const,
     Icon: SidebarIconsIcon,
     accent: "#F59E0B",
-    accentBg: "rgba(245, 158, 11, 0.12)",
+    accentBg: "rgba(245, 158, 11, 0.06)",
   },
 ];
 
@@ -253,7 +253,7 @@ export default function LandingPage() {
                       color: tool.accent,
                     }}
                   >
-                    <tool.Icon className="w-7 h-7" />
+                    <tool.Icon className="w-[38px] h-[38px]" />
                   </div>
 
                   {/* Name */}
