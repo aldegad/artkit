@@ -164,9 +164,9 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     [clips, masks]
   );
 
-  // Handle mouse down
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  // Handle pointer down (supports mouse, touch, pen)
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
       const containerRect = tracksContainerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
       const x = e.clientX - containerRect.left;
@@ -402,8 +402,8 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   );
 
   // Ref to hold the latest drag-move handler (avoids stale closures in document listener)
-  const moveHandlerRef = useRef<(e: MouseEvent) => void>(() => {});
-  moveHandlerRef.current = (e: MouseEvent) => {
+  const moveHandlerRef = useRef<(e: PointerEvent) => void>(() => {});
+  moveHandlerRef.current = (e: PointerEvent) => {
     if (dragState.type === "none") return;
     const containerRect = tracksContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -487,15 +487,15 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   useEffect(() => {
     if (dragState.type === "none") return;
 
-    const onMouseMove = (e: MouseEvent) => moveHandlerRef.current(e);
-    const onMouseUp = () => setDragState(INITIAL_DRAG_STATE);
+    const onPointerMove = (e: PointerEvent) => moveHandlerRef.current(e);
+    const onPointerUp = () => setDragState(INITIAL_DRAG_STATE);
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
 
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
     };
   }, [dragState.type]);
 
@@ -529,7 +529,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
   return {
     dragState,
-    handleMouseDown,
+    handlePointerDown,
     getCursor,
     containerRef,
   };
