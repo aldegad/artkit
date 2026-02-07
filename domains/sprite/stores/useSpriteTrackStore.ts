@@ -28,6 +28,7 @@ interface SpriteTrackStore {
 
   // Selection / Pen tool state
   selectedFrameId: number | null;
+  selectedFrameIds: number[];
   selectedPointIndex: number | null;
   currentPoints: Point[];
 
@@ -55,6 +56,9 @@ interface SpriteTrackStore {
 
   // Selection / Pen Actions
   setSelectedFrameId: (id: number | null) => void;
+  setSelectedFrameIds: (ids: number[]) => void;
+  toggleSelectedFrameId: (id: number) => void;
+  selectFrameRange: (fromId: number, toId: number) => void;
   setSelectedPointIndex: (index: number | null) => void;
   setCurrentPoints: (points: Point[] | ((prev: Point[]) => Point[])) => void;
 
@@ -127,6 +131,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
   isPlaying: false,
   fps: 12,
   selectedFrameId: null,
+  selectedFrameIds: [],
   selectedPointIndex: null,
   currentPoints: [],
   canUndo: false,
@@ -252,6 +257,26 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
 
   // Selection / Pen Actions
   setSelectedFrameId: (id) => set({ selectedFrameId: id }),
+  setSelectedFrameIds: (ids) => set({ selectedFrameIds: ids }),
+  toggleSelectedFrameId: (id) =>
+    set((state) => {
+      const exists = state.selectedFrameIds.includes(id);
+      return {
+        selectedFrameIds: exists
+          ? state.selectedFrameIds.filter((fid) => fid !== id)
+          : [...state.selectedFrameIds, id],
+      };
+    }),
+  selectFrameRange: (fromId, toId) => {
+    const frames = get().getActiveTrackFrames();
+    const fromIdx = frames.findIndex((f) => f.id === fromId);
+    const toIdx = frames.findIndex((f) => f.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const start = Math.min(fromIdx, toIdx);
+    const end = Math.max(fromIdx, toIdx);
+    const rangeIds = frames.slice(start, end + 1).map((f) => f.id);
+    set({ selectedFrameIds: rangeIds });
+  },
   setSelectedPointIndex: (index) => set({ selectedPointIndex: index }),
 
   setCurrentPoints: (pointsOrFn) =>
@@ -378,6 +403,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       isPlaying: false,
       fps: 12,
       selectedFrameId: null,
+      selectedFrameIds: [],
       selectedPointIndex: null,
       currentPoints: [],
       canUndo: false,
