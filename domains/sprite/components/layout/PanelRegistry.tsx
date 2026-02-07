@@ -2,7 +2,7 @@
 
 import { ReactNode, useState, useEffect } from "react";
 import SpriteCanvas from "../SpriteCanvas";
-import TimelineContent from "../../../../components/panels/TimelineContent";
+import TimelineContent from "../TimelineContent";
 import AnimationPreview from "../AnimationPreview";
 import FramePreview from "../FramePreview";
 import FrameStrip from "../FrameStrip";
