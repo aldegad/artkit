@@ -1,32 +1,6 @@
 import React from "react";
 import { IconProps } from "./types";
 
-export const SidebarImageIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* 뒤쪽 레이어 (편집기=레이어 개념) */}
-    <rect x="6" y="2" width="16" height="16" rx="2" strokeWidth={2} opacity={0.35} />
-    {/* 앞쪽 캔버스 */}
-    <rect x="2" y="6" width="16" height="16" rx="2" strokeWidth={2} />
-    {/* 태양 (사진/이미지 직관적 인식) */}
-    <circle cx="7" cy="11" r="1.5" fill="currentColor" stroke="none" />
-    {/* 산 풍경 (이미지 편집기의 보편적 메타포) */}
-    <path d="M2 20l5-5 3 2.5 5-6 3 4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-export const SidebarSpriteIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* 필름 프레임 */}
-    <rect x="2" y="5" width="20" height="14" rx="2" strokeWidth={2} />
-    {/* 프레임 구분선 */}
-    <line x1="9" y1="5" x2="9" y2="19" strokeWidth={1.5} />
-    <line x1="15" y1="5" x2="15" y2="19" strokeWidth={1.5} />
-    {/* 모션 트레일 (투명도 변화로 움직임 표현) */}
-    <circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none" opacity={0.25} />
-    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" opacity={0.55} />
-    <circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
-  </svg>
-);
 
 export const SidebarConverterIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,14 +23,6 @@ export const SidebarSoundIcon: React.FC<IconProps> = ({ className = "w-5 h-5" })
   </svg>
 );
 
-export const SidebarVideoIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    {/* 캠코더 본체 */}
-    <rect x="2" y="6" width="13" height="12" rx="2" strokeWidth={2} />
-    {/* 렌즈 (삼각형) */}
-    <path d="M15 10l5-3v10l-5-3" strokeLinejoin="round" strokeWidth={2} />
-  </svg>
-);
 
 export const SidebarIconsIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -131,11 +131,8 @@ export {
 
 // Sidebar Navigation
 export {
-  SidebarImageIcon,
-  SidebarSpriteIcon,
   SidebarConverterIcon,
   SidebarSoundIcon,
-  SidebarVideoIcon,
   SidebarIconsIcon,
   ArtkitIcon,
 } from "./sidebar";
