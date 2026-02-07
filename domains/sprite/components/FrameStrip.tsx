@@ -146,13 +146,23 @@ export default function FrameStrip() {
   const toggleFrameDisabled = useCallback(
     (frameId: number) => {
       pushHistory();
-      setFrames((prev: SpriteFrame[]) =>
-        prev.map((f: SpriteFrame) =>
-          f.id === frameId ? { ...f, disabled: !f.disabled } : f,
-        ),
+      const newFrames = frames.map((f: SpriteFrame) =>
+        f.id === frameId ? { ...f, disabled: !f.disabled } : f,
       );
+      setFrames(newFrames);
+
+      // Auto-advance if current frame becomes disabled
+      if (newFrames[currentFrameIndex]?.disabled) {
+        const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
+        if (next >= 0) {
+          setCurrentFrameIndex(next);
+        } else {
+          const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
+          if (first >= 0) setCurrentFrameIndex(first);
+        }
+      }
     },
-    [pushHistory, setFrames],
+    [frames, currentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex],
   );
 
   // Toggle disabled on selected frames (batch)
@@ -163,28 +173,43 @@ export default function FrameStrip() {
     const anyEnabled = frames.some(
       (f: SpriteFrame) => selectedFrameIds.includes(f.id) && !f.disabled,
     );
-    setFrames((prev: SpriteFrame[]) =>
-      prev.map((f: SpriteFrame) =>
-        selectedFrameIds.includes(f.id) ? { ...f, disabled: anyEnabled } : f,
-      ),
+    const newFrames = frames.map((f: SpriteFrame) =>
+      selectedFrameIds.includes(f.id) ? { ...f, disabled: anyEnabled } : f,
     );
-  }, [selectedFrameIds, frames, pushHistory, setFrames]);
+    setFrames(newFrames);
+
+    // Auto-advance if current frame becomes disabled
+    if (newFrames[currentFrameIndex]?.disabled) {
+      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
+      if (next >= 0) {
+        setCurrentFrameIndex(next);
+      } else {
+        const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
+        if (first >= 0) setCurrentFrameIndex(first);
+      }
+    }
+  }, [selectedFrameIds, frames, currentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
 
   // Nth skip: mark every non-nth frame as disabled (instead of deleting)
   const applyNthSkip = useCallback(() => {
     if (frames.length === 0 || nthValue < 1) return;
     pushHistory();
     const startIndex = currentFrameIndex;
-    setFrames((prev: SpriteFrame[]) =>
-      prev.map((f: SpriteFrame, idx: number) => {
-        const relativeIdx = idx - startIndex;
-        if (relativeIdx < 0) return f; // keep frames before start unchanged
-        const isNth = relativeIdx % nthValue === 0;
-        return { ...f, disabled: !isNth };
-      }),
-    );
+    const newFrames = frames.map((f: SpriteFrame, idx: number) => {
+      const relativeIdx = idx - startIndex;
+      if (relativeIdx < 0) return f; // keep frames before start unchanged
+      const isNth = relativeIdx % nthValue === 0;
+      return { ...f, disabled: !isNth };
+    });
+    setFrames(newFrames);
+
+    // Auto-advance if current frame becomes disabled
+    if (newFrames[currentFrameIndex]?.disabled) {
+      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i >= currentFrameIndex && !f.disabled);
+      if (next >= 0) setCurrentFrameIndex(next);
+    }
     setShowNthPopover(false);
-  }, [frames, currentFrameIndex, nthValue, pushHistory, setFrames]);
+  }, [frames, currentFrameIndex, nthValue, pushHistory, setFrames, setCurrentFrameIndex]);
 
   // Clear all disabled states
   const clearAllDisabled = useCallback(() => {
@@ -461,7 +486,10 @@ export default function FrameStrip() {
                     } else {
                       setSelectedFrameIds([frame.id]);
                     }
-                    setCurrentFrameIndex(idx);
+                    // Don't navigate to disabled frames
+                    if (!frame.disabled) {
+                      setCurrentFrameIndex(idx);
+                    }
                     setSelectedFrameId(frame.id);
                   }}
                   onDoubleClick={() => {
