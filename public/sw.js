@@ -29,8 +29,8 @@ self.addEventListener("fetch", (event) => {
   // Skip cross-origin requests
   if (!request.url.startsWith(self.location.origin)) return;
 
-  // Skip API calls and ML model files
-  if (request.url.includes("/api/") || request.url.includes(".onnx")) return;
+  // Skip API calls, ML model files, and Next.js build assets
+  if (request.url.includes("/api/") || request.url.includes(".onnx") || request.url.includes("/_next/")) return;
 
   // Network-first for HTML pages
   if (request.headers.get("accept")?.includes("text/html")) {
