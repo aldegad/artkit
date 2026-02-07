@@ -24,6 +24,7 @@ export function Timeline({ className }: TimelineProps) {
   const trackHeadersRef = useRef<HTMLDivElement>(null);
   const {
     tracks,
+    clips: allClips,
     getClipsInTrack,
     viewState,
     setScrollX,
@@ -38,7 +39,27 @@ export function Timeline({ className }: TimelineProps) {
   useVideoCoordinates();
 
   // Timeline input handling (clip drag, trim, seek, lift)
-  const { handlePointerDown: handleTimelinePointerDown, liftedClipId } = useTimelineInput(tracksContainerRef);
+  const {
+    handlePointerDown: handleTimelinePointerDown,
+    liftedClipId,
+    dropClipToTrack,
+    cancelLift,
+  } = useTimelineInput(tracksContainerRef);
+
+  // Track ID of the currently lifted clip (for drop-target highlighting)
+  const liftedClipTrackId = liftedClipId
+    ? allClips.find((c) => c.id === liftedClipId)?.trackId ?? null
+    : null;
+
+  // Escape key cancels lift
+  useEffect(() => {
+    if (!liftedClipId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancelLift();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [liftedClipId, cancelLift]);
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
@@ -237,24 +258,29 @@ export function Timeline({ className }: TimelineProps) {
             {tracks.map((track) => {
               const trackMasks = getMasksForTrack(track.id);
               const headerHeight = track.height + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
+              const isLiftDropTarget = !!liftedClipId && liftedClipTrackId !== track.id;
+              const isLiftSource = !!liftedClipId && liftedClipTrackId === track.id;
               return (
                 <div
                   key={track.id}
                   className={cn(
-                    "flex items-center border-b border-border-default",
-                    trackHeaderWidth >= 120 ? "px-2" : "px-1 justify-center"
+                    "flex items-center border-b border-border-default transition-colors",
+                    trackHeaderWidth >= 120 ? "px-2" : "px-1 justify-center",
+                    isLiftDropTarget && "bg-accent/20 cursor-pointer ring-1 ring-inset ring-accent",
+                    isLiftSource && "opacity-50"
                   )}
                   style={{ height: headerHeight }}
-                  draggable
-                  onDragStart={(event) => {
+                  draggable={!liftedClipId}
+                  onClick={isLiftDropTarget ? () => dropClipToTrack(track.id) : undefined}
+                  onDragStart={liftedClipId ? undefined : (event) => {
                     event.dataTransfer.setData("text/plain", track.id);
                     event.dataTransfer.effectAllowed = "move";
                   }}
-                  onDragOver={(event) => {
+                  onDragOver={liftedClipId ? undefined : (event) => {
                     event.preventDefault();
                     event.dataTransfer.dropEffect = "move";
                   }}
-                  onDrop={(event) => {
+                  onDrop={liftedClipId ? undefined : (event) => {
                     event.preventDefault();
                     const fromTrackId = event.dataTransfer.getData("text/plain");
                     handleTrackDrop(fromTrackId, track.id);
@@ -390,6 +416,7 @@ export function Timeline({ className }: TimelineProps) {
                   clips={getClipsInTrack(track.id)}
                   masks={getMasksForTrack(track.id)}
                   liftedClipId={liftedClipId}
+                  isLiftDropTarget={!!liftedClipId && liftedClipTrackId !== track.id}
                 />
               ))}
 

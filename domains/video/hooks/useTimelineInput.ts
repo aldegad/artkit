@@ -551,7 +551,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     const onPointerMove = (e: PointerEvent) => moveHandlerRef.current(e);
     const onPointerUp = () => {
-      resetLift();
+      cancelLongPress();
+      // Keep liftedClipId active after pointerup so the track-selector popup stays visible.
+      // Only reset the non-touch lift (mouse cross-track drag).
+      if (!liftedClipId) {
+        isLiftedRef.current = false;
+      }
       setDragState(INITIAL_DRAG_STATE);
     };
 
@@ -564,7 +569,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       document.removeEventListener("pointerup", onPointerUp);
       document.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [dragState.type, resetLift]);
+  }, [dragState.type, cancelLongPress, liftedClipId]);
 
   // Get cursor style based on position
   const getCursor = useCallback(
@@ -594,11 +599,29 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     [dragState.type, findClipAtPosition]
   );
 
+  /** Move the lifted clip to a different track (called from track-selector UI) */
+  const dropClipToTrack = useCallback(
+    (targetTrackId: string) => {
+      if (!liftedClipId) return;
+      const clip = clips.find((c) => c.id === liftedClipId);
+      if (!clip || clip.trackId === targetTrackId) {
+        resetLift();
+        return;
+      }
+      saveToHistory();
+      moveClip(liftedClipId, targetTrackId, clip.startTime);
+      resetLift();
+    },
+    [liftedClipId, clips, saveToHistory, moveClip, resetLift]
+  );
+
   return {
     dragState,
     handlePointerDown,
     getCursor,
     containerRef,
     liftedClipId,
+    dropClipToTrack,
+    cancelLift: resetLift,
   };
 }
