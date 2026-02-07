@@ -629,6 +629,66 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* =============================================
+   Landing Page
+   ============================================= */
+
+@keyframes landing-logo-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes landing-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes landing-card-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes landing-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.08); }
+}
+
+.animate-landing-logo {
+  animation: landing-logo-in 0.8s ease-out both;
+}
+
+.animate-landing-slide-up {
+  animation: landing-slide-up 0.6s ease-out both;
+}
+
+.animate-landing-card {
+  animation: landing-card-in 0.5s ease-out both;
+}
+
+.animate-landing-glow {
+  animation: landing-glow 4s ease-in-out infinite;
+}
+
+.landing-nav {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.landing-gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, #FFB347 50%, var(--accent-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.landing-hero-bg {
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 140, 0, 0.06) 0%, transparent 70%);
+}
+
+.dark .landing-hero-bg {
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 140, 0, 0.1) 0%, transparent 70%);
+}
+
+/* =============================================
    OverlayScrollbars 커스텀 스타일
    ============================================= */
 
