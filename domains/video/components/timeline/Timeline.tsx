@@ -77,7 +77,7 @@ export function Timeline({ className }: TimelineProps) {
 
     const parsed = Number(stored);
     if (Number.isFinite(parsed)) {
-      setTrackHeaderWidth(Math.max(132, Math.min(360, parsed)));
+      setTrackHeaderWidth(Math.max(60, Math.min(360, parsed)));
     }
   }, []);
 
@@ -86,7 +86,7 @@ export function Timeline({ className }: TimelineProps) {
 
     const handleMove = (event: PointerEvent) => {
       const delta = event.clientX - resizeStartRef.current.x;
-      const nextWidth = Math.max(132, Math.min(360, resizeStartRef.current.width + delta));
+      const nextWidth = Math.max(60, Math.min(360, resizeStartRef.current.width + delta));
       setTrackHeaderWidth(nextWidth);
       localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
     };
@@ -125,6 +125,7 @@ export function Timeline({ className }: TimelineProps) {
       // Middle mouse button for scrolling
       if (e.button === 1) {
         e.preventDefault();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
         setIsMiddleScrolling(true);
         return;
       }
@@ -261,12 +262,12 @@ export function Timeline({ className }: TimelineProps) {
                     handleTrackDrop(fromTrackId, track.id);
                   }}
                 >
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
                     {/* Visibility toggle */}
                     <button
                       onClick={() => updateTrack(track.id, { visible: !track.visible })}
                       className={cn(
-                        "p-1 rounded hover:bg-surface-tertiary",
+                        "shrink-0 p-1 rounded hover:bg-surface-tertiary",
                         track.visible ? "text-text-primary" : "text-text-tertiary"
                       )}
                       title={track.visible ? "Hide track" : "Show track"}
@@ -282,7 +283,7 @@ export function Timeline({ className }: TimelineProps) {
                     <button
                       onClick={() => updateTrack(track.id, { muted: !track.muted })}
                       className={cn(
-                        "p-1 rounded hover:bg-surface-tertiary",
+                        "shrink-0 p-1 rounded hover:bg-surface-tertiary",
                         track.muted ? "text-text-tertiary" : "text-text-primary"
                       )}
                       title={track.muted ? "Unmute track" : "Mute track"}
@@ -294,21 +295,26 @@ export function Timeline({ className }: TimelineProps) {
                       )}
                     </button>
 
-                    {/* Track name */}
-                    <span className="text-xs text-text-secondary truncate">
-                      {track.name}
-                    </span>
+                    {/* Track name - hidden when header is narrow */}
+                    {trackHeaderWidth >= 120 && (
+                      <span className="text-xs text-text-secondary truncate">
+                        {track.name}
+                      </span>
+                    )}
 
-                    <button
-                      onClick={() => {
-                        saveToHistory();
-                        removeTrack(track.id);
-                      }}
-                      className="p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
-                      title="Delete track"
-                    >
-                      <DeleteIcon className="w-3 h-3" />
-                    </button>
+                    {/* Delete button - hidden when header is narrow */}
+                    {trackHeaderWidth >= 120 && (
+                      <button
+                        onClick={() => {
+                          saveToHistory();
+                          removeTrack(track.id);
+                        }}
+                        className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                        title="Delete track"
+                      >
+                        <DeleteIcon className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
