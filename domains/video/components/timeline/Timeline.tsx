@@ -157,9 +157,17 @@ export function Timeline({ className }: TimelineProps) {
     };
   }, [isMiddleScrolling, setScrollX]);
 
-  // Handle wheel for horizontal scroll/zoom
-  const handleWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
+  // Handle wheel for horizontal scroll/zoom (non-passive to allow preventDefault)
+  const wheelStateRef = useRef({ scrollX: viewState.scrollX, zoom: viewState.zoom });
+  wheelStateRef.current = { scrollX: viewState.scrollX, zoom: viewState.zoom };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      const { scrollX, zoom } = wheelStateRef.current;
+
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const rect = tracksContainerRef.current?.getBoundingClientRect();
@@ -169,23 +177,23 @@ export function Timeline({ className }: TimelineProps) {
         const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
         const nextZoom = Math.max(
           TIMELINE.MIN_ZOOM,
-          Math.min(TIMELINE.MAX_ZOOM, viewState.zoom * zoomFactor)
+          Math.min(TIMELINE.MAX_ZOOM, zoom * zoomFactor)
         );
-        if (nextZoom === viewState.zoom) return;
+        if (nextZoom === zoom) return;
 
-        // Keep timeline time under cursor fixed while zooming.
-        const cursorTime = viewState.scrollX + x / viewState.zoom;
+        const cursorTime = scrollX + x / zoom;
         setZoom(nextZoom);
         setScrollX(Math.max(0, cursorTime - x / nextZoom));
       } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        // Horizontal scroll (shift+wheel or trackpad horizontal swipe)
         e.preventDefault();
         const delta = e.shiftKey ? e.deltaY : e.deltaX;
-        setScrollX(Math.max(0, viewState.scrollX + delta / viewState.zoom));
+        setScrollX(Math.max(0, scrollX + delta / zoom));
       }
-    },
-    [viewState.zoom, viewState.scrollX, setScrollX, setZoom]
-  );
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [setScrollX, setZoom]);
 
   return (
     <div className={cn("flex flex-col h-full bg-surface-primary", className)}>
@@ -198,7 +206,6 @@ export function Timeline({ className }: TimelineProps) {
         data-video-timeline-root=""
         className="flex-1 overflow-hidden"
         onMouseDown={handleMouseDown}
-        onWheel={handleWheel}
       >
         {/* Track headers + ruler row */}
         <div className="flex border-b border-border-default">
