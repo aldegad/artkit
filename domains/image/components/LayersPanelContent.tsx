@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, RefObject } from "react";
+import React, { useEffect, useRef, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
 import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
@@ -11,47 +11,47 @@ import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOp
 
 interface LayerThumbnailProps {
   layerId: string;
-  layerName: string;
   visible: boolean;
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
 }
 
+const THUMB_SIZE = 40;
+
 const LayerThumbnail = React.memo(function LayerThumbnail({
   layerId,
-  layerName,
   visible,
   layerCanvasesRef,
 }: LayerThumbnailProps) {
-  const [thumbnailSrc, setThumbnailSrc] = useState<string | null>(null);
+  const thumbRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const updateThumbnail = () => {
-      const canvas = layerCanvasesRef.current?.get(layerId);
-      if (canvas && canvas.width > 0 && canvas.height > 0) {
-        setThumbnailSrc(canvas.toDataURL("image/png"));
-      }
+      const src = layerCanvasesRef.current?.get(layerId);
+      const thumb = thumbRef.current;
+      if (!src || !thumb || src.width === 0 || src.height === 0) return;
+      const ctx = thumb.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+      const scale = Math.min(THUMB_SIZE / src.width, THUMB_SIZE / src.height);
+      const w = src.width * scale;
+      const h = src.height * scale;
+      ctx.drawImage(src, (THUMB_SIZE - w) / 2, (THUMB_SIZE - h) / 2, w, h);
     };
 
     updateThumbnail();
     const interval = setInterval(updateThumbnail, 500);
-
     return () => clearInterval(interval);
   }, [layerId, layerCanvasesRef]);
 
   return (
     <div className="w-10 h-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0">
-      {thumbnailSrc ? (
-        <img
-          src={thumbnailSrc}
-          alt={layerName}
-          className="w-full h-full object-contain"
-          style={{ opacity: visible ? 1 : 0.5 }}
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <ImageIcon className="w-5 h-5 text-text-tertiary" />
-        </div>
-      )}
+      <canvas
+        ref={thumbRef}
+        width={THUMB_SIZE}
+        height={THUMB_SIZE}
+        className="w-full h-full"
+        style={{ opacity: visible ? 1 : 0.5 }}
+      />
     </div>
   );
 });
@@ -325,7 +325,6 @@ export default function LayersPanelContent() {
                   {/* Layer thumbnail */}
                   <LayerThumbnail
                     layerId={layer.id}
-                    layerName={layer.name}
                     visible={layer.visible}
                     layerCanvasesRef={layerCanvasesRef}
                   />
