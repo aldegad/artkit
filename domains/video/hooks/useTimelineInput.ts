@@ -165,12 +165,13 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   );
 
   // Handle pointer down (supports mouse, touch, pen)
+  // Matches ResizeHandle pattern: preventDefault + setPointerCapture for reliable touch
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       const containerRect = tracksContainerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
 
-      // Capture pointer for reliable touch tracking (prevents browser from canceling)
+      e.preventDefault();
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
       const x = e.clientX - containerRect.left;
