@@ -66,80 +66,77 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Sprite Editor - Fanned animation frames with motion
+// Sprite Editor - Sprite sheet grid with walking animation sequence
 export const LandingSpriteIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
   <svg className={className} viewBox="0 0 32 32" fill="none">
-    {/* Back frame (rotated clockwise) */}
-    <rect
-      x="7"
-      y="2"
-      width="15"
-      height="20"
-      rx="2"
-      stroke="currentColor"
-      strokeWidth={1.2}
-      opacity={0.15}
-      transform="rotate(12 14.5 12)"
-    />
+    {/* Outer sprite sheet frame */}
+    <rect x="1" y="1" width="30" height="30" rx="3" fill="currentColor" opacity={0.05} />
+    <rect x="1" y="1" width="30" height="30" rx="3" stroke="currentColor" strokeWidth={1.3} opacity={0.45} />
 
-    {/* Middle frame */}
-    <rect
-      x="5.5"
-      y="3"
-      width="15"
-      height="20"
-      rx="2"
-      stroke="currentColor"
-      strokeWidth={1.3}
-      opacity={0.3}
-      transform="rotate(-4 13 13)"
-    />
+    {/* Grid: 3 columns × 2 rows */}
+    <line x1="11" y1="1" x2="11" y2="31" stroke="currentColor" strokeWidth={0.6} opacity={0.18} />
+    <line x1="21" y1="1" x2="21" y2="31" stroke="currentColor" strokeWidth={0.6} opacity={0.18} />
+    <line x1="1" y1="16" x2="31" y2="16" stroke="currentColor" strokeWidth={0.6} opacity={0.18} />
 
-    {/* Front frame */}
-    <rect
-      x="4"
-      y="4"
-      width="15"
-      height="20"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.08}
-    />
-    <rect
-      x="4"
-      y="4"
-      width="15"
-      height="20"
-      rx="2.5"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    />
+    {/* Active frame highlight — top center cell */}
+    <rect x="11.5" y="1.5" width="9" height="14" rx="1.5" fill="currentColor" opacity={0.1} />
 
-    {/* Sprite element on front frame */}
-    <rect
-      x="7.5"
-      y="9"
-      width="8"
-      height="8"
-      rx="1.5"
-      fill="currentColor"
-      opacity={0.1}
-    />
-    <rect
-      x="9"
-      y="10.5"
-      width="5"
-      height="5"
-      rx="0.5"
-      fill="currentColor"
-      opacity={0.45}
-    />
+    {/* === Walk cycle — 6 frames === */}
 
-    {/* Horizontal motion trail (animation feel) */}
-    <circle cx="23" cy="14" r="1.5" fill="currentColor" opacity={0.12} />
-    <circle cx="26" cy="14" r="2" fill="currentColor" opacity={0.28} />
-    <circle cx="29.5" cy="14" r="2.5" fill="currentColor" opacity={0.5} />
+    {/* Frame 1 — Stand (top-left) */}
+    <g opacity={0.3}>
+      <circle cx="6" cy="5" r="1.6" fill="currentColor" />
+      <line x1="6" y1="6.8" x2="6" y2="10" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+      <line x1="6" y1="10" x2="4.8" y2="13.2" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+      <line x1="6" y1="10" x2="7.2" y2="13.2" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+    </g>
+
+    {/* Frame 2 — Right step (top-center, ACTIVE) */}
+    <g opacity={0.85}>
+      <circle cx="16" cy="4.5" r="1.7" fill="currentColor" />
+      <line x1="16" y1="6.4" x2="16" y2="9.5" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+      <line x1="16" y1="9.5" x2="14" y2="13.2" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" />
+      <line x1="16" y1="9.5" x2="18.5" y2="12.5" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" />
+      {/* Arms */}
+      <line x1="16" y1="7.8" x2="14" y2="9.2" stroke="currentColor" strokeWidth={0.9} strokeLinecap="round" />
+      <line x1="16" y1="7.8" x2="18.2" y2="8.8" stroke="currentColor" strokeWidth={0.9} strokeLinecap="round" />
+    </g>
+
+    {/* Frame 3 — Full stride right (top-right) */}
+    <g opacity={0.3}>
+      <circle cx="26" cy="5" r="1.6" fill="currentColor" />
+      <line x1="26" y1="6.8" x2="25.7" y2="10" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+      <line x1="25.7" y1="10" x2="23.5" y2="13" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+      <line x1="25.7" y1="10" x2="28.2" y2="12" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+    </g>
+
+    {/* Frame 4 — Contact/pass (bottom-left) */}
+    <g opacity={0.3}>
+      <circle cx="6" cy="20" r="1.6" fill="currentColor" />
+      <line x1="6" y1="21.8" x2="6" y2="25" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+      <line x1="6" y1="25" x2="5.5" y2="28.2" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+      <line x1="6" y1="25" x2="6.5" y2="28.2" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+    </g>
+
+    {/* Frame 5 — Left step (bottom-center) */}
+    <g opacity={0.3}>
+      <circle cx="16" cy="20" r="1.6" fill="currentColor" />
+      <line x1="16" y1="21.8" x2="16" y2="25" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+      <line x1="16" y1="25" x2="18" y2="28" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+      <line x1="16" y1="25" x2="13.5" y2="28.2" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+    </g>
+
+    {/* Frame 6 — Full stride left (bottom-right) */}
+    <g opacity={0.3}>
+      <circle cx="26" cy="20" r="1.6" fill="currentColor" />
+      <line x1="26" y1="21.8" x2="26.3" y2="25" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+      <line x1="26.3" y1="25" x2="28.5" y2="28" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+      <line x1="26.3" y1="25" x2="24" y2="28.2" stroke="currentColor" strokeWidth={1.1} strokeLinecap="round" />
+    </g>
+
+    {/* Play indicator — small triangle, bottom-right corner */}
+    <path d="M27.5 29 L29.5 30 L27.5 31 Z" fill="currentColor" opacity={0.4} />
   </svg>
 );
