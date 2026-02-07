@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider, LanguageProvider, AuthProvider } from "../shared/contexts";
+import ClientLayout from "../components/layout/ClientLayout";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -51,7 +52,7 @@ export default function RootLayout({
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
-              {children}
+              <ClientLayout>{children}</ClientLayout>
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
