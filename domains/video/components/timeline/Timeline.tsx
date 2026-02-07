@@ -65,6 +65,7 @@ export function Timeline({ className }: TimelineProps) {
 
   const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation(); // prevent timeline pointerdown from firing (seek/drag)
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     resizeStartRef.current = { x: e.clientX, width: trackHeaderWidth };
     setIsHeaderResizing(true);
