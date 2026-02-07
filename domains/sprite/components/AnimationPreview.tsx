@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useEditor } from "../contexts/SpriteEditorContext";
+import { useEditorTracks, useEditorAnimation, useEditorTools, useEditorHistory, useEditorWindows, useEditorFrames } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { ImageDropZone, Popover } from "../../../shared/components";
 import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../../shared/components/icons";
@@ -85,14 +85,12 @@ function FrameIndicator({
 // ============================================
 
 export default function AnimationPreviewContent() {
-  const {
-    tracks, fps, toolMode, getMaxFrameCount,
-    addTrack, pushHistory,
-    setPendingVideoFile, setIsVideoImportOpen,
-    isPlaying, setIsPlaying,
-    currentFrameIndex: storeFrameIndex,
-    setCurrentFrameIndex: setStoreFrameIndex,
-  } = useEditor();
+  const { tracks, addTrack, getMaxFrameCount } = useEditorTracks();
+  const { fps, isPlaying, setIsPlaying } = useEditorAnimation();
+  const { toolMode } = useEditorTools();
+  const { pushHistory } = useEditorHistory();
+  const { setPendingVideoFile, setIsVideoImportOpen } = useEditorWindows();
+  const { currentFrameIndex: storeFrameIndex, setCurrentFrameIndex: setStoreFrameIndex } = useEditorFrames();
   const { t } = useLanguage();
 
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
