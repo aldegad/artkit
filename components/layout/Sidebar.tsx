@@ -19,19 +19,19 @@ const tools: Tool[] = [
     id: "image",
     nameKey: "imageEditor",
     path: "/image",
-    icon: <LandingImageIcon />,
+    icon: <LandingImageIcon className="w-6 h-6" />,
   },
   {
     id: "video",
     nameKey: "videoEditor",
     path: "/video",
-    icon: <LandingVideoIcon />,
+    icon: <LandingVideoIcon className="w-6 h-6" />,
   },
   {
     id: "sprite",
     nameKey: "spriteEditor",
     path: "/sprite",
-    icon: <LandingSpriteIcon />,
+    icon: <LandingSpriteIcon className="w-6 h-6" />,
   },
   {
     id: "sound",
