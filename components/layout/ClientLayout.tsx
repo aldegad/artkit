@@ -1,7 +1,6 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
-import { usePathname } from "next/navigation";
 import { SidebarProvider, useSidebar } from "../../shared/contexts";
 import { HeaderSlotProvider } from "../../shared/contexts/HeaderSlotContext";
 import Sidebar from "./Sidebar";
@@ -41,38 +40,26 @@ function MobileSidebarOverlay() {
   );
 }
 
-function LayoutContent({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-
-  if (pathname === "/") {
-    return <>{children}</>;
-  }
-
-  return (
-    <div className="flex h-screen">
-      {/* Desktop sidebar - hidden on mobile */}
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* Unified header for desktop and mobile */}
-        <Header />
-        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
-        <Footer />
-      </div>
-      {/* Mobile sidebar overlay */}
-      <MobileSidebarOverlay />
-    </div>
-  );
-}
-
 export default function ClientLayout({ children }: { children: ReactNode }) {
   useServiceWorker();
 
   return (
     <SidebarProvider>
       <HeaderSlotProvider>
-        <LayoutContent>{children}</LayoutContent>
+        <div className="flex h-screen">
+          {/* Desktop sidebar - hidden on mobile */}
+          <div className="hidden md:block">
+            <Sidebar />
+          </div>
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {/* Unified header for desktop and mobile */}
+            <Header />
+            <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+            <Footer />
+          </div>
+          {/* Mobile sidebar overlay */}
+          <MobileSidebarOverlay />
+        </div>
       </HeaderSlotProvider>
     </SidebarProvider>
   );
