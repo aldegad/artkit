@@ -9,7 +9,7 @@ import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
-import { TrackVisibleIcon, TrackHiddenIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon } from "@/shared/components/icons";
+import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon } from "@/shared/components/icons";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
 
@@ -270,9 +270,9 @@ export function Timeline({ className }: TimelineProps) {
                       title={track.visible ? "Hide track" : "Show track"}
                     >
                       {track.visible ? (
-                        <TrackVisibleIcon className="w-3 h-3" />
+                        <EyeOpenIcon className="w-3 h-3" />
                       ) : (
-                        <TrackHiddenIcon className="w-3 h-3" />
+                        <EyeClosedIcon className="w-3 h-3" />
                       )}
                     </button>
 
