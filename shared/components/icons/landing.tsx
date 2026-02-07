@@ -149,8 +149,8 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
     />
 
     {/* Play button overlay - centered, YouTube-style */}
-    <circle cx="24" cy="22" r="8" fill="currentColor" opacity={0.15} />
-    <path d="M21 18v8l7-4z" fill="currentColor" opacity={0.65} />
+    <circle cx="24" cy="22" r="13" fill="currentColor" opacity={0.15} />
+    <path d="M19 14v16l14-8z" fill="currentColor" opacity={0.6} />
   </svg>
 );
 
