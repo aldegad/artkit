@@ -2,14 +2,14 @@
 
 import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
-import { useEditor } from "../../domains/sprite/contexts/SpriteEditorContext";
-import { Scrollbar, NumberScrubber } from "../../shared/components";
-import { ExportDropdown } from "../timeline";
-import { SpriteTrack } from "../../domains/sprite/types";
-import { compositeFrame } from "../../domains/sprite/utils/compositor";
-import { useSpriteTrackStore } from "../../domains/sprite/stores/useSpriteTrackStore";
-import { generateCompositedSpriteSheet } from "../../domains/sprite/utils/export";
-import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon } from "../../shared/components/icons";
+import { useEditor } from "../contexts/SpriteEditorContext";
+import { Scrollbar, NumberScrubber } from "@/shared/components";
+import ExportDropdown from "./ExportDropdown";
+import { SpriteTrack } from "../types";
+import { compositeFrame } from "../utils/compositor";
+import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
+import { generateCompositedSpriteSheet } from "../utils/export";
+import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon } from "@/shared/components/icons";
 
 // ============================================
 // Multi-Track Timeline
