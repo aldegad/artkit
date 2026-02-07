@@ -37,8 +37,8 @@ export function Timeline({ className }: TimelineProps) {
   const { getMasksForTrack } = useMask();
   useVideoCoordinates();
 
-  // Timeline input handling (clip drag, trim, seek)
-  const { handlePointerDown: handleTimelinePointerDown } = useTimelineInput(tracksContainerRef);
+  // Timeline input handling (clip drag, trim, seek, lift)
+  const { handlePointerDown: handleTimelinePointerDown, liftedClipId } = useTimelineInput(tracksContainerRef);
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
@@ -389,6 +389,7 @@ export function Timeline({ className }: TimelineProps) {
                   track={track}
                   clips={getClipsInTrack(track.id)}
                   masks={getMasksForTrack(track.id)}
+                  liftedClipId={liftedClipId}
                 />
               ))}
 
