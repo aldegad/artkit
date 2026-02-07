@@ -326,16 +326,39 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
+  // Helper: find next non-disabled frame index across all tracks
+  const findNextEnabledFrame = useCallback(
+    (current: number, direction: 1 | -1): number => {
+      if (maxFrameCount === 0) return 0;
+      let next = ((current + direction) % maxFrameCount + maxFrameCount) % maxFrameCount;
+      let checked = 0;
+      while (checked < maxFrameCount) {
+        // Check if any visible track has a non-disabled frame at this index
+        const allDisabled = tracks
+          .filter((t) => t.visible && t.frames.length > 0)
+          .every((t) => {
+            const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+            return idx === -1 || t.frames[idx]?.disabled;
+          });
+        if (!allDisabled) return next;
+        next = ((next + direction) % maxFrameCount + maxFrameCount) % maxFrameCount;
+        checked++;
+      }
+      return current; // all frames disabled, stay put
+    },
+    [tracks, maxFrameCount],
+  );
+
   // Animation playback
   useEffect(() => {
     if (!isPlaying || maxFrameCount === 0) return;
 
     const interval = setInterval(() => {
-      setCurrentFrameIndex((prev) => (prev + 1) % maxFrameCount);
+      setCurrentFrameIndex((prev) => findNextEnabledFrame(prev, 1));
     }, 1000 / fps);
 
     return () => clearInterval(interval);
-  }, [isPlaying, fps, maxFrameCount]);
+  }, [isPlaying, fps, maxFrameCount, findNextEnabledFrame]);
 
   // Composite current frame from all tracks
   useEffect(() => {
@@ -371,13 +394,13 @@ export default function AnimationPreviewContent() {
 
   const handlePrev = useCallback(() => {
     if (maxFrameCount === 0) return;
-    setCurrentFrameIndex((prev) => (prev - 1 + maxFrameCount) % maxFrameCount);
-  }, [maxFrameCount]);
+    setCurrentFrameIndex((prev) => findNextEnabledFrame(prev, -1));
+  }, [maxFrameCount, findNextEnabledFrame]);
 
   const handleNext = useCallback(() => {
     if (maxFrameCount === 0) return;
-    setCurrentFrameIndex((prev) => (prev + 1) % maxFrameCount);
-  }, [maxFrameCount]);
+    setCurrentFrameIndex((prev) => findNextEnabledFrame(prev, 1));
+  }, [maxFrameCount, findNextEnabledFrame]);
 
   // 스페이스바 패닝 기능
   useEffect(() => {

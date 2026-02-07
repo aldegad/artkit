@@ -29,7 +29,7 @@ export async function downloadFramesAsZip(
   frames: SpriteFrame[],
   projectName: string,
 ): Promise<void> {
-  const validFrames = frames.filter((f) => f.imageData);
+  const validFrames = frames.filter((f) => f.imageData && !f.disabled);
   if (validFrames.length === 0) return;
 
   // Dynamically import JSZip
@@ -71,7 +71,7 @@ export function generateSpriteSheet(
   options: SpriteSheetOptions = {},
 ): Promise<string | null> {
   return new Promise((resolve) => {
-    const validFrames = frames.filter((f) => f.imageData);
+    const validFrames = frames.filter((f) => f.imageData && !f.disabled);
     if (validFrames.length === 0) {
       resolve(null);
       return;
@@ -177,7 +177,7 @@ export function exportProjectMetadata(
   projectName: string,
   fps: number,
 ): ProjectMetadata {
-  const validFrames = frames.filter((f) => f.imageData);
+  const validFrames = frames.filter((f) => f.imageData && !f.disabled);
 
   return {
     name: projectName,
@@ -244,7 +244,7 @@ export async function downloadFullProject(
   projectName: string,
   fps: number,
 ): Promise<void> {
-  const validFrames = frames.filter((f) => f.imageData);
+  const validFrames = frames.filter((f) => f.imageData && !f.disabled);
   if (validFrames.length === 0) return;
 
   const JSZip = (await import("jszip")).default;

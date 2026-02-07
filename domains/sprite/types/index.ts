@@ -20,6 +20,7 @@ export interface SpriteFrame {
   name: string;
   imageData?: string;
   offset: Point;
+  disabled?: boolean;
 }
 
 export interface SpriteTrack {

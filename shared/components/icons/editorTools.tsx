@@ -85,3 +85,17 @@ export const PanIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v18m0-18l-3 3m3-3l3 3m-3 15l-3-3m3 3l3-3M3 12h18m-18 0l3-3m-3 3l3 3m15-3l-3-3m3 3l-3 3" />
   </svg>
 );
+
+export const ReorderIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeWidth={2} d="M4 8h16M4 12h16M4 16h16" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3l3 3h-6l3-3zM12 21l3-3h-6l3 3z" />
+  </svg>
+);
+
+export const OffsetIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="18" height="18" strokeWidth={1.5} strokeDasharray="3 2" rx="2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v8m0-8l-2 2m2-2l2 2m-2 6l-2-2m2 2l2-2M8 12h8m-8 0l2-2m-2 2l2 2m6-2l-2-2m2 2l-2 2" />
+  </svg>
+);
