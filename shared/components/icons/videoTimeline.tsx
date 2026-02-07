@@ -88,3 +88,11 @@ export const TrackUnmutedIcon: React.FC<IconProps> = ({ className = "w-3 h-3" })
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
   </svg>
 );
+
+export const FilmStripIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <rect x="2" y="4" width="20" height="16" rx="2" strokeWidth={2} />
+    <path strokeWidth={2} d="M6 4v16M18 4v16" />
+    <path strokeLinecap="round" strokeWidth={1.5} d="M2 8h4M2 12h4M2 16h4M18 8h4M18 12h4M18 16h4" />
+  </svg>
+);
