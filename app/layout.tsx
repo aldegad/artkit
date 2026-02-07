@@ -48,7 +48,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="antialiased min-h-screen bg-background text-foreground">
+      <body className="antialiased min-h-screen bg-background text-foreground overscroll-x-none">
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
