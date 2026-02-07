@@ -91,6 +91,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     didDragRef.current = false;
     wasActiveOnDownRef.current = isActive;
     wasEditingOnDownRef.current = isEditing;
