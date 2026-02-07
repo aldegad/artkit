@@ -637,6 +637,11 @@ input[type="range"]::-moz-range-thumb {
   to { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 
+@keyframes landing-wordmark-in {
+  from { opacity: 0; transform: scale(0.88) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 @keyframes landing-slide-up {
   from { opacity: 0; transform: translateY(24px); }
   to { opacity: 1; transform: translateY(0); }
@@ -658,6 +663,10 @@ input[type="range"]::-moz-range-thumb {
 
 .animate-landing-slide-up {
   animation: landing-slide-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-landing-wordmark {
+  animation: landing-wordmark-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .animate-landing-card {
