@@ -4,6 +4,7 @@ import { useRef } from "react";
 import Link from "next/link";
 import { useLanguage, useTheme } from "../shared/contexts";
 import ArtkitLogo from "../components/icons/ArtkitLogo";
+import ArtkitWordmark from "../components/icons/ArtkitWordmark";
 import {
   SidebarEditorIcon,
   SidebarVideoIcon,
@@ -129,24 +130,22 @@ export default function LandingPage() {
 
         {/* Badge */}
         <div
-          className="relative z-10 mb-8 px-5 py-2.5 rounded-full border border-border-default bg-surface-primary/60 backdrop-blur-sm text-sm text-text-secondary font-medium animate-landing-slide-up"
+          className="relative z-10 mb-10 px-5 py-2.5 rounded-full border border-border-default bg-surface-primary/60 backdrop-blur-sm text-sm text-text-secondary font-medium animate-landing-slide-up"
           style={{ animationDelay: "0.1s" }}
         >
           {t.landingBadge}
         </div>
 
-        {/* Logo */}
-        <div className="relative z-10 animate-landing-logo mb-5">
-          <ArtkitLogo size={68} className="text-accent-primary drop-shadow-lg" />
-        </div>
-
-        {/* Title */}
-        <h1
-          className="relative z-10 text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter landing-gradient-text animate-landing-slide-up"
+        {/* Wordmark */}
+        <div
+          className="relative z-10 animate-landing-wordmark"
           style={{ animationDelay: "0.25s" }}
         >
-          Artkit
-        </h1>
+          <ArtkitWordmark
+            className="w-64 sm:w-80 md:w-96 lg:w-[480px]"
+            gradient
+          />
+        </div>
 
         {/* Tagline */}
         <p
