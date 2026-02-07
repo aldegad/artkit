@@ -91,13 +91,14 @@ import {
   SquareFitIcon,
   CanvasExpandIcon,
   // Sidebar
-  SidebarImageIcon,
-  SidebarSpriteIcon,
   SidebarConverterIcon,
   SidebarSoundIcon,
-  SidebarVideoIcon,
   SidebarIconsIcon,
   ArtkitIcon,
+  // Landing (main icons)
+  LandingImageIcon,
+  LandingVideoIcon,
+  LandingSpriteIcon,
 } from "@/shared/components/icons";
 import ArtkitLogo from "@/components/icons/ArtkitLogo";
 import ArtkitWordmark from "@/components/icons/ArtkitWordmark";
@@ -225,11 +226,11 @@ const iconRegistry: IconMeta[] = [
   { name: "CanvasExpandIcon", component: CanvasExpandIcon, category: "crop", tags: ["canvas", "expand", "fullscreen", "maximize"] },
 
   // Sidebar
-  { name: "SidebarImageIcon", component: SidebarImageIcon, category: "sidebar", tags: ["sidebar", "editor", "image", "photo"] },
-  { name: "SidebarSpriteIcon", component: SidebarSpriteIcon, category: "sidebar", tags: ["sidebar", "sprite", "animation", "frames"] },
+  { name: "LandingImageIcon", component: LandingImageIcon, category: "sidebar", tags: ["sidebar", "editor", "image", "photo"] },
+  { name: "LandingSpriteIcon", component: LandingSpriteIcon, category: "sidebar", tags: ["sidebar", "sprite", "animation", "frames"] },
   { name: "SidebarConverterIcon", component: SidebarConverterIcon, category: "sidebar", tags: ["sidebar", "converter", "convert", "transform"] },
   { name: "SidebarSoundIcon", component: SidebarSoundIcon, category: "sidebar", tags: ["sidebar", "sound", "audio", "music"] },
-  { name: "SidebarVideoIcon", component: SidebarVideoIcon, category: "sidebar", tags: ["sidebar", "video", "film", "movie"] },
+  { name: "LandingVideoIcon", component: LandingVideoIcon, category: "sidebar", tags: ["sidebar", "video", "film", "movie"] },
   { name: "SidebarIconsIcon", component: SidebarIconsIcon, category: "sidebar", tags: ["sidebar", "icons", "grid", "showcase"] },
   { name: "ArtkitIcon", component: ArtkitIcon, category: "sidebar", tags: ["artkit", "logo", "brand", "app"] },
 ];
