@@ -253,16 +253,6 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           saveToHistory();
           selectClip(clip.id, false);
           const items = buildDragItems([clip.id], []);
-
-          // Touch: needs long-press to lift for cross-track
-          isLiftedRef.current = false;
-          longPressTimerRef.current = setTimeout(() => {
-            longPressTimerRef.current = null;
-            isLiftedRef.current = true;
-            setLiftedClipId(clip.id);
-            if (navigator.vibrate) navigator.vibrate(30);
-          }, LONG_PRESS_MS);
-
           setDragState({ type: "clip-move", clipId: clip.id, items, startX: pending.x, startY: pending.contentY, startTime: pending.time, originalClipStart: clip.startTime, originalClipDuration: clip.duration, originalTrimIn: clip.trimIn });
         }
       } else {
@@ -294,13 +284,46 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   );
 
   // ── Touch gesture resolution effect ──
-  // When touchPending is set, listen for movement to determine: scroll / drag / tap
+  // When touchPending is set, listen for movement to determine: scroll / drag / tap / long-press
   useEffect(() => {
     if (!touchPending) return;
 
     let lastClientY = touchPending.clientY;
     let resolved = false; // true once we determined scroll vs drag
     let isScrolling = false;
+
+    // Long-press timer: if on a clip body and no movement for LONG_PRESS_MS → lift
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    if (touchPending.clipResult && touchPending.clipResult.handle === "body") {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (resolved) return; // already scrolling or dragging
+        resolved = true;
+
+        const clip = touchPending.clipResult!.clip;
+        // Select and lift the clip
+        selectClip(clip.id, false);
+        saveToHistory();
+        isLiftedRef.current = true;
+        setLiftedClipId(clip.id);
+        if (navigator.vibrate) navigator.vibrate(30);
+
+        // Start clip-move drag
+        const items = buildDragItems([clip.id], []);
+        setDragState({
+          type: "clip-move",
+          clipId: clip.id,
+          items,
+          startX: touchPending.x,
+          startY: touchPending.contentY,
+          startTime: touchPending.time,
+          originalClipStart: clip.startTime,
+          originalClipDuration: clip.duration,
+          originalTrimIn: clip.trimIn,
+        });
+        setTouchPending(null);
+      }, LONG_PRESS_MS);
+    }
 
     const handleMove = (e: PointerEvent) => {
       if (e.pointerId !== touchPending.pointerId) return;
@@ -311,6 +334,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
         if (dx >= TOUCH_GESTURE_THRESHOLD || dy >= TOUCH_GESTURE_THRESHOLD) {
           resolved = true;
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 
           if (dy >= dx) {
             // Vertical → scroll mode
@@ -337,6 +361,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     const handleUp = (e: PointerEvent) => {
       if (e.pointerId !== touchPending.pointerId) return;
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
 
       if (!resolved) {
         // No significant movement → tap
@@ -351,11 +376,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     document.addEventListener("pointercancel", handleUp);
 
     return () => {
+      if (longPressTimer) clearTimeout(longPressTimer);
       document.removeEventListener("pointermove", handleMove);
       document.removeEventListener("pointerup", handleUp);
       document.removeEventListener("pointercancel", handleUp);
     };
-  }, [touchPending, startDragFromTouch, handleTouchTap, tracksContainerRef]);
+  }, [touchPending, startDragFromTouch, handleTouchTap, tracksContainerRef, selectClip, saveToHistory, buildDragItems]);
 
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(
