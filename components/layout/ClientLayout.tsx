@@ -60,7 +60,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             {/* Unified header for desktop and mobile */}
             <Header />
-            <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+            <main className="flex-1 min-h-0 overflow-hidden select-none">{children}</main>
             <Footer />
           </div>
           {/* Mobile sidebar overlay */}
