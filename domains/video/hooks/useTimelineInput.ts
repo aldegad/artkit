@@ -39,6 +39,20 @@ const INITIAL_DRAG_STATE: DragState = {
 /** Long-press duration (ms) before a clip is "lifted" for cross-track movement on touch */
 const LONG_PRESS_MS = 400;
 
+/** Minimum movement (px) before we resolve a touch gesture as scroll or drag */
+const TOUCH_GESTURE_THRESHOLD = 8;
+
+// ── Touch pending state ───────────────────────────────────────────────
+interface TouchPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  x: number; // relative to container
+  contentY: number; // in content coords (with scroll offset)
+  time: number;
+  clipResult: { clip: Clip; handle: "start" | "end" | "body" } | null;
+}
+
 export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElement | null>) {
   const {
     tracks,
@@ -96,6 +110,9 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const [liftedClipId, setLiftedClipId] = useState<string | null>(null);
   const isLiftedRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Touch pending state: deferred gesture resolution
+  const [touchPending, setTouchPending] = useState<TouchPendingState | null>(null);
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks } = useMask();
 
@@ -197,23 +214,179 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     setLiftedClipId(null);
   }, [cancelLongPress]);
 
+  // ── Start a drag from resolved touch gesture (horizontal movement) ──
+  const startDragFromTouch = useCallback(
+    (pending: TouchPendingState) => {
+      if (pending.clipResult) {
+        const { clip, handle } = pending.clipResult;
+
+        if (handle === "body" && toolMode === "razor") {
+          const splitTime = Math.max(clip.startTime, Math.min(pending.time, clip.startTime + clip.duration));
+          const splitOffset = splitTime - clip.startTime;
+          if (splitOffset <= TIMELINE.CLIP_MIN_DURATION || clip.duration - splitOffset <= TIMELINE.CLIP_MIN_DURATION) {
+            return;
+          }
+          saveToHistory();
+          const firstClip: Clip = { ...clip, id: crypto.randomUUID(), duration: splitOffset, trimOut: clip.trimIn + splitOffset };
+          const secondClip: Clip = { ...clip, id: crypto.randomUUID(), name: `${clip.name} (2)`, startTime: splitTime, duration: clip.duration - splitOffset, trimIn: clip.trimIn + splitOffset };
+          removeClip(clip.id);
+          addClips([firstClip, secondClip]);
+          selectClip(secondClip.id, false);
+          return;
+        }
+
+        if (handle === "start" && (toolMode === "select" || toolMode === "trim")) {
+          saveToHistory();
+          selectClip(clip.id, false);
+          setDragState({ type: "clip-trim-start", clipId: clip.id, items: [], startX: pending.x, startY: pending.contentY, startTime: pending.time, originalClipStart: clip.startTime, originalClipDuration: clip.duration, originalTrimIn: clip.trimIn });
+          return;
+        }
+
+        if (handle === "end" && (toolMode === "select" || toolMode === "trim")) {
+          saveToHistory();
+          selectClip(clip.id, false);
+          setDragState({ type: "clip-trim-end", clipId: clip.id, items: [], startX: pending.x, startY: pending.contentY, startTime: pending.time, originalClipStart: clip.startTime, originalClipDuration: clip.duration, originalTrimIn: clip.trimIn });
+          return;
+        }
+
+        if (handle === "body") {
+          saveToHistory();
+          selectClip(clip.id, false);
+          const items = buildDragItems([clip.id], []);
+
+          // Touch: needs long-press to lift for cross-track
+          isLiftedRef.current = false;
+          longPressTimerRef.current = setTimeout(() => {
+            longPressTimerRef.current = null;
+            isLiftedRef.current = true;
+            setLiftedClipId(clip.id);
+            if (navigator.vibrate) navigator.vibrate(30);
+          }, LONG_PRESS_MS);
+
+          setDragState({ type: "clip-move", clipId: clip.id, items, startX: pending.x, startY: pending.contentY, startTime: pending.time, originalClipStart: clip.startTime, originalClipDuration: clip.duration, originalTrimIn: clip.trimIn });
+        }
+      } else {
+        // Empty area → playhead drag (horizontal seek)
+        const seekTime = Math.max(0, pending.time);
+        seek(seekTime);
+        deselectAll();
+        setDragState({ type: "playhead", clipId: null, items: [], startX: pending.x, startY: pending.contentY, startTime: pending.time, originalClipStart: 0, originalClipDuration: 0, originalTrimIn: 0 });
+      }
+    },
+    [toolMode, selectClip, saveToHistory, buildDragItems, seek, deselectAll, removeClip, addClips]
+  );
+
+  // ── Handle a touch tap (pointerup without significant movement) ──
+  const handleTouchTap = useCallback(
+    (pending: TouchPendingState) => {
+      if (pending.clipResult) {
+        selectClip(pending.clipResult.clip.id, false);
+      } else {
+        const seekTime = Math.max(0, pending.time);
+        seek(seekTime);
+        if (seekTime < viewState.scrollX) {
+          setScrollX(seekTime);
+        }
+        deselectAll();
+      }
+    },
+    [selectClip, seek, viewState.scrollX, setScrollX, deselectAll]
+  );
+
+  // ── Touch gesture resolution effect ──
+  // When touchPending is set, listen for movement to determine: scroll / drag / tap
+  useEffect(() => {
+    if (!touchPending) return;
+
+    let lastClientY = touchPending.clientY;
+    let resolved = false; // true once we determined scroll vs drag
+    let isScrolling = false;
+
+    const handleMove = (e: PointerEvent) => {
+      if (e.pointerId !== touchPending.pointerId) return;
+
+      if (!resolved) {
+        const dx = Math.abs(e.clientX - touchPending.clientX);
+        const dy = Math.abs(e.clientY - touchPending.clientY);
+
+        if (dx >= TOUCH_GESTURE_THRESHOLD || dy >= TOUCH_GESTURE_THRESHOLD) {
+          resolved = true;
+
+          if (dy >= dx) {
+            // Vertical → scroll mode
+            isScrolling = true;
+          } else {
+            // Horizontal → drag mode
+            isScrolling = false;
+            startDragFromTouch(touchPending);
+            setTouchPending(null);
+            return;
+          }
+        }
+      }
+
+      // Scroll mode: manually scroll the container
+      if (isScrolling) {
+        const deltaY = lastClientY - e.clientY;
+        if (tracksContainerRef.current) {
+          tracksContainerRef.current.scrollTop += deltaY;
+        }
+        lastClientY = e.clientY;
+      }
+    };
+
+    const handleUp = (e: PointerEvent) => {
+      if (e.pointerId !== touchPending.pointerId) return;
+
+      if (!resolved) {
+        // No significant movement → tap
+        handleTouchTap(touchPending);
+      }
+
+      setTouchPending(null);
+    };
+
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp);
+    document.addEventListener("pointercancel", handleUp);
+
+    return () => {
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+      document.removeEventListener("pointercancel", handleUp);
+    };
+  }, [touchPending, startDragFromTouch, handleTouchTap, tracksContainerRef]);
+
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       const containerRect = tracksContainerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
 
-      // Don't preventDefault — let touch-action handle scrolling
-      // Don't setPointerCapture for touch — it prevents the browser from initiating
-      // native scroll gestures (pan-y). For touch, we rely on document-level listeners
-      // and the browser firing pointercancel when it starts scrolling.
-      if (e.pointerType !== "touch") {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      }
-
       const x = e.clientX - containerRect.left;
       const contentY = getContentY(e.clientY);
       const time = pixelToTime(x);
+
+      // ── Touch: defer ALL processing until gesture direction is known ──
+      if (e.pointerType === "touch" && e.button === 0) {
+        const { inMaskLane } = getTrackAtY(contentY);
+        if (inMaskLane) return; // Let MaskClip handle it
+
+        const clipResult = findClipAtPosition(x, contentY);
+        setTouchPending({
+          pointerId: e.pointerId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          x,
+          contentY,
+          time,
+          clipResult,
+        });
+        return;
+      }
+
+      // ── Mouse/Pen: process immediately ──
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
       // Middle mouse for pan
       if (e.button === 1) {
@@ -311,16 +484,13 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
               let activeMaskIds: string[];
 
               if (isAlreadySelected) {
-                // Already selected — preserve current multi-selection
                 activeClipIds = selectedClipIds;
                 activeMaskIds = selectedMaskIds;
               } else if (e.shiftKey) {
-                // Shift+click — add to selection
                 activeClipIds = [...selectedClipIds, clip.id];
                 activeMaskIds = selectedMaskIds;
                 selectClip(clip.id, true);
               } else {
-                // Plain click — single select
                 activeClipIds = [clip.id];
                 activeMaskIds = [];
                 selectClip(clip.id, false);
@@ -344,17 +514,14 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
                   if (newId) newMaskIds.push(newId);
                 }
 
-                // Map original primary to new primary
                 const primaryIndex = activeClipIds.indexOf(clip.id);
                 primaryClipId = primaryIndex >= 0 && primaryIndex < newClipIds.length
                   ? newClipIds[primaryIndex]
                   : newClipIds[0] || clip.id;
 
-                // Select duplicated items
                 if (newClipIds.length > 0) selectClips(newClipIds);
                 if (newMaskIds.length > 0) selectMasksForTimeline(newMaskIds);
 
-                // Build items from originals' positions (duplicates start at same position)
                 const items: DragItem[] = [];
                 for (let i = 0; i < newClipIds.length; i++) {
                   const origClip = clips.find((c) => c.id === activeClipIds[i]);
@@ -369,8 +536,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
                   }
                 }
 
-                // Mouse/pen: immediate cross-track; Touch: needs long-press
-                isLiftedRef.current = e.pointerType !== "touch";
+                isLiftedRef.current = true;
 
                 setDragState({
                   type: "clip-move",
@@ -386,20 +552,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
               } else {
                 // Normal drag: move all selected items
                 const items = buildDragItems(activeClipIds, activeMaskIds);
-
-                // Mouse/pen: immediate cross-track; Touch: needs long-press to lift
-                if (e.pointerType !== "touch") {
-                  isLiftedRef.current = true;
-                } else {
-                  isLiftedRef.current = false;
-                  longPressTimerRef.current = setTimeout(() => {
-                    longPressTimerRef.current = null;
-                    isLiftedRef.current = true;
-                    setLiftedClipId(primaryClipId);
-                    // Haptic feedback
-                    if (navigator.vibrate) navigator.vibrate(30);
-                  }, LONG_PRESS_MS);
-                }
+                isLiftedRef.current = true;
 
                 setDragState({
                   type: "clip-move",
@@ -423,24 +576,17 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             setScrollX(seekTime);
           }
           deselectAll();
-
-          // For touch: DON'T enter playhead drag state.
-          // Setting dragState attaches document-level pointermove listeners which
-          // interfere with the browser's ability to start native vertical scrolling
-          // (touch-action: pan-y). Touch users can drag-seek via TimeRuler instead.
-          if (e.pointerType !== "touch") {
-            setDragState({
-              type: "playhead",
-              clipId: null,
-              items: [],
-              startX: x,
-              startY: contentY,
-              startTime: time,
-              originalClipStart: 0,
-              originalClipDuration: 0,
-              originalTrimIn: 0,
-            });
-          }
+          setDragState({
+            type: "playhead",
+            clipId: null,
+            items: [],
+            startX: x,
+            startY: contentY,
+            startTime: time,
+            originalClipStart: 0,
+            originalClipDuration: 0,
+            originalTrimIn: 0,
+          });
         }
       }
     },
@@ -467,6 +613,8 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       masks,
       buildDragItems,
       cancelLongPress,
+      viewState.scrollX,
+      setScrollX,
     ]
   );
 
