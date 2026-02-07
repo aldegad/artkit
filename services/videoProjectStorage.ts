@@ -11,8 +11,6 @@ import {
   getVideoProjectFromFirebase,
   getAllVideoProjectsFromFirebase,
   deleteVideoProjectFromFirebase,
-  hasCloudVideoProjects,
-  deleteAllVideoProjectsFromFirebase,
   type SaveLoadProgress,
 } from "@/lib/firebase/firebaseVideoStorage";
 import { getStorageInfo } from "@/utils/storage";
@@ -123,43 +121,3 @@ export function getVideoStorageProvider(user: User | null): VideoStorageProvider
   return new IndexedDBVideoStorageProvider();
 }
 
-// ============================================
-// Sync Utilities
-// ============================================
-
-export async function hasLocalVideoProjects(): Promise<boolean> {
-  const projects = await getAllVideoProjects();
-  return projects.length > 0;
-}
-
-export async function checkCloudVideoProjects(userId: string): Promise<boolean> {
-  return hasCloudVideoProjects(userId);
-}
-
-export async function uploadLocalVideoProjectsToCloud(user: User): Promise<number> {
-  const localProjects = await getAllVideoProjects();
-  const provider = new FirebaseVideoStorageProvider(user);
-
-  let uploaded = 0;
-  for (const project of localProjects) {
-    try {
-      await provider.saveProject(project);
-      uploaded++;
-    } catch (error) {
-      console.error(`Failed to upload video project ${project.id}:`, error);
-    }
-  }
-
-  return uploaded;
-}
-
-export async function clearLocalVideoProjects(): Promise<void> {
-  const projects = await getAllVideoProjects();
-  for (const project of projects) {
-    await deleteVideoProject(project.id);
-  }
-}
-
-export async function clearCloudVideoProjects(user: User): Promise<void> {
-  await deleteAllVideoProjectsFromFirebase(user.uid);
-}
