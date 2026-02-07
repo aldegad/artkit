@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLanguage } from "../../shared/contexts";
 import SettingsMenu from "../SettingsMenu";
 import ArtkitLogo from "../icons/ArtkitLogo";
-import { SidebarImageIcon, SidebarSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarVideoIcon, SidebarIconsIcon } from "../../shared/components/icons";
+import { LandingImageIcon, LandingVideoIcon, LandingSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarIconsIcon } from "../../shared/components/icons";
 
 interface Tool {
   id: string;
@@ -19,19 +19,19 @@ const tools: Tool[] = [
     id: "image",
     nameKey: "imageEditor",
     path: "/image",
-    icon: <SidebarImageIcon />,
+    icon: <LandingImageIcon />,
   },
   {
     id: "video",
     nameKey: "videoEditor",
     path: "/video",
-    icon: <SidebarVideoIcon />,
+    icon: <LandingVideoIcon />,
   },
   {
     id: "sprite",
     nameKey: "spriteEditor",
     path: "/sprite",
-    icon: <SidebarSpriteIcon />,
+    icon: <LandingSpriteIcon />,
   },
   {
     id: "sound",
