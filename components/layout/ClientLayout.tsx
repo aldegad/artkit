@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { SidebarProvider, useSidebar } from "../../shared/contexts";
 import { HeaderSlotProvider } from "../../shared/contexts/HeaderSlotContext";
 import Sidebar from "./Sidebar";
@@ -41,6 +42,12 @@ function MobileSidebarOverlay() {
 }
 
 function LayoutContent({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  if (pathname === "/") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex h-screen">
       {/* Desktop sidebar - hidden on mobile */}
