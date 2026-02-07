@@ -188,11 +188,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   } = useVideoState();
 
   const [viewState, setViewStateInternal] = useState<TimelineViewState>(INITIAL_TIMELINE_VIEW);
-  const [tracks, setTracks] = useState<VideoTrack[]>(() => {
+  const [tracks, _setTracks] = useState<VideoTrack[]>(() => {
     // Start with one default track
     return [createVideoTrack("Video 1", 0)];
   });
-  const [clips, setClips] = useState<Clip[]>([]);
+  const [clips, _setClips] = useState<Clip[]>([]);
   const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -202,6 +202,31 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const historyPastRef = useRef<TimelineHistorySnapshot[]>([]);
   const historyFutureRef = useRef<TimelineHistorySnapshot[]>([]);
   const projectRef = useRef(project);
+
+  // Refs for latest tracks/clips — kept in sync even during React batched updates
+  // so captureHistorySnapshot always reads the freshest state.
+  const tracksRef = useRef(tracks);
+  const clipsRef = useRef(clips);
+  tracksRef.current = tracks;
+  clipsRef.current = clips;
+
+  // Wrapped setters: keep refs in sync immediately inside the functional updater,
+  // preventing stale snapshots when multiple mutations are batched before re-render.
+  const setTracks = useCallback((action: React.SetStateAction<VideoTrack[]>) => {
+    _setTracks((prev) => {
+      const next = typeof action === "function" ? action(prev) : action;
+      tracksRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const setClips = useCallback((action: React.SetStateAction<Clip[]>) => {
+    _setClips((prev) => {
+      const next = typeof action === "function" ? action(prev) : action;
+      clipsRef.current = next;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     projectRef.current = project;
@@ -214,10 +239,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   const captureHistorySnapshot = useCallback((): TimelineHistorySnapshot => {
     return {
-      tracks: tracks.map(cloneTrack),
-      clips: clips.map(cloneClip),
+      tracks: tracksRef.current.map(cloneTrack),
+      clips: clipsRef.current.map(cloneClip),
     };
-  }, [tracks, clips]);
+  }, []);
 
   const saveToHistory = useCallback(() => {
     historyPastRef.current.push(captureHistorySnapshot());

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLanguage } from "../../shared/contexts";
 import SettingsMenu from "../SettingsMenu";
 import ArtkitLogo from "../icons/ArtkitLogo";
-import { SidebarEditorIcon, SidebarSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarVideoIcon, SidebarIconsIcon } from "../../shared/components/icons";
+import { SidebarImageIcon, SidebarSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarVideoIcon, SidebarIconsIcon } from "../../shared/components/icons";
 
 interface Tool {
   id: string;
@@ -16,10 +16,10 @@ interface Tool {
 
 const tools: Tool[] = [
   {
-    id: "editor",
+    id: "image",
     nameKey: "imageEditor",
-    path: "/editor",
-    icon: <SidebarEditorIcon />,
+    path: "/image",
+    icon: <SidebarImageIcon />,
   },
   {
     id: "video",

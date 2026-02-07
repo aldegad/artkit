@@ -110,13 +110,13 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     }
   }, [viewState.zoom, viewState.scrollX, timeToPixel, currentTimeRef]);
 
-  // Handle click to seek
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Seek at a given clientX position
+  const seekAtX = useCallback(
+    (clientX: number) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = e.clientX - rect.left;
+      const x = clientX - rect.left;
       const time = Math.max(0, pixelToTime(x));
 
       if (onSeek) {
@@ -125,12 +125,43 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
         seek(time);
       }
 
-      // Auto-scroll to keep playhead visible
       if (time < viewState.scrollX) {
         setScrollX(time);
       }
     },
     [pixelToTime, seek, onSeek, viewState.scrollX, setScrollX]
+  );
+
+  // Drag-seeking with pointer events (supports mouse + touch)
+  const isDraggingRef = useRef(false);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      isDraggingRef.current = true;
+      seekAtX(e.clientX);
+    },
+    [seekAtX]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!isDraggingRef.current) return;
+      seekAtX(e.clientX);
+    },
+    [seekAtX]
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      isDraggingRef.current = false;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    },
+    []
   );
 
   // Render on structural changes (zoom, scroll)
@@ -162,7 +193,11 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     >
       <canvas
         ref={canvasRef}
-        onClick={handleClick}
+        style={{ touchAction: "none" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         className="cursor-pointer"
       />
     </div>

@@ -346,6 +346,13 @@ body {
   color: var(--text-primary);
 }
 
+@media (max-width: 768px) {
+  .panel-header {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+}
+
 /* Button Base */
 .btn {
   display: inline-flex;
@@ -626,6 +633,104 @@ input[type="range"]::-moz-range-thumb {
 
 .animate-popover {
   animation: popover-in 0.1s ease-out;
+}
+
+/* =============================================
+   Landing Page
+   ============================================= */
+
+@keyframes landing-logo-in {
+  from { opacity: 0; transform: scale(0.7) rotate(-8deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes landing-wordmark-in {
+  from { opacity: 0; transform: scale(0.88) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes landing-slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes landing-card-in {
+  from { opacity: 0; transform: translateY(32px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes landing-gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-landing-logo {
+  animation: landing-logo-in 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-landing-slide-up {
+  animation: landing-slide-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-landing-wordmark {
+  animation: landing-wordmark-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-landing-card {
+  animation: landing-card-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Nav glass effect */
+.landing-nav {
+  backdrop-filter: blur(16px) saturate(1.8);
+  -webkit-backdrop-filter: blur(16px) saturate(1.8);
+}
+
+/* Animated gradient title */
+.landing-gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, #FF6B35 30%, #FFB347 60%, var(--accent-primary) 100%);
+  background-size: 200% 200%;
+  animation: landing-gradient-shift 6s ease-in-out infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Dot grid pattern */
+.landing-dot-grid {
+  background-image: radial-gradient(circle, var(--border-default) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Mesh gradient hero background */
+.landing-mesh-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 25% 60%, rgba(255, 140, 0, 0.07) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 40% at 75% 25%, rgba(59, 130, 246, 0.05) 0%, transparent 100%),
+    radial-gradient(ellipse 50% 60% at 50% 85%, rgba(139, 92, 246, 0.04) 0%, transparent 100%);
+}
+
+.dark .landing-mesh-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 25% 60%, rgba(255, 140, 0, 0.12) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 40% at 75% 25%, rgba(59, 130, 246, 0.08) 0%, transparent 100%),
+    radial-gradient(ellipse 50% 60% at 50% 85%, rgba(139, 92, 246, 0.06) 0%, transparent 100%);
+}
+
+/* Tool cards */
+.landing-tool-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-primary);
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.landing-tool-card:hover {
+  transform: translateY(-6px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-xl);
 }
 
 /* =============================================

@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useCanvasViewport } from "../../shared/hooks/useCanvasViewport";
-import { useLanguage, useAuth } from "../../shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay } from "../../shared/components";
-import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "../../shared/components";
+import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import { useLanguage, useAuth } from "@/shared/contexts";
+import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
+import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "@/shared/components";
 import {
   MarqueeIcon,
   MoveIcon,
@@ -21,7 +21,7 @@ import {
   UndoIcon,
   RedoIcon,
   RotateIcon,
-} from "../../shared/components/icons";
+} from "@/shared/components/icons";
 import {
   EditorToolMode,
   OutputFormat,
@@ -56,7 +56,7 @@ import {
   LayersPanelContent,
   EditorCanvasProvider,
   CanvasPanelContent,
-} from "../../domains/editor";
+} from "@/domains/image";
 // IndexedDB storage functions are now used through storageProvider
 import {
   getStorageProvider,
@@ -65,8 +65,8 @@ import {
   uploadLocalProjectsToCloud,
   clearLocalProjects,
   clearCloudProjects,
-} from "../../services/projectStorage";
-import { SyncDialog } from "../../components/auth";
+} from "@/services/projectStorage";
+import { SyncDialog } from "@/components/auth";
 import {
   EditorLayoutProvider,
   useEditorLayout,
@@ -74,78 +74,19 @@ import {
   EditorRefsProvider,
   useEditorState,
   useEditorRefs,
-} from "../../domains/editor/contexts";
-import { useEditorLayoutStore } from "../../domains/editor/stores/editorLayoutStore";
+} from "@/domains/image/contexts";
 import {
   EditorSplitContainer,
   EditorFloatingWindows,
   registerEditorPanelComponent,
   clearEditorPanelComponents,
-} from "../../domains/editor/components/layout";
-
-// Component that syncs zustand store with context (bidirectional)
-function EditorLayoutSync() {
-  const { openFloatingWindow, closeFloatingWindow, layoutState } = useEditorLayout();
-  const zustandStore = useEditorLayoutStore();
-  const isSyncingRef = useRef(false);
-
-  // Sync zustand → context
-  useEffect(() => {
-    if (isSyncingRef.current) return;
-    isSyncingRef.current = true;
-
-    const zustandPanelIds = zustandStore.floatingWindows.map((w) => w.panelId);
-    const contextPanelIds = layoutState.floatingWindows.map((w) => w.panelId);
-
-    // Open windows in context that exist in zustand but not in context
-    zustandPanelIds.forEach((panelId) => {
-      if (!contextPanelIds.includes(panelId)) {
-        openFloatingWindow(panelId);
-      }
-    });
-
-    // Close windows in context that don't exist in zustand
-    layoutState.floatingWindows.forEach((cw) => {
-      if (!zustandPanelIds.includes(cw.panelId)) {
-        closeFloatingWindow(cw.id);
-      }
-    });
-
-    // Use setTimeout to break the sync cycle
-    setTimeout(() => {
-      isSyncingRef.current = false;
-    }, 0);
-  }, [zustandStore.floatingWindows]);
-
-  // Sync context → zustand (when user closes window via X button)
-  useEffect(() => {
-    if (isSyncingRef.current) return;
-    isSyncingRef.current = true;
-
-    const contextPanelIds = layoutState.floatingWindows.map((w) => w.panelId);
-    const zustandPanelIds = zustandStore.floatingWindows.map((w) => w.panelId);
-
-    // If context has fewer windows, sync back to zustand
-    zustandPanelIds.forEach((panelId) => {
-      if (!contextPanelIds.includes(panelId)) {
-        zustandStore.closeFloatingWindowByPanelId(panelId);
-      }
-    });
-
-    setTimeout(() => {
-      isSyncingRef.current = false;
-    }, 0);
-  }, [layoutState.floatingWindows]);
-
-  return null;
-}
+} from "@/domains/image/components/layout";
 
 // Inner component that accesses the layout context
 function EditorDockableArea() {
   const { layoutState } = useEditorLayout();
   return (
     <>
-      <EditorLayoutSync />
       <EditorSplitContainer node={layoutState.root} />
       <EditorFloatingWindows />
     </>
@@ -179,11 +120,13 @@ function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
 // Main export - wraps with all providers
 export default function ImageEditor() {
   return (
-    <EditorStateProvider>
-      <EditorRefsProvider>
-        <ImageEditorContent />
-      </EditorRefsProvider>
-    </EditorStateProvider>
+    <EditorLayoutProvider>
+      <EditorStateProvider>
+        <EditorRefsProvider>
+          <ImageEditorContent />
+        </EditorRefsProvider>
+      </EditorStateProvider>
+    </EditorLayoutProvider>
   );
 }
 
@@ -191,6 +134,19 @@ export default function ImageEditor() {
 function ImageEditorContent() {
   const { t } = useLanguage();
   const { user, isLoading: authLoading } = useAuth();
+
+  // Layout context (Provider is above in ImageEditor)
+  const { isPanelOpen, openFloatingWindow, closeFloatingWindow, layoutState } = useEditorLayout();
+  const isLayersOpen = isPanelOpen("layers");
+
+  const handleToggleLayers = useCallback(() => {
+    if (isLayersOpen) {
+      const win = layoutState.floatingWindows.find(w => w.panelId === "layers");
+      if (win) closeFloatingWindow(win.id);
+    } else {
+      openFloatingWindow("layers");
+    }
+  }, [isLayersOpen, layoutState.floatingWindows, closeFloatingWindow, openFloatingWindow]);
 
   // Storage provider based on auth state
   const storageProvider = useMemo(() => getStorageProvider(user), [user]);
@@ -1425,8 +1381,8 @@ function ImageEditorContent() {
 
         if (hasLocal && hasCloud) {
           // Both have data - show conflict dialog
-          const localProjects = await (await import("../../utils/storage")).getAllImageProjects();
-          const cloudProjects = await (await import("../../lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
+          const localProjects = await (await import("@/utils/storage")).getAllImageProjects();
+          const cloudProjects = await (await import("@/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
 
           setLocalProjectCount(localProjects.length);
           setCloudProjectCount(cloudProjects.length);
@@ -1782,7 +1738,6 @@ function ImageEditorContent() {
   ];
 
   return (
-    <EditorLayoutProvider>
     <EditorLayersProvider value={layerContextValue}>
     <EditorCanvasProvider value={canvasContextValue}>
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
@@ -1801,7 +1756,7 @@ function ImageEditorContent() {
       <HeaderContent
         title={t.imageEditor}
         menuBar={
-          <EditorMenuBarInner
+          <EditorMenuBar
             onNew={handleNewCanvas}
             onLoad={() => setIsProjectListOpen(true)}
             onSave={async () => { await handleSaveProject(); setSaveCount((c) => c + 1); }}
@@ -1809,6 +1764,8 @@ function ImageEditorContent() {
             onImportImage={() => fileInputRef.current?.click()}
             onExport={() => { setExportMode("single"); setShowExportModal(true); }}
             onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
+            onToggleLayers={handleToggleLayers}
+            isLayersOpen={isLayersOpen}
             canSave={layers.length > 0}
             hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
             isLoading={isLoading || isSaving}
@@ -2184,81 +2141,6 @@ function ImageEditorContent() {
     </div>
     </EditorCanvasProvider>
     </EditorLayersProvider>
-    </EditorLayoutProvider>
   );
 }
 
-// ============================================
-// EditorMenuBarInner - Uses zustand store for layer toggle (works outside Provider)
-// ============================================
-
-interface EditorMenuBarInnerProps {
-  onNew: () => void;
-  onLoad: () => void;
-  onSave: () => void;
-  onSaveAs: () => void;
-  onImportImage: () => void;
-  onExport: () => void;
-  onExportLayers: () => void;
-  canSave: boolean;
-  hasSelectedLayers: boolean;
-  isLoading?: boolean;
-  // Edit menu props
-  onUndo: () => void;
-  onRedo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  // View menu props
-  showRulers: boolean;
-  showGuides: boolean;
-  lockGuides: boolean;
-  snapToGuides: boolean;
-  onToggleRulers: () => void;
-  onToggleGuides: () => void;
-  onToggleLockGuides: () => void;
-  onToggleSnapToGuides: () => void;
-  onClearGuides: () => void;
-  translations: {
-    file: string;
-    edit: string;
-    view: string;
-    window: string;
-    new: string;
-    load: string;
-    save: string;
-    saveAs: string;
-    importImage: string;
-    export: string;
-    exportLayers: string;
-    undo: string;
-    redo: string;
-    layers: string;
-    showRulers: string;
-    showGuides: string;
-    lockGuides: string;
-    snapToGuides: string;
-    clearGuides: string;
-  };
-}
-
-function EditorMenuBarInner(props: EditorMenuBarInnerProps) {
-  // Use zustand store instead of context - works outside EditorLayoutProvider
-  const { isPanelOpen, openFloatingWindow, closeFloatingWindowByPanelId } = useEditorLayoutStore();
-  const isLayersOpen = isPanelOpen("layers");
-
-  const handleToggleLayers = useCallback(() => {
-    if (isLayersOpen) {
-      closeFloatingWindowByPanelId("layers");
-    } else {
-      openFloatingWindow("layers");
-    }
-  }, [isLayersOpen, closeFloatingWindowByPanelId, openFloatingWindow]);
-
-  return (
-    <EditorMenuBar
-      {...props}
-      onToggleLayers={handleToggleLayers}
-      isLayersOpen={isLayersOpen}
-    />
-  );
-}

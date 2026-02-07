@@ -26,6 +26,7 @@ npm run deploy   # Build and deploy to Firebase Hosting
 | agent2 | `agent2` | `artkit-agent2/` |
 | agent3 | `agent3` | `artkit-agent3/` |
 | agent4 | `agent4` | `artkit-agent4/` |
+| agent5 | `agent5` | `artkit-agent5/` |
 
 ```bash
 git worktree list              # 현재 worktree 목록 확인
@@ -43,7 +44,7 @@ The codebase uses domain-scoped organization where each feature is self-containe
 
 ```
 domains/
-├── editor/     # Image editor (layers, brushes, transforms, crop, selection)
+├── image/      # Image editor (layers, brushes, transforms, crop, selection)
 ├── sprite/     # Sprite sheet editor (frame extraction, animation)
 ├── converter/  # Image format conversion
 ├── sound/      # Audio editing (trim, format conversion)
@@ -73,13 +74,13 @@ Each domain has: `hooks/`, `components/`, `contexts/`, `types/`, `utils/`, and a
 
 All layers are paint layers (pixel-based). Images are drawn onto layer canvases. Layer data is stored as base64 strings in `paintData`.
 
-Key types in `domains/editor/types/`:
+Key types in `domains/image/types/`:
 - `UnifiedLayer` - Layer with transform, visibility, opacity, lock state
 - `BoundingBox` - For selection and transform operations
 
 ### Coordinate System
 
-All coordinate transformations go through `domains/editor/utils/coordinateSystem.ts`:
+All coordinate transformations go through `domains/image/utils/coordinateSystem.ts`:
 
 ```
 Screen Coords (브라우저 픽셀)
@@ -95,7 +96,7 @@ Layer-Local Coords (레이어 캔버스 내 좌표)
 
 ### Editor Constants
 
-UI constants are centralized in `domains/editor/constants/editorConstants.ts`:
+UI constants are centralized in `domains/image/constants/editorConstants.ts`:
 - `CHECKERBOARD` - Transparency pattern sizes
 - `HANDLE_SIZE` - Transform/crop handle dimensions
 - `INTERACTION` - Thresholds (crop min size, guide tolerance)
@@ -103,13 +104,13 @@ UI constants are centralized in `domains/editor/constants/editorConstants.ts`:
 
 Use constants instead of magic numbers:
 ```typescript
-import { CHECKERBOARD, HANDLE_SIZE } from "@/domains/editor/constants";
+import { CHECKERBOARD, HANDLE_SIZE } from "@/domains/image/constants";
 const size = HANDLE_SIZE.DEFAULT; // not: const size = 10;
 ```
 
 ### Canvas Caching
 
-Canvas operations are cached via `domains/editor/utils/canvasCache.ts`:
+Canvas operations are cached via `domains/image/utils/canvasCache.ts`:
 - `canvasCache.getCheckerboardPattern()` - Cached transparency patterns
 - `canvasCache.getTemporary()` - Reusable temporary canvases
 - Reduces GC pressure from frequent canvas creation
@@ -179,7 +180,7 @@ Client-side ML using RMBG-1.4 via Transformers.js (`utils/backgroundRemoval.ts`)
 
 Always import from domain barrel exports:
 ```typescript
-import { useLayerManagement, useHistory } from "@/domains/editor";
+import { useLayerManagement, useHistory } from "@/domains/image";
 import { SplitView, Panel } from "@/shared";
 ```
 

@@ -5,7 +5,7 @@ import { useEditor } from "../contexts/SpriteEditorContext";
 import { useLayout } from "../contexts/LayoutContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar } from "../../../shared/components";
-import { DeleteIcon, EyeOpenIcon, EyeClosedIcon } from "../../../shared/components/icons";
+import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 
 export default function FrameStrip() {
@@ -22,6 +22,7 @@ export default function FrameStrip() {
     setSelectedFrameIds,
     toggleSelectedFrameId,
     selectFrameRange,
+    isPlaying,
     setIsPlaying,
     timelineMode,
     setTimelineMode,
@@ -141,20 +142,84 @@ export default function FrameStrip() {
     }
   }, [frames, currentFrameIndex, setFrames, selectedFrameId, setSelectedFrameId, pushHistory, setCurrentFrameIndex]);
 
-  // Nth reset: keep only every nth frame starting from active
-  const applyNthReset = useCallback(() => {
+  // Toggle disabled on a single frame
+  const toggleFrameDisabled = useCallback(
+    (frameId: number) => {
+      pushHistory();
+      const newFrames = frames.map((f: SpriteFrame) =>
+        f.id === frameId ? { ...f, disabled: !f.disabled } : f,
+      );
+      setFrames(newFrames);
+
+      // Auto-advance if current frame becomes disabled
+      if (newFrames[currentFrameIndex]?.disabled) {
+        const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
+        if (next >= 0) {
+          setCurrentFrameIndex(next);
+        } else {
+          const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
+          if (first >= 0) setCurrentFrameIndex(first);
+        }
+      }
+    },
+    [frames, currentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex],
+  );
+
+  // Toggle disabled on selected frames (batch)
+  const toggleSelectedFramesDisabled = useCallback(() => {
+    if (selectedFrameIds.length === 0) return;
+    pushHistory();
+    // If any selected frame is enabled, disable all; otherwise enable all
+    const anyEnabled = frames.some(
+      (f: SpriteFrame) => selectedFrameIds.includes(f.id) && !f.disabled,
+    );
+    const newFrames = frames.map((f: SpriteFrame) =>
+      selectedFrameIds.includes(f.id) ? { ...f, disabled: anyEnabled } : f,
+    );
+    setFrames(newFrames);
+
+    // Auto-advance if current frame becomes disabled
+    if (newFrames[currentFrameIndex]?.disabled) {
+      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
+      if (next >= 0) {
+        setCurrentFrameIndex(next);
+      } else {
+        const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
+        if (first >= 0) setCurrentFrameIndex(first);
+      }
+    }
+  }, [selectedFrameIds, frames, currentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
+
+  // Nth skip: mark every non-nth frame as disabled (instead of deleting)
+  const applyNthSkip = useCallback(() => {
     if (frames.length === 0 || nthValue < 1) return;
     pushHistory();
     const startIndex = currentFrameIndex;
-    const newFrames = frames.filter((_: SpriteFrame, idx: number) => {
+    const newFrames = frames.map((f: SpriteFrame, idx: number) => {
       const relativeIdx = idx - startIndex;
-      if (relativeIdx < 0) return true; // keep frames before start
-      return relativeIdx % nthValue === 0;
+      if (relativeIdx < 0) return f; // keep frames before start unchanged
+      const isNth = relativeIdx % nthValue === 0;
+      return { ...f, disabled: !isNth };
     });
     setFrames(newFrames);
-    setCurrentFrameIndex(Math.min(startIndex, newFrames.length - 1));
+
+    // Auto-advance if current frame becomes disabled
+    if (newFrames[currentFrameIndex]?.disabled) {
+      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i >= currentFrameIndex && !f.disabled);
+      if (next >= 0) setCurrentFrameIndex(next);
+    }
     setShowNthPopover(false);
   }, [frames, currentFrameIndex, nthValue, pushHistory, setFrames, setCurrentFrameIndex]);
+
+  // Clear all disabled states
+  const clearAllDisabled = useCallback(() => {
+    const hasDisabled = frames.some((f: SpriteFrame) => f.disabled);
+    if (!hasDisabled) return;
+    pushHistory();
+    setFrames((prev: SpriteFrame[]) =>
+      prev.map((f: SpriteFrame) => (f.disabled ? { ...f, disabled: false } : f)),
+    );
+  }, [frames, pushHistory, setFrames]);
 
   // File drag & drop
   const handleFileDragOver = useCallback((e: React.DragEvent) => {
@@ -223,11 +288,14 @@ export default function FrameStrip() {
     [nextFrameId, setNextFrameId, pushHistory, setCurrentFrameIndex, addTrack],
   );
 
+  // Count disabled frames
+  const disabledCount = frames.filter((f: SpriteFrame) => f.disabled).length;
+
   // Determine which frames to display
   const displayFrames = showActiveOnly
-    ? frames.length > 0
-      ? [{ frame: frames[currentFrameIndex], originalIndex: currentFrameIndex }]
-      : []
+    ? frames
+        .map((frame: SpriteFrame, idx: number) => ({ frame, originalIndex: idx }))
+        .filter(({ frame }: { frame: SpriteFrame }) => !frame.disabled)
     : frames.map((frame: SpriteFrame, idx: number) => ({ frame, originalIndex: idx }));
 
   if (!activeTrackId) {
@@ -253,9 +321,34 @@ export default function FrameStrip() {
           {selectedFrameIds.length > 1 && (
             <span className="text-accent-primary ml-1">({selectedFrameIds.length} sel)</span>
           )}
+          {disabledCount > 0 && (
+            <span className="text-text-tertiary ml-1">({disabledCount} skip)</span>
+          )}
         </span>
 
         <div className="flex-1" />
+
+        {/* Toggle disabled on selected frames */}
+        {selectedFrameIds.length > 1 && (
+          <button
+            onClick={toggleSelectedFramesDisabled}
+            className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-warning transition-colors"
+            title="선택된 프레임 건너뛰기 토글"
+          >
+            Skip
+          </button>
+        )}
+
+        {/* Clear all disabled */}
+        {disabledCount > 0 && (
+          <button
+            onClick={clearAllDisabled}
+            className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
+            title="모든 건너뛰기 해제"
+          >
+            Reset
+          </button>
+        )}
 
         {/* Show active only toggle */}
         <button
@@ -274,7 +367,7 @@ export default function FrameStrip() {
           )}
         </button>
 
-        {/* Nth reset */}
+        {/* Nth skip */}
         <div className="relative">
           <button
             onClick={() => setShowNthPopover(!showNthPopover)}
@@ -283,14 +376,14 @@ export default function FrameStrip() {
                 ? "bg-accent-primary/15 text-accent-primary"
                 : "text-text-tertiary hover:text-text-secondary"
             }`}
-            title="N번째 프레임만 유지"
+            title="N번째 프레임 외 건너뛰기"
           >
             Nth
           </button>
           {showNthPopover && (
             <div className="absolute right-0 top-full mt-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg p-2 z-20 min-w-[160px]">
               <div className="text-[10px] text-text-secondary mb-1.5">
-                현재 프레임부터 매 N번째만 유지
+                현재 프레임부터 매 N번째 외 건너뛰기
               </div>
               <div className="flex items-center gap-1.5">
                 <input
@@ -302,7 +395,7 @@ export default function FrameStrip() {
                   className="w-12 px-1.5 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
                 />
                 <button
-                  onClick={applyNthReset}
+                  onClick={applyNthSkip}
                   className="flex-1 px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-[10px] transition-colors"
                 >
                   적용
@@ -325,27 +418,29 @@ export default function FrameStrip() {
         {/* Separator */}
         <div className="w-px h-4 bg-border-default" />
 
-        {/* Mode toggle */}
+        {/* Mode toggle (icon-based) */}
         <div className="flex gap-0.5 bg-surface-tertiary rounded p-0.5">
           <button
             onClick={() => setTimelineMode("reorder")}
-            className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+            className={`p-1 rounded transition-colors ${
               timelineMode === "reorder"
                 ? "bg-accent-primary text-white"
                 : "text-text-secondary hover:text-text-primary"
             }`}
+            title="순서 변경"
           >
-            Reorder
+            <ReorderIcon className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setTimelineMode("offset")}
-            className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+            className={`p-1 rounded transition-colors ${
               timelineMode === "offset"
                 ? "bg-accent-primary text-white"
                 : "text-text-secondary hover:text-text-primary"
             }`}
+            title="위치 조정"
           >
-            Offset
+            <OffsetIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -365,6 +460,8 @@ export default function FrameStrip() {
               <div className="col-span-full flex flex-col items-center justify-center text-xs h-24 text-text-tertiary">
                 {isFileDragOver ? (
                   <span className="text-accent-primary font-medium">Drop images here</span>
+                ) : showActiveOnly && disabledCount > 0 ? (
+                  <span>모든 프레임이 건너뛰기 상태입니다</span>
                 ) : (
                   <span>Drag images here or import frames</span>
                 )}
@@ -383,16 +480,16 @@ export default function FrameStrip() {
                   onClick={(e) => {
                     setIsPlaying(false);
                     if (e.shiftKey && selectedFrameId !== null) {
-                      // Shift+Click: range select from last selected to current
                       selectFrameRange(selectedFrameId, frame.id);
                     } else if (e.ctrlKey || e.metaKey) {
-                      // Ctrl/Cmd+Click: toggle individual selection
                       toggleSelectedFrameId(frame.id);
                     } else {
-                      // Normal click: single select
                       setSelectedFrameIds([frame.id]);
                     }
-                    setCurrentFrameIndex(idx);
+                    // Don't navigate to disabled frames
+                    if (!frame.disabled) {
+                      setCurrentFrameIndex(idx);
+                    }
                     setSelectedFrameId(frame.id);
                   }}
                   onDoubleClick={() => {
@@ -403,16 +500,44 @@ export default function FrameStrip() {
                   className={`
                     relative rounded-lg border-2 transition-all
                     ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
-                    ${idx === currentFrameIndex ? "border-accent-primary shadow-sm" : selectedFrameIds.includes(frame.id) ? "border-accent-primary/50 bg-accent-primary/10" : "border-border-default"}
+                    ${isPlaying && idx === currentFrameIndex ? "border-accent-warning shadow-sm shadow-accent-warning/30" : selectedFrameIds.includes(frame.id) ? "border-accent-warning/60 bg-accent-warning/15" : idx === currentFrameIndex ? "border-accent-primary shadow-sm" : "border-border-default"}
                     ${dragOverIndex === idx ? "border-accent-primary! scale-105" : ""}
                     ${draggedFrameId === frame.id ? "opacity-50" : ""}
                     ${editingOffsetFrameId === frame.id ? "border-accent-warning!" : ""}
+                    ${frame.disabled ? "opacity-40" : ""}
                   `}
                 >
-                  {/* Frame number - only on active frame, monotone */}
+                  {/* Frame number - on active or playing frame */}
                   {idx === currentFrameIndex && (
-                    <div className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 bg-text-primary text-surface-primary">
+                    <div className={`absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 ${isPlaying ? "bg-accent-warning text-white" : "bg-text-primary text-surface-primary"}`}>
                       {idx + 1}
+                    </div>
+                  )}
+
+                  {/* Skip toggle button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFrameDisabled(frame.id);
+                    }}
+                    className={`absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
+                      frame.disabled
+                        ? "bg-accent-warning/90 text-white"
+                        : "bg-surface-tertiary/60 text-text-tertiary opacity-0 group-hover:opacity-100 hover:opacity-100!"
+                    }`}
+                    title={frame.disabled ? "건너뛰기 해제" : "건너뛰기"}
+                  >
+                    {frame.disabled ? (
+                      <EyeClosedIcon className="w-2.5 h-2.5" />
+                    ) : (
+                      <EyeOpenIcon className="w-2.5 h-2.5" />
+                    )}
+                  </button>
+
+                  {/* SKIP badge */}
+                  {frame.disabled && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-accent-warning/80 text-white text-[8px] font-bold px-1.5 py-0.5 rounded pointer-events-none">
+                      SKIP
                     </div>
                   )}
 

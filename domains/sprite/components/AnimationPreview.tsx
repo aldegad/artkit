@@ -8,7 +8,7 @@ import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../..
 import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
-import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
+import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 
 // Background icon for popover trigger
 const BackgroundPatternIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -90,6 +90,8 @@ export default function AnimationPreviewContent() {
     addTrack, pushHistory,
     setPendingVideoFile, setIsVideoImportOpen,
     isPlaying, setIsPlaying,
+    currentFrameIndex: storeFrameIndex,
+    setCurrentFrameIndex: setStoreFrameIndex,
   } = useEditor();
   const { t } = useLanguage();
 
@@ -326,12 +328,42 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
-  // Animation playback
+  // Sync store → local when not playing (user clicked in FrameStrip)
+  useEffect(() => {
+    if (!isPlaying) {
+      setCurrentFrameIndex(storeFrameIndex);
+    }
+  }, [storeFrameIndex, isPlaying]);
+
+  // Sync local → store when playing (for FrameStrip visual feedback)
+  useEffect(() => {
+    if (isPlaying) {
+      setStoreFrameIndex(currentFrameIndex);
+    }
+  }, [currentFrameIndex, isPlaying, setStoreFrameIndex]);
+
+  // Animation playback - reads tracks directly from store to avoid stale closures
   useEffect(() => {
     if (!isPlaying || maxFrameCount === 0) return;
 
     const interval = setInterval(() => {
-      setCurrentFrameIndex((prev) => (prev + 1) % maxFrameCount);
+      const latestTracks = useSpriteTrackStore.getState().tracks;
+      setCurrentFrameIndex((prev) => {
+        let next = (prev + 1) % maxFrameCount;
+        let checked = 0;
+        while (checked < maxFrameCount) {
+          const allDisabled = latestTracks
+            .filter((t) => t.visible && t.frames.length > 0)
+            .every((t) => {
+              const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+              return idx === -1 || t.frames[idx]?.disabled;
+            });
+          if (!allDisabled) return next;
+          next = (next + 1) % maxFrameCount;
+          checked++;
+        }
+        return prev; // all frames disabled, stay put
+      });
     }, 1000 / fps);
 
     return () => clearInterval(interval);
@@ -371,12 +403,44 @@ export default function AnimationPreviewContent() {
 
   const handlePrev = useCallback(() => {
     if (maxFrameCount === 0) return;
-    setCurrentFrameIndex((prev) => (prev - 1 + maxFrameCount) % maxFrameCount);
+    const latestTracks = useSpriteTrackStore.getState().tracks;
+    setCurrentFrameIndex((prev) => {
+      let next = ((prev - 1) % maxFrameCount + maxFrameCount) % maxFrameCount;
+      let checked = 0;
+      while (checked < maxFrameCount) {
+        const allDisabled = latestTracks
+          .filter((t) => t.visible && t.frames.length > 0)
+          .every((t) => {
+            const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+            return idx === -1 || t.frames[idx]?.disabled;
+          });
+        if (!allDisabled) return next;
+        next = ((next - 1) % maxFrameCount + maxFrameCount) % maxFrameCount;
+        checked++;
+      }
+      return prev;
+    });
   }, [maxFrameCount]);
 
   const handleNext = useCallback(() => {
     if (maxFrameCount === 0) return;
-    setCurrentFrameIndex((prev) => (prev + 1) % maxFrameCount);
+    const latestTracks = useSpriteTrackStore.getState().tracks;
+    setCurrentFrameIndex((prev) => {
+      let next = (prev + 1) % maxFrameCount;
+      let checked = 0;
+      while (checked < maxFrameCount) {
+        const allDisabled = latestTracks
+          .filter((t) => t.visible && t.frames.length > 0)
+          .every((t) => {
+            const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+            return idx === -1 || t.frames[idx]?.disabled;
+          });
+        if (!allDisabled) return next;
+        next = (next + 1) % maxFrameCount;
+        checked++;
+      }
+      return prev;
+    });
   }, [maxFrameCount]);
 
   // 스페이스바 패닝 기능

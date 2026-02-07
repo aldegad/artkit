@@ -10,6 +10,8 @@ import { UI } from "../../constants";
 
 interface ClipProps {
   clip: ClipType;
+  /** Whether this clip is "lifted" for cross-track drag on touch */
+  isLifted?: boolean;
 }
 
 const waveformCache = new Map<string, number[]>();
@@ -66,7 +68,7 @@ async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   }
 }
 
-export function Clip({ clip }: ClipProps) {
+export function Clip({ clip, isLifted }: ClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
   const { selectedClipIds } = useVideoState();
   const clipHasAudio =
@@ -132,14 +134,16 @@ export function Clip({ clip }: ClipProps) {
   return (
     <div
       className={cn(
-        "absolute top-1 bottom-1 rounded cursor-pointer",
+        "absolute top-1 bottom-1 rounded cursor-pointer transition-[transform,box-shadow] duration-150",
         clipColor,
         isSelected && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent",
-        !clip.visible && "opacity-50"
+        !clip.visible && "opacity-50",
+        isLifted && "scale-105 shadow-lg shadow-black/40 z-50 ring-2 ring-white/50"
       )}
       style={{
         left: x,
         width: minWidth,
+        touchAction: "none",
       }}
     >
       {/* Clip name */}

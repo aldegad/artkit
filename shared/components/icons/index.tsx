@@ -53,6 +53,8 @@ export {
   HandIcon,
   ZoomSearchIcon,
   PanIcon,
+  ReorderIcon,
+  OffsetIcon,
 } from "./editorTools";
 
 // Layers & Alignment
@@ -97,21 +99,18 @@ export {
   MagicWandIcon,
 } from "./brushPresets";
 
-// Video Timeline (16x16)
+// Video Timeline
 export {
   AddVideoTrackIcon,
   AddAudioTrackIcon,
   SnapIcon,
   SnapOffIcon,
-  TimelineZoomInIcon,
-  TimelineZoomOutIcon,
   VideoClipIcon,
   AudioClipIcon,
   ImageClipIcon,
-  TrackVisibleIcon,
-  TrackHiddenIcon,
   TrackMutedIcon,
   TrackUnmutedIcon,
+  FilmStripIcon,
 } from "./videoTimeline";
 
 // Video Tools
@@ -119,7 +118,6 @@ export {
   TrimToolIcon,
   RazorToolIcon,
   MaskToolIcon,
-  VideoCropToolIcon,
 } from "./videoTools";
 
 // Crop
@@ -133,7 +131,7 @@ export {
 
 // Sidebar Navigation
 export {
-  SidebarEditorIcon,
+  SidebarImageIcon,
   SidebarSpriteIcon,
   SidebarConverterIcon,
   SidebarSoundIcon,
@@ -141,3 +139,10 @@ export {
   SidebarIconsIcon,
   ArtkitIcon,
 } from "./sidebar";
+
+// Landing Page (premium detail icons)
+export {
+  LandingImageIcon,
+  LandingVideoIcon,
+  LandingSpriteIcon,
+} from "./landing";

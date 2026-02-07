@@ -27,5 +27,8 @@ Thumbs.db
 dist/
 build/
 
+# Serwist (auto-generated SW)
+public/sw.js
+
 # Firebase cache
 .firebase/
