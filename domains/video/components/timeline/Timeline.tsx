@@ -63,8 +63,9 @@ export function Timeline({ className }: TimelineProps) {
     reorderTracks(fromIndex, toIndex);
   }, [tracks, saveToHistory, reorderTracks]);
 
-  const handleStartHeaderResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     resizeStartRef.current = { x: e.clientX, width: trackHeaderWidth };
     setIsHeaderResizing(true);
   }, [trackHeaderWidth]);
@@ -83,7 +84,7 @@ export function Timeline({ className }: TimelineProps) {
   useEffect(() => {
     if (!isHeaderResizing || typeof window === "undefined") return;
 
-    const handleMove = (event: MouseEvent) => {
+    const handleMove = (event: PointerEvent) => {
       const delta = event.clientX - resizeStartRef.current.x;
       const nextWidth = Math.max(132, Math.min(360, resizeStartRef.current.width + delta));
       setTrackHeaderWidth(nextWidth);
@@ -94,11 +95,13 @@ export function Timeline({ className }: TimelineProps) {
       setIsHeaderResizing(false);
     };
 
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
     return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
     };
   }, [isHeaderResizing]);
 
@@ -306,8 +309,8 @@ export function Timeline({ className }: TimelineProps) {
 
           {/* Track header/content resize handle */}
           <div
-            className="w-1 shrink-0 cursor-ew-resize bg-border-default hover:bg-accent transition-colors"
-            onMouseDown={handleStartHeaderResize}
+            className="w-1 shrink-0 cursor-ew-resize touch-none bg-border-default hover:bg-accent transition-colors"
+            onPointerDown={handleStartHeaderResize}
             title="Resize track headers"
           />
 
