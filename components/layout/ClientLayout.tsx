@@ -9,10 +9,15 @@ import Footer from "./Footer";
 
 function useServiceWorker() {
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production") return;
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if (!("serviceWorker" in navigator)) return;
+    if (process.env.NODE_ENV !== "production") {
+      // Dev: unregister any existing SW to prevent stale cache issues
+      navigator.serviceWorker.getRegistrations().then((regs) =>
+        regs.forEach((r) => r.unregister())
+      );
+      return;
     }
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
 }
 
