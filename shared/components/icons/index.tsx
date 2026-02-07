@@ -114,6 +114,7 @@ export {
   TrackHiddenIcon,
   TrackMutedIcon,
   TrackUnmutedIcon,
+  FilmStripIcon,
 } from "./videoTimeline";
 
 // Video Tools

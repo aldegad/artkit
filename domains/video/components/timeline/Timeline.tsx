@@ -37,7 +37,7 @@ export function Timeline({ className }: TimelineProps) {
   useVideoCoordinates();
 
   // Timeline input handling (clip drag, trim, seek)
-  const { handleMouseDown: handleTimelineMouseDown } = useTimelineInput(tracksContainerRef);
+  const { handlePointerDown: handleTimelinePointerDown } = useTimelineInput(tracksContainerRef);
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
@@ -118,9 +118,9 @@ export function Timeline({ className }: TimelineProps) {
     return () => tracksEl.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Handle mouse down - combine timeline input with middle-mouse scroll
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  // Handle pointer down - combine timeline input with middle-mouse scroll
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       // Middle mouse button for scrolling
       if (e.button === 1) {
         e.preventDefault();
@@ -128,10 +128,10 @@ export function Timeline({ className }: TimelineProps) {
         return;
       }
 
-      // Left click - use timeline input handler
-      handleTimelineMouseDown(e);
+      // Left click/touch - use timeline input handler
+      handleTimelinePointerDown(e);
     },
-    [handleTimelineMouseDown]
+    [handleTimelinePointerDown]
   );
 
   // Refs for latest values to avoid stale closures in document event handlers
@@ -142,18 +142,18 @@ export function Timeline({ className }: TimelineProps) {
   useEffect(() => {
     if (!isMiddleScrolling) return;
 
-    const onMouseMove = (e: MouseEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       const { scrollX, zoom } = scrollStateRef.current;
       setScrollX(scrollX - e.movementX / zoom);
     };
-    const onMouseUp = () => setIsMiddleScrolling(false);
+    const onPointerUp = () => setIsMiddleScrolling(false);
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
 
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
     };
   }, [isMiddleScrolling, setScrollX]);
 
@@ -205,7 +205,8 @@ export function Timeline({ className }: TimelineProps) {
         ref={containerRef}
         data-video-timeline-root=""
         className="flex-1 overflow-hidden"
-        onMouseDown={handleMouseDown}
+        style={{ touchAction: "none" }}
+        onPointerDown={handlePointerDown}
       >
         {/* Track headers + ruler row */}
         <div className="flex border-b border-border-default">
