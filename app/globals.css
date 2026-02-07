@@ -346,6 +346,13 @@ body {
   color: var(--text-primary);
 }
 
+@media (max-width: 768px) {
+  .panel-header {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+}
+
 /* Button Base */
 .btn {
   display: inline-flex;
