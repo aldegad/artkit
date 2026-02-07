@@ -78,7 +78,7 @@ export function Timeline({ className }: TimelineProps) {
 
     const parsed = Number(stored);
     if (Number.isFinite(parsed)) {
-      setTrackHeaderWidth(Math.max(60, Math.min(360, parsed)));
+      setTrackHeaderWidth(Math.max(40, Math.min(360, parsed)));
     }
   }, []);
 
@@ -87,7 +87,7 @@ export function Timeline({ className }: TimelineProps) {
 
     const handleMove = (event: PointerEvent) => {
       const delta = event.clientX - resizeStartRef.current.x;
-      const nextWidth = Math.max(60, Math.min(360, resizeStartRef.current.width + delta));
+      const nextWidth = Math.max(40, Math.min(360, resizeStartRef.current.width + delta));
       setTrackHeaderWidth(nextWidth);
       localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
     };
@@ -240,7 +240,10 @@ export function Timeline({ className }: TimelineProps) {
               return (
                 <div
                   key={track.id}
-                  className="flex items-center px-2 border-b border-border-default"
+                  className={cn(
+                    "flex items-center border-b border-border-default",
+                    trackHeaderWidth >= 120 ? "px-2" : "px-1 justify-center"
+                  )}
                   style={{ height: headerHeight }}
                   draggable
                   onDragStart={(event) => {
@@ -333,10 +336,13 @@ export function Timeline({ className }: TimelineProps) {
 
           {/* Track header/content resize handle */}
           <div
-            className="w-1 shrink-0 cursor-ew-resize touch-none bg-border-default hover:bg-accent transition-colors"
+            className="w-1 shrink-0 cursor-ew-resize touch-none bg-border-default hover:bg-accent transition-colors relative"
             onPointerDown={handleStartHeaderResize}
             title="Resize track headers"
-          />
+          >
+            {/* Invisible extended hit area for easier touch/click */}
+            <div className="absolute -left-2.5 -right-2.5 top-0 bottom-0 z-10" />
+          </div>
 
           {/* Tracks content */}
           <div
