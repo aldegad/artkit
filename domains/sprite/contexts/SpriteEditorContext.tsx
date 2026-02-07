@@ -99,7 +99,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // Autosave: Save data when key states change (debounced)
   useEffect(() => {
-    if (typeof window === "undefined") return;
     if (!isInitializedRef.current) return;
 
     if (autosaveTimeoutRef.current) {

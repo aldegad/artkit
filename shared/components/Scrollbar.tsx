@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, forwardRef } from "react";
+import { ReactNode, forwardRef, useState, useEffect } from "react";
 import {
   OverlayScrollbarsComponent,
   OverlayScrollbarsComponentRef,
@@ -26,6 +26,18 @@ export const Scrollbar = forwardRef<
   ScrollbarProps
 >(({ children, className = "", overflow, defer = true }, ref) => {
   const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // SSR: 일반 div 렌더 → hydration mismatch 원천 차단
+  if (!mounted) {
+    return (
+      <div className={className} style={{ overflow: "auto" }}>
+        {children}
+      </div>
+    );
+  }
 
   return (
     <OverlayScrollbarsComponent
