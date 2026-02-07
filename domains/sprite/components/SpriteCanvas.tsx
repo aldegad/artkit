@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useRef, useState, DragEvent } from "react";
-import { useEditor } from "../contexts/SpriteEditorContext";
+import { useEditorImage, useEditorFrames, useEditorTools, useEditorViewport, useEditorDrag, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame } from "../types";
 import { getBoundingBox, isPointInPolygon } from "../../../utils/geometry";
@@ -16,38 +16,15 @@ import { useRenderScheduler } from "@/shared/hooks/useRenderScheduler";
 // ============================================
 
 export default function CanvasContent() {
+  const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditorImage();
   const {
-    imageSrc,
-    setImageSrc,
-    imageSize,
-    setImageSize,
-    imageRef,
-    frames,
-    setFrames,
-    nextFrameId,
-    setNextFrameId,
-    currentPoints,
-    setCurrentPoints,
-    toolMode,
-    selectedFrameId,
-    setSelectedFrameId,
-    selectedPointIndex,
-    setSelectedPointIndex,
-    zoom,
-    pan,
-    scale,
-    setScale,
-    setZoom,
-    setPan,
-    isSpacePressed,
-    isDragging,
-    setIsDragging,
-    dragStart,
-    setDragStart,
-    canvasRef,
-    canvasContainerRef,
-    didPanOrDragRef,
-  } = useEditor();
+    frames, setFrames, nextFrameId, setNextFrameId,
+    selectedFrameId, setSelectedFrameId, selectedPointIndex, setSelectedPointIndex,
+  } = useEditorFrames();
+  const { toolMode, currentPoints, setCurrentPoints, isSpacePressed } = useEditorTools();
+  const { zoom, pan, scale, setScale, setZoom, setPan } = useEditorViewport();
+  const { isDragging, setIsDragging, dragStart, setDragStart, didPanOrDragRef } = useEditorDrag();
+  const { canvasRef, canvasContainerRef } = useEditorRefs();
 
   // Get current theme for canvas redraw
   const { resolvedTheme } = useTheme();

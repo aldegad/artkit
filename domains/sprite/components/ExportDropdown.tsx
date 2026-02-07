@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useLanguage } from "@/shared/contexts";
-import { useEditor } from "../contexts/SpriteEditorContext";
+import { useEditorProject } from "../contexts/SpriteEditorContext";
 import { SpriteTrack } from "../types";
 import {
   downloadCompositedFramesAsZip,
@@ -28,7 +28,7 @@ export default function ExportDropdown({ tracks, fps, onExportSpriteSheet }: Exp
   const [isOpen, setIsOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const { t } = useLanguage();
-  const { projectName } = useEditor();
+  const { projectName } = useEditorProject();
 
   const handleExport = async (type: string) => {
     setIsExporting(true);
