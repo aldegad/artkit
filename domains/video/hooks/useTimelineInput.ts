@@ -203,8 +203,13 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       const containerRect = tracksContainerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
 
-      // Don't preventDefault — let touch-action handle scrolling (pan-y on bg, none on clips)
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      // Don't preventDefault — let touch-action handle scrolling
+      // Don't setPointerCapture for touch — it prevents the browser from initiating
+      // native scroll gestures (pan-y). For touch, we rely on document-level listeners
+      // and the browser firing pointercancel when it starts scrolling.
+      if (e.pointerType !== "touch") {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      }
 
       const x = e.clientX - containerRect.left;
       const contentY = getContentY(e.clientY);
