@@ -397,7 +397,7 @@ export function Timeline({ className }: TimelineProps) {
           {/* Tracks content */}
           <div
             ref={tracksContainerRef}
-            className="flex-1 overflow-y-auto overflow-x-hidden relative touch-pan-y"
+            className="flex-1 overflow-y-auto overflow-x-hidden relative touch-none"
             style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
             onPointerDown={handleTimelinePointerDown}
           >
