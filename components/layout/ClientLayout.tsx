@@ -1,11 +1,19 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { SidebarProvider, useSidebar } from "../../shared/contexts";
 import { HeaderSlotProvider } from "../../shared/contexts/HeaderSlotContext";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";
+
+function useServiceWorker() {
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
+}
 
 function MobileSidebarOverlay() {
   const { isOpen, close } = useSidebar();
@@ -52,6 +60,8 @@ function LayoutContent({ children }: { children: ReactNode }) {
 }
 
 export default function ClientLayout({ children }: { children: ReactNode }) {
+  useServiceWorker();
+
   return (
     <SidebarProvider>
       <HeaderSlotProvider>
