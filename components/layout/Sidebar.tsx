@@ -70,11 +70,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
       {!isMobile ? (
         <Link
           href="/"
-          className={`h-10 w-full flex items-center justify-center shrink-0 transition-colors ${
-            pathname === "/"
-              ? "text-accent-primary"
-              : "text-accent-primary hover:text-accent-primary/80"
-          }`}
+          className="h-10 w-full flex items-center justify-center shrink-0 text-accent-primary hover:text-accent-primary/80 transition-colors"
           aria-label="Home"
         >
           <ArtkitLogo size={28} />
