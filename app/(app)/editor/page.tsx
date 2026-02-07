@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useCanvasViewport } from "../../shared/hooks/useCanvasViewport";
-import { useLanguage, useAuth } from "../../shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay } from "../../shared/components";
-import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "../../shared/components";
+import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import { useLanguage, useAuth } from "@/shared/contexts";
+import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
+import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "@/shared/components";
 import {
   MarqueeIcon,
   MoveIcon,
@@ -21,7 +21,7 @@ import {
   UndoIcon,
   RedoIcon,
   RotateIcon,
-} from "../../shared/components/icons";
+} from "@/shared/components/icons";
 import {
   EditorToolMode,
   OutputFormat,
@@ -56,7 +56,7 @@ import {
   LayersPanelContent,
   EditorCanvasProvider,
   CanvasPanelContent,
-} from "../../domains/editor";
+} from "@/domains/editor";
 // IndexedDB storage functions are now used through storageProvider
 import {
   getStorageProvider,
@@ -65,8 +65,8 @@ import {
   uploadLocalProjectsToCloud,
   clearLocalProjects,
   clearCloudProjects,
-} from "../../services/projectStorage";
-import { SyncDialog } from "../../components/auth";
+} from "@/services/projectStorage";
+import { SyncDialog } from "@/components/auth";
 import {
   EditorLayoutProvider,
   useEditorLayout,
@@ -74,14 +74,14 @@ import {
   EditorRefsProvider,
   useEditorState,
   useEditorRefs,
-} from "../../domains/editor/contexts";
-import { useEditorLayoutStore } from "../../domains/editor/stores/editorLayoutStore";
+} from "@/domains/editor/contexts";
+import { useEditorLayoutStore } from "@/domains/editor/stores/editorLayoutStore";
 import {
   EditorSplitContainer,
   EditorFloatingWindows,
   registerEditorPanelComponent,
   clearEditorPanelComponents,
-} from "../../domains/editor/components/layout";
+} from "@/domains/editor/components/layout";
 
 // Component that syncs zustand store with context (bidirectional)
 function EditorLayoutSync() {
@@ -1425,8 +1425,8 @@ function ImageEditorContent() {
 
         if (hasLocal && hasCloud) {
           // Both have data - show conflict dialog
-          const localProjects = await (await import("../../utils/storage")).getAllImageProjects();
-          const cloudProjects = await (await import("../../lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
+          const localProjects = await (await import("@/utils/storage")).getAllImageProjects();
+          const cloudProjects = await (await import("@/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
 
           setLocalProjectCount(localProjects.length);
           setCloudProjectCount(cloudProjects.length);
