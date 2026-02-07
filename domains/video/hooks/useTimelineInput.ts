@@ -171,7 +171,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       const containerRect = tracksContainerRef.current?.getBoundingClientRect();
       if (!containerRect) return;
 
-      e.preventDefault();
+      // Don't preventDefault — let touch-action: pan-y handle vertical scrolling
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
       const x = e.clientX - containerRect.left;
@@ -497,10 +497,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     document.addEventListener("pointermove", onPointerMove);
     document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointercancel", onPointerUp);
 
     return () => {
       document.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointercancel", onPointerUp);
     };
   }, [dragState.type]);
 
