@@ -288,6 +288,12 @@ interface Translations {
   // Landing page
   landingTagline: string;
   landingSubtagline: string;
+  landingHeroTitle: string;
+  landingHeroSubtitle: string;
+  landingCTA: string;
+  landingToolsSection: string;
+  landingToolsSubtitle: string;
+  landingOpenTool: string;
   landingEditorDesc: string;
   landingVideoDesc: string;
   landingSpriteDesc: string;
@@ -584,6 +590,12 @@ const translations: Record<Language, Translations> = {
     // Landing page
     landingTagline: "웹 기반 크리에이티브 도구 모음",
     landingSubtagline: "이미지, 비디오, 스프라이트, 사운드를 브라우저에서 바로 편집하세요",
+    landingHeroTitle: "브라우저에서 바로 창작하세요",
+    landingHeroSubtitle: "설치 없이, 무료로. 이미지, 비디오, 스프라이트, 사운드 편집을 위한 웹 도구 모음",
+    landingCTA: "시작하기",
+    landingToolsSection: "크리에이티브 도구",
+    landingToolsSubtitle: "브라우저에서 바로 사용할 수 있는 6가지 전문 도구",
+    landingOpenTool: "사용하기 →",
     landingEditorDesc: "레이어, 브러시, AI 배경 제거",
     landingVideoDesc: "타임라인, 마스킹, 멀티트랙",
     landingSpriteDesc: "프레임 추출, 애니메이션 미리보기",
@@ -878,6 +890,12 @@ const translations: Record<Language, Translations> = {
     // Landing page
     landingTagline: "Web-based Creative Toolkit",
     landingSubtagline: "Edit images, video, sprites, and sound right in your browser",
+    landingHeroTitle: "Create directly in your browser",
+    landingHeroSubtitle: "Free, no installation required. Web tools for image, video, sprite, and sound editing",
+    landingCTA: "Get Started",
+    landingToolsSection: "Creative Tools",
+    landingToolsSubtitle: "Six professional tools you can use right in your browser",
+    landingOpenTool: "Open →",
     landingEditorDesc: "Layers, brushes, AI background removal",
     landingVideoDesc: "Timeline, masking, multi-track",
     landingSpriteDesc: "Frame extraction, animation preview",
