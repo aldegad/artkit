@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export type Language = "ko" | "en";
 
@@ -284,16 +284,6 @@ interface Translations {
   dropOrClickToImport: string;
   supportedFormats: string;
   resetLayout: string;
-
-  // Landing page
-  landingTagline: string;
-  landingSubtagline: string;
-  landingEditorDesc: string;
-  landingVideoDesc: string;
-  landingSpriteDesc: string;
-  landingSoundDesc: string;
-  landingConverterDesc: string;
-  landingIconsDesc: string;
 
   // Copyright
   copyright: string;
@@ -581,16 +571,6 @@ const translations: Record<Language, Translations> = {
     supportedFormats: "이미지, 영상 파일",
     resetLayout: "기본 레이아웃으로 복원",
 
-    // Landing page
-    landingTagline: "웹 기반 크리에이티브 도구 모음",
-    landingSubtagline: "이미지, 비디오, 스프라이트, 사운드를 브라우저에서 바로 편집하세요",
-    landingEditorDesc: "레이어, 브러시, AI 배경 제거",
-    landingVideoDesc: "타임라인, 마스킹, 멀티트랙",
-    landingSpriteDesc: "프레임 추출, 애니메이션 미리보기",
-    landingSoundDesc: "파형 편집, 포맷 변환",
-    landingConverterDesc: "WebP, PNG, JPEG 간 포맷 변환",
-    landingIconsDesc: "아이콘 검색, SVG 복사 및 다운로드",
-
     // Copyright
     copyright: "© 2026 Soo Hong Kim. All rights reserved.",
   },
@@ -875,16 +855,6 @@ const translations: Record<Language, Translations> = {
     supportedFormats: "Images, video files",
     resetLayout: "Reset to Default Layout",
 
-    // Landing page
-    landingTagline: "Web-based Creative Toolkit",
-    landingSubtagline: "Edit images, video, sprites, and sound right in your browser",
-    landingEditorDesc: "Layers, brushes, AI background removal",
-    landingVideoDesc: "Timeline, masking, multi-track",
-    landingSpriteDesc: "Frame extraction, animation preview",
-    landingSoundDesc: "Waveform editing, format conversion",
-    landingConverterDesc: "Convert between WebP, PNG, JPEG",
-    landingIconsDesc: "Search icons, copy SVG, download",
-
     // Copyright
     copyright: "© 2026 Soo Hong Kim. All rights reserved.",
   },
@@ -901,33 +871,19 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 const STORAGE_KEY = "artkit-language";
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // 항상 "ko"로 초기화 → 서버 HTML과 동일하게 렌더링 → 하이드레이션 안전
   const [language, setLanguageState] = useState<Language>("ko");
 
   useEffect(() => {
-    // 마운트 후 localStorage에서 실제 언어 읽기
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "ko" || stored === "en") {
+    const stored = localStorage.getItem(STORAGE_KEY) as Language | null;
+    if (stored && (stored === "ko" || stored === "en")) {
       setLanguageState(stored);
     }
-
-    // 다른 탭에서 언어 변경 감지
-    const handler = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        const newLang = e.newValue;
-        if (newLang === "ko" || newLang === "en") {
-          setLanguageState(newLang);
-        }
-      }
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
   }, []);
 
-  const setLanguage = useCallback((lang: Language) => {
-    localStorage.setItem(STORAGE_KEY, lang);
+  const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-  }, []);
+    localStorage.setItem(STORAGE_KEY, lang);
+  };
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t: translations[language] }}>
