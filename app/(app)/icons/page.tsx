@@ -1,8 +1,8 @@
 "use client";
 
-import { useLanguage } from "../../shared/contexts";
-import { HeaderContent } from "../../shared/components";
-import { IconShowcase } from "../../domains/icons";
+import { useLanguage } from "@/shared/contexts";
+import { HeaderContent } from "@/shared/components";
+import { IconShowcase } from "@/domains/icons";
 
 export default function IconsPage() {
   const { t } = useLanguage();

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { useLanguage } from "../../shared/contexts";
-import { ImageDropZone, Select, HeaderContent } from "../../shared/components";
-import { OutputFormat, ImageFile, formatBytes } from "../../domains/converter";
+import { useLanguage } from "@/shared/contexts";
+import { ImageDropZone, Select, HeaderContent } from "@/shared/components";
+import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
 
 export default function ImageConverter() {
   const { t } = useLanguage();
