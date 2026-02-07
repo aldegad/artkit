@@ -117,8 +117,7 @@ export default function TimelineContent() {
 
   // Load header width from localStorage
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(LS_KEY);
+    const stored = localStorage.getItem(LS_KEY);
     if (!stored) return;
     const parsed = Number(stored);
     if (Number.isFinite(parsed)) {
@@ -135,26 +134,26 @@ export default function TimelineContent() {
   }, [headerWidth]);
 
   useEffect(() => {
-    if (!isHeaderResizing || typeof window === "undefined") return;
+    if (!isHeaderResizing) return;
 
     const handleMove = (event: PointerEvent) => {
       const delta = event.clientX - resizeStartRef.current.x;
       const nextWidth = Math.max(HEADER_MIN, Math.min(HEADER_MAX, resizeStartRef.current.width + delta));
       setHeaderWidth(nextWidth);
-      window.localStorage.setItem(LS_KEY, String(nextWidth));
+      localStorage.setItem(LS_KEY, String(nextWidth));
     };
 
     const handleUp = () => {
       setIsHeaderResizing(false);
     };
 
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
-    window.addEventListener("pointercancel", handleUp);
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp);
+    document.addEventListener("pointercancel", handleUp);
     return () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-      window.removeEventListener("pointercancel", handleUp);
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+      document.removeEventListener("pointercancel", handleUp);
     };
   }, [isHeaderResizing]);
 
@@ -403,7 +402,7 @@ export default function TimelineContent() {
         />
 
         {/* Right: Frame content (scrollable) */}
-        <Scrollbar ref={scrollbarRef} className="flex-1 min-w-0" defer={false}>
+        <Scrollbar ref={scrollbarRef} className="flex-1 min-w-0">
           <div style={{ minWidth: maxFrameCount * CELL_WIDTH }}>
             {tracks.map((track: SpriteTrack) => (
               <div

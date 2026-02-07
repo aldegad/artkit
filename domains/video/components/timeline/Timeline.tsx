@@ -71,8 +71,7 @@ export function Timeline({ className }: TimelineProps) {
   }, [trackHeaderWidth]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("video-timeline-track-header-width");
+    const stored = localStorage.getItem("video-timeline-track-header-width");
     if (!stored) return;
 
     const parsed = Number(stored);
@@ -82,26 +81,26 @@ export function Timeline({ className }: TimelineProps) {
   }, []);
 
   useEffect(() => {
-    if (!isHeaderResizing || typeof window === "undefined") return;
+    if (!isHeaderResizing) return;
 
     const handleMove = (event: PointerEvent) => {
       const delta = event.clientX - resizeStartRef.current.x;
       const nextWidth = Math.max(132, Math.min(360, resizeStartRef.current.width + delta));
       setTrackHeaderWidth(nextWidth);
-      window.localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
+      localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
     };
 
     const handleUp = () => {
       setIsHeaderResizing(false);
     };
 
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
-    window.addEventListener("pointercancel", handleUp);
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp);
+    document.addEventListener("pointercancel", handleUp);
     return () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-      window.removeEventListener("pointercancel", handleUp);
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+      document.removeEventListener("pointercancel", handleUp);
     };
   }, [isHeaderResizing]);
 
