@@ -6,64 +6,38 @@ import { IconProps } from "./types";
  * 32x32 viewBox, fill-heavy design with depth layers
  */
 
-// Image Editor - Layered canvas with bold brush
+// Image Editor - Canvas with 8-petal flower + layer panel
 export const LandingImageIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
-  <svg className={className} viewBox="0 0 32 32" fill="none">
-    {/* Back layer (depth) */}
-    <rect
-      x="8"
-      y="1"
-      width="18"
-      height="22"
-      rx="2.5"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      opacity={0.18}
-    />
+  <svg className={className} viewBox="0 0 48 48" fill="none">
+    <defs>
+      <clipPath id="img-canvas-clip">
+        <path
+          d="M0 0h48v48H0z M32 2h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H32a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M32 11h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H32a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2z M32 20h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H32a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2z"
+          clipRule="evenodd"
+        />
+      </clipPath>
+    </defs>
 
-    {/* Front canvas */}
-    <rect
-      x="3"
-      y="5"
-      width="18"
-      height="22"
-      rx="2.5"
-      fill="currentColor"
-      opacity={0.07}
-    />
-    <rect
-      x="3"
-      y="5"
-      width="18"
-      height="22"
-      rx="2.5"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    />
+    {/* Main canvas (square, rounded) - clipped to exclude layer areas */}
+    <rect x="2" y="4" width="39" height="39" rx="6" fill="currentColor" opacity={0.22} clipPath="url(#img-canvas-clip)" />
 
-    {/* Sun */}
-    <circle cx="8" cy="11" r="2.5" fill="currentColor" opacity={0.3} />
+    {/* 5-petal flower, clipped to avoid layer overlap */}
+    <g clipPath="url(#img-canvas-clip)">
+      <ellipse cx="21" cy="15.5" rx="6" ry="7.5" fill="currentColor" opacity={0.4} />
+      <ellipse cx="28.3" cy="20.7" rx="6" ry="7.5" fill="currentColor" opacity={0.5} transform="rotate(72 28.3 20.7)" />
+      <ellipse cx="25.5" cy="29.3" rx="6" ry="7.5" fill="currentColor" opacity={0.6} transform="rotate(144 25.5 29.3)" />
+      <ellipse cx="16.5" cy="29.3" rx="6" ry="7.5" fill="currentColor" opacity={0.5} transform="rotate(216 16.5 29.3)" />
+      <ellipse cx="13.7" cy="20.7" rx="6" ry="7.5" fill="currentColor" opacity={0.4} transform="rotate(288 13.7 20.7)" />
+      {/* Flower center */}
+      <circle cx="21" cy="23.5" r="4.5" fill="currentColor" opacity={1} />
+    </g>
 
-    {/* Mountain silhouette */}
-    <path
-      d="M3 25l5-7 3.5 2.5 5.5-8 4 6v6.5H3z"
-      fill="currentColor"
-      opacity={0.18}
-    />
-
-    {/* Paintbrush handle */}
-    <path
-      d="M20 23L30 5"
-      stroke="currentColor"
-      strokeWidth={3}
-      strokeLinecap="round"
-      opacity={0.55}
-    />
-
-    {/* Brush tip paint blob */}
-    <circle cx="19" cy="24.5" r="3.5" fill="currentColor" opacity={0.75} />
+    {/* Side layer thumbnails (thinner) */}
+    <rect x="30" y="2" width="16" height="6" rx="2" fill="currentColor" opacity={0.65} />
+    <rect x="30" y="11" width="16" height="6" rx="2" fill="currentColor" opacity={0.45} />
+    <rect x="30" y="20" width="16" height="6" rx="2" fill="currentColor" opacity={0.3} />
   </svg>
 );
 
