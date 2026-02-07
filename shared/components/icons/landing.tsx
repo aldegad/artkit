@@ -82,9 +82,11 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
       fill="currentColor"
       opacity={0.25}
     />
-    {/* Thumbnail frames inside clip */}
+    {/* Play triangle on clip */}
+    <path d="M7 7.5v7l6-3.5z" fill="currentColor" opacity={0.4} />
+    {/* Thumbnail frames */}
     <rect
-      x="5"
+      x="15"
       y="7"
       width="5"
       height="7"
@@ -93,16 +95,7 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
       opacity={0.15}
     />
     <rect
-      x="12"
-      y="7"
-      width="5"
-      height="7"
-      rx="1"
-      fill="currentColor"
-      opacity={0.15}
-    />
-    <rect
-      x="19"
+      x="22"
       y="7"
       width="5"
       height="7"
