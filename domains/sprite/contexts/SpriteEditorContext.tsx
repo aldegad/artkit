@@ -301,6 +301,10 @@ export function useEditor() {
     setCurrentFrameIndex: trackStore.setCurrentFrameIndex,
     selectedFrameId: trackStore.selectedFrameId,
     setSelectedFrameId: trackStore.setSelectedFrameId,
+    selectedFrameIds: trackStore.selectedFrameIds,
+    setSelectedFrameIds: trackStore.setSelectedFrameIds,
+    toggleSelectedFrameId: trackStore.toggleSelectedFrameId,
+    selectFrameRange: trackStore.selectFrameRange,
     selectedPointIndex: trackStore.selectedPointIndex,
     setSelectedPointIndex: trackStore.setSelectedPointIndex,
 
@@ -466,6 +470,10 @@ export function useEditorFrames() {
     setCurrentFrameIndex: store.setCurrentFrameIndex,
     selectedFrameId: store.selectedFrameId,
     setSelectedFrameId: store.setSelectedFrameId,
+    selectedFrameIds: store.selectedFrameIds,
+    setSelectedFrameIds: store.setSelectedFrameIds,
+    toggleSelectedFrameId: store.toggleSelectedFrameId,
+    selectFrameRange: store.selectFrameRange,
     selectedPointIndex: store.selectedPointIndex,
     setSelectedPointIndex: store.setSelectedPointIndex,
   };

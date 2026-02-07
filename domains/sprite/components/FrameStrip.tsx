@@ -18,6 +18,10 @@ export default function FrameStrip() {
     setCurrentFrameIndex,
     selectedFrameId,
     setSelectedFrameId,
+    selectedFrameIds,
+    setSelectedFrameIds,
+    toggleSelectedFrameId,
+    selectFrameRange,
     setIsPlaying,
     timelineMode,
     setTimelineMode,
@@ -246,6 +250,9 @@ export default function FrameStrip() {
         {/* Frame indicator */}
         <span className="text-xs text-text-secondary font-mono tabular-nums">
           {frames.length > 0 ? `${currentFrameIndex + 1} / ${frames.length}` : "0"}
+          {selectedFrameIds.length > 1 && (
+            <span className="text-accent-primary ml-1">({selectedFrameIds.length} sel)</span>
+          )}
         </span>
 
         <div className="flex-1" />
@@ -373,8 +380,18 @@ export default function FrameStrip() {
                   onDrop={(e) => timelineMode === "reorder" && !showActiveOnly && handleDrop(e, idx)}
                   onDragEnd={timelineMode === "reorder" && !showActiveOnly ? handleDragEnd : undefined}
                   onMouseDown={(e) => timelineMode === "offset" && handleOffsetMouseDown(e, frame.id)}
-                  onClick={() => {
+                  onClick={(e) => {
                     setIsPlaying(false);
+                    if (e.shiftKey && selectedFrameId !== null) {
+                      // Shift+Click: range select from last selected to current
+                      selectFrameRange(selectedFrameId, frame.id);
+                    } else if (e.ctrlKey || e.metaKey) {
+                      // Ctrl/Cmd+Click: toggle individual selection
+                      toggleSelectedFrameId(frame.id);
+                    } else {
+                      // Normal click: single select
+                      setSelectedFrameIds([frame.id]);
+                    }
                     setCurrentFrameIndex(idx);
                     setSelectedFrameId(frame.id);
                   }}
@@ -386,7 +403,7 @@ export default function FrameStrip() {
                   className={`
                     relative rounded-lg border-2 transition-all
                     ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
-                    ${idx === currentFrameIndex ? "border-accent-primary shadow-sm" : "border-border-default"}
+                    ${idx === currentFrameIndex ? "border-accent-primary shadow-sm" : selectedFrameIds.includes(frame.id) ? "border-accent-primary/50 bg-accent-primary/10" : "border-border-default"}
                     ${dragOverIndex === idx ? "border-accent-primary! scale-105" : ""}
                     ${draggedFrameId === frame.id ? "opacity-50" : ""}
                     ${editingOffsetFrameId === frame.id ? "border-accent-warning!" : ""}
