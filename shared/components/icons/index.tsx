@@ -52,6 +52,8 @@ export {
   HandIcon,
   ZoomSearchIcon,
   PanIcon,
+  ReorderIcon,
+  OffsetIcon,
 } from "./editorTools";
 
 // Layers & Alignment

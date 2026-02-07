@@ -66,7 +66,7 @@ export async function compositeFrame(
 
   for (const track of visibleTracks) {
     const idx = getTrackFrameIndex(track, frameIndex);
-    if (idx !== null && track.frames[idx]?.imageData) {
+    if (idx !== null && track.frames[idx]?.imageData && !track.frames[idx]?.disabled) {
       framesToDraw.push({ track, frameIdx: idx });
     }
   }
@@ -134,6 +134,15 @@ export async function compositeAllFrames(
   const results: CompositedFrame[] = [];
 
   for (let i = 0; i < maxFrames; i++) {
+    // Skip frame if all visible tracks have disabled frames at this index
+    const allDisabled = tracks
+      .filter((t) => t.visible && t.frames.length > 0)
+      .every((t) => {
+        const idx = i < t.frames.length ? i : t.loop ? i % t.frames.length : -1;
+        return idx === -1 || t.frames[idx]?.disabled;
+      });
+    if (allDisabled) continue;
+
     const composited = await compositeFrame(tracks, i, outputSize);
     if (composited) {
       results.push(composited);
