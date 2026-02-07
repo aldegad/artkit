@@ -219,6 +219,50 @@ export default function TimelineContent() {
 
   const maxFrameCount = getMaxFrameCount();
 
+  // ---- Scrubbing (drag-to-navigate) ----
+  const [isScrubbing, setIsScrubbing] = useState(false);
+
+  const getFrameFromClientX = useCallback((clientX: number) => {
+    const el = rulerRef.current;
+    if (!el) return -1;
+    const rect = el.getBoundingClientRect();
+    const x = clientX - rect.left + el.scrollLeft;
+    return Math.max(0, Math.min(maxFrameCount - 1, Math.floor(x / CELL_WIDTH)));
+  }, [maxFrameCount]);
+
+  const getFrameFnRef = useRef(getFrameFromClientX);
+  getFrameFnRef.current = getFrameFromClientX;
+
+  const handleScrubStart = useCallback((e: React.MouseEvent, trackId?: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setIsScrubbing(true);
+    setIsPlaying(false);
+    if (trackId) setActiveTrackId(trackId);
+    const idx = getFrameFromClientX(e.clientX);
+    if (idx >= 0) setCurrentFrameIndex(idx);
+  }, [getFrameFromClientX, setIsPlaying, setCurrentFrameIndex, setActiveTrackId]);
+
+  useEffect(() => {
+    if (!isScrubbing) return;
+
+    const handleMove = (e: MouseEvent) => {
+      e.preventDefault();
+      const idx = getFrameFnRef.current(e.clientX);
+      if (idx >= 0) setCurrentFrameIndex(idx);
+    };
+
+    const handleUp = () => setIsScrubbing(false);
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+  }, [isScrubbing, setCurrentFrameIndex]);
+
   return (
     <div className="flex flex-col h-full bg-surface-primary">
       {/* Control bar */}
@@ -282,22 +326,22 @@ export default function TimelineContent() {
         />
         {/* Resize handle spacer */}
         <div className="w-1 shrink-0" />
-        {/* Frame ruler (synced horizontally) */}
-        <div ref={rulerRef} className="flex-1 overflow-hidden h-6">
+        {/* Frame ruler (synced horizontally, drag to scrub) */}
+        <div
+          ref={rulerRef}
+          className="flex-1 overflow-hidden h-6 cursor-ew-resize"
+          onMouseDown={(e) => handleScrubStart(e)}
+        >
           <div className="flex items-end h-full bg-surface-secondary" style={{ width: maxFrameCount * CELL_WIDTH }}>
             {Array.from({ length: maxFrameCount }).map((_, i) => (
               <div
                 key={i}
-                className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] cursor-pointer transition-colors ${
+                className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] pointer-events-none transition-colors ${
                   i === currentFrameIndex
                     ? "text-accent-primary font-bold bg-accent-primary/10"
-                    : "text-text-tertiary hover:bg-surface-secondary/50"
+                    : "text-text-tertiary"
                 }`}
                 style={{ width: CELL_WIDTH, height: "100%" }}
-                onClick={() => {
-                  setIsPlaying(false);
-                  setCurrentFrameIndex(i);
-                }}
               >
                 {i + 1}
               </div>
@@ -407,10 +451,11 @@ export default function TimelineContent() {
             {tracks.map((track: SpriteTrack) => (
               <div
                 key={track.id}
-                className={`flex border-b border-border-default transition-colors ${
+                className={`flex border-b border-border-default transition-colors cursor-pointer ${
                   track.id === activeTrackId ? "bg-accent-primary/5" : ""
                 } ${!track.visible ? "opacity-40" : ""}`}
                 style={{ height: TRACK_HEIGHT }}
+                onMouseDown={(e) => handleScrubStart(e, track.id)}
               >
                 {/* Frame cells */}
                 {Array.from({ length: Math.max(maxFrameCount, track.frames.length) }).map(
@@ -421,19 +466,13 @@ export default function TimelineContent() {
                     return (
                       <div
                         key={frameIdx}
-                        className={`shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors ${
+                        className={`shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors pointer-events-none ${
                           isCurrentFrame ? "bg-accent-primary/10" : ""
                         }`}
                         style={{ width: CELL_WIDTH, height: TRACK_HEIGHT }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsPlaying(false);
-                          setCurrentFrameIndex(frameIdx);
-                          setActiveTrackId(track.id);
-                        }}
                       >
                         {frame ? (
-                          <div className="w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary">
+                          <div className={`relative w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary ${frame.disabled ? "opacity-30" : ""}`}>
                             {frame.imageData ? (
                               <img
                                 src={frame.imageData}
@@ -444,6 +483,13 @@ export default function TimelineContent() {
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[8px] text-text-tertiary">
                                 {frameIdx + 1}
+                              </div>
+                            )}
+                            {frame.disabled && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="bg-accent-warning/80 text-white text-[6px] font-bold px-1 rounded">
+                                  SKIP
+                                </div>
                               </div>
                             )}
                           </div>
