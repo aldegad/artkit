@@ -13,6 +13,7 @@ export {
   CloseIcon,
   ChevronDownIcon,
   MenuIcon,
+  CogIcon,
   PlusIcon,
   MinusIcon,
   ZoomInIcon,
