@@ -971,7 +971,7 @@ function ImageEditorContent() {
     return () => {
       clearEditorPanelComponents();
     };
-  });
+  }, []);
 
   // Canvas rendering - moved to useCanvasRendering hook
   // screenToImage and getMousePos are now provided by useCanvasInput hook
