@@ -49,14 +49,6 @@ import { type SaveLoadProgress } from "../../lib/firebase/firebaseVideoStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "../../types/layout";
 import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "../../domains/editor/types";
 
-interface VideoProjectFile extends Partial<SavedVideoProject> {
-  tracks?: VideoTrack[];
-  clips?: Clip[];
-  timelineView?: TimelineViewState;
-  currentTime?: number;
-  toolMode?: string;
-}
-
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
 }
@@ -193,7 +185,6 @@ function VideoEditorContent() {
   } = useVideoLayout();
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
-  const projectFileInputRef = useRef<HTMLInputElement>(null);
   const exportAudioContextRef = useRef<AudioContext | null>(null);
   const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
@@ -479,10 +470,6 @@ function VideoEditorContent() {
 
   const handleOpen = useCallback(() => {
     setIsProjectListOpen(true);
-  }, []);
-
-  const handleImportFile = useCallback(() => {
-    projectFileInputRef.current?.click();
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -1203,7 +1190,6 @@ function VideoEditorContent() {
           <VideoMenuBar
             onNew={handleNew}
             onLoad={handleOpen}
-            onImportFile={handleImportFile}
             onSave={handleSave}
             onSaveAs={handleSaveAs}
             onImportMedia={handleImportMedia}
@@ -1571,7 +1557,6 @@ function VideoEditorContent() {
         currentProjectId={currentProjectId}
         onLoadProject={handleLoadProject}
         onDeleteProject={handleDeleteProject}
-        onImportFile={handleImportFile}
         storageInfo={storageInfo}
         isLoading={isLoadingProject}
         loadProgress={loadProgress}
@@ -1579,80 +1564,7 @@ function VideoEditorContent() {
           savedProjects: t.savedProjects || "Saved Projects",
           noSavedProjects: t.noSavedProjects || "No saved projects",
           delete: t.delete,
-          importFile: "Import from file...",
           loading: t.loading || "Loading",
-        }}
-      />
-
-      {/* Hidden file input for project open */}
-      <input
-        ref={projectFileInputRef}
-        type="file"
-        accept=".json,application/json"
-        className="hidden"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-
-          try {
-            const text = await file.text();
-            const parsed = JSON.parse(text) as VideoProjectFile;
-
-            const loadedTracks = Array.isArray(parsed.project?.tracks)
-              ? parsed.project!.tracks
-              : Array.isArray(parsed.tracks)
-              ? parsed.tracks
-              : null;
-            const loadedClips = Array.isArray(parsed.project?.clips)
-              ? parsed.project!.clips
-              : Array.isArray(parsed.clips)
-              ? parsed.clips
-              : null;
-
-            if (!loadedTracks || !loadedClips) {
-              throw new Error("Invalid video project file");
-            }
-
-            const loadedName = parsed.name || parsed.project?.name || "Untitled Project";
-            const loadedProject = parsed.project || project;
-            const normalizedClips = loadedClips.map((clip) => normalizeLoadedClip(clip));
-            const loadedDuration = calculateProjectDuration(normalizedClips);
-
-            setProjectName(loadedName);
-            setProject({
-              ...loadedProject,
-              name: loadedName,
-              tracks: loadedTracks,
-              clips: normalizedClips,
-              duration: loadedDuration,
-            });
-            restoreTracks(loadedTracks);
-            restoreClips(normalizedClips);
-            restoreMasks(loadedProject.masks || []);
-
-            if (parsed.timelineView) {
-              setViewState(parsed.timelineView);
-            }
-            if (typeof parsed.currentTime === "number") {
-              seek(parsed.currentTime);
-            } else {
-              seek(0);
-            }
-
-            if (parsed.toolMode && supportedToolModes.includes(parsed.toolMode as VideoToolMode)) {
-              setToolMode(parsed.toolMode as VideoToolMode);
-            }
-
-            setCurrentProjectId(null); // File import creates a non-stored project
-            selectClips([]);
-            clearHistory();
-            setIsProjectListOpen(false);
-          } catch (error) {
-            console.error("Failed to open project:", error);
-            alert(`${t.importFailed}: ${(error as Error).message}`);
-          } finally {
-            e.target.value = "";
-          }
         }}
       />
 

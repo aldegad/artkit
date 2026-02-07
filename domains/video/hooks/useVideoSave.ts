@@ -94,6 +94,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState<SaveLoadProgress | null>(null);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const savingRef = useRef(false);
 
   // Generate thumbnail from preview canvas
   const generateThumbnail = useCallback((): string | undefined => {
@@ -143,6 +144,9 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
 
   // Save project (overwrites existing or creates new)
   const saveProject = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+
     const savedProject = buildSavedProject(false);
     const thumbnailDataUrl = generateThumbnail();
 
@@ -156,6 +160,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
       console.error("Failed to save video project:", error);
       throw error;
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
       setSaveProgress(null);
     }
@@ -164,6 +169,9 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
   // Save as new project
   const saveAsProject = useCallback(
     async (nameOverride?: string) => {
+      if (savingRef.current) return;
+      savingRef.current = true;
+
       const savedProject = buildSavedProject(true, nameOverride);
       const thumbnailDataUrl = generateThumbnail();
 
@@ -177,6 +185,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         console.error("Failed to save video project:", error);
         throw error;
       } finally {
+        savingRef.current = false;
         setIsSaving(false);
         setSaveProgress(null);
       }
