@@ -15,8 +15,8 @@ import {
   resizeRectByHandle,
   createRectFromDrag,
   type RectHandle,
-} from "@/domains/editor/utils/rectTransform";
-import { ASPECT_RATIO_VALUES } from "@/domains/editor/types";
+} from "@/domains/image/utils/rectTransform";
+import { ASPECT_RATIO_VALUES } from "@/domains/image/types";
 
 interface PreviewCanvasProps {
   className?: string;

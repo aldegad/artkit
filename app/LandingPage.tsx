@@ -6,7 +6,7 @@ import { useLanguage, useTheme } from "../shared/contexts";
 import ArtkitLogo from "../components/icons/ArtkitLogo";
 import ArtkitWordmark from "../components/icons/ArtkitWordmark";
 import {
-  SidebarEditorIcon,
+  SidebarImageIcon,
   SidebarVideoIcon,
   SidebarSpriteIcon,
   SidebarSoundIcon,
@@ -18,11 +18,11 @@ import {
 
 const tools = [
   {
-    id: "editor",
-    path: "/editor",
+    id: "image",
+    path: "/image",
     nameKey: "imageEditor" as const,
     descKey: "landingEditorDesc" as const,
-    Icon: SidebarEditorIcon,
+    Icon: SidebarImageIcon,
     accent: "#3B82F6",
     accentBg: "rgba(59, 130, 246, 0.12)",
   },
