@@ -116,34 +116,6 @@ export type ToolMode = "pen" | "select" | "hand" | "brush" | "eyedropper";
 export type TimelineMode = "reorder" | "offset";
 
 // ============================================
-// Docking Types
-// ============================================
-
-export type DockPosition = "left" | "right" | "top" | "bottom";
-
-export interface DockedPanel {
-  id: string;
-  title: string;
-  size: number;
-}
-
-export interface FloatingWindow {
-  id: string;
-  title: string;
-  position: Point;
-  size: Size;
-  isMinimized: boolean;
-}
-
-export interface DockingState {
-  dockedPanels: Partial<Record<DockPosition, DockedPanel[]>>;
-  floatingWindows: FloatingWindow[];
-  activeDragWindow: string | null;
-  activeDropZone: DockPosition | null;
-}
-
-
-// ============================================
 // Re-exports from shared types
 // ============================================
 
