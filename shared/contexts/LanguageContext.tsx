@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 
 export type Language = "ko" | "en";
 
@@ -900,15 +900,15 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const STORAGE_KEY = "artkit-language";
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>("ko");
+function getInitialLanguage(): Language {
+  if (typeof window === "undefined") return "ko";
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored === "ko" || stored === "en") return stored;
+  return "ko";
+}
 
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Language | null;
-    if (stored && (stored === "ko" || stored === "en")) {
-      setLanguageState(stored);
-    }
-  }, []);
+export function LanguageProvider({ children }: { children: ReactNode }) {
+  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
