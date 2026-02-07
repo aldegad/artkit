@@ -215,226 +215,6 @@ export function useEditorRefs(): EditorRefsContextValue {
 }
 
 // ============================================
-// Legacy useEditor Hook (Facade over all stores)
-// ============================================
-
-export function useEditor() {
-  const refs = useEditorRefs();
-  const trackStore = useSpriteTrackStore();
-  const viewportStore = useSpriteViewportStore();
-  const toolStore = useSpriteToolStore();
-  const dragStore = useSpriteDragStore();
-  const uiStore = useSpriteUIStore();
-
-  // Shim: frames = active track frames
-  const frames = trackStore.getActiveTrackFrames();
-
-  // Shim: setFrames operates on active track
-  const setFrames = useCallback(
-    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
-      const { activeTrackId } = useSpriteTrackStore.getState();
-      if (!activeTrackId) return;
-      const activeTrack = useSpriteTrackStore.getState().tracks.find((t) => t.id === activeTrackId);
-      if (!activeTrack) return;
-      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
-      trackStore.updateTrack(activeTrackId, { frames: newFrames });
-    },
-    [trackStore],
-  );
-
-  // New project function
-  const newProject = useCallback(() => {
-    trackStore.reset();
-    viewportStore.reset();
-    toolStore.reset();
-    dragStore.reset();
-    uiStore.reset();
-    refs.imageRef.current = null;
-    void clearAutosaveData();
-  }, [trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
-
-  // Copy/Paste operate on active track frames
-  const copyFrame = useCallback(() => {
-    if (frames.length === 0) return;
-    const frameToCopy = frames[trackStore.currentFrameIndex];
-    if (frameToCopy) {
-      uiStore.copyFrame(frameToCopy);
-    }
-  }, [frames, trackStore.currentFrameIndex, uiStore]);
-
-  const pasteFrame = useCallback(() => {
-    const clipboardFrame = uiStore.getClipboardFrame();
-    if (!clipboardFrame) return;
-    const { activeTrackId } = useSpriteTrackStore.getState();
-    if (!activeTrackId) return;
-    const activeTrack = useSpriteTrackStore.getState().tracks.find((t) => t.id === activeTrackId);
-    if (!activeTrack) return;
-
-    const newFrame: SpriteFrame = {
-      ...deepCopyFrame(clipboardFrame),
-      id: trackStore.nextFrameId,
-    };
-
-    trackStore.pushHistory();
-    const insertIndex = trackStore.currentFrameIndex + 1;
-    const newFrames = [...activeTrack.frames];
-    newFrames.splice(insertIndex, 0, newFrame);
-    trackStore.updateTrack(activeTrackId, { frames: newFrames });
-    trackStore.setNextFrameId((prev: number) => prev + 1);
-    trackStore.setCurrentFrameIndex(insertIndex);
-  }, [uiStore, trackStore]);
-
-  return {
-    // Image
-    imageSrc: trackStore.imageSrc,
-    setImageSrc: trackStore.setImageSrc,
-    imageSize: trackStore.imageSize,
-    setImageSize: trackStore.setImageSize,
-
-    // Frames (shim over active track)
-    frames,
-    setFrames,
-    nextFrameId: trackStore.nextFrameId,
-    setNextFrameId: trackStore.setNextFrameId,
-    currentFrameIndex: trackStore.currentFrameIndex,
-    setCurrentFrameIndex: trackStore.setCurrentFrameIndex,
-    selectedFrameId: trackStore.selectedFrameId,
-    setSelectedFrameId: trackStore.setSelectedFrameId,
-    selectedFrameIds: trackStore.selectedFrameIds,
-    setSelectedFrameIds: trackStore.setSelectedFrameIds,
-    toggleSelectedFrameId: trackStore.toggleSelectedFrameId,
-    selectFrameRange: trackStore.selectFrameRange,
-    selectedPointIndex: trackStore.selectedPointIndex,
-    setSelectedPointIndex: trackStore.setSelectedPointIndex,
-
-    // Tools
-    toolMode: toolStore.toolMode,
-    setSpriteToolMode: toolStore.setSpriteToolMode,
-    currentPoints: trackStore.currentPoints,
-    setCurrentPoints: trackStore.setCurrentPoints,
-    isSpacePressed: toolStore.isSpacePressed,
-    setIsSpacePressed: toolStore.setIsSpacePressed,
-
-    // Viewport
-    zoom: viewportStore.zoom,
-    setZoom: viewportStore.setZoom,
-    pan: viewportStore.pan,
-    setPan: viewportStore.setPan,
-    scale: viewportStore.scale,
-    setScale: viewportStore.setScale,
-    canvasHeight: viewportStore.canvasHeight,
-    setCanvasHeight: viewportStore.setCanvasHeight,
-    isCanvasCollapsed: viewportStore.isCanvasCollapsed,
-    setIsCanvasCollapsed: viewportStore.setIsCanvasCollapsed,
-    // Animation
-    isPlaying: trackStore.isPlaying,
-    setIsPlaying: trackStore.setIsPlaying,
-    fps: trackStore.fps,
-    setFps: trackStore.setFps,
-
-    // Timeline
-    timelineMode: toolStore.timelineMode,
-    setTimelineMode: toolStore.setTimelineMode,
-
-    // Drag States
-    isDragging: dragStore.isDragging,
-    setIsDragging: dragStore.setIsDragging,
-    dragStart: dragStore.dragStart,
-    setDragStart: dragStore.setDragStart,
-    isPanning: dragStore.isPanning,
-    setIsPanning: dragStore.setIsPanning,
-    lastPanPoint: dragStore.lastPanPoint,
-    setLastPanPoint: dragStore.setLastPanPoint,
-    draggedFrameId: dragStore.draggedFrameId,
-    setDraggedFrameId: dragStore.setDraggedFrameId,
-    dragOverIndex: dragStore.dragOverIndex,
-    setDragOverIndex: dragStore.setDragOverIndex,
-    draggedTrackId: dragStore.draggedTrackId,
-    setDraggedTrackId: dragStore.setDraggedTrackId,
-    dragOverTrackIndex: dragStore.dragOverTrackIndex,
-    setDragOverTrackIndex: dragStore.setDragOverTrackIndex,
-    editingOffsetFrameId: dragStore.editingOffsetFrameId,
-    setEditingOffsetFrameId: dragStore.setEditingOffsetFrameId,
-    offsetDragStart: dragStore.offsetDragStart,
-    setOffsetDragStart: dragStore.setOffsetDragStart,
-    isResizing: dragStore.isResizing,
-    setIsResizing: dragStore.setIsResizing,
-
-    // Windows
-    isPreviewWindowOpen: uiStore.isPreviewWindowOpen,
-    setIsPreviewWindowOpen: uiStore.setIsPreviewWindowOpen,
-    isFrameEditOpen: uiStore.isFrameEditOpen,
-    setIsFrameEditOpen: uiStore.setIsFrameEditOpen,
-    isProjectListOpen: uiStore.isProjectListOpen,
-    setIsProjectListOpen: uiStore.setIsProjectListOpen,
-    isSpriteSheetImportOpen: uiStore.isSpriteSheetImportOpen,
-    setIsSpriteSheetImportOpen: uiStore.setIsSpriteSheetImportOpen,
-    isVideoImportOpen: uiStore.isVideoImportOpen,
-    setIsVideoImportOpen: uiStore.setIsVideoImportOpen,
-    pendingVideoFile: uiStore.pendingVideoFile,
-    setPendingVideoFile: uiStore.setPendingVideoFile,
-
-    // Brush Tool
-    brushColor: toolStore.brushColor,
-    setBrushColor: toolStore.setBrushColor,
-    brushSize: toolStore.brushSize,
-    setBrushSize: toolStore.setBrushSize,
-
-    // History (Undo/Redo)
-    canUndo: trackStore.canUndo,
-    canRedo: trackStore.canRedo,
-    undo: trackStore.undo,
-    redo: trackStore.redo,
-    pushHistory: trackStore.pushHistory,
-
-    // Project
-    projectName: uiStore.projectName,
-    setProjectName: uiStore.setProjectName,
-    savedProjects: uiStore.savedProjects,
-    setSavedSpriteProjects: uiStore.setSavedSpriteProjects,
-    currentProjectId: uiStore.currentProjectId,
-    setCurrentProjectId: uiStore.setCurrentProjectId,
-    newProject,
-
-    // Clipboard (frame)
-    copyFrame,
-    pasteFrame,
-    clipboardFrame: uiStore.clipboardFrame,
-
-    // Clipboard (track)
-    copyTrack: uiStore.copyTrack,
-    getClipboardTrack: uiStore.getClipboardTrack,
-    clipboardTrack: uiStore.clipboardTrack,
-
-    // Refs
-    ...refs,
-
-    // Tracks (V2 multi-track)
-    tracks: trackStore.tracks,
-    activeTrackId: trackStore.activeTrackId,
-    setActiveTrackId: trackStore.setActiveTrackId,
-    addTrack: trackStore.addTrack,
-    removeTrack: trackStore.removeTrack,
-    updateTrack: trackStore.updateTrack,
-    reorderTracks: trackStore.reorderTracks,
-    addFramesToTrack: trackStore.addFramesToTrack,
-    removeFrameFromTrack: trackStore.removeFrame,
-    updateFrameInTrack: trackStore.updateFrame,
-    reorderFramesInTrack: trackStore.reorderFrames,
-    getActiveTrack: trackStore.getActiveTrack,
-    getActiveTrackFrames: trackStore.getActiveTrackFrames,
-    getMaxFrameCount: trackStore.getMaxFrameCount,
-    restoreTracks: trackStore.restoreTracks,
-
-    // Loading
-    isAutosaveLoading: uiStore.isAutosaveLoading,
-
-    // Computed
-    getTransformParams: viewportStore.getTransformParams,
-  };
-}
-
-// ============================================
 // Selector Hooks (Zustand-backed)
 // ============================================
 
@@ -488,6 +268,8 @@ export function useEditorTools() {
     setCurrentPoints: trackStore.setCurrentPoints,
     isSpacePressed: toolStore.isSpacePressed,
     setIsSpacePressed: toolStore.setIsSpacePressed,
+    timelineMode: toolStore.timelineMode,
+    setTimelineMode: toolStore.setTimelineMode,
   };
 }
 
@@ -637,6 +419,7 @@ export function useEditorProject() {
     currentProjectId: uiStore.currentProjectId,
     setCurrentProjectId: uiStore.setCurrentProjectId,
     newProject,
+    isAutosaveLoading: uiStore.isAutosaveLoading,
   };
 }
 
@@ -700,5 +483,3 @@ export function useEditorClipboard() {
   };
 }
 
-// Keep for backwards compatibility - now just returns refs from context
-export { useEditorRefs as useEditorRefsHook };

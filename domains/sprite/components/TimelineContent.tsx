@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
-import { useEditor } from "../contexts/SpriteEditorContext";
+import { useEditorTracks, useEditorFrames, useEditorAnimation, useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { Scrollbar, NumberScrubber } from "@/shared/components";
 import ExportDropdown from "./ExportDropdown";
 import { SpriteTrack } from "../types";
@@ -23,25 +23,11 @@ const HEADER_DEFAULT = 144;
 const LS_KEY = "sprite-timeline-header-width";
 
 export default function TimelineContent() {
-  const {
-    tracks,
-    activeTrackId,
-    setActiveTrackId,
-    addTrack,
-    removeTrack,
-    updateTrack,
-    currentFrameIndex,
-    setCurrentFrameIndex,
-    isPlaying,
-    setIsPlaying,
-    fps,
-    setFps,
-    pushHistory,
-    previewCanvasRef,
-    animationRef,
-    lastFrameTimeRef,
-    getMaxFrameCount,
-  } = useEditor();
+  const { tracks, activeTrackId, setActiveTrackId, addTrack, removeTrack, updateTrack, getMaxFrameCount } = useEditorTracks();
+  const { currentFrameIndex, setCurrentFrameIndex } = useEditorFrames();
+  const { isPlaying, setIsPlaying, fps, setFps, animationRef, lastFrameTimeRef } = useEditorAnimation();
+  const { pushHistory } = useEditorHistory();
+  const { previewCanvasRef } = useEditorRefs();
 
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");

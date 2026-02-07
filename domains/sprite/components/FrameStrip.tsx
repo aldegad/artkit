@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useEditor } from "../contexts/SpriteEditorContext";
+import { useEditorFrames, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag, useEditorWindows } from "../contexts/SpriteEditorContext";
 import { useLayout } from "../contexts/LayoutContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar } from "../../../shared/components";
@@ -10,35 +10,21 @@ import { SpriteFrame } from "../types";
 
 export default function FrameStrip() {
   const {
-    frames,
-    setFrames,
-    nextFrameId,
-    setNextFrameId,
-    currentFrameIndex,
-    setCurrentFrameIndex,
-    selectedFrameId,
-    setSelectedFrameId,
-    selectedFrameIds,
-    setSelectedFrameIds,
-    toggleSelectedFrameId,
-    selectFrameRange,
-    isPlaying,
-    setIsPlaying,
-    timelineMode,
-    setTimelineMode,
-    pushHistory,
-    addTrack,
-    draggedFrameId,
-    setDraggedFrameId,
-    dragOverIndex,
-    setDragOverIndex,
-    editingOffsetFrameId,
-    setEditingOffsetFrameId,
-    offsetDragStart,
-    setOffsetDragStart,
-    setIsFrameEditOpen,
-    activeTrackId,
-  } = useEditor();
+    frames, setFrames, nextFrameId, setNextFrameId,
+    currentFrameIndex, setCurrentFrameIndex,
+    selectedFrameId, setSelectedFrameId,
+    selectedFrameIds, setSelectedFrameIds,
+    toggleSelectedFrameId, selectFrameRange,
+  } = useEditorFrames();
+  const { isPlaying, setIsPlaying } = useEditorAnimation();
+  const { timelineMode, setTimelineMode } = useEditorTools();
+  const { pushHistory } = useEditorHistory();
+  const { addTrack, activeTrackId } = useEditorTracks();
+  const {
+    draggedFrameId, setDraggedFrameId, dragOverIndex, setDragOverIndex,
+    editingOffsetFrameId, setEditingOffsetFrameId, offsetDragStart, setOffsetDragStart,
+  } = useEditorDrag();
+  const { setIsFrameEditOpen } = useEditorWindows();
 
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);

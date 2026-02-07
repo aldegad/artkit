@@ -3,7 +3,16 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import {
   EditorProvider,
-  useEditor,
+  useEditorImage,
+  useEditorFrames,
+  useEditorTools,
+  useEditorViewport,
+  useEditorAnimation,
+  useEditorHistory,
+  useEditorProject,
+  useEditorWindows,
+  useEditorTracks,
+  useEditorClipboard,
   useLayout,
   LayoutProvider,
   SplitView,
@@ -41,56 +50,16 @@ import {
 // ============================================
 
 function SpriteEditorMain() {
-  const {
-    imageSrc,
-    setImageSrc,
-    setImageSize,
-    imageSize,
-    imageRef,
-    setScale,
-    setZoom,
-    setPan,
-    toolMode,
-    setSpriteToolMode,
-    currentPoints,
-    setCurrentPoints,
-    frames,
-    nextFrameId,
-    setFrames,
-    setNextFrameId,
-    selectedFrameId,
-    selectedFrameIds,
-    selectedPointIndex,
-    currentFrameIndex,
-    fps,
-    setIsSpacePressed,
-    projectName,
-    setProjectName,
-    savedProjects,
-    setSavedSpriteProjects,
-    currentProjectId,
-    setCurrentProjectId,
-    isProjectListOpen,
-    setIsProjectListOpen,
-    isSpriteSheetImportOpen,
-    setIsSpriteSheetImportOpen,
-    isVideoImportOpen,
-    setIsVideoImportOpen,
-    pendingVideoFile,
-    setPendingVideoFile,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-    pushHistory,
-    newProject,
-    copyFrame,
-    pasteFrame,
-    tracks,
-    addTrack,
-    restoreTracks,
-    isAutosaveLoading,
-  } = useEditor();
+  const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditorImage();
+  const { frames, setFrames, nextFrameId, setNextFrameId, selectedFrameId, selectedFrameIds, selectedPointIndex, currentFrameIndex } = useEditorFrames();
+  const { toolMode, setSpriteToolMode, currentPoints, setCurrentPoints, setIsSpacePressed } = useEditorTools();
+  const { setScale, setZoom, setPan } = useEditorViewport();
+  const { fps } = useEditorAnimation();
+  const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
+  const { projectName, setProjectName, savedProjects, setSavedSpriteProjects, currentProjectId, setCurrentProjectId, newProject, isAutosaveLoading } = useEditorProject();
+  const { isProjectListOpen, setIsProjectListOpen, isSpriteSheetImportOpen, setIsSpriteSheetImportOpen, isVideoImportOpen, setIsVideoImportOpen, pendingVideoFile, setPendingVideoFile } = useEditorWindows();
+  const { tracks, addTrack, restoreTracks } = useEditorTracks();
+  const { copyFrame, pasteFrame } = useEditorClipboard();
   const { resetLayout } = useLayout();
 
   // Panel visibility states
