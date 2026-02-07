@@ -253,7 +253,7 @@ export default function LandingPage() {
                       color: tool.accent,
                     }}
                   >
-                    <tool.Icon className="w-[38px] h-[38px]" />
+                    <tool.Icon className="w-[34px] h-[34px]" />
                   </div>
 
                   {/* Name */}

@@ -73,23 +73,23 @@ export const LandingVideoIcon: React.FC<IconProps> = ({
 }) => (
   <svg className={className} viewBox="0 0 48 48" fill="none">
     {/* Track 1 - Video */}
-    <rect x="1" y="2" width="32" height="13" rx="3" fill="currentColor" opacity={0.35} />
-    <rect x="36" y="2" width="11" height="13" rx="3" fill="currentColor" opacity={0.2} />
+    <rect x="1" y="2" width="32" height="13" rx="3" fill="currentColor" opacity={0.4} />
+    <rect x="36" y="2" width="11" height="13" rx="3" fill="currentColor" opacity={0.25} />
 
     {/* Track 2 - B-roll */}
-    <rect x="7" y="18" width="26" height="12" rx="3" fill="currentColor" opacity={0.25} />
-    <rect x="36" y="18" width="11" height="12" rx="3" fill="currentColor" opacity={0.15} />
+    <rect x="7" y="18" width="26" height="12" rx="3" fill="currentColor" opacity={0.3} />
+    <rect x="36" y="18" width="11" height="12" rx="3" fill="currentColor" opacity={0.2} />
 
     {/* Track 3 - Audio */}
-    <rect x="1" y="33" width="34" height="12" rx="3" fill="currentColor" opacity={0.15} />
+    <rect x="1" y="33" width="34" height="12" rx="3" fill="currentColor" opacity={0.2} />
 
     {/* Playhead */}
     <path d="M27 0l3 4 3-4z" fill="currentColor" opacity={0.8} />
     <line x1="30" y1="3" x2="30" y2="47" stroke="currentColor" strokeWidth={2.5} opacity={0.7} />
 
     {/* Play button overlay - centered */}
-    <circle cx="24" cy="24" r="14" fill="currentColor" opacity={0.18} />
-    <path d="M19 15v18l16-9z" fill="currentColor" opacity={0.75} />
+    <circle cx="24" cy="24" r="20" fill="currentColor" opacity={0.25} />
+    <path d="M19 15v18l16-9z" fill="currentColor" opacity={0.85} />
   </svg>
 );
 
