@@ -67,66 +67,110 @@ export const LandingImageIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Video Editor - Clapperboard with play
+// Video Editor - Multi-track timeline with playhead
 export const LandingVideoIcon: React.FC<IconProps> = ({
   className = "w-7 h-7",
 }) => (
-  <svg className={className} viewBox="0 0 32 32" fill="none">
-    {/* Clapper hinge (top) */}
-    <path
-      d="M4 3h24l2 7H2L4 3z"
-      fill="currentColor"
-      opacity={0.35}
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinejoin="round"
-    />
-
-    {/* Clapper stripes (2 bold) */}
-    <line
-      x1="11"
-      y1="3"
-      x2="13.5"
-      y2="10"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      opacity={0.25}
-    />
-    <line
-      x1="20"
-      y1="3"
-      x2="22.5"
-      y2="10"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      opacity={0.25}
-    />
-
-    {/* Hinge pivot */}
-    <circle cx="5" cy="10" r="1.5" fill="currentColor" opacity={0.4} />
-
-    {/* Board body */}
+  <svg className={className} viewBox="0 0 48 48" fill="none">
+    {/* Track 1 - Main video clip */}
     <rect
-      x="2"
-      y="10"
+      x="3"
+      y="5"
       width="28"
-      height="19"
+      height="11"
       rx="2.5"
       fill="currentColor"
-      opacity={0.07}
+      opacity={0.25}
+    />
+    {/* Thumbnail frames inside clip */}
+    <rect
+      x="5"
+      y="7"
+      width="5"
+      height="7"
+      rx="1"
+      fill="currentColor"
+      opacity={0.15}
     />
     <rect
-      x="2"
-      y="10"
-      width="28"
-      height="19"
+      x="12"
+      y="7"
+      width="5"
+      height="7"
+      rx="1"
+      fill="currentColor"
+      opacity={0.15}
+    />
+    <rect
+      x="19"
+      y="7"
+      width="5"
+      height="7"
+      rx="1"
+      fill="currentColor"
+      opacity={0.15}
+    />
+    {/* Short clip after gap */}
+    <rect
+      x="34"
+      y="5"
+      width="11"
+      height="11"
       rx="2.5"
-      stroke="currentColor"
-      strokeWidth={1.5}
+      fill="currentColor"
+      opacity={0.12}
     />
 
-    {/* Play triangle (prominent) */}
-    <path d="M12 15v9l8-4.5L12 15z" fill="currentColor" opacity={0.6} />
+    {/* Track 2 - B-roll */}
+    <rect
+      x="10"
+      y="19"
+      width="22"
+      height="10"
+      rx="2.5"
+      fill="currentColor"
+      opacity={0.18}
+    />
+    <rect
+      x="35"
+      y="19"
+      width="10"
+      height="10"
+      rx="2.5"
+      fill="currentColor"
+      opacity={0.1}
+    />
+
+    {/* Track 3 - Audio waveform */}
+    <rect
+      x="3"
+      y="32"
+      width="34"
+      height="9"
+      rx="2.5"
+      fill="currentColor"
+      opacity={0.08}
+    />
+    {/* Waveform bars */}
+    <line x1="8" y1="34.5" x2="8" y2="38.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+    <line x1="13" y1="33.5" x2="13" y2="39.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+    <line x1="18" y1="35" x2="18" y2="38" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+    <line x1="23" y1="33" x2="23" y2="40" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+    <line x1="28" y1="34.5" x2="28" y2="38.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+    <line x1="33" y1="35.5" x2="33" y2="37.5" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" opacity={0.18} />
+
+    {/* Playhead knob */}
+    <path d="M25 1l3 4 3-4z" fill="currentColor" opacity={0.7} />
+    {/* Playhead line */}
+    <line
+      x1="28"
+      y1="4"
+      x2="28"
+      y2="44"
+      stroke="currentColor"
+      strokeWidth={2}
+      opacity={0.55}
+    />
   </svg>
 );
 
