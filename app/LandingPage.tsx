@@ -6,12 +6,12 @@ import { useLanguage, useTheme } from "../shared/contexts";
 import ArtkitLogo from "../components/icons/ArtkitLogo";
 import ArtkitWordmark from "../components/icons/ArtkitWordmark";
 import {
+  SidebarImageIcon,
+  SidebarVideoIcon,
+  SidebarSpriteIcon,
   SidebarSoundIcon,
   SidebarConverterIcon,
   SidebarIconsIcon,
-  LandingImageIcon,
-  LandingVideoIcon,
-  LandingSpriteIcon,
   SunIcon,
   MoonIcon,
 } from "../shared/components/icons";
@@ -23,7 +23,7 @@ const tools = [
     path: "/image",
     nameKey: "imageEditor" as const,
     descKey: "landingEditorDesc" as const,
-    Icon: LandingImageIcon,
+    Icon: SidebarImageIcon,
     accent: "#3B82F6",
     accentBg: "rgba(59, 130, 246, 0.06)",
   },
@@ -32,7 +32,7 @@ const tools = [
     path: "/video",
     nameKey: "videoEditor" as const,
     descKey: "landingVideoDesc" as const,
-    Icon: LandingVideoIcon,
+    Icon: SidebarVideoIcon,
     accent: "#8B5CF6",
     accentBg: "rgba(139, 92, 246, 0.06)",
   },
@@ -41,7 +41,7 @@ const tools = [
     path: "/sprite",
     nameKey: "spriteEditor" as const,
     descKey: "landingSpriteDesc" as const,
-    Icon: LandingSpriteIcon,
+    Icon: SidebarSpriteIcon,
     accent: "#10B981",
     accentBg: "rgba(16, 185, 129, 0.06)",
   },
