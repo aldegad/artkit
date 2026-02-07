@@ -56,7 +56,7 @@ import {
   LayersPanelContent,
   EditorCanvasProvider,
   CanvasPanelContent,
-} from "@/domains/editor";
+} from "@/domains/image";
 // IndexedDB storage functions are now used through storageProvider
 import {
   getStorageProvider,
@@ -74,14 +74,14 @@ import {
   EditorRefsProvider,
   useEditorState,
   useEditorRefs,
-} from "@/domains/editor/contexts";
-import { useEditorLayoutStore } from "@/domains/editor/stores/editorLayoutStore";
+} from "@/domains/image/contexts";
+import { useEditorLayoutStore } from "@/domains/image/stores/editorLayoutStore";
 import {
   EditorSplitContainer,
   EditorFloatingWindows,
   registerEditorPanelComponent,
   clearEditorPanelComponents,
-} from "@/domains/editor/components/layout";
+} from "@/domains/image/components/layout";
 
 // Component that syncs zustand store with context (bidirectional)
 function EditorLayoutSync() {
