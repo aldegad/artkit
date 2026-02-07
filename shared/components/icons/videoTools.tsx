@@ -22,8 +22,3 @@ export const MaskToolIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => 
   </svg>
 );
 
-export const VideoCropToolIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 14v6h6M20 10V4h-6M4 20l7-7M20 4l-7 7" />
-  </svg>
-);

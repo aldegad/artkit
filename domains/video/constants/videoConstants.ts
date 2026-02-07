@@ -14,6 +14,7 @@ export const TIMELINE = {
   PLAYHEAD_WIDTH: 2,
   SNAP_THRESHOLD: 5, // pixels
   CLIP_MIN_DURATION: 0.1, // seconds
+  TOOLBAR_COMPACT_BREAKPOINT: 280, // px — compact mode below this width
 } as const;
 
 // Preview constants

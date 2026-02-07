@@ -1,7 +1,7 @@
 "use client";
 
-import { useLanguage } from "../../shared/contexts";
-import { HeaderContent } from "../../shared/components";
+import { useLanguage } from "@/shared/contexts";
+import { HeaderContent } from "@/shared/components";
 import {
   SoundEditorProvider,
   useSoundEditor,
@@ -11,7 +11,7 @@ import {
   PlaybackControls,
   AudioDropZone,
   SoundToolbar,
-} from "../../domains/sound";
+} from "@/domains/sound";
 
 function SoundEditorContent() {
   const { t } = useLanguage();

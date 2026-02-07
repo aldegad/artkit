@@ -9,9 +9,15 @@ import Footer from "./Footer";
 
 function useServiceWorker() {
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if (!("serviceWorker" in navigator)) return;
+    if (process.env.NODE_ENV !== "production") {
+      // Dev: unregister any existing SW to prevent stale cache issues
+      navigator.serviceWorker.getRegistrations().then((regs) =>
+        regs.forEach((r) => r.unregister())
+      );
+      return;
     }
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
 }
 
@@ -40,32 +46,26 @@ function MobileSidebarOverlay() {
   );
 }
 
-function LayoutContent({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex h-screen">
-      {/* Desktop sidebar - hidden on mobile */}
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        {/* Unified header for desktop and mobile */}
-        <Header />
-        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
-        <Footer />
-      </div>
-      {/* Mobile sidebar overlay */}
-      <MobileSidebarOverlay />
-    </div>
-  );
-}
-
 export default function ClientLayout({ children }: { children: ReactNode }) {
   useServiceWorker();
 
   return (
     <SidebarProvider>
       <HeaderSlotProvider>
-        <LayoutContent>{children}</LayoutContent>
+        <div className="flex h-screen">
+          {/* Desktop sidebar - hidden on mobile */}
+          <div className="hidden md:block">
+            <Sidebar />
+          </div>
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {/* Unified header for desktop and mobile */}
+            <Header />
+            <main className="flex-1 min-h-0 overflow-hidden select-none">{children}</main>
+            <Footer />
+          </div>
+          {/* Mobile sidebar overlay */}
+          <MobileSidebarOverlay />
+        </div>
       </HeaderSlotProvider>
     </SidebarProvider>
   );

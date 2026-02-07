@@ -10,10 +10,11 @@ interface TrackProps {
   track: VideoTrack;
   clips: ClipType[];
   masks: MaskData[];
+  liftedClipId?: string | null;
   className?: string;
 }
 
-export function Track({ track, clips, masks, className }: TrackProps) {
+export function Track({ track, clips, masks, liftedClipId, className }: TrackProps) {
   const hasMasks = masks.length > 0;
   const totalHeight = track.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
 
@@ -31,7 +32,7 @@ export function Track({ track, clips, masks, className }: TrackProps) {
       <div className="relative" style={{ height: track.height }}>
         <div className="absolute inset-0 bg-surface-secondary/50" />
         {clips.map((clip) => (
-          <Clip key={clip.id} clip={clip} />
+          <Clip key={clip.id} clip={clip} isLifted={liftedClipId === clip.id} />
         ))}
       </div>
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { IconProps } from "./types";
 
-export const SidebarEditorIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
+export const SidebarImageIcon: React.FC<IconProps> = ({ className = "w-5 h-5" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     {/* 뒤쪽 레이어 (편집기=레이어 개념) */}
     <rect x="6" y="2" width="16" height="16" rx="2" strokeWidth={2} opacity={0.35} />

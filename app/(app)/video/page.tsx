@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLanguage, useAuth } from "../../shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay, Select } from "../../shared/components";
-import { ZoomInIcon, ZoomOutIcon, LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, CanvasExpandIcon } from "../../shared/components/icons";
-import { downloadBlob } from "../../shared/utils";
+import { useLanguage, useAuth } from "@/shared/contexts";
+import { HeaderContent, SaveToast, LoadingOverlay, Select } from "@/shared/components";
+import { ZoomInIcon, ZoomOutIcon, LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, CanvasExpandIcon } from "@/shared/components/icons";
+import { downloadBlob } from "@/shared/utils";
 import {
   VideoStateProvider,
   VideoRefsProvider,
@@ -39,15 +39,15 @@ import {
   type TimelineViewState,
   type VideoToolMode,
   type VideoTrack,
-} from "../../domains/video";
-import { useVideoKeyboardShortcuts } from "../../domains/video/hooks";
+} from "@/domains/video";
+import { useVideoKeyboardShortcuts } from "@/domains/video/hooks";
 import {
   getVideoStorageProvider,
   type VideoStorageInfo,
-} from "../../services/videoProjectStorage";
-import { type SaveLoadProgress } from "../../lib/firebase/firebaseVideoStorage";
-import { LayoutNode, isSplitNode, isPanelNode } from "../../types/layout";
-import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "../../domains/editor/types";
+} from "@/services/videoProjectStorage";
+import { type SaveLoadProgress } from "@/lib/firebase/firebaseVideoStorage";
+import { LayoutNode, isSplitNode, isPanelNode } from "@/types/layout";
+import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/domains/image/types";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";

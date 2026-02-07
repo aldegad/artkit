@@ -88,9 +88,10 @@ export function MaskClip({ mask }: MaskClipProps) {
     [viewState.snapEnabled, zoom, clips, tracks, mask.trackId]
   );
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     didDragRef.current = false;
     wasActiveOnDownRef.current = isActive;
     wasEditingOnDownRef.current = isEditing;
@@ -166,7 +167,7 @@ export function MaskClip({ mask }: MaskClipProps) {
     const { originalStart, originalDuration, startClientX } = dragRef.current;
     const otherItems = dragItemsRef.current;
 
-    const onMouseMove = (e: MouseEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       const deltaX = e.clientX - startClientX;
       if (Math.abs(deltaX) > 2) didDragRef.current = true;
       const deltaTime = deltaX / durationToWidth(1);
@@ -208,7 +209,7 @@ export function MaskClip({ mask }: MaskClipProps) {
       }
     };
 
-    const onMouseUp = () => {
+    const onPointerUp = () => {
       if (!didDragRef.current) {
         if (wasEditingOnDownRef.current) {
           // Was editing → click exits edit mode (stays selected)
@@ -221,17 +222,17 @@ export function MaskClip({ mask }: MaskClipProps) {
       setDragMode("none");
     };
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
     };
   }, [dragMode, mask.id, isTimelineSelected, updateMaskTime, endMaskEdit, deselectMask,
       durationToWidth, snapToPoints, clips, masks, moveClip]);
 
   // Cursor based on hover position
-  const handleMouseMoveLocal = useCallback((e: React.MouseEvent) => {
+  const handlePointerMoveLocal = useCallback((e: React.PointerEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const localX = e.clientX - rect.left;
     const el = e.currentTarget as HTMLElement;
@@ -255,10 +256,11 @@ export function MaskClip({ mask }: MaskClipProps) {
         left: x,
         width,
         cursor: dragMode !== "none" ? (dragMode === "move" ? "grabbing" : "ew-resize") : "grab",
+        touchAction: "none",
       }}
-      onMouseDown={handleMouseDown}
+      onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
-      onMouseMove={handleMouseMoveLocal}
+      onPointerMove={handlePointerMoveLocal}
     >
       <div className="px-1.5 py-0.5 text-[10px] text-white/80 truncate leading-tight select-none">
         {isEditing ? "Editing" : "Mask"}

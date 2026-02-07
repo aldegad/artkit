@@ -9,7 +9,8 @@ import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
-import { TrackVisibleIcon, TrackHiddenIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon } from "@/shared/components/icons";
+import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon } from "@/shared/components/icons";
+import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
 
@@ -36,8 +37,8 @@ export function Timeline({ className }: TimelineProps) {
   const { getMasksForTrack } = useMask();
   useVideoCoordinates();
 
-  // Timeline input handling (clip drag, trim, seek)
-  const { handleMouseDown: handleTimelineMouseDown } = useTimelineInput(tracksContainerRef);
+  // Timeline input handling (clip drag, trim, seek, lift)
+  const { handlePointerDown: handleTimelinePointerDown, liftedClipId } = useTimelineInput(tracksContainerRef);
 
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
@@ -63,42 +64,45 @@ export function Timeline({ className }: TimelineProps) {
     reorderTracks(fromIndex, toIndex);
   }, [tracks, saveToHistory, reorderTracks]);
 
-  const handleStartHeaderResize = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation(); // prevent timeline pointerdown from firing (seek/drag)
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
     resizeStartRef.current = { x: e.clientX, width: trackHeaderWidth };
     setIsHeaderResizing(true);
   }, [trackHeaderWidth]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("video-timeline-track-header-width");
+    const stored = localStorage.getItem("video-timeline-track-header-width");
     if (!stored) return;
 
     const parsed = Number(stored);
     if (Number.isFinite(parsed)) {
-      setTrackHeaderWidth(Math.max(132, Math.min(360, parsed)));
+      setTrackHeaderWidth(Math.max(40, Math.min(360, parsed)));
     }
   }, []);
 
   useEffect(() => {
-    if (!isHeaderResizing || typeof window === "undefined") return;
+    if (!isHeaderResizing) return;
 
-    const handleMove = (event: MouseEvent) => {
+    const handleMove = (event: PointerEvent) => {
       const delta = event.clientX - resizeStartRef.current.x;
-      const nextWidth = Math.max(132, Math.min(360, resizeStartRef.current.width + delta));
+      const nextWidth = Math.max(40, Math.min(360, resizeStartRef.current.width + delta));
       setTrackHeaderWidth(nextWidth);
-      window.localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
+      localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
     };
 
     const handleUp = () => {
       setIsHeaderResizing(false);
     };
 
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp);
+    document.addEventListener("pointercancel", handleUp);
     return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+      document.removeEventListener("pointercancel", handleUp);
     };
   }, [isHeaderResizing]);
 
@@ -116,20 +120,16 @@ export function Timeline({ className }: TimelineProps) {
     return () => tracksEl.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Handle mouse down - combine timeline input with middle-mouse scroll
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      // Middle mouse button for scrolling
+  // Middle-mouse scroll handler (on outer container)
+  const handleContainerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button === 1) {
         e.preventDefault();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
         setIsMiddleScrolling(true);
-        return;
       }
-
-      // Left click - use timeline input handler
-      handleTimelineMouseDown(e);
     },
-    [handleTimelineMouseDown]
+    []
   );
 
   // Refs for latest values to avoid stale closures in document event handlers
@@ -140,24 +140,32 @@ export function Timeline({ className }: TimelineProps) {
   useEffect(() => {
     if (!isMiddleScrolling) return;
 
-    const onMouseMove = (e: MouseEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       const { scrollX, zoom } = scrollStateRef.current;
       setScrollX(scrollX - e.movementX / zoom);
     };
-    const onMouseUp = () => setIsMiddleScrolling(false);
+    const onPointerUp = () => setIsMiddleScrolling(false);
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
 
     return () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
     };
   }, [isMiddleScrolling, setScrollX]);
 
-  // Handle wheel for horizontal scroll/zoom
-  const handleWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
+  // Handle wheel for horizontal scroll/zoom (non-passive to allow preventDefault)
+  const wheelStateRef = useRef({ scrollX: viewState.scrollX, zoom: viewState.zoom });
+  wheelStateRef.current = { scrollX: viewState.scrollX, zoom: viewState.zoom };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      const { scrollX, zoom } = wheelStateRef.current;
+
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const rect = tracksContainerRef.current?.getBoundingClientRect();
@@ -167,23 +175,23 @@ export function Timeline({ className }: TimelineProps) {
         const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
         const nextZoom = Math.max(
           TIMELINE.MIN_ZOOM,
-          Math.min(TIMELINE.MAX_ZOOM, viewState.zoom * zoomFactor)
+          Math.min(TIMELINE.MAX_ZOOM, zoom * zoomFactor)
         );
-        if (nextZoom === viewState.zoom) return;
+        if (nextZoom === zoom) return;
 
-        // Keep timeline time under cursor fixed while zooming.
-        const cursorTime = viewState.scrollX + x / viewState.zoom;
+        const cursorTime = scrollX + x / zoom;
         setZoom(nextZoom);
         setScrollX(Math.max(0, cursorTime - x / nextZoom));
       } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        // Horizontal scroll (shift+wheel or trackpad horizontal swipe)
         e.preventDefault();
         const delta = e.shiftKey ? e.deltaY : e.deltaX;
-        setScrollX(Math.max(0, viewState.scrollX + delta / viewState.zoom));
+        setScrollX(Math.max(0, scrollX + delta / zoom));
       }
-    },
-    [viewState.zoom, viewState.scrollX, setScrollX, setZoom]
-  );
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [setScrollX, setZoom]);
 
   return (
     <div className={cn("flex flex-col h-full bg-surface-primary", className)}>
@@ -195,8 +203,7 @@ export function Timeline({ className }: TimelineProps) {
         ref={containerRef}
         data-video-timeline-root=""
         className="flex-1 overflow-hidden"
-        onMouseDown={handleMouseDown}
-        onWheel={handleWheel}
+        onPointerDown={handleContainerPointerDown}
       >
         {/* Track headers + ruler row */}
         <div className="flex border-b border-border-default">
@@ -233,7 +240,10 @@ export function Timeline({ className }: TimelineProps) {
               return (
                 <div
                   key={track.id}
-                  className="flex items-center px-2 border-b border-border-default"
+                  className={cn(
+                    "flex items-center border-b border-border-default",
+                    trackHeaderWidth >= 120 ? "px-2" : "px-1 justify-center"
+                  )}
                   style={{ height: headerHeight }}
                   draggable
                   onDragStart={(event) => {
@@ -250,55 +260,99 @@ export function Timeline({ className }: TimelineProps) {
                     handleTrackDrop(fromTrackId, track.id);
                   }}
                 >
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    {/* Visibility toggle */}
+                  {trackHeaderWidth >= 120 ? (
+                  <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
                     <button
                       onClick={() => updateTrack(track.id, { visible: !track.visible })}
                       className={cn(
-                        "p-1 rounded hover:bg-surface-tertiary",
+                        "shrink-0 p-1 rounded hover:bg-surface-tertiary",
                         track.visible ? "text-text-primary" : "text-text-tertiary"
                       )}
                       title={track.visible ? "Hide track" : "Show track"}
                     >
-                      {track.visible ? (
-                        <TrackVisibleIcon className="w-3 h-3" />
-                      ) : (
-                        <TrackHiddenIcon className="w-3 h-3" />
-                      )}
+                      {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
                     </button>
-
-                    {/* Audio mute toggle */}
                     <button
                       onClick={() => updateTrack(track.id, { muted: !track.muted })}
                       className={cn(
-                        "p-1 rounded hover:bg-surface-tertiary",
+                        "shrink-0 p-1 rounded hover:bg-surface-tertiary",
                         track.muted ? "text-text-tertiary" : "text-text-primary"
                       )}
                       title={track.muted ? "Unmute track" : "Mute track"}
                     >
-                      {track.muted ? (
-                        <TrackMutedIcon className="w-3 h-3" />
-                      ) : (
-                        <TrackUnmutedIcon className="w-3 h-3" />
-                      )}
+                      {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
                     </button>
-
-                    {/* Track name */}
-                    <span className="text-xs text-text-secondary truncate">
-                      {track.name}
-                    </span>
-
+                    <span className="text-xs text-text-secondary truncate">{track.name}</span>
                     <button
-                      onClick={() => {
-                        saveToHistory();
-                        removeTrack(track.id);
-                      }}
-                      className="p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                      onClick={() => { saveToHistory(); removeTrack(track.id); }}
+                      className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
                       title="Delete track"
                     >
                       <DeleteIcon className="w-3 h-3" />
                     </button>
                   </div>
+                ) : (
+                  /* Compact mode: single menu icon → Popover with all controls */
+                  <Popover
+                    trigger={
+                      <button className="p-1 rounded hover:bg-surface-tertiary text-text-secondary" title={track.name}>
+                        <MenuIcon className="w-3 h-3" />
+                      </button>
+                    }
+                    align="start"
+                    side="bottom"
+                    closeOnScroll={false}
+                  >
+                    <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
+                      <span className="text-xs font-medium text-text-primary px-2 py-1 truncate">{track.name}</span>
+                      <button
+                        onClick={() => updateTrack(track.id, { visible: !track.visible })}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                      >
+                        {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
+                        {track.visible ? "Hide" : "Show"}
+                      </button>
+                      <button
+                        onClick={() => updateTrack(track.id, { muted: !track.muted })}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                      >
+                        {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
+                        {track.muted ? "Unmute" : "Mute"}
+                      </button>
+                      <div className="h-px bg-border-default mx-1" />
+                      <button
+                        onClick={() => {
+                          const idx = tracks.findIndex(t => t.id === track.id);
+                          if (idx > 0) { saveToHistory(); reorderTracks(idx, idx - 1); }
+                        }}
+                        disabled={tracks.findIndex(t => t.id === track.id) === 0}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
+                      >
+                        <ChevronDownIcon className="w-3 h-3 rotate-180" />
+                        Move Up
+                      </button>
+                      <button
+                        onClick={() => {
+                          const idx = tracks.findIndex(t => t.id === track.id);
+                          if (idx < tracks.length - 1) { saveToHistory(); reorderTracks(idx, idx + 1); }
+                        }}
+                        disabled={tracks.findIndex(t => t.id === track.id) === tracks.length - 1}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
+                      >
+                        <ChevronDownIcon className="w-3 h-3" />
+                        Move Down
+                      </button>
+                      <div className="h-px bg-border-default mx-1" />
+                      <button
+                        onClick={() => { saveToHistory(); removeTrack(track.id); }}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-red-400"
+                      >
+                        <DeleteIcon className="w-3 h-3" />
+                        Delete
+                      </button>
+                    </div>
+                  </Popover>
+                )}
                 </div>
               );
             })}
@@ -306,16 +360,20 @@ export function Timeline({ className }: TimelineProps) {
 
           {/* Track header/content resize handle */}
           <div
-            className="w-1 shrink-0 cursor-ew-resize bg-border-default hover:bg-accent transition-colors"
-            onMouseDown={handleStartHeaderResize}
+            className="w-1 shrink-0 cursor-ew-resize touch-none bg-border-default hover:bg-accent transition-colors relative"
+            onPointerDown={handleStartHeaderResize}
             title="Resize track headers"
-          />
+          >
+            {/* Invisible extended hit area for easier touch/click */}
+            <div className="absolute -left-2.5 -right-2.5 top-0 bottom-0 z-10" />
+          </div>
 
           {/* Tracks content */}
           <div
             ref={tracksContainerRef}
-            className="flex-1 overflow-auto relative"
+            className="flex-1 overflow-auto relative touch-pan-y"
             style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
+            onPointerDown={handleTimelinePointerDown}
           >
             {/* Background for click handling */}
             <div
@@ -331,6 +389,7 @@ export function Timeline({ className }: TimelineProps) {
                   track={track}
                   clips={getClipsInTrack(track.id)}
                   masks={getMasksForTrack(track.id)}
+                  liftedClipId={liftedClipId}
                 />
               ))}
 

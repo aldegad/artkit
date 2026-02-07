@@ -74,20 +74,16 @@ import {
   AddAudioTrackIcon,
   SnapIcon,
   SnapOffIcon,
-  TimelineZoomInIcon,
-  TimelineZoomOutIcon,
   VideoClipIcon,
   AudioClipIcon,
   ImageClipIcon,
-  TrackVisibleIcon,
-  TrackHiddenIcon,
   TrackMutedIcon,
   TrackUnmutedIcon,
+  FilmStripIcon,
   // Video Tools
   TrimToolIcon,
   RazorToolIcon,
   MaskToolIcon,
-  VideoCropToolIcon,
   // Crop
   LockAspectIcon,
   UnlockAspectIcon,
@@ -95,7 +91,7 @@ import {
   SquareFitIcon,
   CanvasExpandIcon,
   // Sidebar
-  SidebarEditorIcon,
+  SidebarImageIcon,
   SidebarSpriteIcon,
   SidebarConverterIcon,
   SidebarSoundIcon,
@@ -103,9 +99,12 @@ import {
   SidebarIconsIcon,
   ArtkitIcon,
 } from "@/shared/components/icons";
+import ArtkitLogo from "@/components/icons/ArtkitLogo";
+import ArtkitWordmark from "@/components/icons/ArtkitWordmark";
 import type { IconMeta, IconCategory } from "../types";
 
 const CATEGORY_LABELS: Record<IconCategory, string> = {
+  brand: "Brand",
   navigation: "Navigation & UI",
   media: "Media & Playback",
   editorTools: "Editor Tools",
@@ -120,6 +119,10 @@ const CATEGORY_LABELS: Record<IconCategory, string> = {
 };
 
 const iconRegistry: IconMeta[] = [
+  // Brand
+  { name: "ArtkitLogo", component: ArtkitLogo, category: "brand", tags: ["artkit", "logo", "ak", "brand"] },
+  { name: "ArtkitWordmark", component: ArtkitWordmark, category: "brand", tags: ["artkit", "wordmark", "brand", "text"] },
+
   // Navigation & UI Controls
   { name: "CloseIcon", component: CloseIcon, category: "navigation", tags: ["close", "x", "dismiss", "remove"] },
   { name: "ChevronDownIcon", component: ChevronDownIcon, category: "navigation", tags: ["chevron", "down", "arrow", "dropdown"] },
@@ -202,21 +205,17 @@ const iconRegistry: IconMeta[] = [
   { name: "AddAudioTrackIcon", component: AddAudioTrackIcon, category: "videoTimeline", tags: ["add", "audio", "track", "new"] },
   { name: "SnapIcon", component: SnapIcon, category: "videoTimeline", tags: ["snap", "magnet", "align", "grid", "on"] },
   { name: "SnapOffIcon", component: SnapOffIcon, category: "videoTimeline", tags: ["snap", "magnet", "align", "grid", "off", "disabled"] },
-  { name: "TimelineZoomInIcon", component: TimelineZoomInIcon, category: "videoTimeline", tags: ["timeline", "zoom", "in", "plus"] },
-  { name: "TimelineZoomOutIcon", component: TimelineZoomOutIcon, category: "videoTimeline", tags: ["timeline", "zoom", "out", "minus"] },
   { name: "VideoClipIcon", component: VideoClipIcon, category: "videoTimeline", tags: ["video", "clip", "film", "movie"] },
   { name: "AudioClipIcon", component: AudioClipIcon, category: "videoTimeline", tags: ["audio", "clip", "sound", "music"] },
   { name: "ImageClipIcon", component: ImageClipIcon, category: "videoTimeline", tags: ["image", "clip", "photo", "still"] },
-  { name: "TrackVisibleIcon", component: TrackVisibleIcon, category: "videoTimeline", tags: ["track", "visible", "eye", "show"] },
-  { name: "TrackHiddenIcon", component: TrackHiddenIcon, category: "videoTimeline", tags: ["track", "hidden", "eye", "hide"] },
   { name: "TrackMutedIcon", component: TrackMutedIcon, category: "videoTimeline", tags: ["track", "muted", "volume", "silent"] },
   { name: "TrackUnmutedIcon", component: TrackUnmutedIcon, category: "videoTimeline", tags: ["track", "unmuted", "volume", "sound"] },
+  { name: "FilmStripIcon", component: FilmStripIcon, category: "videoTimeline", tags: ["film", "strip", "filmstrip", "movie", "timeline"] },
 
   // Video Tools
   { name: "TrimToolIcon", component: TrimToolIcon, category: "videoTools", tags: ["trim", "tool", "cut", "edit"] },
   { name: "RazorToolIcon", component: RazorToolIcon, category: "videoTools", tags: ["razor", "tool", "split", "scissors"] },
   { name: "MaskToolIcon", component: MaskToolIcon, category: "videoTools", tags: ["mask", "tool", "eye", "reveal"] },
-  { name: "VideoCropToolIcon", component: VideoCropToolIcon, category: "videoTools", tags: ["video", "crop", "tool", "resize"] },
 
   // Crop
   { name: "LockAspectIcon", component: LockAspectIcon, category: "crop", tags: ["lock", "aspect", "ratio", "locked"] },
@@ -226,7 +225,7 @@ const iconRegistry: IconMeta[] = [
   { name: "CanvasExpandIcon", component: CanvasExpandIcon, category: "crop", tags: ["canvas", "expand", "fullscreen", "maximize"] },
 
   // Sidebar
-  { name: "SidebarEditorIcon", component: SidebarEditorIcon, category: "sidebar", tags: ["sidebar", "editor", "image", "photo"] },
+  { name: "SidebarImageIcon", component: SidebarImageIcon, category: "sidebar", tags: ["sidebar", "editor", "image", "photo"] },
   { name: "SidebarSpriteIcon", component: SidebarSpriteIcon, category: "sidebar", tags: ["sidebar", "sprite", "animation", "frames"] },
   { name: "SidebarConverterIcon", component: SidebarConverterIcon, category: "sidebar", tags: ["sidebar", "converter", "convert", "transform"] },
   { name: "SidebarSoundIcon", component: SidebarSoundIcon, category: "sidebar", tags: ["sidebar", "sound", "audio", "music"] },

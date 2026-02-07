@@ -54,8 +54,7 @@ export default function FramePreviewContent() {
   const {
     frames,
     setFrames,
-    currentFrameIndex,
-    setCurrentFrameIndex,
+    selectedFrameId,
     pushHistory,
     toolMode,
     brushColor,
@@ -71,6 +70,7 @@ export default function FramePreviewContent() {
   const [hasDrawn, setHasDrawn] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
+  const [editFrameId, setEditFrameId] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,8 +78,16 @@ export default function FramePreviewContent() {
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   const frameImgRef = useRef<HTMLImageElement | null>(null);
 
+  // Sync from selectedFrameId - only when user selects a new frame
+  useEffect(() => {
+    if (selectedFrameId !== null) {
+      setEditFrameId(selectedFrameId);
+    }
+  }, [selectedFrameId]);
+
   const validFrames = frames.filter((f) => f.imageData);
-  const currentFrame = validFrames[currentFrameIndex];
+  const editFrameIndex = editFrameId !== null ? validFrames.findIndex((f) => f.id === editFrameId) : -1;
+  const currentFrame = editFrameIndex >= 0 ? validFrames[editFrameIndex] : validFrames[0];
 
   // ---- Viewport (ref-based zoom/pan) ----
   const viewport = useCanvasViewport({
@@ -176,7 +184,7 @@ export default function FramePreviewContent() {
   useEffect(() => {
     setFrameVpPan({ x: 0, y: 0 });
     setHasDrawn(false);
-  }, [currentFrameIndex, setFrameVpPan]);
+  }, [editFrameId, setFrameVpPan]);
 
   // Load image when frame changes or imageData updates (after drawing)
   useEffect(() => {
@@ -196,16 +204,18 @@ export default function FramePreviewContent() {
   }, [currentFrame?.imageData, requestRender]);
 
   const handlePrev = useCallback(() => {
-    if (validFrames.length > 0) {
-      setCurrentFrameIndex((currentFrameIndex - 1 + validFrames.length) % validFrames.length);
+    if (validFrames.length > 0 && editFrameIndex >= 0) {
+      const newIdx = (editFrameIndex - 1 + validFrames.length) % validFrames.length;
+      setEditFrameId(validFrames[newIdx].id);
     }
-  }, [currentFrameIndex, validFrames.length, setCurrentFrameIndex]);
+  }, [editFrameIndex, validFrames]);
 
   const handleNext = useCallback(() => {
-    if (validFrames.length > 0) {
-      setCurrentFrameIndex((currentFrameIndex + 1) % validFrames.length);
+    if (validFrames.length > 0 && editFrameIndex >= 0) {
+      const newIdx = (editFrameIndex + 1) % validFrames.length;
+      setEditFrameId(validFrames[newIdx].id);
     }
-  }, [currentFrameIndex, validFrames.length, setCurrentFrameIndex]);
+  }, [editFrameIndex, validFrames]);
 
   // Get pixel coordinates from mouse event
   const getPixelCoordinates = useCallback(
@@ -644,7 +654,7 @@ export default function FramePreviewContent() {
           <StepBackwardIcon />
         </button>
         <span className="text-xs text-text-primary tabular-nums select-none">
-          {validFrames.length > 0 ? `${currentFrameIndex + 1} / ${validFrames.length}` : "-"}
+          {validFrames.length > 0 && editFrameIndex >= 0 ? `${editFrameIndex + 1} / ${validFrames.length}` : "-"}
         </span>
         <button
           onClick={handleNext}
