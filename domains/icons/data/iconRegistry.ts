@@ -79,6 +79,7 @@ import {
   ImageClipIcon,
   TrackMutedIcon,
   TrackUnmutedIcon,
+  FilmStripIcon,
   // Video Tools
   TrimToolIcon,
   RazorToolIcon,
@@ -209,6 +210,7 @@ const iconRegistry: IconMeta[] = [
   { name: "ImageClipIcon", component: ImageClipIcon, category: "videoTimeline", tags: ["image", "clip", "photo", "still"] },
   { name: "TrackMutedIcon", component: TrackMutedIcon, category: "videoTimeline", tags: ["track", "muted", "volume", "silent"] },
   { name: "TrackUnmutedIcon", component: TrackUnmutedIcon, category: "videoTimeline", tags: ["track", "unmuted", "volume", "sound"] },
+  { name: "FilmStripIcon", component: FilmStripIcon, category: "videoTimeline", tags: ["film", "strip", "filmstrip", "movie", "timeline"] },
 
   // Video Tools
   { name: "TrimToolIcon", component: TrimToolIcon, category: "videoTools", tags: ["trim", "tool", "cut", "edit"] },
