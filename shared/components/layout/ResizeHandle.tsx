@@ -36,11 +36,12 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
     return direction === "horizontal" ? parent.clientWidth : parent.clientHeight;
   }, [direction]);
 
-  // Mouse handlers
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  // Pointer handler (unified mouse/touch/pen)
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
       const startPos = direction === "horizontal" ? e.clientX : e.clientY;
       originalStartPositionRef.current = startPos;
@@ -57,42 +58,12 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
     [direction, splitId, handleIndex, startResize, getActualContainerSize]
   );
 
-  // Touch handlers
-  const handleTouchStart = useCallback(
-    (e: React.TouchEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const touch = e.touches[0];
-      const startPos = direction === "horizontal" ? touch.clientX : touch.clientY;
-      originalStartPositionRef.current = startPos;
-      containerSizeRef.current = getActualContainerSize();
-
-      startResize({
-        splitId,
-        handleIndex,
-        startPosition: startPos,
-        direction,
-        actualContainerSize: containerSizeRef.current,
-      });
-    },
-    [direction, splitId, handleIndex, startResize, getActualContainerSize]
-  );
-
-  // Global mouse/touch move and up handlers
+  // Global pointer move and up handlers
   useEffect(() => {
     if (!isActiveHandle) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
-      // Calculate total delta from original start position (not incremental)
-      const totalDelta = currentPos - originalStartPositionRef.current;
-      updateResizeAbsolute(totalDelta);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      const currentPos = direction === "horizontal" ? touch.clientX : touch.clientY;
       // Calculate total delta from original start position (not incremental)
       const totalDelta = currentPos - originalStartPositionRef.current;
       updateResizeAbsolute(totalDelta);
@@ -102,18 +73,14 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
       endResize();
     };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleEnd);
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
-    document.addEventListener("touchend", handleEnd);
-    document.addEventListener("touchcancel", handleEnd);
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handleEnd);
+    document.addEventListener("pointercancel", handleEnd);
 
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleEnd);
-      document.removeEventListener("touchmove", handleTouchMove);
-      document.removeEventListener("touchend", handleEnd);
-      document.removeEventListener("touchcancel", handleEnd);
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handleEnd);
+      document.removeEventListener("pointercancel", handleEnd);
     };
   }, [isActiveHandle, direction, updateResizeAbsolute, endResize]);
 
@@ -122,8 +89,7 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
   return (
     <div
       ref={handleRef}
-      onMouseDown={handleMouseDown}
-      onTouchStart={handleTouchStart}
+      onPointerDown={handlePointerDown}
       className={`
         shrink-0 relative group touch-none
         ${isHorizontal ? "w-1 cursor-ew-resize" : "h-1 cursor-ns-resize"}

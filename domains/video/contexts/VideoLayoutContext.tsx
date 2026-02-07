@@ -16,7 +16,7 @@ const VIDEO_DEFAULT_LAYOUT: SplitNode = {
   direction: "vertical",
   children: [
     { type: "panel", id: "preview-panel", panelId: "preview", minSize: 220 } as PanelNode,
-    { type: "panel", id: "timeline-panel", panelId: "timeline", minSize: 180 } as PanelNode,
+    { type: "panel", id: "timeline-panel", panelId: "timeline", minSize: 120 } as PanelNode,
   ],
   sizes: [68, 32],
 };

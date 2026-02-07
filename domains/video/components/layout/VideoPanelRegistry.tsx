@@ -13,7 +13,7 @@ const PANEL_META = {
     title: "Timeline",
     showHeader: true,
     defaultSize: { width: 1000, height: 360 },
-    minSize: 180,
+    minSize: 120,
   },
 } as const;
 
