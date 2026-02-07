@@ -245,6 +245,7 @@ interface Translations {
   selectFrameForBgRemoval: string;
   frameImageNotFound: string;
   removeBackgroundCurrentFrame: string;
+  removeBackgroundSelectedFrames: string;
   removeBackgroundAllFrames: string;
   processingFrameProgress: string;
 
@@ -530,6 +531,7 @@ const translations: Record<Language, Translations> = {
     selectFrameForBgRemoval: "배경을 제거할 프레임을 선택하세요.",
     frameImageNotFound: "프레임 이미지를 찾을 수 없습니다.",
     removeBackgroundCurrentFrame: "현재 프레임",
+    removeBackgroundSelectedFrames: "선택된 프레임",
     removeBackgroundAllFrames: "모든 프레임",
     processingFrameProgress: "프레임 처리 중",
 
@@ -813,6 +815,7 @@ const translations: Record<Language, Translations> = {
     selectFrameForBgRemoval: "Please select a frame to remove background.",
     frameImageNotFound: "Frame image not found.",
     removeBackgroundCurrentFrame: "Current Frame",
+    removeBackgroundSelectedFrames: "Selected Frames",
     removeBackgroundAllFrames: "All Frames",
     processingFrameProgress: "Processing frames",
 

@@ -11,11 +11,13 @@ interface FrameBackgroundRemovalModalsProps {
   showConfirm: boolean;
   onCloseConfirm: () => void;
   onConfirmCurrentFrame: () => void;
+  onConfirmSelectedFrames: () => void;
   onConfirmAllFrames: () => void;
   isRemoving: boolean;
   progress: number;
   status: string;
   hasFrames: boolean;
+  selectedFrameCount: number;
   translations: {
     removeBackground: string;
     cancel: string;
@@ -23,6 +25,7 @@ interface FrameBackgroundRemovalModalsProps {
     frameBackgroundRemoval: string;
     firstRunDownload: string;
     currentFrame: string;
+    selectedFrames: string;
     allFrames: string;
   };
 }
@@ -35,11 +38,13 @@ export function FrameBackgroundRemovalModals({
   showConfirm,
   onCloseConfirm,
   onConfirmCurrentFrame,
+  onConfirmSelectedFrames,
   onConfirmAllFrames,
   isRemoving,
   progress,
   status,
   hasFrames,
+  selectedFrameCount,
   translations: t,
 }: FrameBackgroundRemovalModalsProps) {
   return (
@@ -71,6 +76,13 @@ export function FrameBackgroundRemovalModals({
                 className="px-4 py-2 text-sm rounded-lg bg-accent-primary hover:bg-accent-primary-hover text-white transition-colors"
               >
                 {t.currentFrame}
+              </button>
+              <button
+                onClick={onConfirmSelectedFrames}
+                disabled={selectedFrameCount < 2}
+                className="px-4 py-2 text-sm rounded-lg bg-accent-primary hover:bg-accent-primary-hover text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t.selectedFrames} ({selectedFrameCount})
               </button>
               <button
                 onClick={onConfirmAllFrames}

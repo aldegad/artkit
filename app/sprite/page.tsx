@@ -59,6 +59,7 @@ function SpriteEditorMain() {
     setFrames,
     setNextFrameId,
     selectedFrameId,
+    selectedFrameIds,
     selectedPointIndex,
     currentFrameIndex,
     fps,
@@ -119,6 +120,7 @@ function SpriteEditorMain() {
   } = useFrameBackgroundRemoval({
     frames,
     currentFrameIndex,
+    selectedFrameIds,
     setFrames,
     pushHistory,
     translations: {
@@ -994,6 +996,10 @@ function SpriteEditorMain() {
           setShowBgRemovalConfirm(false);
           handleRemoveBackground("current");
         }}
+        onConfirmSelectedFrames={() => {
+          setShowBgRemovalConfirm(false);
+          handleRemoveBackground("selected");
+        }}
         onConfirmAllFrames={() => {
           setShowBgRemovalConfirm(false);
           handleRemoveBackground("all");
@@ -1002,6 +1008,7 @@ function SpriteEditorMain() {
         progress={bgRemovalProgress}
         status={bgRemovalStatus}
         hasFrames={frames.filter((f) => f.imageData).length > 0}
+        selectedFrameCount={selectedFrameIds.length}
         translations={{
           removeBackground: t.removeBackground,
           cancel: t.cancel,
@@ -1009,6 +1016,7 @@ function SpriteEditorMain() {
           frameBackgroundRemoval: t.frameBackgroundRemoval,
           firstRunDownload: t.firstRunDownload,
           currentFrame: t.removeBackgroundCurrentFrame,
+          selectedFrames: t.removeBackgroundSelectedFrames,
           allFrames: t.removeBackgroundAllFrames,
         }}
       />
