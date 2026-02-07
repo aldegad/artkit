@@ -143,7 +143,6 @@ export function Clip({ clip, isLifted }: ClipProps) {
       style={{
         left: x,
         width: minWidth,
-        touchAction: "none",
       }}
     >
       {/* Clip name */}
