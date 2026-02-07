@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useSyncExternalStore, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 
 export type Language = "ko" | "en";
 
@@ -900,46 +900,33 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const STORAGE_KEY = "artkit-language";
 
-// useSyncExternalStore용 리스너 (같은 탭 내 변경 감지)
-let languageListeners: (() => void)[] = [];
-
-function emitLanguageChange() {
-  languageListeners.forEach((l) => l());
-}
-
-function subscribeToLanguage(callback: () => void) {
-  languageListeners.push(callback);
-  // 다른 탭에서의 변경도 감지
-  const handler = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) callback();
-  };
-  window.addEventListener("storage", handler);
-  return () => {
-    languageListeners = languageListeners.filter((l) => l !== callback);
-    window.removeEventListener("storage", handler);
-  };
-}
-
-function getLanguageSnapshot(): Language {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "ko" || stored === "en") return stored;
-  return "ko";
-}
-
-function getLanguageServerSnapshot(): Language {
-  return "ko";
-}
-
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const language = useSyncExternalStore(
-    subscribeToLanguage,
-    getLanguageSnapshot,
-    getLanguageServerSnapshot,
-  );
+  // 항상 "ko"로 초기화 → 서버 HTML과 동일하게 렌더링 → 하이드레이션 안전
+  const [language, setLanguageState] = useState<Language>("ko");
+
+  useEffect(() => {
+    // 마운트 후 localStorage에서 실제 언어 읽기
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "ko" || stored === "en") {
+      setLanguageState(stored);
+    }
+
+    // 다른 탭에서 언어 변경 감지
+    const handler = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        const newLang = e.newValue;
+        if (newLang === "ko" || newLang === "en") {
+          setLanguageState(newLang);
+        }
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
 
   const setLanguage = useCallback((lang: Language) => {
     localStorage.setItem(STORAGE_KEY, lang);
-    emitLanguageChange();
+    setLanguageState(lang);
   }, []);
 
   return (
