@@ -142,6 +142,7 @@ export default function TimelineContent() {
   const maxFrameCount = getMaxFrameCount();
   const TRACK_HEIGHT = 48;
   const CELL_WIDTH = 40;
+  const HEADER_WIDTH = 144; // w-36 = 9rem = 144px
 
   return (
     <div className="flex flex-col h-full bg-surface-primary">
@@ -197,24 +198,54 @@ export default function TimelineContent() {
         )}
       </div>
 
-      {/* Multi-track area */}
-      <div className="flex-1 min-h-0 flex">
-        {/* Track headers (left side) */}
-        <div className="w-36 shrink-0 border-r border-border-default overflow-hidden">
-          {/* Header spacer for frame ruler */}
-          <div className="h-6 border-b border-border-default bg-surface-secondary/30" />
+      {/* Multi-track area - single scroll container with sticky headers */}
+      <Scrollbar className="flex-1 min-h-0">
+        <div style={{ minWidth: HEADER_WIDTH + maxFrameCount * CELL_WIDTH }}>
+          {/* Header row: corner + frame ruler (sticky top) */}
+          <div className="sticky top-0 z-20 flex h-6 border-b border-border-default">
+            {/* Corner cell (sticky both directions) */}
+            <div className="sticky left-0 z-30 shrink-0 bg-surface-secondary border-r border-border-default" style={{ width: HEADER_WIDTH }} />
 
-          <Scrollbar className="flex-1" overflow={{ y: "scroll", x: "hidden" }}>
-            {tracks.map((track: SpriteTrack) => (
+            {/* Frame ruler numbers */}
+            <div className="flex items-end h-full bg-surface-secondary">
+              {Array.from({ length: maxFrameCount }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] cursor-pointer transition-colors ${
+                    i === currentFrameIndex
+                      ? "text-accent-primary font-bold bg-accent-primary/10"
+                      : "text-text-tertiary hover:bg-surface-secondary/50"
+                  }`}
+                  style={{ width: CELL_WIDTH, height: "100%" }}
+                  onClick={() => {
+                    setIsPlaying(false);
+                    setCurrentFrameIndex(i);
+                  }}
+                >
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Track rows */}
+          {tracks.map((track: SpriteTrack) => (
+            <div
+              key={track.id}
+              className={`flex border-b border-border-default transition-colors ${
+                track.id === activeTrackId ? "bg-accent-primary/5" : ""
+              } ${!track.visible ? "opacity-40" : ""}`}
+              style={{ height: TRACK_HEIGHT }}
+            >
+              {/* Track header (sticky left) */}
               <div
-                key={track.id}
                 onClick={() => setActiveTrackId(track.id)}
-                className={`flex items-center gap-1 px-2 border-b border-border-default cursor-pointer transition-colors ${
+                className={`sticky left-0 z-10 shrink-0 flex items-center gap-1 px-2 border-r border-border-default cursor-pointer transition-colors ${
                   track.id === activeTrackId
                     ? "bg-accent-primary/10"
-                    : "hover:bg-surface-secondary/50"
+                    : "bg-surface-primary hover:bg-surface-secondary/50"
                 }`}
-                style={{ height: TRACK_HEIGHT }}
+                style={{ width: HEADER_WIDTH, height: TRACK_HEIGHT }}
               >
                 {/* Visibility toggle */}
                 <button
@@ -275,111 +306,67 @@ export default function TimelineContent() {
                       e.stopPropagation();
                       handleDeleteTrack(track.id);
                     }}
-                    className="w-4 h-4 flex items-center justify-center rounded text-[9px] text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10 transition-colors opacity-0 group-hover:opacity-100"
+                    className="w-4 h-4 flex items-center justify-center rounded text-[9px] text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10 transition-colors"
                     title="Delete track"
                   >
                     ×
                   </button>
                 )}
               </div>
-            ))}
-          </Scrollbar>
+
+              {/* Frame cells */}
+              {Array.from({ length: Math.max(maxFrameCount, track.frames.length) }).map(
+                (_, frameIdx) => {
+                  const frame = track.frames[frameIdx];
+                  const isCurrentFrame = frameIdx === currentFrameIndex;
+
+                  return (
+                    <div
+                      key={frameIdx}
+                      className={`shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors ${
+                        isCurrentFrame ? "bg-accent-primary/10" : ""
+                      }`}
+                      style={{ width: CELL_WIDTH, height: TRACK_HEIGHT }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsPlaying(false);
+                        setCurrentFrameIndex(frameIdx);
+                        setActiveTrackId(track.id);
+                      }}
+                    >
+                      {frame ? (
+                        <div className="w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary">
+                          {frame.imageData ? (
+                            <img
+                              src={frame.imageData}
+                              alt=""
+                              className="w-full h-full object-contain"
+                              draggable={false}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[8px] text-text-tertiary">
+                              {frameIdx + 1}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-1 h-1 rounded-full bg-border-default/30" />
+                      )}
+                    </div>
+                  );
+                },
+              )}
+            </div>
+          ))}
+
+          {/* Empty state */}
+          {tracks.length === 0 && (
+            <div className="flex items-center justify-center text-text-tertiary text-xs py-8" style={{ marginLeft: HEADER_WIDTH }}>
+              Click &quot;+ Track&quot; to add a track
+            </div>
+          )}
         </div>
-
-        {/* Frame grid (right side) */}
-        <div className="flex-1 min-w-0 overflow-hidden">
-          {/* Frame ruler */}
-          <div className="h-6 border-b border-border-default bg-surface-secondary/30 flex items-end">
-            <Scrollbar overflow={{ x: "scroll", y: "hidden" }} className="w-full h-full">
-              <div className="flex items-end h-full" style={{ width: maxFrameCount * CELL_WIDTH }}>
-                {Array.from({ length: maxFrameCount }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] cursor-pointer transition-colors ${
-                      i === currentFrameIndex
-                        ? "text-accent-primary font-bold bg-accent-primary/10"
-                        : "text-text-tertiary hover:bg-surface-secondary/50"
-                    }`}
-                    style={{ width: CELL_WIDTH, height: "100%" }}
-                    onClick={() => {
-                      setIsPlaying(false);
-                      setCurrentFrameIndex(i);
-                    }}
-                  >
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
-            </Scrollbar>
-          </div>
-
-          {/* Track rows */}
-          <Scrollbar className="flex-1">
-            {tracks.map((track: SpriteTrack) => (
-              <div
-                key={track.id}
-                onClick={() => setActiveTrackId(track.id)}
-                className={`flex border-b border-border-default transition-colors ${
-                  track.id === activeTrackId
-                    ? "bg-accent-primary/5"
-                    : ""
-                } ${!track.visible ? "opacity-40" : ""}`}
-                style={{ height: TRACK_HEIGHT }}
-              >
-                {Array.from({ length: Math.max(maxFrameCount, track.frames.length) }).map(
-                  (_, frameIdx) => {
-                    const frame = track.frames[frameIdx];
-                    const isCurrentFrame = frameIdx === currentFrameIndex;
-
-                    return (
-                      <div
-                        key={frameIdx}
-                        className={`shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors ${
-                          isCurrentFrame ? "bg-accent-primary/10" : ""
-                        }`}
-                        style={{ width: CELL_WIDTH, height: TRACK_HEIGHT }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsPlaying(false);
-                          setCurrentFrameIndex(frameIdx);
-                          setActiveTrackId(track.id);
-                        }}
-                      >
-                        {frame ? (
-                          <div className="w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary">
-                            {frame.imageData ? (
-                              <img
-                                src={frame.imageData}
-                                alt=""
-                                className="w-full h-full object-contain"
-                                draggable={false}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[8px] text-text-tertiary">
-                                {frameIdx + 1}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          // Empty cell (track shorter than max)
-                          <div className="w-1 h-1 rounded-full bg-border-default/30" />
-                        )}
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-            ))}
-
-            {/* Empty state */}
-            {tracks.length === 0 && (
-              <div className="flex items-center justify-center h-full text-text-tertiary text-xs py-8">
-                Click &quot;+ Track&quot; to add a track
-              </div>
-            )}
-          </Scrollbar>
-        </div>
-      </div>
+      </Scrollbar>
     </div>
   );
 }
