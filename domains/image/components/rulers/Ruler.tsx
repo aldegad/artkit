@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import type { GuideOrientation } from "../../types";
 import {
   calculateTickIntervals,

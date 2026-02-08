@@ -4,7 +4,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import { useVideoElements, usePlaybackTick, usePreRenderCache } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { PREVIEW, PLAYBACK } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";

@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useLayout, useLayoutConfig } from "./LayoutConfigContext";
-import { PanelNode } from "@/types/layout";
+import { PanelNode } from "@/shared/types/layout";
 
 // ============================================
 // Types

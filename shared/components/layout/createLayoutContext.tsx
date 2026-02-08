@@ -24,7 +24,7 @@ import {
   removePanelFromLayout,
   generateId,
   isSplitNode,
-} from "@/types/layout";
+} from "@/shared/types/layout";
 import { LayoutConfiguration, LayoutContextValue } from "./types";
 import { LayoutConfigProvider } from "./LayoutConfigContext";
 

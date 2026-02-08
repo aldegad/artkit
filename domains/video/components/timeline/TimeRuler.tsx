@@ -4,7 +4,7 @@ import { useRef, useEffect, useCallback } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
 import { useVideoCoordinates, usePlaybackTick } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { TIMELINE } from "../../constants";
 
 interface TimeRulerProps {

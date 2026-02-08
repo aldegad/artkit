@@ -6,7 +6,7 @@ import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame } from "../types";
 import { getBoundingBox, isPointInPolygon } from "../utils/geometry";
 import { ImageDropZone } from "../../../shared/components";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useRenderScheduler } from "@/shared/hooks/useRenderScheduler";

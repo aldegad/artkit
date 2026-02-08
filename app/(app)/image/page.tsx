@@ -81,7 +81,7 @@ import {
   registerEditorPanelComponent,
   clearEditorPanelComponents,
 } from "@/domains/image/components/layout";
-import { isSplitNode, type SplitNode, type PanelNode } from "@/types/layout";
+import { isSplitNode, type SplitNode, type PanelNode } from "@/shared/types/layout";
 
 // Inner component that accesses the layout context
 function EditorDockableArea() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelNode, SplitNode } from "@/types/layout";
+import { PanelNode, SplitNode } from "@/shared/types/layout";
 import { createLayoutContext } from "@/shared/components/layout";
 import {
   getVideoPanelContent,

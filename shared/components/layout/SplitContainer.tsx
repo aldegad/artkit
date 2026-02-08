@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
-import { LayoutNode, SplitNode, PanelNode, isSplitNode, isPanelNode } from "@/types/layout";
+import { LayoutNode, SplitNode, PanelNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import ResizeHandle from "./ResizeHandle";
 import Panel from "./Panel";
 
