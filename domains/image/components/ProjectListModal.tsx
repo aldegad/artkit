@@ -2,7 +2,7 @@
 
 import { SavedImageProject } from "../types";
 import { Modal, Scrollbar } from "../../../shared/components";
-import { formatBytes } from "../../../utils/storage";
+import { formatBytes } from "@/shared/utils/storage";
 import { DeleteIcon } from "@/shared/components/icons";
 
 // ============================================

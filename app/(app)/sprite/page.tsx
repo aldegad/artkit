@@ -43,7 +43,7 @@ import {
   migrateFromLocalStorage,
   getStorageInfo,
   formatBytes,
-} from "@/utils/storage";
+} from "@/shared/utils/storage";
 
 // ============================================
 // Main Editor Component

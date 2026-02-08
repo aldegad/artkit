@@ -6,7 +6,7 @@ import {
   getAllImageProjects,
   deleteImageProject,
   getStorageInfo,
-} from "@/utils/storage";
+} from "@/shared/utils/storage";
 import {
   saveProjectToFirebase,
   getProjectFromFirebase,

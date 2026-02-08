@@ -13,7 +13,7 @@ import {
   deleteVideoProjectFromFirebase,
   type SaveLoadProgress,
 } from "@/lib/firebase/firebaseVideoStorage";
-import { getStorageInfo } from "@/utils/storage";
+import { getStorageInfo } from "@/shared/utils/storage";
 
 // ============================================
 // Storage Provider Interface
