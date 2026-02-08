@@ -2,7 +2,7 @@
 
 import { useState, useCallback, RefObject } from "react";
 import { UnifiedLayer } from "../types";
-import { removeBackground } from "../../../utils/backgroundRemoval";
+import { removeBackground } from "@/shared/utils/backgroundRemoval";
 
 // ============================================
 // Types

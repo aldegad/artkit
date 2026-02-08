@@ -5,7 +5,7 @@ import {
   getVideoProject,
   getAllVideoProjects,
   deleteVideoProject,
-} from "@/utils/videoStorage";
+} from "@/domains/video/utils/videoStorage";
 import {
   saveVideoProjectToFirebase,
   getVideoProjectFromFirebase,
