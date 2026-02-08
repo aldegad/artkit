@@ -1,4 +1,5 @@
-import { SavedProject, SavedImageProject } from "../types";
+import { SavedSpriteProject } from "@/domains/sprite/types";
+import { SavedImageProject } from "@/domains/image/types";
 
 // ============================================
 // IndexedDB Storage for Sprite Editor
@@ -55,7 +56,7 @@ function openDB(): Promise<IDBDatabase> {
 /**
  * Save a project to IndexedDB
  */
-export async function saveProject(project: SavedProject): Promise<void> {
+export async function saveProject(project: SavedSpriteProject): Promise<void> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
@@ -79,7 +80,7 @@ export async function saveProject(project: SavedProject): Promise<void> {
 /**
  * Get all saved projects from IndexedDB
  */
-export async function getAllProjects(): Promise<SavedProject[]> {
+export async function getAllProjects(): Promise<SavedSpriteProject[]> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
@@ -91,7 +92,7 @@ export async function getAllProjects(): Promise<SavedProject[]> {
     const request = index.getAll();
 
     request.onsuccess = () => {
-      const projects = request.result as SavedProject[];
+      const projects = request.result as SavedSpriteProject[];
       // Sort by savedAt descending (newest first)
       projects.sort((a, b) => b.savedAt - a.savedAt);
       resolve(projects);
@@ -107,7 +108,7 @@ export async function getAllProjects(): Promise<SavedProject[]> {
 /**
  * Get a single project by ID
  */
-export async function getProject(id: string): Promise<SavedProject | undefined> {
+export async function getProject(id: string): Promise<SavedSpriteProject | undefined> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
@@ -117,7 +118,7 @@ export async function getProject(id: string): Promise<SavedProject | undefined> 
     const request = store.get(id);
 
     request.onsuccess = () => {
-      resolve(request.result as SavedProject | undefined);
+      resolve(request.result as SavedSpriteProject | undefined);
     };
 
     request.onerror = () => {
@@ -215,7 +216,7 @@ export async function migrateFromLocalStorage(): Promise<number> {
   if (!stored) return 0;
 
   try {
-    const projects: SavedProject[] = JSON.parse(stored);
+    const projects: SavedSpriteProject[] = JSON.parse(stored);
 
     for (const project of projects) {
       await saveProject(project);
@@ -239,7 +240,7 @@ export async function migrateFromLocalStorage(): Promise<number> {
 interface ExportData {
   version: number;
   exportedAt: number;
-  projects: SavedProject[];
+  projects: SavedSpriteProject[];
 }
 
 /**
