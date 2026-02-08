@@ -3,7 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { cn } from "@/shared/utils/cn";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 
 interface WaveformProps {
   className?: string;

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../contexts";
 import { useVideoElements } from "./useVideoElements";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { PREVIEW } from "../constants";
 import { Clip, VideoClip, ImageClip } from "../types";
 

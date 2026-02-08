@@ -1,6 +1,6 @@
 "use client";
 
-import { SplitNode, PanelNode } from "@/types/layout";
+import { SplitNode, PanelNode } from "@/shared/types/layout";
 import { createLayoutContext } from "@/shared/components/layout";
 import {
   getEditorPanelContent,

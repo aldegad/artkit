@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useLayout } from "./LayoutConfigContext";
-import { SplitDirection } from "@/types/layout";
+import { SplitDirection } from "@/shared/types/layout";
 
 // ============================================
 // Types

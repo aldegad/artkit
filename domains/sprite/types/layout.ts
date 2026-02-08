@@ -1,4 +1,4 @@
-import { SplitNode, PanelNode } from "@/types/layout";
+import { SplitNode, PanelNode } from "@/shared/types/layout";
 
 // ============================================
 // Default Layouts

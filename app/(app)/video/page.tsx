@@ -46,7 +46,7 @@ import {
   type VideoStorageInfo,
 } from "@/services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/lib/firebase/firebaseVideoStorage";
-import { LayoutNode, isSplitNode, isPanelNode } from "@/types/layout";
+import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
 
 function sanitizeFileName(name: string): string {

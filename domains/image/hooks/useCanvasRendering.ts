@@ -3,7 +3,7 @@
 import { useEffect, RefObject, useCallback, useRef } from "react";
 import { UnifiedLayer, Point, CropArea, Guide, SnapSource } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 import { CHECKERBOARD, HANDLE_SIZE } from "../constants";
 

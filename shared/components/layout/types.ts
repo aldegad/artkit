@@ -1,5 +1,5 @@
 import { ReactNode, RefObject } from "react";
-import { SplitNode, LayoutState, DropTarget, ResizeState, PanelNode, SnapInfo } from "@/types/layout";
+import { SplitNode, LayoutState, DropTarget, ResizeState, PanelNode, SnapInfo } from "@/shared/types/layout";
 
 // ============================================
 // Panel Metadata

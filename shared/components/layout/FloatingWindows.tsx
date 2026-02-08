@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useLayout, useLayoutConfig } from "./LayoutConfigContext";
-import { FloatingWindow, SnapEdge } from "@/types/layout";
+import { FloatingWindow, SnapEdge } from "@/shared/types/layout";
 
 // ============================================
 // Component

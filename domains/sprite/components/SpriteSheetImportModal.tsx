@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { SpriteFrame, Point } from "../types";
-import { getCanvasColorsSync } from "@/hooks";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { Modal } from "../../../shared/components";
 
 interface SpriteSheetImportModalProps {
