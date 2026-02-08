@@ -18,7 +18,7 @@ import {
   listAll,
 } from "firebase/storage";
 import { db, storage } from "./config";
-import { SavedImageProject, UnifiedLayer } from "@/types";
+import { SavedImageProject, UnifiedLayer } from "@/domains/image/types";
 import { generateThumbnailFromLayers } from "@/utils/thumbnail";
 
 // ============================================

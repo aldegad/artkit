@@ -55,57 +55,11 @@ export interface SavedProject {
 }
 
 // ============================================
-// Unified Layer System
+// Re-exports from domain types
 // ============================================
 
-/**
- * UnifiedLayer: All layers are pixel-based (paint layers)
- * Images imported are drawn onto the layer canvas
- */
-export interface UnifiedLayer {
-  id: string;
-  name: string;
-  type: "paint"; // All layers are paint layers now
-  visible: boolean;
-  locked: boolean;
-  opacity: number;
-  zIndex: number;
-  // Canvas data
-  paintData?: string;
-  // Optional transform
-  position?: Point;
-  scale?: number;
-  rotation?: number;
-  originalSize?: Size;
-}
-
-// ============================================
-// Saved Image Project
-// ============================================
-
-export interface SavedImageProject {
-  id: string;
-  name: string;
-  unifiedLayers: UnifiedLayer[];
-  activeLayerId?: string;
-  canvasSize: Size;
-  rotation: number;
-  savedAt: number;
-  thumbnailUrl?: string; // For list view
-  guides?: import("../domains/image/types/guides").Guide[]; // Guide lines (optional for backward compatibility)
-  // View state (optional for backward compatibility)
-  zoom?: number;
-  pan?: { x: number; y: number };
-  // Brush settings (optional for backward compatibility)
-  brushSize?: number;
-  brushColor?: string;
-  brushHardness?: number;
-  // UI state (optional for backward compatibility)
-  showRulers?: boolean;
-  showGuides?: boolean;
-  lockGuides?: boolean;
-  snapToGuides?: boolean;
-}
+export type { UnifiedLayer } from "../shared/types/layers";
+export type { SavedImageProject } from "../domains/image/types";
 
 // ============================================
 // Tool Types
