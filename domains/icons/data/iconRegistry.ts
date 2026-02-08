@@ -100,8 +100,8 @@ import {
   LandingVideoIcon,
   LandingSpriteIcon,
 } from "@/shared/components/icons";
-import ArtkitLogo from "@/components/icons/ArtkitLogo";
-import ArtkitWordmark from "@/components/icons/ArtkitWordmark";
+import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
+import ArtkitWordmark from "@/shared/components/app/icons/ArtkitWordmark";
 import type { IconMeta, IconCategory } from "../types";
 
 const CATEGORY_LABELS: Record<IconCategory, string> = {

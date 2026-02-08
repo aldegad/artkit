@@ -8,7 +8,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { User, onAuthChange, signInWithGoogle, signOut } from "@/lib/firebase/auth";
+import { User, onAuthChange, signInWithGoogle, signOut } from "@/shared/lib/firebase/auth";
 
 interface AuthContextValue {
   user: User | null;

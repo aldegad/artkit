@@ -4,7 +4,8 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
-import { Tooltip, Scrollbar, ExportModal, NumberScrubber } from "@/shared/components";
+import { Tooltip, Scrollbar, NumberScrubber } from "@/shared/components";
+import { ExportModal } from "@/domains/image/components/ExportModal";
 import {
   MarqueeIcon,
   MoveIcon,
@@ -65,8 +66,8 @@ import {
   uploadLocalProjectsToCloud,
   clearLocalProjects,
   clearCloudProjects,
-} from "@/services/projectStorage";
-import { SyncDialog } from "@/components/auth";
+} from "@/domains/image/services/projectStorage";
+import { SyncDialog } from "@/shared/components/app/auth";
 import {
   EditorLayoutProvider,
   useEditorLayout,
@@ -1399,7 +1400,7 @@ function ImageEditorContent() {
         if (hasLocal && hasCloud) {
           // Both have data - show conflict dialog
           const localProjects = await (await import("@/shared/utils/storage")).getAllImageProjects();
-          const cloudProjects = await (await import("@/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
+          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
 
           setLocalProjectCount(localProjects.length);
           setCloudProjectCount(cloudProjects.length);

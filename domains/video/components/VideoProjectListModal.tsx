@@ -4,7 +4,7 @@ import { SavedVideoProject } from "../types";
 import { Modal, Scrollbar } from "../../../shared/components";
 import { formatBytes } from "@/shared/utils/storage";
 import { DeleteIcon } from "@/shared/components/icons";
-import { type SaveLoadProgress } from "../../../lib/firebase/firebaseVideoStorage";
+import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 
 // ============================================
 // Types

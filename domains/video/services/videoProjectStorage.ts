@@ -12,7 +12,7 @@ import {
   getAllVideoProjectsFromFirebase,
   deleteVideoProjectFromFirebase,
   type SaveLoadProgress,
-} from "@/lib/firebase/firebaseVideoStorage";
+} from "@/shared/lib/firebase/firebaseVideoStorage";
 import { getStorageInfo } from "@/shared/utils/storage";
 
 // ============================================

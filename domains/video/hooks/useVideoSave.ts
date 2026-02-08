@@ -16,8 +16,8 @@ import {
 import {
   VideoStorageProvider,
   VideoStorageInfo,
-} from "../../../services/videoProjectStorage";
-import { type SaveLoadProgress } from "../../../lib/firebase/firebaseVideoStorage";
+} from "@/domains/video/services/videoProjectStorage";
+import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 
 // ============================================
 // Types

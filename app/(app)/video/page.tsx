@@ -44,8 +44,8 @@ import { useVideoKeyboardShortcuts } from "@/domains/video/hooks";
 import {
   getVideoStorageProvider,
   type VideoStorageInfo,
-} from "@/services/videoProjectStorage";
-import { type SaveLoadProgress } from "@/lib/firebase/firebaseVideoStorage";
+} from "@/domains/video/services/videoProjectStorage";
+import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
 

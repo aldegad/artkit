@@ -14,7 +14,7 @@ import {
   deleteProjectFromFirebase,
   hasCloudProjects,
   deleteAllProjectsFromFirebase,
-} from "@/lib/firebase/firebaseStorage";
+} from "@/shared/lib/firebase/firebaseStorage";
 
 // ============================================
 // Storage Provider Interface
