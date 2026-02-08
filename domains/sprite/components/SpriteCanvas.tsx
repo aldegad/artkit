@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState, DragEvent } from "react";
 import { useEditorImage, useEditorFrames, useEditorTools, useEditorViewport, useEditorDrag, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame } from "../types";
-import { getBoundingBox, isPointInPolygon } from "../../../utils/geometry";
+import { getBoundingBox, isPointInPolygon } from "../utils/geometry";
 import { ImageDropZone } from "../../../shared/components";
 import { getCanvasColorsSync } from "@/hooks";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
