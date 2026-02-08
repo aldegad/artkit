@@ -1398,7 +1398,7 @@ function ImageEditorContent() {
 
         if (hasLocal && hasCloud) {
           // Both have data - show conflict dialog
-          const localProjects = await (await import("@/utils/storage")).getAllImageProjects();
+          const localProjects = await (await import("@/shared/utils/storage")).getAllImageProjects();
           const cloudProjects = await (await import("@/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
 
           setLocalProjectCount(localProjects.length);
