@@ -81,6 +81,7 @@ import {
   registerEditorPanelComponent,
   clearEditorPanelComponents,
 } from "@/domains/image/components/layout";
+import { isSplitNode, type SplitNode, type PanelNode } from "@/types/layout";
 
 // Inner component that accesses the layout context
 function EditorDockableArea() {
@@ -136,17 +137,31 @@ function ImageEditorContent() {
   const { user, isLoading: authLoading } = useAuth();
 
   // Layout context (Provider is above in ImageEditor)
-  const { isPanelOpen, openFloatingWindow, closeFloatingWindow, layoutState } = useEditorLayout();
+  const { isPanelOpen, openFloatingWindow, closeFloatingWindow, removePanel, layoutState } = useEditorLayout();
   const isLayersOpen = isPanelOpen("layers");
 
   const handleToggleLayers = useCallback(() => {
     if (isLayersOpen) {
       const win = layoutState.floatingWindows.find(w => w.panelId === "layers");
-      if (win) closeFloatingWindow(win.id);
+      if (win) {
+        closeFloatingWindow(win.id);
+      } else {
+        // Find and remove docked panel from layout tree
+        const findNodeId = (node: SplitNode | PanelNode): string | null => {
+          if (!isSplitNode(node)) return node.panelId === "layers" ? node.id : null;
+          for (const child of node.children) {
+            const found = findNodeId(child as SplitNode | PanelNode);
+            if (found) return found;
+          }
+          return null;
+        };
+        const nodeId = findNodeId(layoutState.root);
+        if (nodeId) removePanel(nodeId);
+      }
     } else {
       openFloatingWindow("layers");
     }
-  }, [isLayersOpen, layoutState.floatingWindows, closeFloatingWindow, openFloatingWindow]);
+  }, [isLayersOpen, layoutState, closeFloatingWindow, openFloatingWindow, removePanel]);
 
   // Storage provider based on auth state
   const storageProvider = useMemo(() => getStorageProvider(user), [user]);
