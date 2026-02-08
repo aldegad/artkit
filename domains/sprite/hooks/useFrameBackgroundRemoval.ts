@@ -2,7 +2,7 @@
 
 import { useState, useCallback, Dispatch, SetStateAction } from "react";
 import { SpriteFrame } from "../types";
-import { removeBackground } from "../../../utils/backgroundRemoval";
+import { removeBackground } from "@/shared/utils/backgroundRemoval";
 
 // ============================================
 // Types

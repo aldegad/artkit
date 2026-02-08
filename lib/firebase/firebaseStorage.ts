@@ -19,7 +19,7 @@ import {
 } from "firebase/storage";
 import { db, storage } from "./config";
 import { SavedImageProject, UnifiedLayer } from "@/domains/image/types";
-import { generateThumbnailFromLayers } from "@/utils/thumbnail";
+import { generateThumbnailFromLayers } from "@/shared/utils/thumbnail";
 
 // ============================================
 // Firestore Types
