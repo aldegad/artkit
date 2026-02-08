@@ -2,7 +2,8 @@
 // Image Editor Domain Types
 // ============================================
 
-import { Size } from "../../../shared/types";
+import { Size, UnifiedLayer } from "../../../shared/types";
+import { Guide } from "./guides";
 
 // Brush preset types
 export type {
@@ -82,13 +83,13 @@ export interface CropArea {
 export interface SavedImageProject {
   id: string;
   name: string;
-  unifiedLayers: import("../../../shared/types").UnifiedLayer[];
+  unifiedLayers: UnifiedLayer[];
   activeLayerId?: string;
   canvasSize: Size;
   rotation: number;
   savedAt: number;
   thumbnailUrl?: string; // For list view
-  guides?: import("./guides").Guide[]; // Guide lines (optional for backward compatibility)
+  guides?: Guide[];
   // View state (optional for backward compatibility)
   zoom?: number;
   pan?: { x: number; y: number };

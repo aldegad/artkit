@@ -1,5 +1,5 @@
 import { User } from "firebase/auth";
-import { SavedImageProject } from "@/types";
+import { SavedImageProject } from "@/domains/image/types";
 import {
   saveImageProject,
   getImageProject,
