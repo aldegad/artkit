@@ -1,8 +1,8 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
-import { SidebarProvider, useSidebar } from "../../shared/contexts";
-import { HeaderSlotProvider } from "../../shared/contexts/HeaderSlotContext";
+import { SidebarProvider, useSidebar } from "@/shared/contexts";
+import { HeaderSlotProvider } from "@/shared/contexts/HeaderSlotContext";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";

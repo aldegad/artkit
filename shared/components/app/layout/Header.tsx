@@ -1,10 +1,10 @@
 "use client";
 
-import { useSidebar, useAuth } from "../../shared/contexts";
-import { useHeaderSlot } from "../../shared/contexts/HeaderSlotContext";
-import { Scrollbar } from "../../shared/components";
-import { LoginButton, UserMenu } from "../auth";
-import ArtkitLogo from "../icons/ArtkitLogo";
+import { useSidebar, useAuth } from "@/shared/contexts";
+import { useHeaderSlot } from "@/shared/contexts/HeaderSlotContext";
+import { Scrollbar } from "@/shared/components";
+import { LoginButton, UserMenu } from "@/shared/components/app/auth";
+import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
 
 /**
  * Unified Header component for desktop and mobile.

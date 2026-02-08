@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLanguage } from "../../shared/contexts";
-import { SettingsMenu } from "../../shared/components";
-import ArtkitLogo from "../icons/ArtkitLogo";
-import { LandingImageIcon, LandingVideoIcon, LandingSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarIconsIcon } from "../../shared/components/icons";
+import { useLanguage } from "@/shared/contexts";
+import { SettingsMenu } from "@/shared/components";
+import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
+import { LandingImageIcon, LandingVideoIcon, LandingSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarIconsIcon } from "@/shared/components/icons";
 
 interface Tool {
   id: string;

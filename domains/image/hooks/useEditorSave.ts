@@ -6,7 +6,7 @@ import {
   saveEditorAutosaveData,
   EDITOR_AUTOSAVE_DEBOUNCE_MS,
 } from "../utils/autosave";
-import { StorageProvider, StorageInfo } from "../../../services/projectStorage";
+import { StorageProvider, StorageInfo } from "@/domains/image/services/projectStorage";
 
 // ============================================
 // Types

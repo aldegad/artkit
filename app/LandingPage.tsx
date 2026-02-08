@@ -3,8 +3,8 @@
 import { useRef } from "react";
 import Link from "next/link";
 import { useLanguage, useTheme } from "../shared/contexts";
-import ArtkitLogo from "../components/icons/ArtkitLogo";
-import ArtkitWordmark from "../components/icons/ArtkitWordmark";
+import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
+import ArtkitWordmark from "@/shared/components/app/icons/ArtkitWordmark";
 import {
   SidebarSoundIcon,
   SidebarConverterIcon,
@@ -15,7 +15,7 @@ import {
   SunIcon,
   MoonIcon,
 } from "../shared/components/icons";
-import InteractiveDotGrid from "../components/landing/InteractiveDotGrid";
+import InteractiveDotGrid from "@/shared/components/app/landing/InteractiveDotGrid";
 
 const tools = [
   {

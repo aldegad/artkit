@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Select } from "./Select";
-import { Modal } from "./Modal";
+import { Select, Modal } from "@/shared/components";
 
 // ============================================
 // Types
