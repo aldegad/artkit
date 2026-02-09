@@ -230,14 +230,7 @@ export async function saveSpriteProjectToFirebase(
       ? existingCreatedAt
       : Timestamp.fromMillis(project.savedAt || Date.now());
 
-  const dataUrlFrameCount = project.tracks.reduce((count, track) => {
-    return count + track.frames.filter((frame) => frame.imageData?.startsWith("data:")).length;
-  }, 0);
-  const hasDataUrlSourceImage = Boolean(project.imageSrc && project.imageSrc.startsWith("data:"));
   const firstFrameImage = project.tracks.flatMap((track) => track.frames).find((frame) => frame.imageData)?.imageData;
-  const hasDataUrlThumbnail = Boolean(firstFrameImage && firstFrameImage.startsWith("data:"));
-  const totalSteps = dataUrlFrameCount + (hasDataUrlSourceImage ? 1 : 0) + (hasDataUrlThumbnail ? 1 : 0) + 1;
-  let currentStep = 0;
 
   const existingFrameMetaMap = new Map<string, FirestoreSpriteFrameMeta>();
   if (existingData) {
@@ -248,32 +241,34 @@ export async function saveSpriteProjectToFirebase(
     }
   }
 
+  type PreparedFrameSave = {
+    mode: "upload" | "reuse-ref" | "inline" | "none";
+    fingerprint?: string;
+    imageRef?: string;
+    imageData?: string;
+  };
+
+  const preparedFrameMap = new Map<string, PreparedFrameSave>();
+  let uploadStepCount = 0;
+
   let imageSrcRef: string | undefined;
   let inlineImageSrc: string | undefined;
   let imageSrcFingerprint: string | undefined;
+  let shouldUploadSourceImage = false;
 
   if (project.imageSrc) {
     if (project.imageSrc.startsWith("data:")) {
       const fingerprint = await buildDataFingerprint(project.imageSrc);
       const legacyFingerprint = buildLegacyDataFingerprint(project.imageSrc);
       imageSrcFingerprint = fingerprint;
-      onProgress?.({
-        phase: "save",
-        current: ++currentStep,
-        total: totalSteps,
-        itemName: "Source image",
-      });
-
       if (
         existingData?.imageSrcRef &&
         isSameDataFingerprint(existingData.imageSrcFingerprint, fingerprint, legacyFingerprint)
       ) {
         imageSrcRef = existingData.imageSrcRef;
       } else {
-        imageSrcRef = await uploadDataUrl(
-          `users/${userId}/sprite-media/${project.id}/source-image`,
-          project.imageSrc
-        );
+        shouldUploadSourceImage = true;
+        uploadStepCount += 1;
       }
     } else {
       inlineImageSrc = project.imageSrc;
@@ -282,9 +277,93 @@ export async function saveSpriteProjectToFirebase(
 
   let thumbnailUrl: string | undefined;
   let thumbnailFingerprint: string | undefined;
+  let shouldUploadThumbnail = false;
   if (firstFrameImage && firstFrameImage.startsWith("data:")) {
     thumbnailFingerprint = await buildDataFingerprint(firstFrameImage);
     const thumbnailLegacyFingerprint = buildLegacyDataFingerprint(firstFrameImage);
+    if (
+      existingData?.thumbnailUrl &&
+      isSameDataFingerprint(
+        existingData.thumbnailFingerprint,
+        thumbnailFingerprint,
+        thumbnailLegacyFingerprint
+      )
+    ) {
+      thumbnailUrl = existingData?.thumbnailUrl;
+    } else {
+      shouldUploadThumbnail = true;
+      uploadStepCount += 1;
+    }
+  } else {
+    thumbnailUrl = existingData?.thumbnailUrl;
+  }
+
+  for (const track of project.tracks) {
+    const preparedFrames = await mapWithConcurrency(track.frames, 4, async (frame) => {
+      if (!frame.imageData) {
+        return {
+          key: `${track.id}:${frame.id}`,
+          prepared: { mode: "none" } as PreparedFrameSave,
+        };
+      }
+
+      if (!frame.imageData.startsWith("data:")) {
+        return {
+          key: `${track.id}:${frame.id}`,
+          prepared: { mode: "inline", imageData: frame.imageData } as PreparedFrameSave,
+        };
+      }
+
+      const fingerprint = await buildDataFingerprint(frame.imageData);
+      const legacyFingerprint = buildLegacyDataFingerprint(frame.imageData);
+      const existingMeta = existingFrameMetaMap.get(`${track.id}:${frame.id}`);
+
+      if (
+        existingMeta?.imageRef &&
+        isSameDataFingerprint(existingMeta.imageFingerprint, fingerprint, legacyFingerprint)
+      ) {
+        return {
+          key: `${track.id}:${frame.id}`,
+          prepared: {
+            mode: "reuse-ref",
+            imageRef: existingMeta.imageRef,
+            fingerprint,
+          } as PreparedFrameSave,
+        };
+      }
+
+      uploadStepCount += 1;
+      return {
+        key: `${track.id}:${frame.id}`,
+        prepared: {
+          mode: "upload",
+          fingerprint,
+        } as PreparedFrameSave,
+      };
+    });
+
+    for (const item of preparedFrames) {
+      preparedFrameMap.set(item.key, item.prepared);
+    }
+  }
+
+  const totalSteps = uploadStepCount + 1; // changed media uploads + metadata
+  let currentStep = 0;
+
+  if (shouldUploadSourceImage && project.imageSrc) {
+    onProgress?.({
+      phase: "save",
+      current: ++currentStep,
+      total: totalSteps,
+      itemName: "Source image",
+    });
+    imageSrcRef = await uploadDataUrl(
+      `users/${userId}/sprite-media/${project.id}/source-image`,
+      project.imageSrc
+    );
+  }
+
+  if (shouldUploadThumbnail && firstFrameImage) {
     onProgress?.({
       phase: "save",
       current: ++currentStep,
@@ -292,24 +371,11 @@ export async function saveSpriteProjectToFirebase(
       itemName: "Thumbnail",
     });
     try {
-      if (
-        existingData?.thumbnailUrl &&
-        isSameDataFingerprint(
-          existingData.thumbnailFingerprint,
-          thumbnailFingerprint,
-          thumbnailLegacyFingerprint
-        )
-      ) {
-        thumbnailUrl = existingData.thumbnailUrl;
-      } else {
-        thumbnailUrl = await uploadSpriteThumbnail(userId, project.id, firstFrameImage);
-      }
+      thumbnailUrl = await uploadSpriteThumbnail(userId, project.id, firstFrameImage);
     } catch (error) {
       console.warn("Failed to upload sprite thumbnail:", error);
       thumbnailUrl = existingData?.thumbnailUrl;
     }
-  } else {
-    thumbnailUrl = existingData?.thumbnailUrl;
   }
 
   const trackMetas: FirestoreSpriteTrackMeta[] = [];
@@ -318,32 +384,25 @@ export async function saveSpriteProjectToFirebase(
       let imageRef: string | undefined;
       let imageData: string | undefined;
       let imageFingerprint: string | undefined;
+      const prepared = preparedFrameMap.get(`${track.id}:${frame.id}`);
 
-      if (frame.imageData) {
-        if (frame.imageData.startsWith("data:")) {
-          imageFingerprint = await buildDataFingerprint(frame.imageData);
-          const legacyFingerprint = buildLegacyDataFingerprint(frame.imageData);
-          onProgress?.({
-            phase: "save",
-            current: ++currentStep,
-            total: totalSteps,
-            itemName: `${track.name} / ${frame.name || frame.id}`,
-          });
-          const existingMeta = existingFrameMetaMap.get(`${track.id}:${frame.id}`);
-          if (
-            existingMeta?.imageRef &&
-            isSameDataFingerprint(existingMeta.imageFingerprint, imageFingerprint, legacyFingerprint)
-          ) {
-            imageRef = existingMeta.imageRef;
-          } else {
-            imageRef = await uploadDataUrl(
-              `users/${userId}/sprite-media/${project.id}/tracks/${track.id}/${frame.id}.png`,
-              frame.imageData
-            );
-          }
-        } else {
-          imageData = frame.imageData;
-        }
+      if (prepared?.mode === "upload" && frame.imageData) {
+        imageFingerprint = prepared.fingerprint;
+        onProgress?.({
+          phase: "save",
+          current: ++currentStep,
+          total: totalSteps,
+          itemName: `${track.name} / ${frame.name || frame.id}`,
+        });
+        imageRef = await uploadDataUrl(
+          `users/${userId}/sprite-media/${project.id}/tracks/${track.id}/${frame.id}.png`,
+          frame.imageData
+        );
+      } else if (prepared?.mode === "reuse-ref") {
+        imageRef = prepared.imageRef;
+        imageFingerprint = prepared.fingerprint;
+      } else if (prepared?.mode === "inline") {
+        imageData = prepared.imageData;
       }
 
       return {
