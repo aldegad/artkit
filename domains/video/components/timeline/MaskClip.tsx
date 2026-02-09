@@ -5,6 +5,7 @@ import { MaskData } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useMask, useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
+import { useDeferredPointerGesture } from "@/shared/hooks";
 import { UI, TIMELINE } from "../../constants";
 
 /** Long-press duration (ms) to enter mask edit mode */
@@ -16,6 +17,12 @@ interface DragItem {
   type: "clip" | "mask";
   id: string;
   originalStartTime: number;
+}
+
+interface MaskMovePendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
 }
 
 interface MaskClipProps {
@@ -64,7 +71,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   const wasEditingOnDownRef = useRef(false);
   const wasTimelineSelectedOnDownRef = useRef(false);
   const shiftKeyOnDownRef = useRef(false);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [movePending, setMovePending] = useState<MaskMovePendingState | null>(null);
 
   // Snap to own track clips + adjacent track below clips
   const snapToPoints = useCallback(
@@ -200,22 +207,37 @@ export function MaskClip({ mask }: MaskClipProps) {
       dragItemsRef.current = [];
     }
 
-    // Start long-press timer for edit mode (only for move, not trim handles)
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-    }
     if (mode === "move") {
-      longPressTimerRef.current = setTimeout(() => {
-        longPressTimerRef.current = null;
-        if (!didDragRef.current) {
-          startMaskEditById(mask.id);
-        }
-      }, LONG_PRESS_MS);
+      setMovePending({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
+    } else {
+      setMovePending(null);
     }
 
     setDragMode(mode);
   }, [toolMode, splitMaskAtPosition, selectMask, selectMaskForTimeline, deselectAllState, isActive, isEditing, isTimelineSelected,
       mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks, startMaskEditById]);
+
+  useDeferredPointerGesture<MaskMovePendingState>({
+    pending: movePending,
+    thresholdPx: 2,
+    longPressMs: LONG_PRESS_MS,
+    onResolve: () => {
+      didDragRef.current = true;
+    },
+    onLongPress: () => {
+      // Long-press should enter edit mode, not trigger click-toggle behavior on release.
+      didDragRef.current = true;
+      startMaskEditById(mask.id);
+      setDragMode("none");
+    },
+    onEnd: () => {
+      setMovePending(null);
+    },
+  });
 
   useEffect(() => {
     if (dragMode === "none") return;
@@ -227,11 +249,6 @@ export function MaskClip({ mask }: MaskClipProps) {
       const deltaX = e.clientX - startClientX;
       if (Math.abs(deltaX) > 2) {
         didDragRef.current = true;
-        // Cancel long-press on drag
-        if (longPressTimerRef.current) {
-          clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
-        }
       }
       const deltaTime = deltaX / durationToWidth(1);
 
@@ -273,11 +290,6 @@ export function MaskClip({ mask }: MaskClipProps) {
     };
 
     const onPointerUp = () => {
-      // Cancel long-press timer
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
       if (!didDragRef.current) {
         if (wasEditingOnDownRef.current) {
           // Was editing → click exits edit mode (stays selected)
