@@ -15,11 +15,12 @@ export interface AutosaveData extends BaseAutosaveData {
   tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
-  currentFrameIndex: number;
   zoom: number;
   pan: Point;
   scale: number;
   projectName: string;
+  // Legacy fields from older autosave versions (ignored on restore)
+  currentFrameIndex?: number;
   isPlaying?: boolean;
   // Per-panel viewport state (added later, optional for backwards compat)
   animPreviewZoom?: number;
