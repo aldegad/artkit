@@ -11,11 +11,19 @@ import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
+import { useDeferredPointerGesture } from "@/shared/hooks";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { MASK_LANE_HEIGHT } from "../../constants";
 
 interface TimelineProps {
   className?: string;
+}
+
+interface HeaderResizePendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  startWidth: number;
 }
 
 export function Timeline({ className }: TimelineProps) {
@@ -64,8 +72,7 @@ export function Timeline({ className }: TimelineProps) {
   // Middle-mouse scroll state
   const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
   const [trackHeaderWidth, setTrackHeaderWidth] = useState(180);
-  const [isHeaderResizing, setIsHeaderResizing] = useState(false);
-  const resizeStartRef = useRef({ x: 0, width: 180 });
+  const [headerResizePending, setHeaderResizePending] = useState<HeaderResizePendingState | null>(null);
 
   // Calculate total tracks height (including mask lanes)
   const totalTracksHeight = tracks.reduce((sum, t) => {
@@ -105,8 +112,12 @@ export function Timeline({ className }: TimelineProps) {
     e.preventDefault();
     e.stopPropagation(); // prevent timeline pointerdown from firing (seek/drag)
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    resizeStartRef.current = { x: e.clientX, width: trackHeaderWidth };
-    setIsHeaderResizing(true);
+    setHeaderResizePending({
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      startWidth: trackHeaderWidth,
+    });
   }, [trackHeaderWidth]);
 
   useEffect(() => {
@@ -119,29 +130,19 @@ export function Timeline({ className }: TimelineProps) {
     }
   }, []);
 
-  useEffect(() => {
-    if (!isHeaderResizing) return;
-
-    const handleMove = (event: PointerEvent) => {
-      const delta = event.clientX - resizeStartRef.current.x;
-      const nextWidth = Math.max(40, Math.min(360, resizeStartRef.current.width + delta));
+  useDeferredPointerGesture<HeaderResizePendingState>({
+    pending: headerResizePending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      const delta = event.clientX - pending.clientX;
+      const nextWidth = Math.max(40, Math.min(360, pending.startWidth + delta));
       setTrackHeaderWidth(nextWidth);
       localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
-    };
-
-    const handleUp = () => {
-      setIsHeaderResizing(false);
-    };
-
-    document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp);
-    document.addEventListener("pointercancel", handleUp);
-    return () => {
-      document.removeEventListener("pointermove", handleMove);
-      document.removeEventListener("pointerup", handleUp);
-      document.removeEventListener("pointercancel", handleUp);
-    };
-  }, [isHeaderResizing]);
+    },
+    onEnd: () => {
+      setHeaderResizePending(null);
+    },
+  });
 
   // Sync vertical scroll from clips area to track headers
   useEffect(() => {

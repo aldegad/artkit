@@ -29,6 +29,13 @@ interface ScrubPendingState {
   trackId: string | null;
 }
 
+interface HeaderResizePendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  startWidth: number;
+}
+
 export default function TimelineContent() {
   const tracks = useSpriteTrackStore((s) => s.tracks);
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
@@ -56,8 +63,7 @@ export default function TimelineContent() {
 
   // Header resize state
   const [headerWidth, setHeaderWidth] = useState(HEADER_DEFAULT);
-  const [isHeaderResizing, setIsHeaderResizing] = useState(false);
-  const resizeStartRef = useRef({ x: 0, width: HEADER_DEFAULT });
+  const [headerResizePending, setHeaderResizePending] = useState<HeaderResizePendingState | null>(null);
 
   // Scroll sync refs
   const trackHeadersRef = useRef<HTMLDivElement>(null);
@@ -168,33 +174,27 @@ export default function TimelineContent() {
   const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    resizeStartRef.current = { x: e.clientX, width: headerWidth };
-    setIsHeaderResizing(true);
+    setHeaderResizePending({
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      startWidth: headerWidth,
+    });
   }, [headerWidth]);
 
-  useEffect(() => {
-    if (!isHeaderResizing) return;
-
-    const handleMove = (event: PointerEvent) => {
-      const delta = event.clientX - resizeStartRef.current.x;
-      const nextWidth = Math.max(HEADER_MIN, Math.min(HEADER_MAX, resizeStartRef.current.width + delta));
+  useDeferredPointerGesture<HeaderResizePendingState>({
+    pending: headerResizePending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      const delta = event.clientX - pending.clientX;
+      const nextWidth = Math.max(HEADER_MIN, Math.min(HEADER_MAX, pending.startWidth + delta));
       setHeaderWidth(nextWidth);
       localStorage.setItem(LS_KEY, String(nextWidth));
-    };
-
-    const handleUp = () => {
-      setIsHeaderResizing(false);
-    };
-
-    document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp);
-    document.addEventListener("pointercancel", handleUp);
-    return () => {
-      document.removeEventListener("pointermove", handleMove);
-      document.removeEventListener("pointerup", handleUp);
-      document.removeEventListener("pointercancel", handleUp);
-    };
-  }, [isHeaderResizing]);
+    },
+    onEnd: () => {
+      setHeaderResizePending(null);
+    },
+  });
 
   // Scroll sync: frame content → headers (vertical) + ruler (horizontal)
   useEffect(() => {
