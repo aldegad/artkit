@@ -49,6 +49,7 @@ interface UseCanvasRenderingOptions {
   isTransformActive?: boolean;
   transformLayerId?: string | null;
   transformOriginalImageData?: ImageData | null;
+  isSelectionBasedTransform?: boolean;
 
   // Guides (optional)
   guides?: Guide[];
@@ -101,6 +102,7 @@ export function useCanvasRendering(
     isTransformActive,
     transformLayerId,
     transformOriginalImageData,
+    isSelectionBasedTransform,
     guides,
     showGuides,
     lockGuides,
@@ -242,7 +244,7 @@ export function useCanvasRendering(
     for (const layer of sortedLayers) {
       if (!layer.visible) continue;
       // Skip layer being transformed - it will be rendered in transform overlay
-      if (isTransformActive && transformLayerId === layer.id) continue;
+      if (isTransformActive && transformLayerId === layer.id && !isSelectionBasedTransform) continue;
 
       ctx.save();
       ctx.globalAlpha = layer.opacity / 100;
@@ -694,6 +696,7 @@ export function useCanvasRendering(
     isTransformActive,
     transformLayerId,
     transformOriginalImageData,
+    isSelectionBasedTransform,
     // Guide-related dependencies
     guides,
     showGuides,
