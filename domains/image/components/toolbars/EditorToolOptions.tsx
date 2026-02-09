@@ -10,7 +10,7 @@ import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, Canv
 // Types
 // ============================================
 
-interface EditorToolOptionsProps {
+export interface EditorToolOptionsProps {
   toolMode: EditorToolMode;
   // Brush props
   brushSize: number;
