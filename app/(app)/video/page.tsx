@@ -30,6 +30,7 @@ import {
   clearVideoAutosave,
   saveMediaBlob,
   loadMediaBlob,
+  copyMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
@@ -88,6 +89,159 @@ function normalizeLoadedClip(clip: Clip): Clip {
   return clip;
 }
 
+type VideoExportFormat = "mp4" | "mov";
+
+function waitForAnimationFrames(count: number = 1): Promise<void> {
+  return new Promise((resolve) => {
+    let remaining = Math.max(1, count);
+    const tick = () => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("failed to capture canvas frame"));
+          return;
+        }
+        resolve(blob);
+      },
+      type,
+      quality
+    );
+  });
+}
+
+function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const dataLength = buffer.length * blockAlign;
+  const wavBuffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(wavBuffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataLength, true);
+
+  const channels = Array.from({ length: numChannels }, (_, index) => buffer.getChannelData(index));
+  let offset = 44;
+  for (let sampleIndex = 0; sampleIndex < buffer.length; sampleIndex += 1) {
+    for (let channel = 0; channel < numChannels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][sampleIndex]));
+      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      view.setInt16(offset, intSample, true);
+      offset += bytesPerSample;
+    }
+  }
+
+  return new Blob([wavBuffer], { type: "audio/wav" });
+}
+
+async function renderTimelineAudioBuffer(
+  clips: Clip[],
+  tracks: VideoTrack[],
+  projectDuration: number
+): Promise<AudioBuffer | null> {
+  if (typeof OfflineAudioContext === "undefined" || typeof AudioContext === "undefined") {
+    throw new Error("browser does not support offline audio rendering");
+  }
+
+  const duration = Math.max(projectDuration, 0.1);
+  const sampleRate = 44100;
+  const frameCount = Math.max(1, Math.ceil(duration * sampleRate));
+  const offlineContext = new OfflineAudioContext(2, frameCount, sampleRate);
+  const decodeContext = new AudioContext();
+  const sourceBufferCache = new Map<string, AudioBuffer | null>();
+  let hasScheduledAudio = false;
+
+  try {
+    for (const clip of clips) {
+      if (clip.type === "image") continue;
+
+      const track = tracks.find((candidate) => candidate.id === clip.trackId);
+      if (!track || track.muted) continue;
+      if (clip.type === "video" && clip.hasAudio === false) continue;
+      if (clip.audioMuted ?? false) continue;
+
+      const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+      if (clipVolume <= 0) continue;
+
+      const clipStartTime = Math.max(0, clip.startTime);
+      if (clipStartTime >= duration) continue;
+
+      const timelineDuration = Math.min(Math.max(clip.duration, 0), duration - clipStartTime);
+      if (timelineDuration <= 0) continue;
+
+      let sourceBuffer = sourceBufferCache.get(clip.sourceUrl);
+      if (sourceBuffer === undefined) {
+        try {
+          const response = await fetch(clip.sourceUrl);
+          const sourceArrayBuffer = await response.arrayBuffer();
+          sourceBuffer = await decodeContext.decodeAudioData(sourceArrayBuffer.slice(0));
+        } catch {
+          sourceBuffer = null;
+        }
+        sourceBufferCache.set(clip.sourceUrl, sourceBuffer);
+      }
+
+      if (!sourceBuffer) continue;
+
+      const trimIn = Math.max(0, clip.trimIn);
+      const trimmedWindow = Math.max(0, clip.trimOut - trimIn);
+      const sourceRemaining = Math.max(0, sourceBuffer.duration - trimIn);
+      const playbackDuration = Math.min(
+        timelineDuration,
+        trimmedWindow > 0 ? trimmedWindow : timelineDuration,
+        sourceRemaining
+      );
+      if (playbackDuration <= 0) continue;
+
+      const sourceNode = offlineContext.createBufferSource();
+      sourceNode.buffer = sourceBuffer;
+      const gainNode = offlineContext.createGain();
+      gainNode.gain.value = Math.max(0, Math.min(1, clipVolume / 100));
+
+      sourceNode.connect(gainNode);
+      gainNode.connect(offlineContext.destination);
+      sourceNode.start(clipStartTime, trimIn, playbackDuration);
+      hasScheduledAudio = true;
+    }
+
+    if (!hasScheduledAudio) return null;
+    return await offlineContext.startRendering();
+  } finally {
+    await decodeContext.close().catch(() => {});
+  }
+}
+
 function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | null {
   if (isPanelNode(node) && node.panelId === panelId) {
     return node.id;
@@ -101,6 +255,12 @@ function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | n
   }
 
   return null;
+}
+
+interface ExportProgressState {
+  stage: string;
+  percent: number;
+  detail?: string;
 }
 
 function VideoDockableArea() {
@@ -189,8 +349,11 @@ function VideoEditorContent() {
   const exportAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const exportSourceNodesRef = useRef<Map<HTMLMediaElement, MediaElementAudioSourceNode>>(new Map());
   const exportGainNodesRef = useRef<Map<HTMLMediaElement, GainNode>>(new Map());
+  const ffmpegRef = useRef<import("@ffmpeg/ffmpeg").FFmpeg | null>(null);
+  const ffmpegLoadingPromiseRef = useRef<Promise<import("@ffmpeg/ffmpeg").FFmpeg> | null>(null);
 
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgressState | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const audioHistorySavedRef = useRef(false);
   const visualHistorySavedRef = useRef(false);
@@ -202,6 +365,7 @@ function VideoEditorContent() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [loadProgress, setLoadProgress] = useState<SaveLoadProgress | null>(null);
+  const [projectListOperation, setProjectListOperation] = useState<"load" | "delete" | null>(null);
   const [saveCount, setSaveCount] = useState(0);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
@@ -237,6 +401,35 @@ function VideoEditorContent() {
       exportSourceNodesRef.current.clear();
       exportGainNodesRef.current.clear();
     };
+  }, []);
+
+  const getFFmpeg = useCallback(async (): Promise<import("@ffmpeg/ffmpeg").FFmpeg> => {
+    if (ffmpegRef.current) return ffmpegRef.current;
+    if (ffmpegLoadingPromiseRef.current) return ffmpegLoadingPromiseRef.current;
+
+    ffmpegLoadingPromiseRef.current = (async () => {
+      const [{ FFmpeg }, { toBlobURL }] = await Promise.all([
+        import("@ffmpeg/ffmpeg"),
+        import("@ffmpeg/util"),
+      ]);
+
+      const ffmpeg = new FFmpeg();
+      const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+
+      ffmpegRef.current = ffmpeg;
+      return ffmpeg;
+    })();
+
+    try {
+      return await ffmpegLoadingPromiseRef.current;
+    } finally {
+      ffmpegLoadingPromiseRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -510,6 +703,7 @@ function VideoEditorContent() {
 
   const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
     setIsLoadingProject(true);
+    setProjectListOperation("load");
     setLoadProgress(null);
     try {
       const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
@@ -520,12 +714,38 @@ function VideoEditorContent() {
 
       const loadedProject = loaded.project;
       const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
+      const clipIdsBySourceId = new Map<string, string[]>();
+      for (const clip of normalizedClips) {
+        if (!clip.sourceId) continue;
+        const ids = clipIdsBySourceId.get(clip.sourceId) || [];
+        ids.push(clip.id);
+        clipIdsBySourceId.set(clip.sourceId, ids);
+      }
+      const sourceBlobCache = new Map<string, Blob>();
 
       // Restore media blobs from IndexedDB and create new blob URLs
       const restoredClips: Clip[] = [];
       for (const clip of normalizedClips) {
-        const blob = await loadMediaBlob(clip.id);
+        let blob = await loadMediaBlob(clip.id);
+        if (!blob && clip.sourceId) {
+          blob = sourceBlobCache.get(clip.sourceId) || null;
+          if (!blob) {
+            const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
+            for (const candidateId of candidateIds) {
+              if (candidateId === clip.id) continue;
+              const candidateBlob = await loadMediaBlob(candidateId);
+              if (candidateBlob) {
+                blob = candidateBlob;
+                sourceBlobCache.set(clip.sourceId, candidateBlob);
+                break;
+              }
+            }
+          }
+        }
         if (blob) {
+          if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
+            sourceBlobCache.set(clip.sourceId, blob);
+          }
           const newUrl = URL.createObjectURL(blob);
           restoredClips.push({ ...clip, sourceUrl: newUrl });
         } else if (!clip.sourceUrl.startsWith("blob:")) {
@@ -568,18 +788,26 @@ function VideoEditorContent() {
     } finally {
       setIsLoadingProject(false);
       setLoadProgress(null);
+      setProjectListOperation(null);
     }
   }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, selectClips, clearHistory]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;
+    setIsLoadingProject(true);
+    setProjectListOperation("delete");
+    setLoadProgress(null);
     try {
-      await storageProvider.deleteProject(id);
+      await storageProvider.deleteProject(id, setLoadProgress);
       const projects = await storageProvider.getAllProjects();
       setSavedProjects(projects);
       if (currentProjectId === id) setCurrentProjectId(null);
     } catch (error) {
       console.error("Failed to delete project:", error);
+    } finally {
+      setIsLoadingProject(false);
+      setLoadProgress(null);
+      setProjectListOperation(null);
     }
   }, [storageProvider, currentProjectId, t]);
 
@@ -587,7 +815,11 @@ function VideoEditorContent() {
     mediaFileInputRef.current?.click();
   }, []);
 
-  const handleExport = useCallback(async (exportFileName?: string, includeAudio?: boolean) => {
+  const handleExport = useCallback(async (
+    exportFileName?: string,
+    format: VideoExportFormat = "mp4",
+    includeAudio?: boolean
+  ) => {
     if (isExporting) return;
 
     const canvas = previewCanvasRef.current;
@@ -598,6 +830,163 @@ function VideoEditorContent() {
 
     const duration = Math.max(project.duration, 0.1);
     const frameRate = Math.max(1, project.frameRate || 30);
+    const previousTime = playback.currentTime;
+    const wasPlaying = playback.isPlaying;
+
+    if (format === "mov") {
+      const filePrefix = `lossless-${Date.now()}-${Math.round(Math.random() * 10000)}`;
+      const frameNames: string[] = [];
+      const wavFileName = `${filePrefix}.wav`;
+      const outputFileName = `${filePrefix}.mov`;
+      let hasAudioInput = false;
+
+      try {
+        setIsExporting(true);
+        setExportProgress({
+          stage: "Preparing lossless export",
+          percent: 2,
+          detail: "Loading encoder...",
+        });
+
+        const ffmpeg = await getFFmpeg();
+        const totalFrames = Math.max(1, Math.ceil(duration * frameRate));
+        const captureWeight = 65;
+        const encodeBase = 70;
+        const encodeWeight = 28;
+
+        setExportProgress({
+          stage: "Capturing frames",
+          percent: 4,
+          detail: `0/${totalFrames}`,
+        });
+
+        stop();
+        seek(0);
+        await waitForAnimationFrames(2);
+
+        for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+          const frameTime = Math.min(duration, frameIndex / frameRate);
+          seek(frameTime);
+          await waitForAnimationFrames(2);
+
+          const frameBlob = await canvasToBlob(canvas, "image/png");
+          const frameName = `${filePrefix}-frame-${String(frameIndex).padStart(6, "0")}.png`;
+          frameNames.push(frameName);
+          await ffmpeg.writeFile(frameName, new Uint8Array(await frameBlob.arrayBuffer()));
+
+          if (frameIndex % 3 === 0 || frameIndex === totalFrames - 1) {
+            const ratio = (frameIndex + 1) / totalFrames;
+            const percent = 4 + ratio * captureWeight;
+            setExportProgress({
+              stage: "Capturing frames",
+              percent: Math.min(percent, 69),
+              detail: `${frameIndex + 1}/${totalFrames}`,
+            });
+          }
+        }
+
+        if (includeAudio ?? true) {
+          setExportProgress({
+            stage: "Rendering audio",
+            percent: 70,
+            detail: "Mixing timeline audio...",
+          });
+          const mixedAudio = await renderTimelineAudioBuffer(clips, tracks, duration);
+          if (mixedAudio) {
+            const wavBlob = audioBufferToWavBlob(mixedAudio);
+            await ffmpeg.writeFile(wavFileName, new Uint8Array(await wavBlob.arrayBuffer()));
+            hasAudioInput = true;
+          }
+        }
+
+        const ffmpegArgs: string[] = [
+          "-framerate",
+          String(frameRate),
+          "-i",
+          `${filePrefix}-frame-%06d.png`,
+        ];
+
+        if (hasAudioInput) {
+          ffmpegArgs.push("-i", wavFileName);
+        }
+
+        ffmpegArgs.push(
+          "-c:v",
+          "qtrle",
+        );
+
+        if (hasAudioInput) {
+          ffmpegArgs.push("-c:a", "pcm_s16le", "-shortest");
+        } else {
+          ffmpegArgs.push("-an");
+        }
+
+        ffmpegArgs.push(outputFileName);
+
+        const onFfmpegProgress = ({ progress }: { progress: number; time: number }) => {
+          const ratio = Math.max(0, Math.min(1, progress || 0));
+          setExportProgress({
+            stage: "Encoding lossless MOV",
+            percent: Math.min(98, encodeBase + (ratio * encodeWeight)),
+            detail: `${Math.round(ratio * 100)}%`,
+          });
+        };
+        ffmpeg.on("progress", onFfmpegProgress);
+        try {
+          setExportProgress({
+            stage: "Encoding lossless MOV",
+            percent: 72,
+            detail: "Starting encoder...",
+          });
+          await ffmpeg.exec(ffmpegArgs);
+        } finally {
+          ffmpeg.off("progress", onFfmpegProgress);
+        }
+        const outputData = await ffmpeg.readFile(outputFileName);
+        if (typeof outputData === "string") {
+          throw new Error("lossless export output was not binary data");
+        }
+        const outputBytes = outputData instanceof Uint8Array ? outputData : new Uint8Array(outputData);
+        const outputCopy = new Uint8Array(outputBytes);
+
+        downloadBlob(
+          new Blob([outputCopy.buffer], { type: "video/quicktime" }),
+          `${sanitizeFileName(exportFileName || projectName)}.mov`
+        );
+        setExportProgress({
+          stage: "Finalizing",
+          percent: 100,
+          detail: "Download ready",
+        });
+      } catch (error) {
+        console.error("Lossless export failed:", error);
+        alert(`${t.exportFailed}: ${(error as Error).message}`);
+      } finally {
+        try {
+          const ffmpeg = ffmpegRef.current;
+          if (ffmpeg) {
+            await ffmpeg.deleteFile(outputFileName).catch(() => {});
+            if (hasAudioInput) {
+              await ffmpeg.deleteFile(wavFileName).catch(() => {});
+            }
+            for (const frameName of frameNames) {
+              await ffmpeg.deleteFile(frameName).catch(() => {});
+            }
+          }
+        } catch {
+          // Best-effort cleanup.
+        }
+
+        seek(previousTime);
+        if (wasPlaying) {
+          play();
+        }
+        setExportProgress(null);
+        setIsExporting(false);
+        setShowExportModal(false);
+      }
+      return;
+    }
 
     if (typeof canvas.captureStream !== "function" || typeof MediaRecorder === "undefined") {
       alert(`${t.exportFailed}: browser does not support video recording`);
@@ -605,11 +994,15 @@ function VideoEditorContent() {
     }
 
     const mimeTypeCandidates = [
-      "video/webm;codecs=vp9",
-      "video/webm;codecs=vp8",
-      "video/webm",
+      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+      "video/mp4;codecs=avc1",
+      "video/mp4",
     ];
     const selectedMimeType = mimeTypeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    if (!selectedMimeType) {
+      alert(`${t.exportFailed}: browser does not support MP4 recording`);
+      return;
+    }
 
     const canvasStream = canvas.captureStream(frameRate);
     const recordingStream = new MediaStream();
@@ -673,8 +1066,26 @@ function VideoEditorContent() {
 
     const chunks: BlobPart[] = [];
 
+    let progressTimer: number | null = null;
     try {
       setIsExporting(true);
+      const recordDurationMs = Math.max(300, Math.round(duration * 1000 + 150));
+      const recordStart = performance.now();
+      progressTimer = window.setInterval(() => {
+        const elapsed = performance.now() - recordStart;
+        const ratio = Math.max(0, Math.min(1, elapsed / recordDurationMs));
+        setExportProgress({
+          stage: "Recording MP4",
+          percent: Math.min(96, ratio * 96),
+          detail: `${Math.round(ratio * 100)}%`,
+        });
+      }, 120);
+
+      setExportProgress({
+        stage: "Recording MP4",
+        percent: 2,
+        detail: "Starting recorder...",
+      });
 
       const recorder = selectedMimeType
         ? new MediaRecorder(recordingStream, { mimeType: selectedMimeType })
@@ -688,12 +1099,9 @@ function VideoEditorContent() {
         };
         recorder.onerror = () => reject(new Error("MediaRecorder error"));
         recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: selectedMimeType || "video/webm" }));
+          resolve(new Blob(chunks, { type: selectedMimeType }));
         };
       });
-
-      const previousTime = playback.currentTime;
-      const wasPlaying = playback.isPlaying;
 
       stop();
       seek(0);
@@ -713,7 +1121,16 @@ function VideoEditorContent() {
       recorder.stop();
 
       const blob = await blobPromise;
-      downloadBlob(blob, `${sanitizeFileName(exportFileName || projectName)}.webm`);
+      downloadBlob(blob, `${sanitizeFileName(exportFileName || projectName)}.mp4`);
+      setExportProgress({
+        stage: "Finalizing",
+        percent: 100,
+        detail: "Download ready",
+      });
+      if (progressTimer !== null) {
+        window.clearInterval(progressTimer);
+        progressTimer = null;
+      }
 
       seek(previousTime);
       if (wasPlaying) {
@@ -730,10 +1147,31 @@ function VideoEditorContent() {
         gainNode.gain.value = 0;
       }
       canvasStream.getTracks().forEach((track) => track.stop());
+      if (progressTimer !== null) {
+        window.clearInterval(progressTimer);
+      }
+      setExportProgress(null);
       setIsExporting(false);
       setShowExportModal(false);
     }
-  }, [isExporting, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
+  }, [
+    isExporting,
+    project.duration,
+    project.frameRate,
+    previewCanvasRef,
+    videoElementsRef,
+    audioElementsRef,
+    playback.currentTime,
+    playback.isPlaying,
+    stop,
+    seek,
+    play,
+    projectName,
+    t.exportFailed,
+    getFFmpeg,
+    clips,
+    tracks,
+  ]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
@@ -792,6 +1230,15 @@ function VideoEditorContent() {
       startTime: Math.max(0, clipData.startTime + timeOffset),
     }));
 
+    // Keep media persistence stable for duplicated IDs.
+    void Promise.all(
+      newClips.map((newClip, index) =>
+        copyMediaBlob(clipboard.clips[index].id, newClip.id).catch((error) => {
+          console.error("Failed to copy media blob on paste:", error);
+        })
+      )
+    );
+
     addClips(newClips);
     selectClips(newClips.map((c) => c.id));
 
@@ -845,6 +1292,13 @@ function VideoEditorContent() {
         startTime: clip.startTime + 0.25,
         name: `${clip.name} (Copy)`,
       }));
+      void Promise.all(
+        duplicated.map((dupClip, index) =>
+          copyMediaBlob(selectedClips[index].id, dupClip.id).catch((error) => {
+            console.error("Failed to copy media blob on duplicate:", error);
+          })
+        )
+      );
       addClips(duplicated);
       duplicatedClipIds.push(...duplicated.map((c) => c.id));
     }
@@ -1580,7 +2034,7 @@ function VideoEditorContent() {
           savedProjects: t.savedProjects || "Saved Projects",
           noSavedProjects: t.noSavedProjects || "No saved projects",
           delete: t.delete,
-          loading: t.loading || "Loading",
+          loading: projectListOperation === "delete" ? `${t.delete || "Delete"}...` : (t.loading || "Loading"),
         }}
       />
 
@@ -1591,10 +2045,12 @@ function VideoEditorContent() {
         onExport={handleExport}
         defaultFileName={sanitizeFileName(projectName)}
         isExporting={isExporting}
+        exportProgress={exportProgress}
         translations={{
           export: t.exportVideo,
           cancel: t.cancel,
           fileName: t.projectName,
+          format: t.format,
           includeAudio: t.includeAudio,
         }}
       />

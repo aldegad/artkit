@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG } from "../types";
+import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG, CropArea } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
 import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
 import { HANDLE_SIZE as HANDLE_SIZE_CONST } from "../constants";
@@ -45,6 +45,8 @@ export interface TransformState {
   originalImageData: ImageData | null;
   // Per-layer data for multi-layer transform
   perLayerData: Map<string, PerLayerTransformData> | null;
+  // Whether transform started from a selection region
+  isSelectionBased: boolean;
 }
 
 export type TransformHandle =
@@ -65,6 +67,8 @@ interface UseTransformToolOptions {
   layers: UnifiedLayer[];
   activeLayerId: string | null;
   saveToHistory: () => void;
+  // Selection for selection-based transform
+  selection?: CropArea | null;
   // Snap options
   guides?: Guide[];
   canvasSize?: { width: number; height: number };
@@ -112,6 +116,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     activeLayerId,
     saveToHistory,
     // Snap options
+    selection,
     guides = [],
     canvasSize,
     snapEnabled = false,
@@ -129,6 +134,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     bounds: null,
     originalImageData: null,
     perLayerData: null,
+    isSelectionBased: false,
   });
 
   const [activeHandle, setActiveHandle] = useState<TransformHandle>(null);
@@ -207,6 +213,78 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       : (activeLayerId ? [activeLayerId] : []);
 
     if (targetLayerIds.length === 0) return;
+
+    const hasValidSelection =
+      !!selection &&
+      selection.width > 0 &&
+      selection.height > 0 &&
+      targetLayerIds.length === 1;
+
+    if (hasValidSelection) {
+      const targetLayerId = targetLayerIds[0];
+      const layerCanvas = layerCanvasesRef.current.get(targetLayerId);
+      const layer = layers.find((l) => l.id === targetLayerId);
+      if (!layerCanvas || !layer || layer.locked) return;
+
+      const ctx = layerCanvas.getContext("2d");
+      if (!ctx) return;
+
+      const layerPosX = layer.position?.x || 0;
+      const layerPosY = layer.position?.y || 0;
+
+      const localX = Math.floor(selection!.x - layerPosX);
+      const localY = Math.floor(selection!.y - layerPosY);
+      const localW = Math.ceil(selection!.width);
+      const localH = Math.ceil(selection!.height);
+
+      const clampedX = Math.max(0, localX);
+      const clampedY = Math.max(0, localY);
+      const clampedW = Math.min(localW, layerCanvas.width - clampedX);
+      const clampedH = Math.min(localH, layerCanvas.height - clampedY);
+
+      if (clampedW <= 0 || clampedH <= 0) return;
+
+      const contentImageData = ctx.getImageData(clampedX, clampedY, clampedW, clampedH);
+      let hasContent = false;
+      for (let i = 3; i < contentImageData.data.length; i += 4) {
+        if (contentImageData.data[i] > 0) {
+          hasContent = true;
+          break;
+        }
+      }
+      if (!hasContent) return;
+
+      saveToHistory();
+      ctx.clearRect(clampedX, clampedY, clampedW, clampedH);
+
+      const imageBounds = {
+        x: clampedX + layerPosX,
+        y: clampedY + layerPosY,
+        width: clampedW,
+        height: clampedH,
+      };
+
+      const perLayerData = new Map<string, PerLayerTransformData>();
+      perLayerData.set(targetLayerId, {
+        originalImageData: contentImageData,
+        originalBounds: imageBounds,
+        layerPosition: { x: layerPosX, y: layerPosY },
+        contentOffset: { x: clampedX, y: clampedY },
+      });
+
+      setTransformState({
+        isActive: true,
+        layerId: targetLayerId,
+        layerIds: [targetLayerId],
+        layerPosition: { x: layerPosX, y: layerPosY },
+        originalBounds: { ...imageBounds },
+        bounds: { ...imageBounds },
+        originalImageData: contentImageData,
+        perLayerData,
+        isSelectionBased: true,
+      });
+      return;
+    }
 
     // Filter to transformable layers (not locked, visible, has content)
     const transformableLayers: string[] = [];
@@ -292,8 +370,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       bounds: { ...combinedBounds },
       originalImageData: singleLayerData?.originalImageData || null,
       perLayerData: perLayerData,
+      isSelectionBased: false,
     });
-  }, [activeLayerId, selectedLayerIds, layerCanvasesRef, layers, saveToHistory, findContentBounds]);
+  }, [activeLayerId, selectedLayerIds, selection, layerCanvasesRef, layers, saveToHistory, findContentBounds]);
 
   // Cancel transform
   const cancelTransform = useCallback(() => {
@@ -313,6 +392,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         bounds: null,
         originalImageData: null,
         perLayerData: null,
+        isSelectionBased: false,
       });
       return;
     }
@@ -326,8 +406,10 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         const ctx = layerCanvas.getContext("2d");
         if (!ctx) return;
 
-        // Clear the canvas and restore original content
-        ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+        if (!transformState.isSelectionBased) {
+          // For full-content transform, rebuild layer from captured content.
+          ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+        }
         ctx.putImageData(
           data.originalImageData,
           data.contentOffset.x,
@@ -344,7 +426,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
           const layerPosX = transformState.layerPosition?.x || 0;
           const layerPosY = transformState.layerPosition?.y || 0;
 
-          ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+          if (!transformState.isSelectionBased) {
+            ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+          }
           ctx.putImageData(
             transformState.originalImageData,
             transformState.originalBounds.x - layerPosX,
@@ -363,6 +447,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       bounds: null,
       originalImageData: null,
       perLayerData: null,
+      isSelectionBased: false,
     });
   }, [transformState, layerCanvasesRef]);
 
@@ -462,6 +547,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         bounds: null,
         originalImageData: null,
         perLayerData: null,
+        isSelectionBased: false,
       });
       return;
     }
@@ -521,6 +607,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       bounds: null,
       originalImageData: null,
       perLayerData: null,
+      isSelectionBased: false,
     });
   }, [transformState, layerCanvasesRef, applyTransformToLayer]);
 
