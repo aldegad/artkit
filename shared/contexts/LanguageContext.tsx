@@ -272,6 +272,11 @@ interface Translations {
   razorDesc: string;
   mask: string;
   maskDesc: string;
+  paintMask: string;
+  eraseMask: string;
+  fillMask: string;
+  clearMask: string;
+  longPressToEdit: string;
   selectDesc: string;
   duplicate: string;
   duplicateDesc: string;
@@ -578,6 +583,11 @@ const translations: Record<Language, Translations> = {
     razorDesc: "커서 위치에서 클립 분할",
     mask: "마스크",
     maskDesc: "클립에 마스크 그리기",
+    paintMask: "마스크 칠하기",
+    eraseMask: "마스크 지우기",
+    fillMask: "마스크 채우기",
+    clearMask: "마스크 비우기",
+    longPressToEdit: "길게 눌러서 편집",
     selectDesc: "클립 선택 및 이동",
     duplicate: "복제",
     duplicateDesc: "선택한 클립을 새 트랙에 복제",
@@ -882,6 +892,11 @@ const translations: Record<Language, Translations> = {
     razorDesc: "Split clip at cursor position",
     mask: "Mask",
     maskDesc: "Draw mask on clip",
+    paintMask: "Paint mask",
+    eraseMask: "Erase mask",
+    fillMask: "Fill mask",
+    clearMask: "Clear mask",
+    longPressToEdit: "Long-press to edit",
     selectDesc: "Select and move clips",
     duplicate: "Duplicate",
     duplicateDesc: "Duplicate selected clip to new track",

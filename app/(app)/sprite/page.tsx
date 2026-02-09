@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useState, useRef } from "react";
+import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import {
   EditorProvider,
   useEditorImage,
@@ -25,9 +25,10 @@ import type { SavedSpriteProject } from "@/domains/sprite";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
-import { useLanguage } from "@/shared/contexts";
+import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
 import { Tooltip, Scrollbar } from "@/shared/components";
+import { SyncDialog } from "@/shared/components/app/auth";
 import {
   BrushIcon,
   CursorIcon,
@@ -37,19 +38,24 @@ import {
   RedoIcon,
 } from "@/shared/components/icons";
 import {
-  saveProject as saveProjectToDB,
-  getAllProjects,
-  deleteProject as deleteProjectFromDB,
   migrateFromLocalStorage,
-  getStorageInfo,
   formatBytes,
 } from "@/shared/utils/storage";
+import {
+  getSpriteStorageProvider,
+  hasLocalProjects,
+  checkCloudProjects,
+  uploadLocalProjectsToCloud,
+  clearLocalProjects,
+  clearCloudProjects,
+} from "@/domains/sprite/services/projectStorage";
 
 // ============================================
 // Main Editor Component
 // ============================================
 
 function SpriteEditorMain() {
+  const { user } = useAuth();
   const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditorImage();
   const { frames, setFrames, nextFrameId, setNextFrameId, selectedFrameId, selectedFrameIds, selectedPointIndex, currentFrameIndex } = useEditorFrames();
   const { toolMode, setSpriteToolMode, currentPoints, setCurrentPoints, setIsSpacePressed } = useEditorTools();
@@ -79,6 +85,7 @@ function SpriteEditorMain() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { t } = useLanguage();
+  const storageProvider = useMemo(() => getSpriteStorageProvider(user), [user]);
 
   // Background removal hook
   const {
@@ -100,20 +107,21 @@ function SpriteEditorMain() {
     },
   });
   const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+  const [localProjectCount, setLocalProjectCount] = useState(0);
+  const [cloudProjectCount, setCloudProjectCount] = useState(0);
 
-  // Load saved projects from IndexedDB
+  // Load saved projects when storage provider changes (login/logout)
   useEffect(() => {
     const loadProjects = async () => {
       try {
         // Migrate from localStorage if needed (one-time)
         await migrateFromLocalStorage();
 
-        // Load all projects from IndexedDB
-        const projects = await getAllProjects();
+        const projects = await storageProvider.getAllProjects();
         setSavedSpriteProjects(projects);
 
-        // Get storage info
-        const info = await getStorageInfo();
+        const info = await storageProvider.getStorageInfo();
         setStorageInfo(info);
       } catch (e) {
         console.error("Failed to load saved projects:", e);
@@ -121,7 +129,36 @@ function SpriteEditorMain() {
     };
 
     loadProjects();
-  }, [setSavedSpriteProjects]);
+  }, [storageProvider, setSavedSpriteProjects]);
+
+  // Check local/cloud conflicts when user logs in
+  useEffect(() => {
+    const checkSyncConflicts = async () => {
+      if (!user) return;
+
+      try {
+        const hasLocal = await hasLocalProjects();
+        const hasCloud = await checkCloudProjects(user.uid);
+
+        if (hasLocal && hasCloud) {
+          const localProjects = await (await import("@/shared/utils/storage")).getAllProjects();
+          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseSpriteStorage")).getAllSpriteProjectsFromFirebase(user.uid);
+
+          setLocalProjectCount(localProjects.length);
+          setCloudProjectCount(cloudProjects.length);
+          setShowSyncDialog(true);
+        } else if (hasLocal && !hasCloud) {
+          await uploadLocalProjectsToCloud(user);
+          const projects = await storageProvider.getAllProjects();
+          setSavedSpriteProjects(projects);
+        }
+      } catch (error) {
+        console.error("Failed to check sync conflicts:", error);
+      }
+    };
+
+    checkSyncConflicts();
+  }, [user, storageProvider, setSavedSpriteProjects]);
 
   // Image upload handler - sets as main sprite image
   const handleImageUpload = useCallback(
@@ -278,7 +315,7 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
 
-  // Save project to IndexedDB (overwrite if existing, create new if not)
+  // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
     if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       return;
@@ -301,12 +338,12 @@ function SpriteEditorMain() {
       };
 
       try {
-        await saveProjectToDB(updatedProject);
+        await storageProvider.saveProject(updatedProject);
         setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
           prev.map((p) => (p.id === currentProjectId ? updatedProject : p)),
         );
 
-        const info = await getStorageInfo();
+        const info = await storageProvider.getStorageInfo();
         setStorageInfo(info);
         setSaveCount((c) => c + 1);
       } catch (error) {
@@ -329,11 +366,11 @@ function SpriteEditorMain() {
       };
 
       try {
-        await saveProjectToDB(newProj);
+        await storageProvider.saveProject(newProj);
         setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
         setCurrentProjectId(newId);
 
-        const info = await getStorageInfo();
+        const info = await storageProvider.getStorageInfo();
         setStorageInfo(info);
         setSaveCount((c) => c + 1);
       } catch (error) {
@@ -354,6 +391,7 @@ function SpriteEditorMain() {
     nextFrameId,
     fps,
     currentProjectId,
+    storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
   ]);
@@ -384,12 +422,12 @@ function SpriteEditorMain() {
 
     setIsSaving(true);
     try {
-      await saveProjectToDB(newProj);
+      await storageProvider.saveProject(newProj);
       setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
       setCurrentProjectId(newId);
       setProjectName(name);
 
-      const info = await getStorageInfo();
+      const info = await storageProvider.getStorageInfo();
       setStorageInfo(info);
       setSaveCount((c) => c + 1);
     } catch (error) {
@@ -407,40 +445,52 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     fps,
+    storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
     setProjectName,
     t,
   ]);
 
-  // Load project (with V1→V2 migration support)
+  // Load project by id (supports cloud metadata-only list)
   const loadProject = useCallback(
-    (project: (typeof savedProjects)[0]) => {
-      setImageSrc(project.imageSrc);
-      setImageSize(project.imageSize);
+    async (projectMeta: (typeof savedProjects)[0]) => {
+      try {
+        const project = await storageProvider.getProject(projectMeta.id);
+        if (!project) {
+          throw new Error("Project not found");
+        }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = project as any;
-      const tracks = Array.isArray(project.tracks)
-        ? project.tracks
-        : migrateFramesToTracks(raw.frames ?? []);
-      restoreTracks(tracks, project.nextFrameId);
-      setProjectName(project.name);
-      setCurrentProjectId(project.id);
-      setCurrentPoints([]);
+        setImageSrc(project.imageSrc);
+        setImageSize(project.imageSize);
 
-      const img = new Image();
-      img.onload = () => {
-        imageRef.current = img;
-        const maxWidth = 900;
-        const newScale = Math.min(maxWidth / img.width, 1);
-        setScale(newScale);
-      };
-      img.src = project.imageSrc;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = project as any;
+        const tracks = Array.isArray(project.tracks)
+          ? project.tracks
+          : migrateFramesToTracks(raw.frames ?? []);
+        restoreTracks(tracks, project.nextFrameId);
+        setProjectName(project.name);
+        setCurrentProjectId(project.id);
+        setCurrentPoints([]);
 
-      setIsProjectListOpen(false);
+        const img = new Image();
+        img.onload = () => {
+          imageRef.current = img;
+          const maxWidth = 900;
+          const newScale = Math.min(maxWidth / img.width, 1);
+          setScale(newScale);
+        };
+        img.src = project.imageSrc;
+
+        setIsProjectListOpen(false);
+      } catch (error) {
+        console.error("Load failed:", error);
+        alert((error as Error).message);
+      }
     },
     [
+      storageProvider,
       setImageSrc,
       setImageSize,
       restoreTracks,
@@ -453,24 +503,24 @@ function SpriteEditorMain() {
     ],
   );
 
-  // Delete project from IndexedDB
+  // Delete project
   const deleteProject = useCallback(
     async (projectId: string) => {
       if (!confirm(t.deleteConfirm)) return;
 
       try {
-        await deleteProjectFromDB(projectId);
+        await storageProvider.deleteProject(projectId);
         setSavedSpriteProjects((prev) => prev.filter((p) => p.id !== projectId));
 
         // Update storage info
-        const info = await getStorageInfo();
+        const info = await storageProvider.getStorageInfo();
         setStorageInfo(info);
       } catch (error) {
         console.error("Delete failed:", error);
         alert(`${t.deleteFailed}: ${(error as Error).message}`);
       }
     },
-    [setSavedSpriteProjects, t],
+    [storageProvider, setSavedSpriteProjects, t],
   );
 
   // Spacebar handler for temporary hand mode + Undo/Redo
@@ -874,9 +924,9 @@ function SpriteEditorMain() {
                     >
                       {/* Thumbnail */}
                       <div className="w-16 h-16 bg-surface-tertiary rounded-lg shrink-0 overflow-hidden">
-                        {project.tracks[0]?.frames[0]?.imageData && (
+                        {(project.thumbnailUrl || project.tracks[0]?.frames[0]?.imageData) && (
                           <img
-                            src={project.tracks[0].frames[0].imageData}
+                            src={project.thumbnailUrl || project.tracks[0]?.frames[0]?.imageData}
                             alt=""
                             className="w-full h-full object-contain"
                           />
@@ -917,6 +967,30 @@ function SpriteEditorMain() {
           </div>
         </div>
       )}
+
+      <SyncDialog
+        isOpen={showSyncDialog}
+        localCount={localProjectCount}
+        cloudCount={cloudProjectCount}
+        onKeepCloud={async () => {
+          await clearLocalProjects();
+          setShowSyncDialog(false);
+          const projects = await storageProvider.getAllProjects();
+          setSavedSpriteProjects(projects);
+        }}
+        onKeepLocal={async () => {
+          if (user) {
+            await clearCloudProjects(user);
+            await uploadLocalProjectsToCloud(user);
+            const projects = await storageProvider.getAllProjects();
+            setSavedSpriteProjects(projects);
+          }
+          setShowSyncDialog(false);
+        }}
+        onCancel={() => {
+          setShowSyncDialog(false);
+        }}
+      />
 
       {/* Sprite Sheet Import Modal */}
       <SpriteSheetImportModal

@@ -104,5 +104,11 @@ export const PRE_RENDER = {
   SEEK_TIMEOUT_MS: 2000, // max wait for video seek
 } as const;
 
+// Web Audio playback constants
+export const WEB_AUDIO = {
+  SCHEDULER_INTERVAL_MS: 50, // clip boundary check interval during playback
+  SEEK_JUMP_THRESHOLD: 0.3, // seconds: time jump larger than this = seek event
+} as const;
+
 // Frame rate presets
 export const FRAME_RATE_PRESETS = [24, 25, 30, 50, 60] as const;

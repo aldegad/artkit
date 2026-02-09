@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
-import { useVideoElements, usePlaybackTick, usePreRenderCache } from "../../hooks";
+import { useVideoElements, usePlaybackTick, usePreRenderCache, useAudioBufferCache, useWebAudioPlayback } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { PREVIEW, PLAYBACK } from "../../constants";
@@ -168,6 +168,23 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     currentTimeRef,
   });
 
+  // Pre-decode audio buffers for all audible clips (Web Audio API)
+  useAudioBufferCache(clips);
+
+  // Web Audio playback engine — plays audio via AudioBufferSourceNode
+  const { isWebAudioReady } = useWebAudioPlayback({
+    tracks,
+    clips,
+    getClipAtTime,
+    isPlaying: playback.isPlaying,
+    playbackRate: playback.playbackRate,
+    currentTimeRef,
+  });
+
+  // Ref for isWebAudioReady to avoid stale closure in syncMedia
+  const isWebAudioReadyRef = useRef(isWebAudioReady);
+  useEffect(() => { isWebAudioReadyRef.current = isWebAudioReady; }, [isWebAudioReady]);
+
   // Cache for getComputedStyle results (avoid forcing style recalc every frame)
   const cssColorsRef = useRef<{ surfacePrimary: string; borderDefault: string } | null>(null);
   const invalidateCssCache = useCallback(() => { cssColorsRef.current = null; }, []);
@@ -238,10 +255,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         video.playbackRate = playback.playbackRate;
-        const isAudible = audibleClipIds.has(clip.id);
-        video.muted = !isAudible;
-        const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
-        video.volume = isAudible ? Math.max(0, Math.min(1, clipVolume / 100)) : 0;
+
+        // Web Audio handles audio when buffer is ready — mute HTMLVideoElement
+        if (isWebAudioReadyRef.current(clip.sourceUrl)) {
+          video.muted = true;
+          video.volume = 0;
+        } else {
+          // Fallback: HTMLMediaElement audio (draft mode)
+          const isAudible = audibleClipIds.has(clip.id);
+          video.muted = !isAudible;
+          const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+          video.volume = isAudible ? Math.max(0, Math.min(1, clipVolume / 100)) : 0;
+        }
 
         if (video.paused) video.play().catch(() => {});
       }
@@ -251,6 +276,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const track = trackById.get(clip.trackId);
         if (!audio || !track) continue;
 
+        // Web Audio handles this clip — skip HTMLAudioElement entirely
+        if (isWebAudioReadyRef.current(clip.sourceUrl)) {
+          audio.pause();
+          audio.muted = true;
+          continue;
+        }
+
+        // Fallback: HTMLMediaElement audio (draft mode)
         const clipTime = ct - clip.startTime;
         if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible || !audibleClipIds.has(clip.id)) {
           audio.pause();
@@ -398,7 +431,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Try cached frame first (any state — instant display on seek/scrub)
     // Skip cache during mask editing — cached frames don't include live mask
     // overlay or edits, so they would hide the mask completely.
-    const cachedBitmap = isEditingMask ? null : getCachedFrame(ct);
+    // Skip cache when mask is active (editing or selected) — overlay needs live rendering
+    const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(ct);
 
     if (cachedBitmap) {
       // Use pre-rendered cached frame — skip per-track compositing

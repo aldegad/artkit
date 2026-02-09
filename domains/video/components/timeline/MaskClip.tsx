@@ -7,6 +7,9 @@ import { useMask, useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { UI, TIMELINE } from "../../constants";
 
+/** Long-press duration (ms) to enter mask edit mode */
+const LONG_PRESS_MS = 400;
+
 type DragMode = "none" | "move" | "trim-start" | "trim-end";
 
 interface DragItem {
@@ -36,6 +39,7 @@ export function MaskClip({ mask }: MaskClipProps) {
     selectedMaskIds,
     selectedClipIds,
     selectMaskForTimeline,
+    selectMasksForTimeline,
     deselectAll: deselectAllState,
   } = useVideoState();
 
@@ -56,6 +60,9 @@ export function MaskClip({ mask }: MaskClipProps) {
   const didDragRef = useRef(false);
   const wasActiveOnDownRef = useRef(false);
   const wasEditingOnDownRef = useRef(false);
+  const wasTimelineSelectedOnDownRef = useRef(false);
+  const shiftKeyOnDownRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Snap to own track clips + adjacent track below clips
   const snapToPoints = useCallback(
@@ -95,6 +102,8 @@ export function MaskClip({ mask }: MaskClipProps) {
     didDragRef.current = false;
     wasActiveOnDownRef.current = isActive;
     wasEditingOnDownRef.current = isEditing;
+    wasTimelineSelectedOnDownRef.current = isTimelineSelected;
+    shiftKeyOnDownRef.current = e.shiftKey;
 
     // Timeline selection for multi-select
     const isAlreadySelected = isTimelineSelected;
@@ -150,16 +159,22 @@ export function MaskClip({ mask }: MaskClipProps) {
       dragItemsRef.current = [];
     }
 
+    // Start long-press timer for edit mode (only for move, not trim handles)
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    if (mode === "move") {
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        if (!didDragRef.current) {
+          startMaskEditById(mask.id);
+        }
+      }, LONG_PRESS_MS);
+    }
+
     setDragMode(mode);
   }, [selectMask, selectMaskForTimeline, deselectAllState, isActive, isEditing, isTimelineSelected,
-      mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks]);
-
-  // Double-click to enter edit mode
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    startMaskEditById(mask.id);
-  }, [startMaskEditById, mask.id]);
+      mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks, startMaskEditById]);
 
   useEffect(() => {
     if (dragMode === "none") return;
@@ -169,7 +184,14 @@ export function MaskClip({ mask }: MaskClipProps) {
 
     const onPointerMove = (e: PointerEvent) => {
       const deltaX = e.clientX - startClientX;
-      if (Math.abs(deltaX) > 2) didDragRef.current = true;
+      if (Math.abs(deltaX) > 2) {
+        didDragRef.current = true;
+        // Cancel long-press on drag
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      }
       const deltaTime = deltaX / durationToWidth(1);
 
       if (dragMode === "move") {
@@ -210,12 +232,25 @@ export function MaskClip({ mask }: MaskClipProps) {
     };
 
     const onPointerUp = () => {
+      // Cancel long-press timer
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
       if (!didDragRef.current) {
         if (wasEditingOnDownRef.current) {
           // Was editing → click exits edit mode (stays selected)
           endMaskEdit();
-        } else if (wasActiveOnDownRef.current && !isTimelineSelected) {
-          // Was selected (not editing, not in multi-select) → deselect
+        } else if (wasTimelineSelectedOnDownRef.current) {
+          // Was already selected → toggle deselect
+          if (shiftKeyOnDownRef.current) {
+            // Shift: remove only this mask from selection
+            const remaining = selectedMaskIds.filter(id => id !== mask.id);
+            selectMasksForTimeline(remaining);
+          } else {
+            // No shift: deselect all
+            deselectAllState();
+          }
           deselectMask();
         }
       }
@@ -229,7 +264,8 @@ export function MaskClip({ mask }: MaskClipProps) {
       document.removeEventListener("pointerup", onPointerUp);
     };
   }, [dragMode, mask.id, isTimelineSelected, updateMaskTime, endMaskEdit, deselectMask,
-      durationToWidth, snapToPoints, clips, masks, moveClip]);
+      durationToWidth, snapToPoints, clips, masks, moveClip,
+      selectedMaskIds, selectMasksForTimeline, deselectAllState]);
 
   // Cursor based on hover position
   const handlePointerMoveLocal = useCallback((e: React.PointerEvent) => {
@@ -259,7 +295,6 @@ export function MaskClip({ mask }: MaskClipProps) {
         touchAction: "none",
       }}
       onPointerDown={handlePointerDown}
-      onDoubleClick={handleDoubleClick}
       onPointerMove={handlePointerMoveLocal}
     >
       <div className="px-1.5 py-0.5 text-[10px] text-white/80 truncate leading-tight select-none">
