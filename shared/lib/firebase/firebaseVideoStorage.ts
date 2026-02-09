@@ -29,8 +29,6 @@ import {
 import { Clip } from "@/domains/video/types/clip";
 import {
   loadMediaBlob,
-  isStoredMedia,
-  getClipIdFromStoredUrl,
 } from "@/domains/video/utils/mediaStorage";
 
 // ============================================
@@ -363,17 +361,9 @@ export async function saveVideoProjectToFirebase(
     let storageRefPath = "";
     let mediaBlob: Blob | null = null;
 
-    // Preferred path: explicit IndexedDB URL (legacy/optional path)
-    if (isStoredMedia(clip.sourceUrl)) {
-      const sourceClipId = getClipIdFromStoredUrl(clip.sourceUrl);
-      mediaBlob = await loadMediaBlob(sourceClipId);
-    }
-
-    // Common path: imported media is stored by clip.id in IndexedDB
-    // while clip.sourceUrl stays as blob: URL for runtime playback.
-    if (!mediaBlob) {
-      mediaBlob = await loadMediaBlob(clip.id);
-    }
+    // Imported media is stored by clip.id in IndexedDB while clip.sourceUrl
+    // stays as blob: URL for runtime playback.
+    mediaBlob = await loadMediaBlob(clip.id);
 
     // Last-resort path: if runtime still has an object URL, fetch it.
     if (!mediaBlob && clip.sourceUrl.startsWith("blob:")) {
