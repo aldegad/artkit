@@ -13,6 +13,18 @@ interface TooltipProps {
 
 type TooltipMode = "hidden" | "hover" | "brief" | "popup";
 
+function isNodeTarget(
+  value: EventTarget | null,
+  owner: HTMLElement | null
+): value is Node {
+  if (!value) return false;
+  const NodeCtor = owner?.ownerDocument?.defaultView?.Node;
+  if (NodeCtor) {
+    return value instanceof NodeCtor;
+  }
+  return typeof Node !== "undefined" && value instanceof Node;
+}
+
 export default function Tooltip({
   children,
   content,
@@ -87,8 +99,12 @@ export default function Tooltip({
 
   const handleMouseLeave = useCallback((e: React.MouseEvent) => {
     // Check if mouse actually left the trigger area
-    const relatedTarget = e.relatedTarget as Node | null;
-    if (triggerRef.current && relatedTarget && triggerRef.current.contains(relatedTarget)) {
+    const relatedTarget = e.relatedTarget;
+    if (
+      triggerRef.current &&
+      isNodeTarget(relatedTarget, triggerRef.current) &&
+      triggerRef.current.contains(relatedTarget)
+    ) {
       // Mouse moved to a child element, don't hide
       return;
     }
@@ -138,7 +154,14 @@ export default function Tooltip({
   useEffect(() => {
     if (mode === "popup") {
       const handleOutsideTouch = (e: TouchEvent) => {
-        const target = e.target as Node;
+        const target = e.target;
+        const owner = triggerRef.current ?? tooltipRef.current;
+        if (!isNodeTarget(target, owner)) {
+          modeRef.current = "hidden";
+          setIsVisible(false);
+          setMode("hidden");
+          return;
+        }
         if (
           !triggerRef.current?.contains(target) &&
           !tooltipRef.current?.contains(target)
