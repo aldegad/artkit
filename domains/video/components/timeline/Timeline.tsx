@@ -26,6 +26,14 @@ interface HeaderResizePendingState {
   startWidth: number;
 }
 
+interface MiddlePanPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  scrollXOnStart: number;
+  zoomOnStart: number;
+}
+
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
@@ -52,7 +60,12 @@ export function Timeline({ className }: TimelineProps) {
     dropClipToTrack,
     cancelLift,
   } = useTimelineInput(tracksContainerRef);
-  const { stateRef: timelineViewportRef, panByPixels, setZoomAtPixel } = useTimelineViewport();
+  const {
+    stateRef: timelineViewportRef,
+    panByPixels,
+    setZoomAtPixel,
+    setScrollFromGestureAnchor,
+  } = useTimelineViewport();
 
   // Track ID of the currently lifted clip (for drop-target highlighting)
   const liftedClipTrackId = liftedClipId
@@ -69,10 +82,9 @@ export function Timeline({ className }: TimelineProps) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [liftedClipId, cancelLift]);
 
-  // Middle-mouse scroll state
-  const [isMiddleScrolling, setIsMiddleScrolling] = useState(false);
   const [trackHeaderWidth, setTrackHeaderWidth] = useState(180);
   const [headerResizePending, setHeaderResizePending] = useState<HeaderResizePendingState | null>(null);
+  const [middlePanPending, setMiddlePanPending] = useState<MiddlePanPendingState | null>(null);
 
   // Calculate total tracks height (including mask lanes)
   const totalTracksHeight = tracks.reduce((sum, t) => {
@@ -164,29 +176,34 @@ export function Timeline({ className }: TimelineProps) {
       if (e.button === 1) {
         e.preventDefault();
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        setIsMiddleScrolling(true);
+        const timelineViewport = timelineViewportRef.current;
+        setMiddlePanPending({
+          pointerId: e.pointerId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          scrollXOnStart: timelineViewport.scrollX,
+          zoomOnStart: Math.max(0.001, timelineViewport.zoom),
+        });
       }
     },
-    []
+    [timelineViewportRef]
   );
 
-  // Document-level events for middle-mouse scroll (smooth dragging outside timeline)
-  useEffect(() => {
-    if (!isMiddleScrolling) return;
-
-    const onPointerMove = (e: PointerEvent) => {
-      panByPixels(-e.movementX);
-    };
-    const onPointerUp = () => setIsMiddleScrolling(false);
-
-    document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp);
-
-    return () => {
-      document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerup", onPointerUp);
-    };
-  }, [isMiddleScrolling, panByPixels]);
+  useDeferredPointerGesture<MiddlePanPendingState>({
+    pending: middlePanPending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      setScrollFromGestureAnchor(
+        pending.scrollXOnStart,
+        pending.clientX,
+        event.clientX,
+        pending.zoomOnStart
+      );
+    },
+    onEnd: () => {
+      setMiddlePanPending(null);
+    },
+  });
 
   useEffect(() => {
     const el = containerRef.current;

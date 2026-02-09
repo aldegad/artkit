@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { MinusIcon, PlusIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 import { cn } from "@/shared/utils/cn";
+import { useDeferredPointerGesture } from "@/shared/hooks";
 
 interface NumberScrubberProps {
   value: number;
@@ -19,6 +20,13 @@ interface NumberScrubberProps {
   valueWidth?: string;
   editable?: boolean;
   variant?: "default" | "zoom";
+}
+
+interface NumberScrubPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  startValue: number;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -43,7 +51,7 @@ export function NumberScrubber({
 }: NumberScrubberProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
-  const isDraggingRef = useRef(false);
+  const [dragPending, setDragPending] = useState<NumberScrubPendingState | null>(null);
 
   const isMultiplicative = typeof step === "object" && "multiply" in step;
   const linearStep = typeof step === "number" ? step : 1;
@@ -73,42 +81,48 @@ export function NumberScrubber({
     (e: React.PointerEvent) => {
       if (disabled || isEditing) return;
       e.preventDefault();
-      const startX = e.clientX;
-      const startValue = value;
-      isDraggingRef.current = false;
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        const deltaX = moveEvent.clientX - startX;
-        if (Math.abs(deltaX) > 2) isDraggingRef.current = true;
-
-        if (isMultiplicative) {
-          const steps = Math.round(deltaX / dragSensitivity);
-          let newValue = startValue;
-          if (steps > 0) {
-            for (let i = 0; i < steps; i++) newValue *= multiplyFactor;
-          } else {
-            for (let i = 0; i < Math.abs(steps); i++) newValue /= multiplyFactor;
-          }
-          onChange(clamp(newValue, min, max));
-        } else {
-          const steps = Math.round(deltaX / dragSensitivity);
-          const newValue = startValue + steps * linearStep;
-          onChange(clamp(Math.round(newValue / linearStep) * linearStep, min, max));
-        }
-      };
-
-      const handlePointerUp = () => {
-        document.body.style.cursor = "";
-        document.removeEventListener("pointermove", handlePointerMove);
-        document.removeEventListener("pointerup", handlePointerUp);
-      };
-
       document.body.style.cursor = "ew-resize";
-      document.addEventListener("pointermove", handlePointerMove);
-      document.addEventListener("pointerup", handlePointerUp);
+      setDragPending({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        startValue: value,
+      });
     },
-    [disabled, isEditing, value, isMultiplicative, dragSensitivity, multiplyFactor, linearStep, min, max, onChange]
+    [disabled, isEditing, value]
   );
+
+  useDeferredPointerGesture<NumberScrubPendingState>({
+    pending: dragPending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      const deltaX = event.clientX - pending.clientX;
+      if (isMultiplicative) {
+        const steps = Math.round(deltaX / dragSensitivity);
+        let newValue = pending.startValue;
+        if (steps > 0) {
+          for (let i = 0; i < steps; i++) newValue *= multiplyFactor;
+        } else {
+          for (let i = 0; i < Math.abs(steps); i++) newValue /= multiplyFactor;
+        }
+        onChange(clamp(newValue, min, max));
+      } else {
+        const steps = Math.round(deltaX / dragSensitivity);
+        const newValue = pending.startValue + steps * linearStep;
+        onChange(clamp(Math.round(newValue / linearStep) * linearStep, min, max));
+      }
+    },
+    onEnd: () => {
+      setDragPending(null);
+      document.body.style.cursor = "";
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "";
+    };
+  }, []);
 
   const handleDoubleClick = useCallback(() => {
     if (!editable || disabled) return;
