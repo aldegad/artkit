@@ -42,6 +42,8 @@ const LONG_PRESS_MS = 400;
 
 /** Minimum movement (px) before we resolve a touch gesture as scroll or drag */
 const TOUCH_GESTURE_THRESHOLD = 8;
+/** Horizontal touch pan sensitivity (1 = exact finger delta). */
+const TOUCH_HORIZONTAL_PAN_SENSITIVITY = 0.6;
 
 // ── Touch pending state ───────────────────────────────────────────────
 interface TouchPendingState {
@@ -317,6 +319,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     const handleMove = (e: PointerEvent) => {
       if (e.pointerId !== touchPending.pointerId) return;
+      let justResolved = false;
 
       if (!resolved) {
         const dx = Math.abs(e.clientX - touchPending.clientX);
@@ -324,15 +327,20 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
         if (dx >= TOUCH_GESTURE_THRESHOLD || dy >= TOUCH_GESTURE_THRESHOLD) {
           resolved = true;
+          justResolved = true;
           if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
           // Touch drag defaults to panning the timeline (both X/Y).
           // Clip movement is only activated by long-press lift.
           isScrolling = true;
+          // Avoid a large first-frame jump by resetting scroll baseline.
+          lastClientX = e.clientX;
+          lastClientY = e.clientY;
         }
       }
 
       // Pan mode: manually scroll timeline vertically + horizontally.
       if (isScrolling) {
+        if (justResolved) return;
         const deltaX = lastClientX - e.clientX;
         const deltaY = lastClientY - e.clientY;
 
@@ -343,7 +351,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           const currentZoom = Math.max(0.001, touchScrollStateRef.current.zoom);
           const nextScrollX = Math.max(
             0,
-            touchScrollStateRef.current.scrollX + deltaX / currentZoom
+            touchScrollStateRef.current.scrollX + (deltaX * TOUCH_HORIZONTAL_PAN_SENSITIVITY) / currentZoom
           );
           touchScrollStateRef.current.scrollX = nextScrollX;
           setScrollX(nextScrollX);
