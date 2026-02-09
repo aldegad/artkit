@@ -10,6 +10,7 @@ import { ImageDropZone } from "../../../shared/components";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import { useCanvasViewportBridge, type CanvasViewportState } from "@/shared/hooks/useCanvasViewportBridge";
 import { useRenderScheduler } from "@/shared/hooks/useRenderScheduler";
 
 // ============================================
@@ -58,43 +59,29 @@ export default function CanvasContent() {
   const {
     onViewportChange,
     updateTransform,
-    wheelRef: viewportWheelRef,
-    pinchRef: viewportPinchRef,
   } = viewport;
 
   // ---- Shared render scheduler ----
   const { requestRender, setRenderFn } = useRenderScheduler(canvasContainerRef);
 
-  // Track last synced values to prevent infinite sync loops
-  const lastViewportSyncRef = useRef({ zoom: 1, pan: { x: 0, y: 0 }, baseScale: 1 });
-
-  // Forward sync: viewport (wheel/pinch) → Zustand store (for autosave)
-  useEffect(() => {
-    return onViewportChange((state) => {
-      lastViewportSyncRef.current = { zoom: state.zoom, pan: { ...state.pan }, baseScale: state.baseScale };
+  const handleViewportStateChange = useCallback(
+    (state: CanvasViewportState) => {
       setZoom(state.zoom);
       setPan(state.pan);
-      setScale(state.baseScale);
-    });
-  }, [onViewportChange, setZoom, setPan, setScale]);
-
-  // Reverse sync: Zustand store (autosave restore, external changes) → viewport
-  useEffect(() => {
-    const last = lastViewportSyncRef.current;
-    if (zoom === last.zoom && pan.x === last.pan.x && pan.y === last.pan.y && scale === last.baseScale) return;
-    lastViewportSyncRef.current = { zoom, pan: { ...pan }, baseScale: scale };
-    updateTransform({ zoom, pan, baseScale: scale });
-  }, [zoom, pan, scale, updateTransform]);
-
-  // Merge wheel + canvas ref callbacks
-  const canvasCallbackRef = useCallback(
-    (el: HTMLCanvasElement | null) => {
-      canvasRef.current = el;
-      viewportWheelRef(el);
-      viewportPinchRef(el);
+      if (typeof state.baseScale === "number") {
+        setScale(state.baseScale);
+      }
     },
-    [canvasRef, viewportWheelRef, viewportPinchRef],
+    [setZoom, setPan, setScale]
   );
+
+  const { elementRefCallback: canvasCallbackRef } = useCanvasViewportBridge({
+    viewport,
+    elementRef: canvasRef,
+    externalState: { zoom, pan, baseScale: scale },
+    onViewportStateChange: handleViewportStateChange,
+    syncBaseScale: true,
+  });
 
   // ---- Coordinate transforms via viewport ----
   const screenToImage = useCallback(
@@ -132,7 +119,7 @@ export default function CanvasContent() {
 
           const maxWidth = 900;
           const newScale = Math.min(maxWidth / img.width, 1);
-          viewport.updateTransform({
+          updateTransform({
             baseScale: newScale,
             zoom: 1,
             pan: { x: 0, y: 0 },
@@ -142,7 +129,7 @@ export default function CanvasContent() {
       };
       reader.readAsDataURL(file);
     },
-    [setImageSrc, setImageSize, imageRef, viewport, setCurrentPoints, setFrames],
+    [setImageSrc, setImageSize, imageRef, updateTransform, setCurrentPoints, setFrames],
   );
 
   // Drag event handlers

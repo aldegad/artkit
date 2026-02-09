@@ -7,6 +7,7 @@ import { ImageDropZone, Popover } from "../../../shared/components";
 import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../../shared/components/icons";
 import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
+import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 
@@ -174,34 +175,22 @@ export default function AnimationPreviewContent() {
 
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const unsub = onAnimViewportChange((state) => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      syncTimeoutRef.current = setTimeout(() => {
-        const store = useSpriteViewportStore.getState();
-        store.setAnimPreviewZoom(state.zoom);
-        store.setAnimPreviewPan(state.pan);
-      }, 1000);
-    });
-    return () => {
-      unsub();
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    };
-  }, [onAnimViewportChange]);
-
-  // Restore viewport from autosave on load
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current || isAutosaveLoading) return;
-    restoredRef.current = true;
-    const { animPreviewZoom, animPreviewPan } = useSpriteViewportStore.getState();
-    if (animPreviewZoom > 0) {
-      setAnimVpZoom(animPreviewZoom);
-      setAnimVpPan(animPreviewPan);
-    }
-  }, [isAutosaveLoading, setAnimVpZoom, setAnimVpPan]);
+  useCanvasViewportPersistence({
+    onViewportChange: onAnimViewportChange,
+    setZoom: setAnimVpZoom,
+    setPan: setAnimVpPan,
+    isRestoreBlocked: isAutosaveLoading,
+    debounceMs: 1000,
+    loadState: () => {
+      const { animPreviewZoom, animPreviewPan } = useSpriteViewportStore.getState();
+      return { zoom: animPreviewZoom, pan: animPreviewPan };
+    },
+    saveState: (state) => {
+      const store = useSpriteViewportStore.getState();
+      store.setAnimPreviewZoom(state.zoom);
+      store.setAnimPreviewPan(state.pan);
+    },
+  });
 
   // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);

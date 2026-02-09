@@ -14,3 +14,12 @@ export type {
   DeferredPointerPending,
   DeferredPointerContext,
 } from "./useDeferredPointerGesture";
+
+export { useCanvasViewportBridge } from "./useCanvasViewportBridge";
+export type {
+  CanvasViewportBridgeLike,
+  CanvasViewportState,
+} from "./useCanvasViewportBridge";
+
+export { useCanvasViewportPersistence } from "./useCanvasViewportPersistence";
+export type { PersistedCanvasViewportState } from "./useCanvasViewportPersistence";

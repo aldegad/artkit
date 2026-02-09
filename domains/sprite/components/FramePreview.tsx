@@ -5,6 +5,7 @@ import { useEditorFramesMeta, useEditorBrush, useEditorHistory, useEditorTools }
 import { useLanguage } from "../../../shared/contexts";
 import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
+import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
@@ -64,33 +65,22 @@ export default function FramePreviewContent() {
   } = viewport;
 
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const unsub = onFrameViewportChange((state) => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-      syncTimeoutRef.current = setTimeout(() => {
-        const store = useSpriteViewportStore.getState();
-        store.setFrameEditZoom(state.zoom);
-        store.setFrameEditPan(state.pan);
-      }, 1000);
-    });
-    return () => {
-      unsub();
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    };
-  }, [onFrameViewportChange]);
-
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (restoredRef.current || isAutosaveLoading) return;
-    restoredRef.current = true;
-    const { frameEditZoom, frameEditPan } = useSpriteViewportStore.getState();
-    if (frameEditZoom > 0) {
-      setFrameVpZoom(frameEditZoom);
-      setFrameVpPan(frameEditPan);
-    }
-  }, [isAutosaveLoading, setFrameVpZoom, setFrameVpPan]);
+  useCanvasViewportPersistence({
+    onViewportChange: onFrameViewportChange,
+    setZoom: setFrameVpZoom,
+    setPan: setFrameVpPan,
+    isRestoreBlocked: isAutosaveLoading,
+    debounceMs: 1000,
+    loadState: () => {
+      const { frameEditZoom, frameEditPan } = useSpriteViewportStore.getState();
+      return { zoom: frameEditZoom, pan: frameEditPan };
+    },
+    saveState: (state) => {
+      const store = useSpriteViewportStore.getState();
+      store.setFrameEditZoom(state.zoom);
+      store.setFrameEditPan(state.pan);
+    },
+  });
 
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
 
