@@ -20,12 +20,16 @@ import {
   SpriteFrame,
   SpriteTopToolbar,
   useFrameBackgroundRemoval,
+  useFrameInterpolation,
   useSpriteKeyboardShortcuts,
   FrameBackgroundRemovalModals,
+  FrameInterpolationModals,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
+import { extractFrameImageFromSource } from "@/domains/sprite/utils";
+import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
@@ -53,7 +57,17 @@ import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet } from "@/
 function SpriteEditorMain() {
   const { user } = useAuth();
   const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditorImage();
-  const { frames, setFrames, nextFrameId, setNextFrameId, selectedFrameId, selectedFrameIds, selectedPointIndex } = useEditorFramesMeta();
+  const {
+    frames,
+    setFrames,
+    nextFrameId,
+    setNextFrameId,
+    selectedFrameId,
+    setSelectedFrameId,
+    selectedFrameIds,
+    setSelectedFrameIds,
+    selectedPointIndex,
+  } = useEditorFramesMeta();
   const { toolMode, setSpriteToolMode, currentPoints, setCurrentPoints, setIsSpacePressed } = useEditorTools();
   const { setScale, setZoom, setPan } = useEditorViewport();
   const { fps } = useEditorAnimation();
@@ -79,6 +93,9 @@ function SpriteEditorMain() {
 
   // Background removal state
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
+  const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
+  const [interpolationSteps, setInterpolationSteps] = useState(1);
+  const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>("fast");
 
   // File input ref for menu-triggered image import
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +120,30 @@ function SpriteEditorMain() {
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
       frameImageNotFound: t.frameImageNotFound,
       processingFrameProgress: t.processingFrameProgress,
+    },
+  });
+
+  const {
+    isInterpolating,
+    interpolationProgress,
+    interpolationStatus,
+    interpolationPairCount,
+    handleInterpolateFrames,
+  } = useFrameInterpolation({
+    frames,
+    nextFrameId,
+    selectedFrameIds,
+    setFrames,
+    setNextFrameId,
+    setSelectedFrameId,
+    setSelectedFrameIds,
+    pushHistory,
+    translations: {
+      frameInterpolation: t.frameInterpolation,
+      interpolationFailed: t.interpolationFailed,
+      selectFramesForInterpolation: t.selectFramesForInterpolation,
+      frameImageNotFound: t.frameImageNotFound,
+      interpolationProgress: t.interpolationProgress,
     },
   });
   const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
@@ -194,44 +235,6 @@ function SpriteEditorMain() {
     [setImageSrc, setImageSize, imageRef, setScale, setZoom, setPan, setCurrentPoints, setFrames],
   );
 
-  // Extract frame image helper
-  const extractFrameImage = useCallback(
-    (points: { x: number; y: number }[]): string | undefined => {
-      if (!imageRef.current || points.length < 3) return undefined;
-
-      const img = imageRef.current;
-      const xs = points.map((p) => p.x);
-      const ys = points.map((p) => p.y);
-      const bbox = {
-        minX: Math.min(...xs),
-        minY: Math.min(...ys),
-        maxX: Math.max(...xs),
-        maxY: Math.max(...ys),
-      };
-      const width = bbox.maxX - bbox.minX;
-      const height = bbox.maxY - bbox.minY;
-
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const ctx = tempCanvas.getContext("2d");
-      if (!ctx) return undefined;
-
-      ctx.beginPath();
-      ctx.moveTo(points[0].x - bbox.minX, points[0].y - bbox.minY);
-      points.slice(1).forEach((p) => {
-        ctx.lineTo(p.x - bbox.minX, p.y - bbox.minY);
-      });
-      ctx.closePath();
-      ctx.clip();
-
-      ctx.drawImage(img, bbox.minX, bbox.minY, width, height, 0, 0, width, height);
-
-      return tempCanvas.toDataURL("image/png");
-    },
-    [imageRef],
-  );
-
   // Import sprite sheet frames → new track
   const handleSpriteSheetImport = useCallback(
     (importedFrames: Omit<SpriteFrame, "id">[]) => {
@@ -287,7 +290,7 @@ function SpriteEditorMain() {
     // Save history before adding new frame
     pushHistory();
 
-    const imageData = extractFrameImage(currentPoints);
+    const imageData = extractFrameImageFromSource(imageRef.current, currentPoints);
 
     const newFrame = {
       id: nextFrameId,
@@ -303,7 +306,7 @@ function SpriteEditorMain() {
   }, [
     currentPoints,
     nextFrameId,
-    extractFrameImage,
+    imageRef,
     setFrames,
     setNextFrameId,
     setCurrentPoints,
@@ -680,7 +683,9 @@ function SpriteEditorMain() {
         selectedPointIndex={selectedPointIndex}
         frames={frames}
         isRemovingBackground={isRemovingBackground}
+        isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
+        hasInterpolatableSelection={interpolationPairCount > 0}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
@@ -689,6 +694,7 @@ function SpriteEditorMain() {
         onCancelCurrentPolygon={cancelCurrentPolygon}
         onCompleteFrame={completeFrame}
         onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
+        onRequestFrameInterpolation={() => setShowFrameInterpolationConfirm(true)}
       />
 
       {/* Main Content - Split View */}
@@ -811,6 +817,41 @@ function SpriteEditorMain() {
           currentFrame: t.removeBackgroundCurrentFrame,
           selectedFrames: t.removeBackgroundSelectedFrames,
           allFrames: t.removeBackgroundAllFrames,
+        }}
+      />
+
+      <FrameInterpolationModals
+        showConfirm={showFrameInterpolationConfirm}
+        onCloseConfirm={() => setShowFrameInterpolationConfirm(false)}
+        onConfirm={async () => {
+          setShowFrameInterpolationConfirm(false);
+          await handleInterpolateFrames({
+            steps: interpolationSteps,
+            quality: interpolationQuality,
+          });
+        }}
+        isInterpolating={isInterpolating}
+        progress={interpolationProgress}
+        status={interpolationStatus}
+        selectedFrameCount={selectedFrameIds.length}
+        interpolationPairCount={interpolationPairCount}
+        steps={interpolationSteps}
+        quality={interpolationQuality}
+        onStepsChange={setInterpolationSteps}
+        onQualityChange={setInterpolationQuality}
+        translations={{
+          frameInterpolation: t.frameInterpolation,
+          interpolationDescription: t.frameInterpolationDescription,
+          interpolationSteps: t.interpolationSteps,
+          interpolationQuality: t.interpolationQuality,
+          qualityFast: t.interpolationQualityFast,
+          qualityHigh: t.interpolationQualityHigh,
+          qualityFastHint: t.interpolationQualityFastHint,
+          qualityHighHint: t.interpolationQualityHighHint,
+          estimatedFrames: t.interpolationEstimatedFrames,
+          firstRunDownload: t.interpolationFirstRunDownload,
+          cancel: t.cancel,
+          generate: t.confirm,
         }}
       />
 

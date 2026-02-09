@@ -4,7 +4,8 @@ import { useEffect, useCallback, useRef, useState, DragEvent } from "react";
 import { useEditorImage, useEditorFramesMeta, useEditorTools, useEditorViewport, useEditorDrag, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame } from "../types";
-import { getBoundingBox, isPointInPolygon } from "../utils/geometry";
+import { isPointInPolygon } from "../utils/geometry";
+import { extractFrameImageFromSource } from "../utils";
 import { ImageDropZone } from "../../../shared/components";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
@@ -208,42 +209,11 @@ export default function CanvasContent() {
     [imageToScreen],
   );
 
-  // Extract frame image
-  const extractFrameImage = useCallback(
-    (points: Point[]): string | undefined => {
-      if (!imageRef.current || points.length < 3) return undefined;
-
-      const img = imageRef.current;
-      const bbox = getBoundingBox(points);
-      const width = bbox.maxX - bbox.minX;
-      const height = bbox.maxY - bbox.minY;
-
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const ctx = tempCanvas.getContext("2d");
-      if (!ctx) return undefined;
-
-      ctx.beginPath();
-      ctx.moveTo(points[0].x - bbox.minX, points[0].y - bbox.minY);
-      points.slice(1).forEach((p) => {
-        ctx.lineTo(p.x - bbox.minX, p.y - bbox.minY);
-      });
-      ctx.closePath();
-      ctx.clip();
-
-      ctx.drawImage(img, bbox.minX, bbox.minY, width, height, 0, 0, width, height);
-
-      return tempCanvas.toDataURL("image/png");
-    },
-    [imageRef],
-  );
-
   // Complete frame
   const completeFrame = useCallback(() => {
     if (currentPoints.length < 3) return;
 
-    const imageData = extractFrameImage(currentPoints);
+    const imageData = extractFrameImageFromSource(imageRef.current, currentPoints);
 
     const newFrame: SpriteFrame = {
       id: nextFrameId,
@@ -256,7 +226,7 @@ export default function CanvasContent() {
     setFrames((prev) => [...prev, newFrame]);
     setNextFrameId((prev) => prev + 1);
     setCurrentPoints([]);
-  }, [currentPoints, nextFrameId, extractFrameImage, setFrames, setNextFrameId, setCurrentPoints]);
+  }, [currentPoints, nextFrameId, imageRef, setFrames, setNextFrameId, setCurrentPoints]);
 
   // ---- Store refs for render function (avoids re-creating render fn on every state change) ----
   const framesRef = useRef(frames);
@@ -609,14 +579,14 @@ export default function CanvasContent() {
       setFrames((prev) =>
         prev.map((frame) => {
           if (frame.id !== selectedFrameId) return frame;
-          const newImageData = extractFrameImage(frame.points);
+          const newImageData = extractFrameImageFromSource(imageRef.current, frame.points);
           return { ...frame, imageData: newImageData };
         }),
       );
     }
     viewport.endPanDrag();
     setIsDragging(false);
-  }, [isDragging, selectedFrameId, setFrames, extractFrameImage, viewport, setIsDragging]);
+  }, [isDragging, selectedFrameId, setFrames, imageRef, viewport, setIsDragging]);
 
   return (
     <div

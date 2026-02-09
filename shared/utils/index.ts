@@ -1,6 +1,12 @@
 export { cn } from "./cn";
 export { generateId } from "./generateId";
 export { downloadDataUrl, downloadBlob, downloadJson, downloadText } from "./download";
+export {
+  interpolateFramesWithRife,
+  preloadRifeModel,
+  isRifeModelLoaded,
+  DEFAULT_RIFE_MODEL_URL,
+} from "./rifeInterpolation";
 
 // Brush engine
 export { drawDab, drawLine, parseHexColor } from "./brushEngine";

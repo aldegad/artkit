@@ -42,6 +42,7 @@ interface MaskContextValue {
   saveMaskData: () => void;
   addMask: (trackId: string, size: Size, startTime: number, duration: number) => string;
   duplicateMask: (maskId: string) => string | null;
+  duplicateMasksToTrack: (sourceTrackId: string, targetTrackId: string) => string[];
   deleteMask: (maskId: string) => void;
   updateMaskTime: (maskId: string, startTime: number, duration: number) => void;
   getMasksForTrack: (trackId: string) => MaskData[];
@@ -126,6 +127,27 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     });
     return newId;
   }, [masks]);
+
+  const duplicateMasksToTrack = useCallback((sourceTrackId: string, targetTrackId: string): string[] => {
+    if (!sourceTrackId || !targetTrackId || sourceTrackId === targetTrackId) return [];
+
+    const newIds: string[] = [];
+    setMasks((prev) => {
+      const next = new Map(prev);
+      for (const mask of prev.values()) {
+        if (mask.trackId !== sourceTrackId) continue;
+        const newId = crypto.randomUUID();
+        newIds.push(newId);
+        next.set(newId, {
+          ...mask,
+          id: newId,
+          trackId: targetTrackId,
+        });
+      }
+      return next;
+    });
+    return newIds;
+  }, []);
 
   // Delete a mask
   const deleteMask = useCallback((maskId: string) => {
@@ -360,6 +382,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     saveMaskData,
     addMask,
     duplicateMask,
+    duplicateMasksToTrack,
     deleteMask,
     updateMaskTime,
     getMasksForTrack,

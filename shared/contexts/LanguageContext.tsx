@@ -249,6 +249,21 @@ interface Translations {
   removeBackgroundAllFrames: string;
   processingFrameProgress: string;
 
+  // Frame Interpolation
+  frameInterpolation: string;
+  frameInterpolationDescription: string;
+  interpolationFirstRunDownload: string;
+  interpolationSteps: string;
+  interpolationQuality: string;
+  interpolationQualityFast: string;
+  interpolationQualityHigh: string;
+  interpolationQualityFastHint: string;
+  interpolationQualityHighHint: string;
+  interpolationEstimatedFrames: string;
+  selectFramesForInterpolation: string;
+  interpolationFailed: string;
+  interpolationProgress: string;
+
   // Layout components
   floatingMode: string;
   undock: string;
@@ -560,6 +575,21 @@ const translations: Record<Language, Translations> = {
     removeBackgroundAllFrames: "모든 프레임",
     processingFrameProgress: "프레임 처리 중",
 
+    // Frame Interpolation
+    frameInterpolation: "AI 프레임 보간",
+    frameInterpolationDescription: "선택한 프레임 사이에 AI로 중간 프레임을 생성합니다.",
+    interpolationFirstRunDownload: "첫 실행 시 AI 모델을 다운로드합니다 (~22MB)",
+    interpolationSteps: "구간당 생성 프레임 수",
+    interpolationQuality: "품질 모드",
+    interpolationQualityFast: "빠름",
+    interpolationQualityHigh: "고품질",
+    interpolationQualityFastHint: "속도 우선",
+    interpolationQualityHighHint: "느리지만 더 자연스러움",
+    interpolationEstimatedFrames: "예상 생성 프레임",
+    selectFramesForInterpolation: "보간하려면 이미지가 있는 프레임 2개 이상을 선택하세요.",
+    interpolationFailed: "프레임 보간에 실패했습니다. 다시 시도해주세요.",
+    interpolationProgress: "프레임 보간 중",
+
     // Layout components
     floatingMode: "플로팅으로 전환",
     undock: "언도킹",
@@ -868,6 +898,21 @@ const translations: Record<Language, Translations> = {
     removeBackgroundSelectedFrames: "Selected Frames",
     removeBackgroundAllFrames: "All Frames",
     processingFrameProgress: "Processing frames",
+
+    // Frame Interpolation
+    frameInterpolation: "AI Frame Interpolation",
+    frameInterpolationDescription: "Generate in-between frames between selected frames using AI.",
+    interpolationFirstRunDownload: "First run will download the AI model (~22MB)",
+    interpolationSteps: "Frames per gap",
+    interpolationQuality: "Quality mode",
+    interpolationQualityFast: "Fast",
+    interpolationQualityHigh: "High Quality",
+    interpolationQualityFastHint: "Prioritize speed",
+    interpolationQualityHighHint: "Slower but smoother motion",
+    interpolationEstimatedFrames: "Estimated generated frames",
+    selectFramesForInterpolation: "Select at least 2 frames with images for interpolation.",
+    interpolationFailed: "Frame interpolation failed. Please try again.",
+    interpolationProgress: "Interpolating frames",
 
     // Layout components
     floatingMode: "Float window",
