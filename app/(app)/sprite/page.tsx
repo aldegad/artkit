@@ -26,6 +26,7 @@ import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
+import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
@@ -41,7 +42,6 @@ import {
 } from "@/shared/components/icons";
 import {
   migrateFromLocalStorage,
-  formatBytes,
 } from "@/shared/utils/storage";
 import {
   getSpriteStorageProvider,
@@ -549,6 +549,8 @@ function SpriteEditorMain() {
     async (projectId: string) => {
       if (!confirm(t.deleteConfirm)) return;
 
+      setIsProjectLoading(true);
+      setLoadProgress(null);
       try {
         await storageProvider.deleteProject(projectId);
         setSavedSpriteProjects((prev) => prev.filter((p) => p.id !== projectId));
@@ -559,6 +561,9 @@ function SpriteEditorMain() {
       } catch (error) {
         console.error("Delete failed:", error);
         alert(`${t.deleteFailed}: ${(error as Error).message}`);
+      } finally {
+        setIsProjectLoading(false);
+        setLoadProgress(null);
       }
     },
     [storageProvider, setSavedSpriteProjects, t],
@@ -936,93 +941,26 @@ function SpriteEditorMain() {
       </div>
 
       {/* Project List Modal */}
-      {isProjectListOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-surface-primary border border-border-default rounded-xl w-[500px] max-h-[80vh] flex flex-col shadow-xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">{t.savedProjects}</h2>
-                {storageInfo.quota > 0 && (
-                  <div className="text-xs text-text-tertiary flex items-center gap-2 mt-1">
-                    <span>
-                      {t.storage}: {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
-                    </span>
-                    <div className="w-20 h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${storageInfo.percentage > 80 ? "bg-accent-danger" : "bg-accent-primary"}`}
-                        style={{ width: `${Math.min(storageInfo.percentage, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setIsProjectListOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Project list */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {savedProjects.length === 0 ? (
-                <div className="text-center text-text-tertiary py-8">
-                  {t.noSavedProjects}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {savedProjects.map((project) => (
-                    <div
-                      key={project.id}
-                      className="flex items-center gap-3 p-3 bg-surface-secondary rounded-lg hover:bg-interactive-hover group transition-colors"
-                    >
-                      {/* Thumbnail */}
-                      <div className="w-16 h-16 bg-surface-tertiary rounded-lg shrink-0 overflow-hidden">
-                        {(project.thumbnailUrl || project.tracks[0]?.frames[0]?.imageData) && (
-                          <img
-                            src={project.thumbnailUrl || project.tracks[0]?.frames[0]?.imageData}
-                            alt=""
-                            className="w-full h-full object-contain"
-                          />
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate text-text-primary">{project.name}</div>
-                        <div className="text-xs text-text-secondary">
-                          {project.tracks.length} tracks · {project.tracks.reduce((sum, tr) => sum + tr.frames.length, 0)} {t.frames} · {project.fps}fps
-                        </div>
-                        <div className="text-xs text-text-tertiary">
-                          {new Date(project.savedAt).toLocaleString()}
-                        </div>
-                      </div>
-
-                      {/* Buttons */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => loadProject(project)}
-                          className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-sm transition-colors"
-                        >
-                          {t.load}
-                        </button>
-                        <button
-                          onClick={() => deleteProject(project.id)}
-                          className="px-2 py-1.5 bg-accent-danger hover:bg-accent-danger-hover text-white rounded-lg text-sm transition-colors"
-                        >
-                          {t.delete}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <SpriteProjectListModal
+        isOpen={isProjectListOpen}
+        onClose={() => setIsProjectListOpen(false)}
+        projects={savedProjects}
+        currentProjectId={currentProjectId}
+        onLoadProject={loadProject}
+        onDeleteProject={deleteProject}
+        storageInfo={storageInfo}
+        isLoading={isProjectLoading}
+        loadProgress={loadProgress}
+        translations={{
+          savedProjects: t.savedProjects || "저장된 프로젝트",
+          noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
+          storage: t.storage || "저장소",
+          load: t.load || "불러오기",
+          delete: t.delete,
+          frames: t.frames || "프레임",
+          loading: t.loading,
+        }}
+      />
 
       <SyncDialog
         isOpen={showSyncDialog}

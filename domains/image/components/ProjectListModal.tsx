@@ -23,10 +23,12 @@ interface ProjectListModalProps {
   onLoadProject: (project: SavedImageProject) => void;
   onDeleteProject: (projectId: string) => void;
   storageInfo: StorageInfo;
+  isLoading?: boolean;
   translations: {
     savedProjects: string;
     noSavedProjects: string;
     delete: string;
+    loading?: string;
   };
 }
 
@@ -42,6 +44,7 @@ export default function ProjectListModal({
   onLoadProject,
   onDeleteProject,
   storageInfo,
+  isLoading,
   translations: t,
 }: ProjectListModalProps) {
   const titleContent = (
@@ -72,9 +75,19 @@ export default function ProjectListModal({
       title={titleContent}
       width="480px"
       maxHeight="80vh"
-      contentClassName="flex-1 min-h-0"
+      contentClassName="flex-1 flex flex-col min-h-0"
     >
-        <Scrollbar className="h-full p-4" overflow={{ x: "hidden", y: "scroll" }}>
+        {/* Loading overlay */}
+        {isLoading && (
+          <div className="px-4 py-2 border-b border-border-default bg-surface-secondary">
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+              <span>{t.loading || "Loading..."}</span>
+            </div>
+          </div>
+        )}
+
+        <Scrollbar className="flex-1 p-4" overflow={{ x: "hidden", y: "scroll" }}>
           {projects.length === 0 ? (
             <div className="text-center text-text-tertiary py-8">
               {t.noSavedProjects}
@@ -89,7 +102,7 @@ export default function ProjectListModal({
                       ? "border-accent-primary bg-accent-primary/10"
                       : "border-border-default hover:bg-surface-secondary"
                   }`}
-                  onClick={() => onLoadProject(project)}
+                  onClick={() => !isLoading && onLoadProject(project)}
                 >
                   {/* Thumbnail */}
                   <div className="w-12 h-12 bg-surface-tertiary rounded overflow-hidden shrink-0">
@@ -118,7 +131,7 @@ export default function ProjectListModal({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onDeleteProject(project.id);
+                      if (!isLoading) onDeleteProject(project.id);
                     }}
                     className="p-2 hover:bg-accent-danger/20 rounded transition-colors text-text-tertiary hover:text-accent-danger"
                     title={t.delete}
