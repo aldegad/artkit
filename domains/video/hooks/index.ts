@@ -1,6 +1,7 @@
 export { useVideoCoordinates } from "./useVideoCoordinates";
 export { useTimelineViewport } from "./useTimelineViewport";
 export { useTimelineInput } from "./useTimelineInput";
+export { useTimelineLayoutInput } from "./useTimelineLayoutInput";
 export { useVideoElements } from "./useVideoElements";
 export { usePreviewRendering } from "./usePreviewRendering";
 export { useMaskTool } from "./useMaskTool";
