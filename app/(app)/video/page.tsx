@@ -1006,13 +1006,13 @@ function VideoEditorContent() {
 
         ffmpegArgs.push(
           "-c:v",
-          "qtrle",
+          "png",
           "-pix_fmt",
           "rgb24",
         );
 
         if (hasAudioInput) {
-          ffmpegArgs.push("-c:a", "pcm_s16le", "-shortest");
+          ffmpegArgs.push("-c:a", "pcm_s16be", "-shortest");
         } else {
           ffmpegArgs.push("-an");
         }
