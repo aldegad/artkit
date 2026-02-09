@@ -7,17 +7,6 @@ import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
 import { Tooltip, Scrollbar, NumberScrubber } from "@/shared/components";
 import { ExportModal } from "@/domains/image/components/ExportModal";
 import {
-  MarqueeIcon,
-  MoveIcon,
-  TransformIcon,
-  BrushIcon,
-  EraserIcon,
-  FillBucketIcon,
-  EyedropperIcon,
-  CloneStampIcon,
-  CropIcon,
-  HandIcon,
-  ZoomSearchIcon,
   BackgroundRemovalIcon,
   UndoIcon,
   RedoIcon,
@@ -25,15 +14,11 @@ import {
 } from "@/shared/components/icons";
 import {
   EditorToolMode,
-  OutputFormat,
-  SavedImageProject,
   UnifiedLayer,
   HistoryAdapter,
   GuideOrientation,
   createPaintLayer,
   ProjectListModal,
-  loadEditorAutosaveData,
-  clearEditorAutosaveData,
   useHistory,
   useLayerManagement,
   useBrushTool,
@@ -47,6 +32,10 @@ import {
   useTransformTool,
   useGuideTool,
   useEditorSave,
+  useEditorSaveActions,
+  useImageExport,
+  useImageProjectIO,
+  createEditorToolButtons,
   BackgroundRemovalModals,
   TransformDiscardConfirmModal,
   EditorToolOptions,
@@ -59,14 +48,7 @@ import {
   CanvasPanelContent,
 } from "@/domains/image";
 // IndexedDB storage functions are now used through storageProvider
-import {
-  getStorageProvider,
-  hasLocalProjects,
-  checkCloudProjects,
-  uploadLocalProjectsToCloud,
-  clearLocalProjects,
-  clearCloudProjects,
-} from "@/domains/image/services/projectStorage";
+import { getStorageProvider } from "@/domains/image/services/projectStorage";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
   EditorLayoutProvider,
@@ -94,8 +76,6 @@ function EditorDockableArea() {
     </>
   );
 }
-
-type ToolMode = EditorToolMode;
 
 interface LayerCanvasHistoryState {
   layerId: string;
@@ -135,7 +115,7 @@ export default function ImageEditor() {
 // Inner component that uses contexts
 function ImageEditorContent() {
   const { t } = useLanguage();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user } = useAuth();
 
   // Layout context (Provider is above in ImageEditor)
   const { isPanelOpen, openFloatingWindow, closeFloatingWindow, removePanel, layoutState } = useEditorLayout();
@@ -167,18 +147,8 @@ function ImageEditorContent() {
   // Storage provider based on auth state
   const storageProvider = useMemo(() => getStorageProvider(user), [user]);
 
-  // Sync dialog state
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
-  const [localProjectCount, setLocalProjectCount] = useState(0);
-  const [cloudProjectCount, setCloudProjectCount] = useState(0);
-
   // Rotate menu state (for mobile)
   const [showRotateMenu, setShowRotateMenu] = useState(false);
-
-  // Loading state for async operations
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAutosaveLoading, setIsAutosaveLoading] = useState(true);
-  const [saveCount, setSaveCount] = useState(0);
 
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false);
@@ -331,6 +301,7 @@ function ImageEditorContent() {
     updateLayer,
     updateLayerOpacity,
     updateLayerPosition,
+    updateMultipleLayerPositions,
     renameLayer,
     toggleLayerLock,
     moveLayer,
@@ -427,8 +398,6 @@ function ImageEditorContent() {
       setActiveLayerId,
       selectedLayerIds,
       setSelectedLayerIds,
-      layerImages: new Map(), // Not used in this context but required by interface
-      setLayerImages: () => {}, // Not used in this context but required by interface
       draggedLayerId,
       setDraggedLayerId,
       dragOverLayerId,
@@ -442,6 +411,8 @@ function ImageEditorContent() {
       toggleLayerVisibility,
       updateLayer,
       updateLayerOpacity,
+      updateLayerPosition,
+      updateMultipleLayerPositions,
       renameLayer,
       toggleLayerLock,
       moveLayer,
@@ -476,6 +447,8 @@ function ImageEditorContent() {
       toggleLayerVisibility,
       updateLayer,
       updateLayerOpacity,
+      updateLayerPosition,
+      updateMultipleLayerPositions,
       renameLayer,
       toggleLayerLock,
       moveLayer,
@@ -516,7 +489,7 @@ function ImageEditorContent() {
   } = useBrushTool();
 
   // Canvas input handling - normalized pointer events
-  const { getMousePos, screenToImage, createInputEvent } = useCanvasInput({
+  const { getMousePos, screenToImage } = useCanvasInput({
     canvasRef,
     zoom,
     pan,
@@ -723,6 +696,7 @@ function ImageEditorContent() {
     // Layer movement
     activeLayerId,
     updateLayerPosition,
+    updateMultipleLayerPositions,
     // Multi-layer support
     selectedLayerIds,
   });
@@ -1140,167 +1114,14 @@ function ImageEditorContent() {
     }, 0);
   }, [cropArea, layers, activeLayerId, rotation, setLayers, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
 
-  const exportImage = useCallback((fileName: string, fmt: OutputFormat, q: number) => {
-    if (layers.length === 0) return;
-
-    const exportCanvas = document.createElement("canvas");
-    const ctx = exportCanvas.getContext("2d");
-    if (!ctx) return;
-
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-    const compositeCanvas = document.createElement("canvas");
-    compositeCanvas.width = displayWidth;
-    compositeCanvas.height = displayHeight;
-    const compositeCtx = compositeCanvas.getContext("2d");
-    if (!compositeCtx) return;
-
-    layers.forEach((layer) => {
-      if (!layer.visible) return;
-      const layerCanvas = layerCanvasesRef.current.get(layer.id);
-      if (!layerCanvas) return;
-      compositeCtx.globalAlpha = layer.opacity / 100;
-      const posX = layer.position?.x || 0;
-      const posY = layer.position?.y || 0;
-      compositeCtx.drawImage(layerCanvas, posX, posY);
-      compositeCtx.globalAlpha = 1;
-    });
-
-    if (cropArea) {
-      exportCanvas.width = Math.round(cropArea.width);
-      exportCanvas.height = Math.round(cropArea.height);
-
-      const extendsLeft = cropArea.x < 0;
-      const extendsTop = cropArea.y < 0;
-      const extendsRight = cropArea.x + cropArea.width > displayWidth;
-      const extendsBottom = cropArea.y + cropArea.height > displayHeight;
-      const extendsCanvas = extendsLeft || extendsTop || extendsRight || extendsBottom;
-
-      if (extendsCanvas) {
-        if (fmt === "jpeg") {
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, cropArea.width, cropArea.height);
-        }
-        const srcX = Math.max(0, cropArea.x);
-        const srcY = Math.max(0, cropArea.y);
-        const srcRight = Math.min(displayWidth, cropArea.x + cropArea.width);
-        const srcBottom = Math.min(displayHeight, cropArea.y + cropArea.height);
-        const srcWidth = srcRight - srcX;
-        const srcHeight = srcBottom - srcY;
-        const destX = srcX - cropArea.x;
-        const destY = srcY - cropArea.y;
-
-        if (srcWidth > 0 && srcHeight > 0) {
-          ctx.drawImage(compositeCanvas, srcX, srcY, srcWidth, srcHeight, destX, destY, srcWidth, srcHeight);
-        }
-      } else {
-        ctx.drawImage(
-          compositeCanvas,
-          Math.round(cropArea.x), Math.round(cropArea.y),
-          Math.round(cropArea.width), Math.round(cropArea.height),
-          0, 0,
-          Math.round(cropArea.width), Math.round(cropArea.height),
-        );
-      }
-    } else {
-      exportCanvas.width = displayWidth;
-      exportCanvas.height = displayHeight;
-      if (fmt === "jpeg") {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, displayWidth, displayHeight);
-      }
-      ctx.drawImage(compositeCanvas, 0, 0);
-    }
-
-    const mimeType = fmt === "webp" ? "image/webp" : fmt === "jpeg" ? "image/jpeg" : "image/png";
-    const ext = fmt === "jpeg" ? "jpg" : fmt;
-
-    exportCanvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${fileName}.${ext}`;
-        link.click();
-        URL.revokeObjectURL(url);
-      },
-      mimeType,
-      q,
-    );
-  }, [layers, layerCanvasesRef, cropArea, getDisplayDimensions]);
-
-  // Export each selected layer individually at canvas size, bundled as ZIP
-  const exportSelectedLayers = useCallback(async (fileName: string, fmt: OutputFormat, q: number, backgroundColor: string | null) => {
-    const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
-    if (targetIds.length === 0) return;
-
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const mimeType = fmt === "webp" ? "image/webp" : fmt === "jpeg" ? "image/jpeg" : "image/png";
-    const ext = fmt === "jpeg" ? "jpg" : fmt;
-
-    const JSZip = (await import("jszip")).default;
-    const zip = new JSZip();
-
-    const blobPromises = targetIds.map((layerId) => {
-      const layer = layers.find((l) => l.id === layerId);
-      if (!layer) return null;
-
-      const layerCanvas = layerCanvasesRef.current.get(layerId);
-      if (!layerCanvas) return null;
-
-      const exportCanvas = document.createElement("canvas");
-      exportCanvas.width = displayWidth;
-      exportCanvas.height = displayHeight;
-      const ctx = exportCanvas.getContext("2d");
-      if (!ctx) return null;
-
-      if (backgroundColor) {
-        ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, displayWidth, displayHeight);
-      } else if (fmt === "jpeg") {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, displayWidth, displayHeight);
-      }
-
-      const posX = layer.position?.x || 0;
-      const posY = layer.position?.y || 0;
-      ctx.globalAlpha = layer.opacity;
-      ctx.drawImage(layerCanvas, posX, posY);
-
-      return new Promise<void>((resolve) => {
-        exportCanvas.toBlob(
-          (blob) => {
-            if (blob) {
-              zip.file(`${layer.name || "layer"}.${ext}`, blob);
-            }
-            resolve();
-          },
-          mimeType,
-          q,
-        );
-      });
-    });
-
-    await Promise.all(blobPromises.filter(Boolean));
-
-    const zipBlob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(zipBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${fileName}.zip`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
-
-  // Handle export from modal
-  const handleExportFromModal = useCallback((fileName: string, fmt: OutputFormat, q: number, backgroundColor: string | null) => {
-    if (exportMode === "single") {
-      exportImage(fileName, fmt, q);
-    } else {
-      exportSelectedLayers(fileName, fmt, q, backgroundColor);
-    }
-  }, [exportMode, exportImage, exportSelectedLayers]);
+  const { handleExportFromModal } = useImageExport({
+    layers,
+    layerCanvasesRef,
+    cropArea,
+    selectedLayerIds,
+    activeLayerId,
+    getDisplayDimensions,
+  });
 
   // Get cursor based on tool mode
   const getCursor = () => {
@@ -1375,131 +1196,57 @@ function ImageEditorContent() {
     ]
   );
 
-  // Load saved projects when storage provider changes (login/logout)
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const projects = await storageProvider.getAllProjects();
-        setSavedProjects(projects);
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-      } catch (error) {
-        console.error("Failed to load projects:", error);
-      }
-    };
-    loadProjects();
-  }, [storageProvider]);
-
-  // Check for sync conflicts when user logs in
-  useEffect(() => {
-    const checkSyncConflicts = async () => {
-      if (!user) return;
-
-      try {
-        const hasLocal = await hasLocalProjects();
-        const hasCloud = await checkCloudProjects(user.uid);
-
-        if (hasLocal && hasCloud) {
-          // Both have data - show conflict dialog
-          const localProjects = await (await import("@/shared/utils/storage")).getAllImageProjects();
-          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
-
-          setLocalProjectCount(localProjects.length);
-          setCloudProjectCount(cloudProjects.length);
-          setShowSyncDialog(true);
-        } else if (hasLocal && !hasCloud) {
-          // Only local data - auto upload to cloud
-          await uploadLocalProjectsToCloud(user);
-          // Refresh project list
-          const projects = await storageProvider.getAllProjects();
-          setSavedProjects(projects);
-        }
-        // If only cloud or neither - just use cloud storage (already handled by storageProvider)
-      } catch (error) {
-        console.error("Failed to check sync conflicts:", error);
-      }
-    };
-
-    checkSyncConflicts();
-  }, [user]);
-
-  // ============================================
-  // Auto-save/load functionality
-  // ============================================
-  const isInitializedRef = useRef(false);
-
-  // Load autosave data on mount
-  useEffect(() => {
-    const loadAutosave = async () => {
-      try {
-        const data = await loadEditorAutosaveData();
-        // Only restore if autosave has valid data
-        if (data && data.layers && data.layers.length > 0 && data.canvasSize && layers.length === 0) {
-          // Restore state from autosave
-          setCanvasSize(data.canvasSize);
-          setRotation(data.rotation);
-          setZoom(data.zoom);
-          setPan(data.pan);
-          setProjectName(data.projectName);
-          setActiveLayerId(data.activeLayerId);
-          setBrushSize(data.brushSize);
-          setBrushColor(data.brushColor);
-          setBrushHardness(data.brushHardness);
-
-          // Restore layers
-          const { width, height } = data.canvasSize;
-          await initLayers(width, height, data.layers);
-
-          // Restore guides
-          if (data.guides && data.guides.length > 0) {
-            setGuides(data.guides);
-          }
-
-          // Restore UI state
-          if (data.showRulers !== undefined) setShowRulers(data.showRulers);
-          if (data.showGuides !== undefined) setShowGuides(data.showGuides);
-          if (data.lockGuides !== undefined) setLockGuides(data.lockGuides);
-          if (data.snapToGuides !== undefined) setSnapToGuides(data.snapToGuides);
-
-          // Restore project identity (FIX: prevents creating new file on save after refresh)
-          if (data.currentProjectId !== undefined) {
-            setCurrentProjectId(data.currentProjectId);
-          }
-        } else if (data) {
-          // Clear invalid/legacy autosave data
-          clearEditorAutosaveData();
-        }
-      } catch (error) {
-        console.error("Failed to load autosave:", error);
-      }
-      isInitializedRef.current = true;
-      setIsAutosaveLoading(false);
-    };
-    loadAutosave();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-save is now handled by useEditorSave hook
-
-  // Clear autosave when starting fresh
-  const handleNewProject = useCallback(() => {
-    clearEditorAutosaveData();
-    setCanvasSize({ width: 0, height: 0 });
-    setRotation(0);
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-    setProjectName("Untitled");
-    setCurrentProjectId(null);
-    setLayers([]);
-    setActiveLayerId(null);
-    setCropArea(null);
-    setSelection(null);
-    setStampSource(null);
-    clearHistory();
-    layerCanvasesRef.current.clear();
-    editCanvasRef.current = null;
-    imageRef.current = null;
-  }, []);
+  const {
+    isLoading,
+    isAutosaveLoading,
+    isInitialized,
+    showSyncDialog,
+    localProjectCount,
+    cloudProjectCount,
+    handleLoadProject,
+    handleDeleteProject,
+    handleNewCanvas,
+    handleKeepCloud,
+    handleKeepLocal,
+    handleCancelSync,
+  } = useImageProjectIO({
+    user,
+    storageProvider,
+    layers,
+    currentProjectId,
+    setProjectName,
+    setCurrentProjectId,
+    setRotation,
+    setCanvasSize,
+    setCropArea,
+    setSelection,
+    setZoom,
+    setPan,
+    setStampSource,
+    setLayers,
+    setActiveLayerId,
+    setSavedProjects,
+    setStorageInfo,
+    setIsProjectListOpen,
+    setGuides,
+    setBrushSize,
+    setBrushColor,
+    setBrushHardness,
+    setShowRulers,
+    setShowGuides,
+    setLockGuides,
+    setSnapToGuides,
+    initLayers,
+    layerCanvasesRef,
+    editCanvasRef,
+    imageRef,
+    clearHistory,
+    translations: {
+      deleteConfirm: t.deleteConfirm,
+      deleteFailed: t.deleteFailed,
+      unsavedChangesConfirm: t.unsavedChangesConfirm,
+    },
+  });
 
   // Save hook - handles autosave and manual save
   const {
@@ -1528,237 +1275,21 @@ function ImageEditorContent() {
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
-    isInitialized: isInitializedRef.current,
+    isInitialized,
   });
 
-  // Cmd+S keyboard shortcut for save
-  useEffect(() => {
-    const handleSave = async (e: KeyboardEvent) => {
-      if (e.code === "KeyS" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        if (e.shiftKey) {
-          // Shift+Cmd+S = Save As
-          try {
-            await handleSaveAsProject();
-            setSaveCount((c) => c + 1);
-          } catch (error) {
-            alert(`${t.saveFailed}: ${(error as Error).message}`);
-          }
-        } else if (layers.length > 0) {
-          try {
-            await handleSaveProject();
-            setSaveCount((c) => c + 1);
-          } catch (error) {
-            alert(`${t.saveFailed}: ${(error as Error).message}`);
-          }
-        }
-      }
-    };
+  const {
+    saveCount,
+    handleSaveProjectAction,
+    handleSaveAsProjectAction,
+  } = useEditorSaveActions({
+    saveProject: handleSaveProject,
+    saveAsProject: handleSaveAsProject,
+    canSave: layers.length > 0,
+    saveFailedMessage: t.saveFailed,
+  });
 
-    window.addEventListener("keydown", handleSave);
-    return () => window.removeEventListener("keydown", handleSave);
-  }, [layers.length, handleSaveProject, handleSaveAsProject, t.saveFailed]);
-
-  // Load a saved project
-  const handleLoadProject = useCallback(
-    async (projectMeta: SavedImageProject) => {
-      setIsLoading(true);
-      try {
-        // Fetch full project data (including layer images) from storage
-        const project = await storageProvider.getProject(projectMeta.id);
-        if (!project) {
-          alert("Failed to load project");
-          return;
-        }
-
-        setProjectName(project.name);
-        setCurrentProjectId(project.id);
-        setRotation(project.rotation);
-        setCanvasSize(project.canvasSize);
-        setCropArea(null);
-        setSelection(null);
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
-        setStampSource(null);
-
-        // Initialize edit canvas with layers
-        const { width, height } =
-          project.rotation % 180 === 0
-            ? project.canvasSize
-            : { width: project.canvasSize.height, height: project.canvasSize.width };
-
-        await initLayers(width, height, project.unifiedLayers);
-        if (project.activeLayerId) {
-          setActiveLayerId(project.activeLayerId);
-          const activeLayer = project.unifiedLayers.find(l => l.id === project.activeLayerId);
-          if (activeLayer?.type === "paint") {
-            editCanvasRef.current = layerCanvasesRef.current.get(project.activeLayerId) || null;
-          }
-        }
-
-        // Load guides
-        setGuides(project.guides || []);
-
-        setIsProjectListOpen(false);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [initLayers, storageProvider, setGuides],
-  );
-
-  // Delete a project
-  const handleDeleteProject = useCallback(
-    async (id: string) => {
-      if (!confirm(t.deleteConfirm)) return;
-
-      setIsLoading(true);
-      try {
-        await storageProvider.deleteProject(id);
-        const projects = await storageProvider.getAllProjects();
-        setSavedProjects(projects);
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-
-        if (currentProjectId === id) {
-          setCurrentProjectId(null);
-        }
-      } catch (error) {
-        console.error("Failed to delete project:", error);
-        alert(`${t.deleteFailed}: ${(error as Error).message}`);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [currentProjectId, t, storageProvider],
-  );
-
-  // New canvas
-  const handleNewCanvas = useCallback(() => {
-    if (layers.length > 0 && !confirm(t.unsavedChangesConfirm)) return;
-
-    // Clear autosave
-    clearEditorAutosaveData();
-
-    // Reset canvas state
-    setCanvasSize({ width: 0, height: 0 });
-    setProjectName("Untitled");
-    setCurrentProjectId(null);
-    setRotation(0);
-    setCropArea(null);
-    setSelection(null);
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-    setStampSource(null);
-
-    // Reset layers
-    setLayers([]);
-    setActiveLayerId(null);
-    layerCanvasesRef.current.clear();
-
-    // Reset refs
-    imageRef.current = null;
-    editCanvasRef.current = null;
-    clearHistory();
-  }, [layers.length, t]);
-
-  const toolButtons: {
-    mode: ToolMode;
-    icon: React.ReactNode;
-    name: string;
-    description: string;
-    keys?: string[];
-    shortcut: string;
-  }[] = [
-    {
-      mode: "marquee",
-      name: t.marquee,
-      description: t.marquee,
-      keys: ["⌥+Drag: Clone", "⇧: Axis lock", "Delete: Clear"],
-      shortcut: "M",
-      icon: <MarqueeIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "move",
-      name: t.move,
-      description: t.moveToolTip,
-      keys: ["Drag: Move selection"],
-      shortcut: "V",
-      icon: <MoveIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "transform",
-      name: "Transform",
-      description: "Scale and move layer content",
-      keys: ["⌘T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
-      shortcut: "T",
-      icon: <TransformIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "brush",
-      name: t.brush,
-      description: t.brushToolTip,
-      keys: ["[ ]: Size -/+", "⇧: Straight line"],
-      shortcut: "B",
-      icon: <BrushIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "eraser",
-      name: t.eraser,
-      description: t.eraserToolTip,
-      keys: ["[ ]: Size -/+"],
-      shortcut: "E",
-      icon: <EraserIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "fill",
-      name: t.fill,
-      description: t.fillToolTip,
-      keys: ["Click: Fill area"],
-      shortcut: "G",
-      icon: <FillBucketIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "eyedropper",
-      name: t.eyedropper,
-      description: t.eyedropperToolTip,
-      keys: ["Click: Pick color", "⌥+Click: From any tool"],
-      shortcut: "I",
-      icon: <EyedropperIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "stamp",
-      name: t.cloneStamp,
-      description: t.cloneStampToolTip,
-      keys: ["⌥+Click: Set source", "Drag: Clone paint"],
-      shortcut: "S",
-      icon: <CloneStampIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "crop",
-      name: t.crop,
-      description: t.cropToolTip,
-      keys: ["Drag: Select area", "Enter: Apply crop"],
-      shortcut: "C",
-      icon: <CropIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "hand",
-      name: t.hand,
-      description: t.handToolTip,
-      keys: ["Drag: Pan canvas", "Space: Temp hand", "Wheel: Zoom"],
-      shortcut: "H",
-      icon: <HandIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "zoom",
-      name: t.zoomInOut,
-      description: t.zoomToolTip,
-      keys: ["Click: Zoom in", "⌥+Click: Zoom out", "Wheel: Zoom"],
-      shortcut: "Z",
-      icon: <ZoomSearchIcon className="w-4 h-4" />,
-    },
-  ];
+  const toolButtons = useMemo(() => createEditorToolButtons(t), [t]);
 
   return (
     <EditorLayersProvider value={layerContextValue}>
@@ -1782,8 +1313,8 @@ function ImageEditorContent() {
           <EditorMenuBar
             onNew={handleNewCanvas}
             onLoad={() => setIsProjectListOpen(true)}
-            onSave={async () => { await handleSaveProject(); setSaveCount((c) => c + 1); }}
-            onSaveAs={async () => { await handleSaveAsProject(); setSaveCount((c) => c + 1); }}
+            onSave={handleSaveProjectAction}
+            onSaveAs={handleSaveAsProjectAction}
             onImportImage={() => fileInputRef.current?.click()}
             onExport={() => { setExportMode("single"); setShowExportModal(true); }}
             onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
@@ -2054,7 +1585,9 @@ function ImageEditorContent() {
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
-        onExport={handleExportFromModal}
+        onExport={(fileName, fmt, q, backgroundColor) =>
+          handleExportFromModal(fileName, fmt, q, backgroundColor, exportMode)
+        }
         defaultFileName={projectName || "Untitled"}
         mode={exportMode}
         translations={{
@@ -2146,22 +1679,9 @@ function ImageEditorContent() {
         isOpen={showSyncDialog}
         localCount={localProjectCount}
         cloudCount={cloudProjectCount}
-        onKeepCloud={async () => {
-          // Keep cloud data, clear local
-          await clearLocalProjects();
-          setShowSyncDialog(false);
-        }}
-        onKeepLocal={async () => {
-          // Upload local to cloud, overwrite cloud
-          if (user) {
-            await clearCloudProjects(user);
-            await uploadLocalProjectsToCloud(user);
-          }
-          setShowSyncDialog(false);
-        }}
-        onCancel={() => {
-          setShowSyncDialog(false);
-        }}
+        onKeepCloud={handleKeepCloud}
+        onKeepLocal={handleKeepLocal}
+        onCancel={handleCancelSync}
       />
     </div>
     </EditorCanvasProvider>

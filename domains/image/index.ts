@@ -7,7 +7,7 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions } from "./hooks";
 export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn } from "./hooks";
 export type {
   CanvasInputEvent,
@@ -101,6 +101,7 @@ export {
   saveActivePresetId,
   BRUSH_PRESETS_STORAGE_KEY,
   ACTIVE_PRESET_STORAGE_KEY,
+  createEditorToolButtons,
 } from "./constants";
 
 export type { ShortcutDefinition } from "./constants";
