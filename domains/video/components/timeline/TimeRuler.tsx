@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
-import { useVideoCoordinates, usePlaybackTick } from "../../hooks";
+import { usePlaybackTick, useTimelineViewport, useVideoCoordinates } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { TIMELINE } from "../../constants";
@@ -15,9 +15,10 @@ interface TimeRulerProps {
 export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { viewState, setScrollX } = useTimeline();
+  const { viewState } = useTimeline();
   const { seek, currentTimeRef, playback, project, setLoopRange } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
+  const { ensureTimeVisibleOnLeft } = useTimelineViewport();
 
   const duration = Math.max(project.duration, 0);
   const rangeStart = Math.max(0, Math.min(playback.loopStart, duration));
@@ -99,7 +100,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
 
     // Draw ticks
     const startTime = Math.max(0, Math.floor(viewState.scrollX / tickInterval) * tickInterval);
-    const endTime = viewState.scrollX + width / pixelsPerSecond;
+    const endTime = pixelToTime(width);
 
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "center";
@@ -140,7 +141,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       ctx.closePath();
       ctx.fill();
     }
-  }, [viewState.zoom, viewState.scrollX, timeToPixel, currentTimeRef, hasCustomRange, rangeStart, rangeEnd]);
+  }, [viewState.zoom, viewState.scrollX, timeToPixel, pixelToTime, currentTimeRef, hasCustomRange, rangeStart, rangeEnd]);
 
   // Seek at a given clientX position
   const seekAtX = useCallback(
@@ -157,11 +158,9 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
         seek(time);
       }
 
-      if (time < viewState.scrollX) {
-        setScrollX(time);
-      }
+      ensureTimeVisibleOnLeft(time);
     },
-    [pixelToTime, seek, onSeek, viewState.scrollX, setScrollX]
+    [pixelToTime, seek, onSeek, ensureTimeVisibleOnLeft]
   );
 
   // Drag-seeking / range-handle dragging with pointer events
