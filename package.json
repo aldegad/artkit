@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@huggingface/transformers": "^3.8.1",
     "@serwist/next": "^9.5.4",
     "clsx": "^2.1.1",

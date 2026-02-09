@@ -10,3 +10,5 @@ export { usePreRenderCache, subscribeCacheStatus, getCacheStatus } from "./usePr
 export { useVideoKeyboardShortcuts } from "./useVideoKeyboardShortcuts";
 export { useAudioBufferCache, getAudioBuffer, isAudioBufferReady, getSharedAudioContext } from "./useAudioBufferCache";
 export { useWebAudioPlayback } from "./useWebAudioPlayback";
+export { useVideoExport } from "./useVideoExport";
+export type { ExportProgressState, VideoExportFormat } from "./useVideoExport";

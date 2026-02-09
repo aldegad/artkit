@@ -82,6 +82,20 @@ export async function deleteMediaBlob(clipId: string): Promise<void> {
 }
 
 /**
+ * Copy a media blob from one clip ID to another.
+ * Returns true when source blob exists and copy succeeds.
+ */
+export async function copyMediaBlob(
+  sourceClipId: string,
+  targetClipId: string
+): Promise<boolean> {
+  const blob = await loadMediaBlob(sourceClipId);
+  if (!blob) return false;
+  await saveMediaBlob(targetClipId, blob);
+  return true;
+}
+
+/**
  * Clear all media files from IndexedDB
  */
 export async function clearAllMediaBlobs(): Promise<void> {

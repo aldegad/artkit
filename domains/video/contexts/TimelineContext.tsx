@@ -25,7 +25,7 @@ import { Size } from "@/shared/types";
 import {
   loadVideoAutosave,
 } from "../utils/videoAutosave";
-import { loadMediaBlob } from "../utils/mediaStorage";
+import { loadMediaBlob, copyMediaBlob } from "../utils/mediaStorage";
 
 interface TimelineContextValue {
   // View state
@@ -307,13 +307,39 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           if (data.clips && data.clips.length > 0) {
             // Restore clips with blobs from IndexedDB
             const restoredClips: Clip[] = [];
+            const normalizedClips = data.clips.map((clip) => normalizeClip(clip as Clip));
+            const clipIdsBySourceId = new Map<string, string[]>();
+            for (const clip of normalizedClips) {
+              if (!clip.sourceId) continue;
+              const ids = clipIdsBySourceId.get(clip.sourceId) || [];
+              ids.push(clip.id);
+              clipIdsBySourceId.set(clip.sourceId, ids);
+            }
+            const sourceBlobCache = new Map<string, Blob>();
 
-            for (const clip of data.clips) {
-              const normalizedClip = normalizeClip(clip as Clip);
+            for (const normalizedClip of normalizedClips) {
               // Try to load blob from IndexedDB using clipId
-              const blob = await loadMediaBlob(normalizedClip.id);
+              let blob = await loadMediaBlob(normalizedClip.id);
+              if (!blob && normalizedClip.sourceId) {
+                blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
+                if (!blob) {
+                  const candidateIds = clipIdsBySourceId.get(normalizedClip.sourceId) || [];
+                  for (const candidateId of candidateIds) {
+                    if (candidateId === normalizedClip.id) continue;
+                    const candidateBlob = await loadMediaBlob(candidateId);
+                    if (candidateBlob) {
+                      blob = candidateBlob;
+                      sourceBlobCache.set(normalizedClip.sourceId, candidateBlob);
+                      break;
+                    }
+                  }
+                }
+              }
 
               if (blob) {
+                if (normalizedClip.sourceId && !sourceBlobCache.has(normalizedClip.sourceId)) {
+                  sourceBlobCache.set(normalizedClip.sourceId, blob);
+                }
                 // Create new blob URL from stored blob
                 const newUrl = URL.createObjectURL(blob);
                 restoredClips.push({ ...normalizedClip, sourceUrl: newUrl });
@@ -651,6 +677,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       trackId,
       name: `${sourceClip.name} (Copy)`,
     };
+
+    void copyMediaBlob(sourceClip.id, newClip.id).catch((error) => {
+      console.error("Failed to copy media blob on timeline duplicate:", error);
+    });
 
     setClips((prev) => [...prev, newClip]);
     updateProjectDuration();

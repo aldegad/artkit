@@ -36,7 +36,10 @@ export interface VideoStorageProvider {
     onProgress?: (progress: SaveLoadProgress) => void
   ): Promise<SavedVideoProject | null>;
   getAllProjects(): Promise<SavedVideoProject[]>;
-  deleteProject(id: string): Promise<void>;
+  deleteProject(
+    id: string,
+    onProgress?: (progress: SaveLoadProgress) => void
+  ): Promise<void>;
   getStorageInfo(): Promise<VideoStorageInfo>;
   readonly type: "local" | "cloud";
 }
@@ -61,7 +64,11 @@ class IndexedDBVideoStorageProvider implements VideoStorageProvider {
     return getAllVideoProjects();
   }
 
-  async deleteProject(id: string): Promise<void> {
+  async deleteProject(
+    id: string,
+    onProgress?: (progress: SaveLoadProgress) => void
+  ): Promise<void> {
+    onProgress?.({ current: 1, total: 1, clipName: "Project" });
     await deleteVideoProject(id);
   }
 
@@ -101,8 +108,11 @@ class FirebaseVideoStorageProvider implements VideoStorageProvider {
     return getAllVideoProjectsFromFirebase(this.userId);
   }
 
-  async deleteProject(id: string): Promise<void> {
-    await deleteVideoProjectFromFirebase(this.userId, id);
+  async deleteProject(
+    id: string,
+    onProgress?: (progress: SaveLoadProgress) => void
+  ): Promise<void> {
+    await deleteVideoProjectFromFirebase(this.userId, id, onProgress);
   }
 
   async getStorageInfo(): Promise<VideoStorageInfo> {
@@ -120,4 +130,3 @@ export function getVideoStorageProvider(user: User | null): VideoStorageProvider
   }
   return new IndexedDBVideoStorageProvider();
 }
-

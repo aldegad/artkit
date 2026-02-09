@@ -17,6 +17,7 @@ import {
   getDownloadURL,
   deleteObject,
   listAll,
+  type StorageReference,
 } from "firebase/storage";
 import { db, storage } from "./config";
 import {
@@ -207,38 +208,25 @@ async function uploadVideoThumbnail(
 }
 
 /**
- * Delete all media files for a project
+ * List all media files for a project (recursive)
  */
-async function deleteProjectMedia(
+async function listProjectMediaItems(
   userId: string,
   projectId: string
-): Promise<void> {
+): Promise<StorageReference[]> {
   const folderRef = ref(storage, `users/${userId}/video-media/${projectId}`);
 
+  const collect = async (folder: StorageReference): Promise<StorageReference[]> => {
+    const listResult = await listAll(folder);
+    const nested = await Promise.all(listResult.prefixes.map((prefix) => collect(prefix)));
+    return [...listResult.items, ...nested.flat()];
+  };
+
   try {
-    const listResult = await listAll(folderRef);
-
-    // Delete files in root
-    await Promise.all(
-      listResult.items.map((itemRef) => deleteObject(itemRef))
-    );
-
-    // Delete files in subdirectories (masks)
-    for (const prefix of listResult.prefixes) {
-      const subList = await listAll(prefix);
-      await Promise.all(
-        subList.items.map((itemRef) => deleteObject(itemRef))
-      );
-      // Handle nested mask keyframe folders
-      for (const subPrefix of subList.prefixes) {
-        const subSubList = await listAll(subPrefix);
-        await Promise.all(
-          subSubList.items.map((itemRef) => deleteObject(itemRef))
-        );
-      }
-    }
+    return await collect(folderRef);
   } catch {
     // Folder might not exist, ignore
+    return [];
   }
 }
 
@@ -360,6 +348,14 @@ export async function saveVideoProjectToFirebase(
 
   // 1. Upload media for each clip
   const clipMetas: FirestoreClipMeta[] = [];
+  const clipIdsBySourceId = new Map<string, string[]>();
+  const sourceBlobCache = new Map<string, Blob>();
+  for (const clip of clips) {
+    if (!clip.sourceId) continue;
+    const ids = clipIdsBySourceId.get(clip.sourceId) || [];
+    ids.push(clip.id);
+    clipIdsBySourceId.set(clip.sourceId, ids);
+  }
 
   for (const clip of clips) {
     onProgress?.({
@@ -374,6 +370,24 @@ export async function saveVideoProjectToFirebase(
     // Imported media is stored by clip.id in IndexedDB while clip.sourceUrl
     // stays as blob: URL for runtime playback.
     mediaBlob = await loadMediaBlob(clip.id);
+    if (!mediaBlob && clip.sourceId) {
+      mediaBlob = sourceBlobCache.get(clip.sourceId) || null;
+      if (!mediaBlob) {
+        const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
+        for (const candidateId of candidateIds) {
+          if (candidateId === clip.id) continue;
+          const candidateBlob = await loadMediaBlob(candidateId);
+          if (candidateBlob) {
+            mediaBlob = candidateBlob;
+            sourceBlobCache.set(clip.sourceId, candidateBlob);
+            break;
+          }
+        }
+      }
+    }
+    if (mediaBlob && clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
+      sourceBlobCache.set(clip.sourceId, mediaBlob);
+    }
 
     if (mediaBlob) {
       storageRefPath = await uploadMediaFile(
@@ -606,9 +620,27 @@ export async function getAllVideoProjectsFromFirebase(
  */
 export async function deleteVideoProjectFromFirebase(
   userId: string,
-  projectId: string
+  projectId: string,
+  onProgress?: (progress: SaveLoadProgress) => void
 ): Promise<void> {
-  await deleteProjectMedia(userId, projectId);
+  const mediaItems = await listProjectMediaItems(userId, projectId);
+  const totalSteps = mediaItems.length + 1; // media files + firestore metadata
+  let currentStep = 0;
+
+  for (const itemRef of mediaItems) {
+    onProgress?.({
+      current: ++currentStep,
+      total: totalSteps,
+      clipName: itemRef.name || "Media",
+    });
+    await deleteObject(itemRef);
+  }
+
+  onProgress?.({
+    current: ++currentStep,
+    total: totalSteps,
+    clipName: "Metadata",
+  });
 
   const docRef = doc(db, "users", userId, "videoProjects", projectId);
   await deleteDoc(docRef);
