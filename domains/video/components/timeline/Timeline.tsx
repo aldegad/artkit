@@ -1,18 +1,16 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { useTimeline, useVideoState, useMask } from "../../contexts";
-import { useTimelineInput, useVideoCoordinates } from "../../hooks";
+import { useTimelineInput, useTimelineLayoutInput, useVideoCoordinates } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
 import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
-import { safeSetPointerCapture } from "@/shared/utils";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
-import { useDeferredPointerGesture } from "@/shared/hooks";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { MASK_LANE_HEIGHT } from "../../constants";
 
@@ -20,17 +18,9 @@ interface TimelineProps {
   className?: string;
 }
 
-interface HeaderResizePendingState {
-  pointerId: number;
-  clientX: number;
-  clientY: number;
-  startWidth: number;
-}
-
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
-  const trackHeadersRef = useRef<HTMLDivElement>(null);
   const {
     tracks,
     clips: allClips,
@@ -57,6 +47,13 @@ export function Timeline({ className }: TimelineProps) {
     tracksContainerRef,
     containerRef,
   });
+  const {
+    trackHeadersRef,
+    trackHeaderWidth,
+    headerWidthStyle,
+    headerWidthPx,
+    handleStartHeaderResize,
+  } = useTimelineLayoutInput({ tracksContainerRef });
 
   // Track ID of the currently lifted clip (for drop-target highlighting)
   const liftedClipTrackId = liftedClipId
@@ -72,9 +69,6 @@ export function Timeline({ className }: TimelineProps) {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [liftedClipId, cancelLift]);
-
-  const [trackHeaderWidth, setTrackHeaderWidth] = useState(180);
-  const [headerResizePending, setHeaderResizePending] = useState<HeaderResizePendingState | null>(null);
 
   // Calculate total tracks height (including mask lanes)
   const totalTracksHeight = tracks.reduce((sum, t) => {
@@ -92,9 +86,6 @@ export function Timeline({ className }: TimelineProps) {
   const rangeEndX = timeToPixel(rangeEnd);
   const timelineContentWidth = durationToWidth(project.duration);
 
-  const headerWidthStyle = { width: trackHeaderWidth };
-  const headerWidthPx = `${trackHeaderWidth}px`;
-
   const handleTrackDrop = useCallback((fromTrackId: string, toTrackId: string) => {
     if (!fromTrackId || !toTrackId || fromTrackId === toTrackId) return;
     const fromIndex = tracks.findIndex((track) => track.id === fromTrackId);
@@ -110,56 +101,6 @@ export function Timeline({ className }: TimelineProps) {
     if (!duplicatedTrackId) return;
     duplicateMasksToTrack(trackId, duplicatedTrackId);
   }, [saveToHistory, duplicateTrack, duplicateMasksToTrack]);
-
-  const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation(); // prevent timeline pointerdown from firing (seek/drag)
-    safeSetPointerCapture(e.target, e.pointerId);
-    setHeaderResizePending({
-      pointerId: e.pointerId,
-      clientX: e.clientX,
-      clientY: e.clientY,
-      startWidth: trackHeaderWidth,
-    });
-  }, [trackHeaderWidth]);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("video-timeline-track-header-width");
-    if (!stored) return;
-
-    const parsed = Number(stored);
-    if (Number.isFinite(parsed)) {
-      setTrackHeaderWidth(Math.max(40, Math.min(360, parsed)));
-    }
-  }, []);
-
-  useDeferredPointerGesture<HeaderResizePendingState>({
-    pending: headerResizePending,
-    thresholdPx: 0,
-    onMoveResolved: ({ pending, event }) => {
-      const delta = event.clientX - pending.clientX;
-      const nextWidth = Math.max(40, Math.min(360, pending.startWidth + delta));
-      setTrackHeaderWidth(nextWidth);
-      localStorage.setItem("video-timeline-track-header-width", String(nextWidth));
-    },
-    onEnd: () => {
-      setHeaderResizePending(null);
-    },
-  });
-
-  // Sync vertical scroll from clips area to track headers
-  useEffect(() => {
-    const tracksEl = tracksContainerRef.current;
-    const headersEl = trackHeadersRef.current;
-    if (!tracksEl || !headersEl) return;
-
-    const onScroll = () => {
-      headersEl.scrollTop = tracksEl.scrollTop;
-    };
-
-    tracksEl.addEventListener("scroll", onScroll, { passive: true });
-    return () => tracksEl.removeEventListener("scroll", onScroll);
-  }, []);
 
   return (
     <div className={cn("flex flex-col h-full bg-surface-primary", className)}>
