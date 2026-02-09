@@ -56,6 +56,8 @@ export {
   PanIcon,
   ReorderIcon,
   OffsetIcon,
+  FrameSkipToggleIcon,
+  NthFrameSkipIcon,
 } from "./editorTools";
 
 // Layers & Alignment

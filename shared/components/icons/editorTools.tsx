@@ -99,3 +99,20 @@ export const OffsetIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v8m0-8l-2 2m2-2l2 2m-2 6l-2-2m2 2l2-2M8 12h8m-8 0l2-2m-2 2l2 2m6-2l-2-2m2 2l-2 2" />
   </svg>
 );
+
+export const FrameSkipToggleIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="2" y="4" width="8" height="16" rx="1.5" strokeWidth={2} />
+    <rect x="14" y="4" width="8" height="16" rx="1.5" strokeWidth={2} />
+    <line x1="14" y1="20" x2="22" y2="4" strokeWidth={2} strokeLinecap="round" />
+  </svg>
+);
+
+export const NthFrameSkipIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="2" y="4" width="4" height="16" rx="1" strokeWidth={2} />
+    <line x1="10" y1="4" x2="10" y2="20" strokeWidth={2} strokeDasharray="3 2" />
+    <line x1="14" y1="4" x2="14" y2="20" strokeWidth={2} strokeDasharray="3 2" />
+    <rect x="18" y="4" width="4" height="16" rx="1" strokeWidth={2} />
+  </svg>
+);
