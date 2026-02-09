@@ -14,7 +14,7 @@ import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpe
 
 const TRACK_HEIGHT = 48;
 const CELL_WIDTH = 40;
-const HEADER_MIN = 100;
+const HEADER_MIN = 40;
 const HEADER_MAX = 300;
 const HEADER_DEFAULT = 144;
 const HEADER_COMPACT_BREAKPOINT = 120;
