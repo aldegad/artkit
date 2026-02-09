@@ -202,11 +202,11 @@ export function Popover({
 
   // Clone trigger with ref and onClick
   const triggerElement = isValidElement(trigger)
-    ? cloneElement(trigger as ReactElement<{ ref?: React.Ref<HTMLElement>; onClick?: () => void }>, {
+    ? cloneElement(trigger as ReactElement<{ ref?: React.Ref<HTMLElement>; onClick?: (e: React.MouseEvent) => void }>, {
         ref: triggerRef,
-        onClick: () => {
-          const originalOnClick = (trigger.props as { onClick?: () => void }).onClick;
-          originalOnClick?.();
+        onClick: (e: React.MouseEvent) => {
+          const originalOnClick = (trigger.props as { onClick?: (e: React.MouseEvent) => void }).onClick;
+          originalOnClick?.(e);
           setOpen(!isOpen);
         },
       })

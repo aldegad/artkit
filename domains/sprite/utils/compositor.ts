@@ -85,7 +85,7 @@ function getTrackFrameIndex(
 
 /**
  * Composite all visible tracks at a given frame index into a single image.
- * Tracks are rendered bottom-to-top by zIndex, with opacity applied.
+ * Tracks are rendered in timeline order: bottom row first, top row last.
  */
 export async function compositeFrame(
   tracks: SpriteTrack[],
@@ -95,10 +95,12 @@ export async function compositeFrame(
 ): Promise<CompositedFrame | null> {
   const includeDataUrl = options?.includeDataUrl ?? true;
 
-  // Filter visible tracks and sort by zIndex (low to high = bottom to top)
+  // Filter visible tracks and render by timeline order.
+  // Track list is top -> bottom in UI, so reverse to draw bottom -> top.
   const visibleTracks = tracks
     .filter((t) => t.visible && t.frames.length > 0)
-    .sort((a, b) => a.zIndex - b.zIndex);
+    .slice()
+    .reverse();
 
   if (visibleTracks.length === 0) return null;
 

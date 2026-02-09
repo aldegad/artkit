@@ -42,13 +42,16 @@ interface SpriteTrackStore {
 
   // Track Actions
   addTrack: (name?: string, frames?: SpriteFrame[]) => string;
+  duplicateTrack: (trackId: string) => string | null;
   removeTrack: (trackId: string) => void;
+  reverseTrackFrames: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<Omit<SpriteTrack, "id">>) => void;
   reorderTracks: (fromIndex: number, toIndex: number) => void;
   setActiveTrackId: (id: string | null) => void;
 
   // Frame Actions (on specific track)
   addFramesToTrack: (trackId: string, frames: SpriteFrame[]) => void;
+  insertEmptyFrameToTrack: (trackId: string, insertIndex?: number) => number | null;
   removeFrame: (trackId: string, frameId: number) => void;
   updateFrame: (trackId: string, frameId: number, updates: Partial<SpriteFrame>) => void;
   reorderFrames: (trackId: string, fromIndex: number, toIndex: number) => void;
@@ -169,6 +172,41 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
     return id;
   },
 
+  duplicateTrack: (trackId) => {
+    const { tracks, nextFrameId } = get();
+    const sourceTrackIndex = tracks.findIndex((t) => t.id === trackId);
+    if (sourceTrackIndex === -1) return null;
+
+    const sourceTrack = tracks[sourceTrackIndex];
+    const newTrackId = generateTrackId();
+    const duplicatedFrames = sourceTrack.frames.map((frame, index) => ({
+      ...frame,
+      id: nextFrameId + index,
+      points: frame.points.map((p) => ({ ...p })),
+      offset: { ...frame.offset },
+    }));
+
+    const duplicatedTrack: SpriteTrack = {
+      ...sourceTrack,
+      id: newTrackId,
+      name: `${sourceTrack.name} Copy`,
+      frames: duplicatedFrames,
+      zIndex: tracks.length, // temporary; normalized below
+    };
+
+    const newTracks = [...tracks];
+    newTracks.splice(sourceTrackIndex + 1, 0, duplicatedTrack);
+
+    set({
+      tracks: reindexZIndex(newTracks),
+      activeTrackId: newTrackId,
+      nextFrameId: nextFrameId + duplicatedFrames.length,
+      isPlaying: false,
+    });
+
+    return newTrackId;
+  },
+
   removeTrack: (trackId) => {
     const { tracks, activeTrackId } = get();
     if (tracks.length <= 1) return; // prevent removing last track
@@ -182,6 +220,15 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       activeTrackId: newActiveId,
       isPlaying: false,
     });
+  },
+
+  reverseTrackFrames: (trackId) => {
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === trackId ? { ...track, frames: [...track.frames].reverse() } : track,
+      ),
+      isPlaying: false,
+    }));
   },
 
   updateTrack: (trackId, updates) => {
@@ -214,6 +261,38 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       ),
       isPlaying: false,
     }));
+  },
+
+  insertEmptyFrameToTrack: (trackId, insertIndex) => {
+    const { tracks, nextFrameId } = get();
+    const targetTrack = tracks.find((track) => track.id === trackId);
+    if (!targetTrack) return null;
+
+    const boundedIndex =
+      typeof insertIndex === "number"
+        ? Math.max(0, Math.min(targetTrack.frames.length, insertIndex))
+        : targetTrack.frames.length;
+
+    const newFrameId = nextFrameId;
+    const emptyFrame: SpriteFrame = {
+      id: newFrameId,
+      points: [],
+      name: `Frame ${newFrameId}`,
+      offset: { x: 0, y: 0 },
+    };
+
+    set((state) => ({
+      tracks: state.tracks.map((track) => {
+        if (track.id !== trackId) return track;
+        const newFrames = [...track.frames];
+        newFrames.splice(boundedIndex, 0, emptyFrame);
+        return { ...track, frames: newFrames };
+      }),
+      nextFrameId: state.nextFrameId + 1,
+      isPlaying: false,
+    }));
+
+    return newFrameId;
   },
 
   removeFrame: (trackId, frameId) => {
@@ -391,10 +470,11 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
 
   // Bulk restore
   restoreTracks: (tracks, nextFrameId) => {
+    const normalizedTracks = reindexZIndex(deepCopyTracks(tracks));
     set({
-      tracks: deepCopyTracks(tracks),
+      tracks: normalizedTracks,
       nextFrameId,
-      activeTrackId: tracks[0]?.id ?? null,
+      activeTrackId: normalizedTracks[0]?.id ?? null,
       currentFrameIndex: 0,
       isPlaying: false,
     });
