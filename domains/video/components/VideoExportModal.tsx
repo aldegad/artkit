@@ -145,7 +145,7 @@ export function VideoExportModal({
               onChange={(value) => setFormat(value as VideoExportFormat)}
               options={[
                 { value: "mp4", label: "MP4 (H.264/AAC)" },
-                { value: "mov", label: "Lossless MOV (Animation)" },
+                { value: "mov", label: "MOV (ProRes, QuickTime)" },
               ]}
               size="sm"
             />
