@@ -2,6 +2,11 @@
 
 import { useCallback } from "react";
 import { useTimeline } from "../contexts";
+import {
+  pixelToTimelineTime,
+  timelineTimeToPixel,
+  normalizeTimelineZoom,
+} from "../utils/timelineViewportMath";
 
 /**
  * Hook for converting between time and pixel coordinates on the timeline
@@ -15,7 +20,7 @@ export function useVideoCoordinates() {
    */
   const timeToPixel = useCallback(
     (time: number): number => {
-      return (time - scrollX) * zoom;
+      return timelineTimeToPixel(time, scrollX, zoom);
     },
     [scrollX, zoom]
   );
@@ -25,7 +30,7 @@ export function useVideoCoordinates() {
    */
   const pixelToTime = useCallback(
     (pixel: number): number => {
-      return scrollX + pixel / zoom;
+      return pixelToTimelineTime(pixel, scrollX, zoom);
     },
     [scrollX, zoom]
   );
@@ -35,7 +40,7 @@ export function useVideoCoordinates() {
    */
   const durationToWidth = useCallback(
     (duration: number): number => {
-      return duration * zoom;
+      return duration * normalizeTimelineZoom(zoom);
     },
     [zoom]
   );
@@ -45,7 +50,7 @@ export function useVideoCoordinates() {
    */
   const widthToDuration = useCallback(
     (width: number): number => {
-      return width / zoom;
+      return width / normalizeTimelineZoom(zoom);
     },
     [zoom]
   );
@@ -57,7 +62,7 @@ export function useVideoCoordinates() {
     (containerWidth: number): { start: number; end: number } => {
       return {
         start: scrollX,
-        end: scrollX + containerWidth / zoom,
+        end: pixelToTimelineTime(containerWidth, scrollX, zoom),
       };
     },
     [scrollX, zoom]

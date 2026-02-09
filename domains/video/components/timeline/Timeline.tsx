@@ -13,6 +13,7 @@ import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIco
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
+import { panTimelineScrollXByPixels, zoomTimelineAtPixel } from "../../utils/timelineViewportMath";
 
 interface TimelineProps {
   className?: string;
@@ -180,7 +181,7 @@ export function Timeline({ className }: TimelineProps) {
 
     const onPointerMove = (e: PointerEvent) => {
       const { scrollX, zoom } = scrollStateRef.current;
-      setScrollX(scrollX - e.movementX / zoom);
+      setScrollX(panTimelineScrollXByPixels(scrollX, -e.movementX, zoom));
     };
     const onPointerUp = () => setIsMiddleScrolling(false);
 
@@ -217,13 +218,12 @@ export function Timeline({ className }: TimelineProps) {
         );
         if (nextZoom === zoom) return;
 
-        const cursorTime = scrollX + x / zoom;
         setZoom(nextZoom);
-        setScrollX(Math.max(0, cursorTime - x / nextZoom));
+        setScrollX(zoomTimelineAtPixel(scrollX, zoom, nextZoom, x));
       } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault();
         const delta = e.shiftKey ? e.deltaY : e.deltaX;
-        setScrollX(Math.max(0, scrollX + delta / zoom));
+        setScrollX(panTimelineScrollXByPixels(scrollX, delta, zoom));
       }
     };
 
