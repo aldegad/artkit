@@ -135,6 +135,8 @@ function VideoEditorContent() {
     play,
     stop,
     seek,
+    setLoopRange,
+    toggleLoop,
     stepForward,
     stepBackward,
     playback,
@@ -201,6 +203,11 @@ function VideoEditorContent() {
   const [saveCount, setSaveCount] = useState(0);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
+  const playbackRange = useMemo(() => ({
+    loop: playback.loop,
+    loopStart: playback.loopStart,
+    loopEnd: playback.loopEnd,
+  }), [playback.loop, playback.loopStart, playback.loopEnd]);
   const projectRef = useRef(project);
   projectRef.current = project;
 
@@ -214,6 +221,7 @@ function VideoEditorContent() {
     masks: masksArray,
     viewState,
     currentTime: playback.currentTime,
+    playbackRange,
     toolMode,
     selectedClipIds,
     selectedMaskIds,
@@ -578,11 +586,22 @@ function VideoEditorContent() {
       if (loaded.timelineView) {
         setViewState(loaded.timelineView);
       }
-      if (typeof loaded.currentTime === "number") {
-        seek(loaded.currentTime);
-      } else {
-        seek(0);
-      }
+      const restoredTime = typeof loaded.currentTime === "number" ? loaded.currentTime : 0;
+      seek(restoredTime);
+      const duration = Math.max(loadedDuration, 0.001);
+      const targetLoop = loaded.playbackRange?.loop ?? false;
+      const targetStart = Math.max(0, Math.min(loaded.playbackRange?.loopStart ?? 0, duration));
+      const targetEnd = Math.max(
+        targetStart + 0.001,
+        Math.min(loaded.playbackRange?.loopEnd ?? duration, duration)
+      );
+      window.setTimeout(() => {
+        setLoopRange(targetStart, targetEnd, true);
+        if (!targetLoop) {
+          toggleLoop();
+          seek(restoredTime);
+        }
+      }, 0);
 
       setCurrentProjectId(loaded.id);
       selectClips([]);
@@ -596,7 +615,7 @@ function VideoEditorContent() {
       setLoadProgress(null);
       setProjectListOperation(null);
     }
-  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, selectClips, clearHistory]);
+  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, setLoopRange, toggleLoop, selectClips, clearHistory]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;

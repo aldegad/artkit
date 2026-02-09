@@ -8,6 +8,7 @@ import {
   MaskData,
   TimelineViewState,
   Clip,
+  PlaybackRangeState,
 } from "../types";
 import {
   saveVideoAutosave,
@@ -18,6 +19,7 @@ import {
   VideoStorageInfo,
 } from "@/domains/video/services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
+import { TIMELINE } from "../constants";
 
 // ============================================
 // Types
@@ -35,6 +37,7 @@ export interface UseVideoSaveOptions {
   masks: MaskData[];
   viewState: TimelineViewState;
   currentTime: number;
+  playbackRange?: PlaybackRangeState;
   toolMode: string;
   selectedClipIds: string[];
   selectedMaskIds: string[];
@@ -69,6 +72,21 @@ function calculateProjectDuration(clips: Clip[]): number {
   return Math.max(maxEnd, 1);
 }
 
+function sanitizeTimelineView(viewState: TimelineViewState): TimelineViewState {
+  const zoom = Number.isFinite(viewState.zoom) ? viewState.zoom : TIMELINE.DEFAULT_ZOOM;
+  const scrollX = Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0;
+  const scrollY = Number.isFinite(viewState.scrollY) ? viewState.scrollY : 0;
+  return {
+    ...viewState,
+    zoom: Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, zoom)),
+    scrollX: Math.max(0, scrollX),
+    scrollY: Math.max(0, scrollY),
+    snapEnabled: viewState.snapEnabled ?? true,
+    snapToFrames: viewState.snapToFrames ?? false,
+    snapToClips: viewState.snapToClips ?? true,
+  };
+}
+
 export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
   const {
     storageProvider,
@@ -80,6 +98,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     masks,
     viewState,
     currentTime,
+    playbackRange,
     toolMode,
     selectedClipIds,
     selectedMaskIds,
@@ -112,6 +131,18 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     (forceNewId: boolean, nameOverride?: string): SavedVideoProject => {
       const resolvedName = nameOverride || projectName;
       const duration = calculateProjectDuration(clips);
+      const normalizedTimelineView = sanitizeTimelineView(viewState);
+      const normalizedPlaybackRange = playbackRange
+        ? (() => {
+            const loopStart = Math.max(0, Math.min(playbackRange.loopStart, duration));
+            const loopEnd = Math.max(loopStart + 0.001, Math.min(playbackRange.loopEnd, duration));
+            return {
+              loop: Boolean(playbackRange.loop),
+              loopStart,
+              loopEnd,
+            };
+          })()
+        : undefined;
 
       return {
         id: forceNewId
@@ -126,12 +157,13 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
           masks: masks.map((mask) => ({ ...mask })),
           duration,
         },
-        timelineView: { ...viewState },
+        timelineView: normalizedTimelineView,
         currentTime,
+        playbackRange: normalizedPlaybackRange,
         savedAt: Date.now(),
       };
     },
-    [project, projectName, currentProjectId, tracks, clips, masks, viewState, currentTime]
+    [project, projectName, currentProjectId, tracks, clips, masks, viewState, currentTime, playbackRange]
   );
 
   // Refresh project list after save
@@ -209,8 +241,9 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         tracks,
         clips,
         masks,
-        timelineView: viewState,
+        timelineView: sanitizeTimelineView(viewState),
         currentTime,
+        playbackRange,
         toolMode: toolMode as import("../types").VideoToolMode,
         selectedClipIds,
         selectedMaskIds,
@@ -232,6 +265,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     masks,
     viewState,
     currentTime,
+    playbackRange,
     toolMode,
     selectedClipIds,
     selectedMaskIds,

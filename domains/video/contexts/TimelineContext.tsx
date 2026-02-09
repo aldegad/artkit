@@ -238,6 +238,19 @@ function findNextNonOverlappingStart(
   return nextStart;
 }
 
+function sanitizeTimelineViewState(viewState: TimelineViewState): TimelineViewState {
+  const zoom = Number.isFinite(viewState.zoom) ? viewState.zoom : INITIAL_TIMELINE_VIEW.zoom;
+  const scrollX = Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0;
+  const scrollY = Number.isFinite(viewState.scrollY) ? viewState.scrollY : 0;
+  return {
+    ...INITIAL_TIMELINE_VIEW,
+    ...viewState,
+    zoom: Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, zoom)),
+    scrollX: Math.max(0, scrollX),
+    scrollY: Math.max(0, scrollY),
+  };
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
     updateProjectDuration,
@@ -248,6 +261,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     selectMasksForTimeline,
     setToolMode,
     seek,
+    setLoopRange,
+    toggleLoop,
   } = useVideoState();
 
   const [viewState, setViewStateInternal] = useState<TimelineViewState>(INITIAL_TIMELINE_VIEW);
@@ -344,7 +359,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Set view state
   const setViewState = useCallback((newViewState: TimelineViewState) => {
-    setViewStateInternal(newViewState);
+    setViewStateInternal(sanitizeTimelineViewState(newViewState));
   }, []);
 
   // Restore functions for autosave
@@ -416,7 +431,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             setClips(restoredClips);
           }
           if (data.timelineView) {
-            setViewStateInternal(data.timelineView);
+            setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
           }
           // Restore VideoState data
           // Merge correct masks (data.masks) into project to avoid stale project.masks
@@ -438,8 +453,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           if (data.selectedMaskIds) {
             selectMasksForTimeline(data.selectedMaskIds);
           }
-          if (typeof data.currentTime === "number") {
-            seek(data.currentTime);
+          const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
+          seek(restoredTime);
+          if (data.playbackRange) {
+            const durationHint = Math.max(data.project?.duration || 0, 0.001);
+            const rangeStart = Math.max(0, Math.min(data.playbackRange.loopStart, durationHint));
+            const rangeEnd = Math.max(rangeStart + 0.001, Math.min(data.playbackRange.loopEnd, durationHint));
+            window.setTimeout(() => {
+              setLoopRange(rangeStart, rangeEnd, true);
+              if (!data.playbackRange?.loop) {
+                toggleLoop();
+                seek(restoredTime);
+              }
+            }, 0);
           }
         }
       } catch (error) {
@@ -454,7 +480,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, selectClips, selectMasksForTimeline, seek, syncHistoryFlags]);
+  }, [setProject, setProjectName, setToolMode, selectClips, selectMasksForTimeline, seek, setLoopRange, toggleLoop, syncHistoryFlags]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles

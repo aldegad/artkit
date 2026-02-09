@@ -85,6 +85,11 @@ interface FirestoreVideoProject {
   masks: FirestoreMaskMeta[];
   timelineView: TimelineViewState;
   currentTime: number;
+  playbackRange?: {
+    loop: boolean;
+    loopStart: number;
+    loopEnd: number;
+  };
   thumbnailUrl?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -467,6 +472,7 @@ export async function saveVideoProjectToFirebase(
     masks: maskMetas,
     timelineView: project.timelineView,
     currentTime: project.currentTime,
+    playbackRange: project.playbackRange,
     thumbnailUrl,
     createdAt,
     updatedAt: Timestamp.now(),
@@ -571,6 +577,7 @@ export async function getVideoProjectFromFirebase(
     project: projectData,
     timelineView: data.timelineView,
     currentTime: data.currentTime,
+    playbackRange: data.playbackRange,
     savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
     thumbnailUrl: data.thumbnailUrl,
   };
@@ -607,6 +614,7 @@ export async function getAllVideoProjectsFromFirebase(
       },
       timelineView: data.timelineView,
       currentTime: data.currentTime,
+      playbackRange: data.playbackRange,
       savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
       thumbnailUrl: data.thumbnailUrl,
     });

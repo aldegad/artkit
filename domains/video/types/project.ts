@@ -49,10 +49,17 @@ export interface SavedVideoProject {
   // View state
   timelineView: TimelineViewState;
   currentTime: number;
+  playbackRange?: PlaybackRangeState;
 
   // Metadata
   savedAt: number;
   thumbnailUrl?: string;
+}
+
+export interface PlaybackRangeState {
+  loop: boolean;
+  loopStart: number;
+  loopEnd: number;
 }
 
 /**

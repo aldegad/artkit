@@ -40,6 +40,7 @@ export type {
   AssetReference,
   VideoProject,
   SavedVideoProject,
+  PlaybackRangeState,
   VideoToolMode,
   PlaybackState,
 } from "./project";
