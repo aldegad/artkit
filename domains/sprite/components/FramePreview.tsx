@@ -11,6 +11,7 @@ import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
@@ -44,8 +45,13 @@ export default function FramePreviewContent() {
     containerRef,
     canvasRef,
     contentSize: { width: 1, height: 1 },
-    config: { origin: "center", minZoom: 0.1, maxZoom: 20, wheelZoomFactor: 0.1 },
-    initial: { zoom: 3 },
+    config: {
+      origin: "center",
+      minZoom: SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
+      maxZoom: SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
+      wheelZoomFactor: SPRITE_PREVIEW_VIEWPORT.WHEEL_ZOOM_FACTOR,
+    },
+    initial: { zoom: SPRITE_PREVIEW_VIEWPORT.INITIAL_FRAME_ZOOM },
     enableWheel: true,
     enablePinch: true,
   });
@@ -579,14 +585,28 @@ export default function FramePreviewContent() {
 
         <div className="ml-auto flex items-center gap-1">
           <button
-            onClick={() => setFrameVpZoom(Math.max(0.1, getFrameVpZoom() * 0.8))}
+            onClick={() =>
+              setFrameVpZoom(
+                Math.max(
+                  SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
+                  getFrameVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_OUT
+                )
+              )
+            }
             className="p-1 hover:bg-interactive-hover rounded transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
           </button>
           <span className="text-xs w-10 text-center text-text-primary">{Math.round(currentZoom * 100)}%</span>
           <button
-            onClick={() => setFrameVpZoom(Math.min(20, getFrameVpZoom() * 1.25))}
+            onClick={() =>
+              setFrameVpZoom(
+                Math.min(
+                  SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
+                  getFrameVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_IN
+                )
+              )
+            }
             className="p-1 hover:bg-interactive-hover rounded transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
