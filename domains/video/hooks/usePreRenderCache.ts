@@ -108,6 +108,7 @@ interface UsePreRenderCacheParams {
   projectSize: Size;
   projectDuration: number;
   isPlaying: boolean;
+  suspendPreRender?: boolean;
   currentTime: number;
   currentTimeRef: React.RefObject<number>;
 }
@@ -125,6 +126,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     projectSize,
     projectDuration,
     isPlaying,
+    suspendPreRender = false,
     currentTime,
     currentTimeRef,
   } = params;
@@ -333,7 +335,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Start/stop pre-rendering based on playback state
   useEffect(() => {
-    if (isPlaying) {
+    if (isPlaying || suspendPreRender) {
       stopPreRender();
     } else {
       // Small delay before starting pre-render (let scrubbing settle)
@@ -344,24 +346,24 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isPlaying, startPreRender, stopPreRender]);
+  }, [isPlaying, suspendPreRender, startPreRender, stopPreRender]);
 
   // Restart pre-rendering when cache is invalidated
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying && !suspendPreRender) {
       stopPreRender();
       const timer = setTimeout(() => {
         startPreRender();
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [trackFingerprint, clipFingerprint, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender]);
+  }, [trackFingerprint, clipFingerprint, maskFingerprint, projectSize, isPlaying, suspendPreRender, startPreRender, stopPreRender]);
 
   // Restart pre-render from new position when user seeks while paused.
   // This stops the pre-render loop from fighting over video elements
   // with the preview canvas, and re-prioritizes caching near the new playhead.
   useEffect(() => {
-    if (isPlaying) return;
+    if (isPlaying || suspendPreRender) return;
     // Stop current pre-render (releases video elements for preview canvas)
     stopPreRender();
     // Debounce: restart after scrubbing settles
@@ -369,7 +371,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       startPreRender();
     }, 500);
     return () => clearTimeout(timer);
-  }, [currentTime, isPlaying, stopPreRender, startPreRender]);
+  }, [currentTime, isPlaying, suspendPreRender, stopPreRender, startPreRender]);
 
   // Get cached frame for a given time
   const getCachedFrame = useCallback((time: number): ImageBitmap | null => {
