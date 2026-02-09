@@ -16,8 +16,16 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { viewState, setScrollX } = useTimeline();
-  const { seek, currentTimeRef } = useVideoState();
+  const { seek, currentTimeRef, playback, project, setLoopRange } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
+
+  const duration = Math.max(project.duration, 0);
+  const rangeStart = Math.max(0, Math.min(playback.loopStart, duration));
+  const hasRange = playback.loopEnd > rangeStart + 0.001;
+  const rangeEnd = hasRange
+    ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, duration))
+    : duration;
+  const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < duration - 0.001);
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -43,6 +51,29 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     // Background
     ctx.fillStyle = colors.rulerBg;
     ctx.fillRect(0, 0, width, height);
+
+    if (hasCustomRange) {
+      const startX = Math.max(0, Math.min(width, timeToPixel(rangeStart)));
+      const endX = Math.max(0, Math.min(width, timeToPixel(rangeEnd)));
+
+      // Darken out-of-range area
+      ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+      ctx.fillRect(0, 0, startX, height);
+      ctx.fillRect(endX, 0, Math.max(0, width - endX), height);
+
+      // Subtle highlight for active range
+      ctx.fillStyle = "rgba(255, 140, 0, 0.16)";
+      ctx.fillRect(startX, 0, Math.max(0, endX - startX), height);
+
+      ctx.strokeStyle = colors.waveformPlayhead;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(startX + 0.5, 0);
+      ctx.lineTo(startX + 0.5, height);
+      ctx.moveTo(endX + 0.5, 0);
+      ctx.lineTo(endX + 0.5, height);
+      ctx.stroke();
+    }
 
     // Calculate tick interval based on zoom
     const pixelsPerSecond = viewState.zoom;
@@ -108,7 +139,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       ctx.closePath();
       ctx.fill();
     }
-  }, [viewState.zoom, viewState.scrollX, timeToPixel, currentTimeRef]);
+  }, [viewState.zoom, viewState.scrollX, timeToPixel, currentTimeRef, hasCustomRange, rangeStart, rangeEnd]);
 
   // Seek at a given clientX position
   const seekAtX = useCallback(
@@ -132,8 +163,9 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     [pixelToTime, seek, onSeek, viewState.scrollX, setScrollX]
   );
 
-  // Drag-seeking with pointer events (supports mouse + touch)
+  // Drag-seeking / range-handle dragging with pointer events
   const isDraggingRef = useRef(false);
+  const dragHandleRef = useRef<"start" | "end" | null>(null);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -141,22 +173,66 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
       isDraggingRef.current = true;
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = e.clientX - rect.left;
+      const startX = timeToPixel(rangeStart);
+      const endX = timeToPixel(rangeEnd);
+
+      const nearStart = hasRange && Math.abs(x - startX) <= 8;
+      const nearEnd = hasRange && Math.abs(x - endX) <= 8;
+
+      if (nearStart) {
+        dragHandleRef.current = "start";
+        return;
+      }
+      if (nearEnd) {
+        dragHandleRef.current = "end";
+        return;
+      }
+
+      // Shift-click: set IN, Alt-click: set OUT
+      if (e.shiftKey || e.altKey) {
+        const clickedTime = Math.max(0, pixelToTime(x));
+        if (e.shiftKey) {
+          setLoopRange(clickedTime, rangeEnd, true);
+        } else {
+          setLoopRange(rangeStart, clickedTime, true);
+        }
+        return;
+      }
+
       seekAtX(e.clientX);
     },
-    [seekAtX]
+    [seekAtX, timeToPixel, hasRange, rangeStart, rangeEnd, pixelToTime, setLoopRange]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (!isDraggingRef.current) return;
+      if (dragHandleRef.current) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+        const draggedTime = Math.max(0, pixelToTime(x));
+        if (dragHandleRef.current === "start") {
+          setLoopRange(draggedTime, rangeEnd, true);
+        } else {
+          setLoopRange(rangeStart, draggedTime, true);
+        }
+        return;
+      }
       seekAtX(e.clientX);
     },
-    [seekAtX]
+    [seekAtX, pixelToTime, rangeStart, rangeEnd, setLoopRange]
   );
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       isDraggingRef.current = false;
+      dragHandleRef.current = null;
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
@@ -199,6 +275,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         className="cursor-pointer"
+        title="Click: seek | Shift+click: set IN | Alt+click: set OUT | Drag range lines to adjust"
       />
     </div>
   );

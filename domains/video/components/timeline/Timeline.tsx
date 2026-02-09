@@ -9,7 +9,7 @@ import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
-import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon } from "@/shared/components/icons";
+import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
@@ -30,12 +30,13 @@ export function Timeline({ className }: TimelineProps) {
     setScrollX,
     setZoom,
     updateTrack,
+    duplicateTrack,
     removeTrack,
     reorderTracks,
     saveToHistory,
   } = useTimeline();
-  const { project } = useVideoState();
-  const { getMasksForTrack } = useMask();
+  const { project, playback } = useVideoState();
+  const { getMasksForTrack, duplicateMasksToTrack } = useMask();
   useVideoCoordinates();
 
   // Timeline input handling (clip drag, trim, seek, lift)
@@ -73,6 +74,15 @@ export function Timeline({ className }: TimelineProps) {
     return sum + t.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
   }, 0);
 
+  const rangeStart = Math.max(0, Math.min(playback.loopStart, project.duration));
+  const hasRange = playback.loopEnd > rangeStart + 0.001;
+  const rangeEnd = hasRange
+    ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, project.duration))
+    : project.duration;
+  const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < project.duration - 0.001);
+  const rangeStartX = rangeStart * viewState.zoom;
+  const rangeEndX = rangeEnd * viewState.zoom;
+
   const headerWidthStyle = { width: trackHeaderWidth };
   const headerWidthPx = `${trackHeaderWidth}px`;
 
@@ -84,6 +94,13 @@ export function Timeline({ className }: TimelineProps) {
     saveToHistory();
     reorderTracks(fromIndex, toIndex);
   }, [tracks, saveToHistory, reorderTracks]);
+
+  const handleDuplicateTrack = useCallback((trackId: string) => {
+    saveToHistory();
+    const duplicatedTrackId = duplicateTrack(trackId);
+    if (!duplicatedTrackId) return;
+    duplicateMasksToTrack(trackId, duplicatedTrackId);
+  }, [saveToHistory, duplicateTrack, duplicateMasksToTrack]);
 
   const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -308,6 +325,13 @@ export function Timeline({ className }: TimelineProps) {
                     >
                       {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
                     </button>
+                    <button
+                      onClick={() => handleDuplicateTrack(track.id)}
+                      className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                      title="Duplicate track"
+                    >
+                      <DuplicateIcon className="w-3 h-3" />
+                    </button>
                     <span className="text-xs text-text-secondary truncate">{track.name}</span>
                     <button
                       onClick={() => { saveToHistory(); removeTrack(track.id); }}
@@ -344,6 +368,13 @@ export function Timeline({ className }: TimelineProps) {
                       >
                         {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
                         {track.muted ? "Unmute" : "Mute"}
+                      </button>
+                      <button
+                        onClick={() => handleDuplicateTrack(track.id)}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                      >
+                        <DuplicateIcon className="w-3 h-3" />
+                        Duplicate
                       </button>
                       <div className="h-px bg-border-default mx-1" />
                       <button
@@ -409,6 +440,30 @@ export function Timeline({ className }: TimelineProps) {
 
             {/* Tracks */}
             <div className="relative" style={{ minWidth: project.duration * viewState.zoom }}>
+              {hasCustomRange && (
+                <>
+                  <div
+                    className="absolute top-0 left-0 bottom-0 z-10 pointer-events-none bg-black/35"
+                    style={{ width: Math.max(0, rangeStartX) }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 z-10 pointer-events-none bg-black/35"
+                    style={{
+                      left: Math.max(0, rangeEndX),
+                      right: 0,
+                    }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
+                    style={{ left: Math.max(0, rangeStartX) }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
+                    style={{ left: Math.max(0, rangeEndX) }}
+                  />
+                </>
+              )}
+
               {tracks.map((track) => (
                 <Track
                   key={track.id}

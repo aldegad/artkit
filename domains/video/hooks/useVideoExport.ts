@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { downloadBlob } from "@/shared/utils";
-import type { Clip, MaskData, VideoProject, VideoTrack } from "../types";
+import type { Clip, MaskData, PlaybackState, VideoProject, VideoTrack } from "../types";
 
 export type VideoExportFormat = "mp4" | "mov";
 
@@ -15,6 +15,7 @@ export interface ExportProgressState {
 interface UseVideoExportOptions {
   project: VideoProject;
   projectName: string;
+  playback: PlaybackState;
   clips: Clip[];
   tracks: VideoTrack[];
   masksMap: Map<string, MaskData>;
@@ -98,6 +99,7 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
 async function renderTimelineAudioBuffer(
   clips: Clip[],
   tracks: VideoTrack[],
+  timelineStart: number,
   projectDuration: number
 ): Promise<AudioBuffer | null> {
   if (typeof OfflineAudioContext === "undefined" || typeof AudioContext === "undefined") {
@@ -105,6 +107,7 @@ async function renderTimelineAudioBuffer(
   }
 
   const duration = Math.max(projectDuration, 0.1);
+  const timelineEnd = timelineStart + duration;
   const sampleRate = 44100;
   const frameCount = Math.max(1, Math.ceil(duration * sampleRate));
   const offlineContext = new OfflineAudioContext(2, frameCount, sampleRate);
@@ -124,10 +127,9 @@ async function renderTimelineAudioBuffer(
       const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
       if (clipVolume <= 0) continue;
 
-      const clipStartTime = Math.max(0, clip.startTime);
-      if (clipStartTime >= duration) continue;
-
-      const timelineDuration = Math.min(Math.max(clip.duration, 0), duration - clipStartTime);
+      const clipStartTimeInTimeline = Math.max(clip.startTime, timelineStart);
+      const clipEndTimeInTimeline = Math.min(clip.startTime + clip.duration, timelineEnd);
+      const timelineDuration = clipEndTimeInTimeline - clipStartTimeInTimeline;
       if (timelineDuration <= 0) continue;
 
       let sourceBuffer = sourceBufferCache.get(clip.sourceUrl);
@@ -144,7 +146,7 @@ async function renderTimelineAudioBuffer(
 
       if (!sourceBuffer) continue;
 
-      const trimIn = Math.max(0, clip.trimIn);
+      const trimIn = Math.max(0, clip.trimIn + (clipStartTimeInTimeline - clip.startTime));
       const trimmedWindow = Math.max(0, clip.trimOut - trimIn);
       const sourceRemaining = Math.max(0, sourceBuffer.duration - trimIn);
       const playbackDuration = Math.min(
@@ -161,7 +163,7 @@ async function renderTimelineAudioBuffer(
 
       sourceNode.connect(gainNode);
       gainNode.connect(offlineContext.destination);
-      sourceNode.start(clipStartTime, trimIn, playbackDuration);
+      sourceNode.start(clipStartTimeInTimeline - timelineStart, trimIn, playbackDuration);
       hasScheduledAudio = true;
     }
 
@@ -249,7 +251,7 @@ async function seekExportVideoFrame(
 }
 
 export function useVideoExport(options: UseVideoExportOptions): UseVideoExportReturn {
-  const { project, projectName, clips, tracks, masksMap, exportFailedLabel, onSettled } = options;
+  const { project, projectName, playback, clips, tracks, masksMap, exportFailedLabel, onSettled } = options;
   const ffmpegRef = useRef<import("@ffmpeg/ffmpeg").FFmpeg | null>(null);
   const ffmpegLoadingPromiseRef = useRef<Promise<import("@ffmpeg/ffmpeg").FFmpeg> | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -291,7 +293,16 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
   ) => {
     if (isExporting) return;
 
-    const duration = Math.max(project.duration, 0.1);
+    const fullDuration = Math.max(project.duration, 0.1);
+    const rangeStart = Math.max(0, Math.min(playback.loopStart, fullDuration));
+    const hasRange = playback.loopEnd > rangeStart + 0.001;
+    const rangeEnd = hasRange
+      ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, fullDuration))
+      : fullDuration;
+    const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < fullDuration - 0.001);
+    const exportStart = hasCustomRange ? rangeStart : 0;
+    const exportEnd = hasCustomRange ? rangeEnd : fullDuration;
+    const duration = Math.max(exportEnd - exportStart, 0.1);
     const frameRate = Math.max(1, project.frameRate || 30);
     const isMov = format === "mov";
     const filePrefix = `export-${Date.now()}-${Math.round(Math.random() * 10000)}`;
@@ -340,7 +351,9 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       setExportProgress({
         stage: "Preparing export",
         percent: 2,
-        detail: "Loading encoder...",
+        detail: hasCustomRange
+          ? `Range ${exportStart.toFixed(2)}s - ${exportEnd.toFixed(2)}s`
+          : "Loading encoder...",
       });
 
       const ffmpeg = await getFFmpeg();
@@ -399,7 +412,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       });
 
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
-        const frameTime = Math.min(duration, frameIndex / frameRate);
+        const maxFrameTime = Math.max(exportStart, exportEnd - 0.5 / frameRate);
+        const frameTime = Math.min(maxFrameTime, exportStart + frameIndex / frameRate);
         exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
 
         const sortedTracks = [...tracks].reverse();
@@ -479,7 +493,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
           percent: 70,
           detail: "Mixing timeline audio...",
         });
-        const mixedAudio = await renderTimelineAudioBuffer(clips, tracks, duration);
+        const mixedAudio = await renderTimelineAudioBuffer(clips, tracks, exportStart, duration);
         if (mixedAudio) {
           const wavBlob = audioBufferToWavBlob(mixedAudio);
           await ffmpeg.writeFile(wavFileName, new Uint8Array(await wavBlob.arrayBuffer()));
@@ -668,6 +682,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
     isExporting,
     project.duration,
     project.frameRate,
+    playback.loopStart,
+    playback.loopEnd,
     project.canvasSize.width,
     project.canvasSize.height,
     clips,
