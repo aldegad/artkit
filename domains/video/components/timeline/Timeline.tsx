@@ -34,7 +34,7 @@ export function Timeline({ className }: TimelineProps) {
     reorderTracks,
     saveToHistory,
   } = useTimeline();
-  const { project } = useVideoState();
+  const { project, playback } = useVideoState();
   const { getMasksForTrack } = useMask();
   useVideoCoordinates();
 
@@ -72,6 +72,15 @@ export function Timeline({ className }: TimelineProps) {
     const hasMasks = getMasksForTrack(t.id).length > 0;
     return sum + t.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
   }, 0);
+
+  const rangeStart = Math.max(0, Math.min(playback.loopStart, project.duration));
+  const hasRange = playback.loopEnd > rangeStart + 0.001;
+  const rangeEnd = hasRange
+    ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, project.duration))
+    : project.duration;
+  const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < project.duration - 0.001);
+  const rangeStartX = rangeStart * viewState.zoom;
+  const rangeEndX = rangeEnd * viewState.zoom;
 
   const headerWidthStyle = { width: trackHeaderWidth };
   const headerWidthPx = `${trackHeaderWidth}px`;
@@ -409,6 +418,30 @@ export function Timeline({ className }: TimelineProps) {
 
             {/* Tracks */}
             <div className="relative" style={{ minWidth: project.duration * viewState.zoom }}>
+              {hasCustomRange && (
+                <>
+                  <div
+                    className="absolute top-0 left-0 bottom-0 z-10 pointer-events-none bg-black/35"
+                    style={{ width: Math.max(0, rangeStartX) }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 z-10 pointer-events-none bg-black/35"
+                    style={{
+                      left: Math.max(0, rangeEndX),
+                      right: 0,
+                    }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
+                    style={{ left: Math.max(0, rangeStartX) }}
+                  />
+                  <div
+                    className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
+                    style={{ left: Math.max(0, rangeEndX) }}
+                  />
+                </>
+              )}
+
               {tracks.map((track) => (
                 <Track
                   key={track.id}
