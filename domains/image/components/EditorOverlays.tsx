@@ -9,7 +9,7 @@ import { ExportModal } from "./ExportModal";
 import ProjectListModal from "./ProjectListModal";
 import { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
 
-interface EditorOverlaysProps {
+export interface EditorOverlaysProps {
   // Export modal
   showExportModal: boolean;
   setShowExportModal: (show: boolean) => void;

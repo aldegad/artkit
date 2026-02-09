@@ -19,7 +19,7 @@ interface ToolButton {
   icon: ReactNode;
 }
 
-interface EditorActionToolbarProps {
+export interface EditorActionToolbarProps {
   toolButtons: ToolButton[];
   toolMode: EditorToolMode;
   onToolModeChange: (mode: EditorToolMode) => void;
