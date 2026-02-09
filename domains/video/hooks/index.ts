@@ -1,4 +1,5 @@
 export { useVideoCoordinates } from "./useVideoCoordinates";
+export { useTimelineViewport } from "./useTimelineViewport";
 export { useTimelineInput } from "./useTimelineInput";
 export { useVideoElements } from "./useVideoElements";
 export { usePreviewRendering } from "./usePreviewRendering";

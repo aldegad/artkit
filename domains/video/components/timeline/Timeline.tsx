@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import { useTimeline, useVideoState, useMask } from "../../contexts";
-import { useVideoCoordinates, useTimelineInput } from "../../hooks";
+import { useTimelineInput, useTimelineViewport, useVideoCoordinates } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
 import { Playhead } from "./Playhead";
@@ -12,8 +12,7 @@ import { cn } from "@/shared/utils/cn";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
-import { TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
-import { panTimelineScrollXByPixels, zoomTimelineAtPixel } from "../../utils/timelineViewportMath";
+import { MASK_LANE_HEIGHT } from "../../constants";
 
 interface TimelineProps {
   className?: string;
@@ -28,8 +27,6 @@ export function Timeline({ className }: TimelineProps) {
     clips: allClips,
     getClipsInTrack,
     viewState,
-    setScrollX,
-    setZoom,
     updateTrack,
     duplicateTrack,
     removeTrack,
@@ -47,6 +44,7 @@ export function Timeline({ className }: TimelineProps) {
     dropClipToTrack,
     cancelLift,
   } = useTimelineInput(tracksContainerRef);
+  const { stateRef: timelineViewportRef, panByPixels, setZoomAtPixel } = useTimelineViewport();
 
   // Track ID of the currently lifted clip (for drop-target highlighting)
   const liftedClipTrackId = liftedClipId
@@ -171,17 +169,12 @@ export function Timeline({ className }: TimelineProps) {
     []
   );
 
-  // Refs for latest values to avoid stale closures in document event handlers
-  const scrollStateRef = useRef({ scrollX: viewState.scrollX, zoom: viewState.zoom });
-  scrollStateRef.current = { scrollX: viewState.scrollX, zoom: viewState.zoom };
-
   // Document-level events for middle-mouse scroll (smooth dragging outside timeline)
   useEffect(() => {
     if (!isMiddleScrolling) return;
 
     const onPointerMove = (e: PointerEvent) => {
-      const { scrollX, zoom } = scrollStateRef.current;
-      setScrollX(panTimelineScrollXByPixels(scrollX, -e.movementX, zoom));
+      panByPixels(-e.movementX);
     };
     const onPointerUp = () => setIsMiddleScrolling(false);
 
@@ -192,18 +185,14 @@ export function Timeline({ className }: TimelineProps) {
       document.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerup", onPointerUp);
     };
-  }, [isMiddleScrolling, setScrollX]);
-
-  // Handle wheel for horizontal scroll/zoom (non-passive to allow preventDefault)
-  const wheelStateRef = useRef({ scrollX: viewState.scrollX, zoom: viewState.zoom });
-  wheelStateRef.current = { scrollX: viewState.scrollX, zoom: viewState.zoom };
+  }, [isMiddleScrolling, panByPixels]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const handleWheel = (e: WheelEvent) => {
-      const { scrollX, zoom } = wheelStateRef.current;
+      const { zoom } = timelineViewportRef.current;
 
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
@@ -213,23 +202,20 @@ export function Timeline({ className }: TimelineProps) {
         const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
         const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
         const nextZoom = Math.max(
-          TIMELINE.MIN_ZOOM,
-          Math.min(TIMELINE.MAX_ZOOM, zoom * zoomFactor)
+          0.001,
+          zoom * zoomFactor
         );
-        if (nextZoom === zoom) return;
-
-        setZoom(nextZoom);
-        setScrollX(zoomTimelineAtPixel(scrollX, zoom, nextZoom, x));
+        setZoomAtPixel(nextZoom, x);
       } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault();
         const delta = e.shiftKey ? e.deltaY : e.deltaX;
-        setScrollX(panTimelineScrollXByPixels(scrollX, delta, zoom));
+        panByPixels(delta);
       }
     };
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [setScrollX, setZoom]);
+  }, [panByPixels, setZoomAtPixel, timelineViewportRef]);
 
   return (
     <div className={cn("flex flex-col h-full bg-surface-primary", className)}>

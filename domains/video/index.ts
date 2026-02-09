@@ -54,6 +54,7 @@ export {
 // Hooks
 export {
   useVideoCoordinates,
+  useTimelineViewport,
   useTimelineInput,
   useVideoElements,
   usePreviewRendering,

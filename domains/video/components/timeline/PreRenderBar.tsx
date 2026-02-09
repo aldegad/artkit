@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
 import { subscribeCacheStatus, getCacheStatus } from "../../hooks/usePreRenderCache";
 import { PRE_RENDER } from "../../constants";
+import { pixelToTimelineTime, timelineTimeToPixel } from "../../utils/timelineViewportMath";
 
 const BAR_HEIGHT = 3;
 
@@ -56,9 +57,9 @@ export function PreRenderBar() {
     const duration = projectDurationRef.current || 1;
     // Draw uncached background for the visible duration range
     const visibleStartTime = scrollX;
-    const visibleEndTime = scrollX + w / zoom;
+    const visibleEndTime = pixelToTimelineTime(w, scrollX, zoom);
     const startPx = 0;
-    const endPx = Math.min(w, (duration - scrollX) * zoom);
+    const endPx = Math.min(w, timelineTimeToPixel(duration, scrollX, zoom));
 
     if (endPx > startPx) {
       ctx.fillStyle = uncachedColor;
@@ -79,7 +80,7 @@ export function PreRenderBar() {
 
     for (let fi = firstVisibleFrame; fi <= lastVisibleFrame; fi++) {
       const frameTime = fi / PRE_RENDER.FRAME_RATE;
-      const px = (frameTime - scrollX) * zoom;
+      const px = timelineTimeToPixel(frameTime, scrollX, zoom);
 
       if (cachedSet.has(fi)) {
         if (batchStartPx < 0) batchStartPx = px;
@@ -95,7 +96,7 @@ export function PreRenderBar() {
     // Flush last batch — clamp to duration boundary so green never exceeds gray
     if (batchStartPx >= 0) {
       const endFrameTime = (lastVisibleFrame + 1) / PRE_RENDER.FRAME_RATE;
-      const endFramePx = Math.min((endFrameTime - scrollX) * zoom, endPx);
+      const endFramePx = Math.min(timelineTimeToPixel(endFrameTime, scrollX, zoom), endPx);
       ctx.fillRect(batchStartPx, 0, endFramePx - batchStartPx, h);
     }
   }, []); // Stable — reads everything from refs

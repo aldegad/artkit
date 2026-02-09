@@ -3,10 +3,10 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
+import { useTimelineViewport } from "./useTimelineViewport";
 import { TimelineDragType, Clip } from "../types";
 import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
-import { timelineScrollXFromGestureAnchor } from "../utils/timelineViewportMath";
 
 interface DragItem {
   type: "clip" | "mask";
@@ -67,7 +67,6 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     removeClip,
     addClips,
     saveToHistory,
-    setScrollX,
   } = useTimeline();
   const {
     seek,
@@ -80,6 +79,11 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     selectedMaskIds,
   } = useVideoState();
   const { pixelToTime, timeToPixel, zoom } = useVideoCoordinates();
+  const {
+    stateRef: timelineViewportRef,
+    ensureTimeVisibleOnLeft,
+    setScrollFromGestureAnchor,
+  } = useTimelineViewport();
 
   // Snap a time value to nearby clip edges on the same track.
   const snapToPoints = useCallback(
@@ -111,8 +115,6 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
-  const touchScrollStateRef = useRef({ scrollX: viewState.scrollX, zoom });
-  touchScrollStateRef.current = { scrollX: viewState.scrollX, zoom };
 
   // Long-press lift state for cross-track touch movement
   const [liftedClipId, setLiftedClipId] = useState<string | null>(null);
@@ -264,13 +266,11 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       } else {
         const seekTime = Math.max(0, pending.time);
         seek(seekTime);
-        if (seekTime < touchScrollStateRef.current.scrollX) {
-          setScrollX(seekTime);
-        }
+        ensureTimeVisibleOnLeft(seekTime);
         deselectAll();
       }
     },
-    [selectClip, seek, setScrollX, deselectAll]
+    [selectClip, seek, ensureTimeVisibleOnLeft, deselectAll]
   );
 
   // ── Touch gesture resolution effect ──
@@ -280,8 +280,8 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     const gestureStartClientX = touchPending.clientX;
     const gestureStartClientY = touchPending.clientY;
-    const gestureStartScrollX = touchScrollStateRef.current.scrollX;
-    const gestureStartZoom = Math.max(0.001, touchScrollStateRef.current.zoom);
+    const gestureStartScrollX = timelineViewportRef.current.scrollX;
+    const gestureStartZoom = Math.max(0.001, timelineViewportRef.current.zoom);
     const gestureStartScrollTop = tracksContainerRef.current?.scrollTop ?? 0;
     let resolved = false; // true once we determined scroll vs drag
     let isScrolling = false;
@@ -343,16 +343,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           tracksContainerRef.current.scrollTop = Math.max(0, gestureStartScrollTop + deltaYFromStart);
         }
 
-        const nextScrollX = timelineScrollXFromGestureAnchor(
+        setScrollFromGestureAnchor(
           gestureStartScrollX,
           gestureStartClientX,
           e.clientX,
           gestureStartZoom
         );
-        if (Math.abs(nextScrollX - touchScrollStateRef.current.scrollX) > 0.0001) {
-          touchScrollStateRef.current.scrollX = nextScrollX;
-          setScrollX(nextScrollX);
-        }
       }
     };
 
@@ -379,7 +375,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       document.removeEventListener("pointerup", handleUp);
       document.removeEventListener("pointercancel", handleUp);
     };
-  }, [touchPending, handleTouchTap, tracksContainerRef, selectClip, saveToHistory, buildDragItems, releasePointer, setScrollX]);
+  }, [touchPending, handleTouchTap, tracksContainerRef, selectClip, saveToHistory, buildDragItems, releasePointer, setScrollFromGestureAnchor]);
 
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(
@@ -612,9 +608,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           // Click on empty area - seek and deselect
           const seekTime = Math.max(0, time);
           seek(seekTime);
-          if (seekTime < viewState.scrollX) {
-            setScrollX(seekTime);
-          }
+          ensureTimeVisibleOnLeft(seekTime);
           deselectAll();
           // Clear mask active/editing state
           if (isEditingMask) {
@@ -664,8 +658,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       deselectMask,
       endMaskEdit,
       isEditingMask,
-      viewState.scrollX,
-      setScrollX,
+      ensureTimeVisibleOnLeft,
     ]
   );
 
@@ -685,9 +678,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
         const seekTime = Math.max(0, time);
         seek(seekTime);
         // Auto-scroll to keep playhead visible when seeking before visible area
-        if (seekTime < viewState.scrollX) {
-          setScrollX(seekTime);
-        }
+        ensureTimeVisibleOnLeft(seekTime);
         break;
       }
 
