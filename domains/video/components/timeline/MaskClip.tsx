@@ -7,6 +7,9 @@ import { useMask, useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { UI, TIMELINE } from "../../constants";
 
+/** Long-press duration (ms) to enter mask edit mode */
+const LONG_PRESS_MS = 400;
+
 type DragMode = "none" | "move" | "trim-start" | "trim-end";
 
 interface DragItem {
@@ -59,6 +62,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   const wasEditingOnDownRef = useRef(false);
   const wasTimelineSelectedOnDownRef = useRef(false);
   const shiftKeyOnDownRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Snap to own track clips + adjacent track below clips
   const snapToPoints = useCallback(
@@ -155,16 +159,22 @@ export function MaskClip({ mask }: MaskClipProps) {
       dragItemsRef.current = [];
     }
 
+    // Start long-press timer for edit mode (only for move, not trim handles)
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    if (mode === "move") {
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        if (!didDragRef.current) {
+          startMaskEditById(mask.id);
+        }
+      }, LONG_PRESS_MS);
+    }
+
     setDragMode(mode);
   }, [selectMask, selectMaskForTimeline, deselectAllState, isActive, isEditing, isTimelineSelected,
-      mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks]);
-
-  // Double-click to enter edit mode
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    startMaskEditById(mask.id);
-  }, [startMaskEditById, mask.id]);
+      mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks, startMaskEditById]);
 
   useEffect(() => {
     if (dragMode === "none") return;
@@ -174,7 +184,14 @@ export function MaskClip({ mask }: MaskClipProps) {
 
     const onPointerMove = (e: PointerEvent) => {
       const deltaX = e.clientX - startClientX;
-      if (Math.abs(deltaX) > 2) didDragRef.current = true;
+      if (Math.abs(deltaX) > 2) {
+        didDragRef.current = true;
+        // Cancel long-press on drag
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      }
       const deltaTime = deltaX / durationToWidth(1);
 
       if (dragMode === "move") {
@@ -215,6 +232,11 @@ export function MaskClip({ mask }: MaskClipProps) {
     };
 
     const onPointerUp = () => {
+      // Cancel long-press timer
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
       if (!didDragRef.current) {
         if (wasEditingOnDownRef.current) {
           // Was editing → click exits edit mode (stays selected)
@@ -273,7 +295,6 @@ export function MaskClip({ mask }: MaskClipProps) {
         touchAction: "none",
       }}
       onPointerDown={handlePointerDown}
-      onDoubleClick={handleDoubleClick}
       onPointerMove={handlePointerMoveLocal}
     >
       <div className="px-1.5 py-0.5 text-[10px] text-white/80 truncate leading-tight select-none">

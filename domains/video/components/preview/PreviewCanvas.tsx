@@ -431,7 +431,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Try cached frame first (any state — instant display on seek/scrub)
     // Skip cache during mask editing — cached frames don't include live mask
     // overlay or edits, so they would hide the mask completely.
-    const cachedBitmap = isEditingMask ? null : getCachedFrame(ct);
+    // Skip cache when mask is active (editing or selected) — overlay needs live rendering
+    const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(ct);
 
     if (cachedBitmap) {
       // Use pre-rendered cached frame — skip per-track compositing
