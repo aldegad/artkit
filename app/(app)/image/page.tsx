@@ -40,6 +40,7 @@ import {
   useRulerRenderSync,
   useEditorLayerContextValue,
   useEditorCanvasContextValue,
+  useEditorTranslationBundles,
   EditorHeader,
   EditorOverlays,
   EditorActionToolbar,
@@ -91,6 +92,7 @@ export default function ImageEditor() {
 function ImageEditorContent() {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const uiText = useEditorTranslationBundles(t);
 
   // Layout context (Provider is above in ImageEditor)
   const { isPanelOpen, openFloatingWindow, closeFloatingWindow, removePanel, layoutState } = useEditorLayout();
@@ -829,27 +831,7 @@ function ImageEditorContent() {
         onToggleLockGuides={() => setLockGuides(!lockGuides)}
         onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
         onClearGuides={clearAllGuides}
-        translations={{
-          file: t.file,
-          edit: t.edit,
-          view: t.view,
-          window: t.window,
-          new: t.new,
-          load: t.load,
-          save: t.save,
-          saveAs: t.saveAs,
-          importImage: t.importImage,
-          export: t.export,
-          exportLayers: t.exportLayers,
-          undo: t.undo,
-          redo: t.redo,
-          layers: t.layers,
-          showRulers: t.showRulers,
-          showGuides: t.showGuides,
-          lockGuides: t.lockGuides,
-          snapToGuides: t.snapToGuides,
-          clearGuides: t.clearGuides,
-        }}
+        translations={uiText.menu}
       />
 
       {/* Row 2: Tools (only when layers exist) */}
@@ -869,15 +851,7 @@ function ImageEditorContent() {
           zoom={zoom}
           setZoom={setZoom}
           onFitToScreen={fitToScreen}
-          translations={{
-            removeBackground: t.removeBackground,
-            undo: t.undo,
-            redo: t.redo,
-            rotate: t.rotate,
-            rotateLeft: t.rotateLeft,
-            rotateRight: t.rotateRight,
-            fitToScreen: t.fitToScreen,
-          }}
+          translations={uiText.actionToolbar}
         />
       )}
 
@@ -920,16 +894,7 @@ function ImageEditorContent() {
             cancelTransform();
             setToolMode("move");
           }}
-          translations={{
-            size: t.size,
-            hardness: t.hardness,
-            color: t.color,
-            source: t.source,
-            altClickToSetSource: t.altClickToSetSource,
-            presets: "Presets",
-            pressure: "Pressure",
-            builtIn: "Built-in",
-          }}
+          translations={uiText.toolOptions}
         />
       )}
 
@@ -946,15 +911,7 @@ function ImageEditorContent() {
         handleExportFromModal={handleExportFromModal}
         exportMode={exportMode}
         projectName={projectName}
-        exportTranslations={{
-          export: t.export,
-          cancel: t.cancel,
-          fileName: t.projectName,
-          format: t.format,
-          quality: t.quality,
-          backgroundColor: t.background,
-          transparent: t.transparent,
-        }}
+        exportTranslations={uiText.exportModal}
         showBgRemovalConfirm={showBgRemovalConfirm}
         setShowBgRemovalConfirm={setShowBgRemovalConfirm}
         handleRemoveBackground={handleRemoveBackground}
@@ -962,22 +919,12 @@ function ImageEditorContent() {
         isRemovingBackground={isRemovingBackground}
         bgRemovalProgress={bgRemovalProgress}
         bgRemovalStatus={bgRemovalStatus}
-        backgroundRemovalTranslations={{
-          removeBackground: t.removeBackground,
-          cancel: t.cancel,
-          confirm: t.confirm,
-        }}
+        backgroundRemovalTranslations={uiText.backgroundRemoval}
         showTransformDiscardConfirm={showTransformDiscardConfirm}
         handleTransformDiscardCancel={handleTransformDiscardCancel}
         handleTransformDiscardConfirm={handleTransformDiscardConfirm}
         handleTransformApplyAndSwitch={handleTransformApplyAndSwitch}
-        transformDiscardTranslations={{
-          title: "변환 취소",
-          message: "적용하지 않은 변환이 있습니다. 변환을 취소하면 원래 상태로 되돌아갑니다.",
-          discard: "취소하고 전환",
-          apply: "적용하고 전환",
-          cancel: "돌아가기",
-        }}
+        transformDiscardTranslations={uiText.transformDiscard}
         showStatusBar={layers.length > 0}
         canvasSize={canvasSize}
         rotation={rotation}
@@ -994,12 +941,7 @@ function ImageEditorContent() {
         handleDeleteProject={handleDeleteProject}
         storageInfo={storageInfo}
         isLoading={isLoading}
-        projectListTranslations={{
-          savedProjects: t.savedProjects || "저장된 프로젝트",
-          noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
-          delete: t.delete,
-          loading: t.loading,
-        }}
+        projectListTranslations={uiText.projectList}
         showSyncDialog={showSyncDialog}
         localProjectCount={localProjectCount}
         cloudProjectCount={cloudProjectCount}
