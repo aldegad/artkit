@@ -8,6 +8,7 @@ export { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
 export { default as EditorMenuBar } from "./EditorMenuBar";
 export { default as LayersPanelContent } from "./LayersPanelContent";
 export { default as CanvasPanelContent } from "./CanvasPanelContent";
+export { EditorActionToolbar } from "./toolbars/EditorActionToolbar";
 
 // Re-export layout components
 export * from "./layout";
