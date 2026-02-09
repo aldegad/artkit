@@ -26,8 +26,6 @@ interface UseLayerManagementReturn {
   // Multi-select state
   selectedLayerIds: string[];
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
-  layerImages: Map<string, HTMLImageElement>;
-  setLayerImages: React.Dispatch<React.SetStateAction<Map<string, HTMLImageElement>>>;
   // Drag state for layer panel reordering
   draggedLayerId: string | null;
   setDraggedLayerId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -90,7 +88,6 @@ export function useLayerManagement(
   const [layers, setLayers] = useState<UnifiedLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
-  const [layerImages, setLayerImages] = useState<Map<string, HTMLImageElement>>(new Map());
   // Drag state for layer panel reordering
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
@@ -242,12 +239,6 @@ export function useLayerManagement(
 
       if (layer?.type === "paint") {
         layerCanvasesRef.current.delete(layerId);
-      } else {
-        setLayerImages(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(layerId);
-          return newMap;
-        });
       }
     },
     [layers, activeLayerId, saveToHistory, t.minOneLayerRequired]
@@ -714,8 +705,6 @@ export function useLayerManagement(
     setActiveLayerId,
     selectedLayerIds,
     setSelectedLayerIds,
-    layerImages,
-    setLayerImages,
     // Drag state
     draggedLayerId,
     setDraggedLayerId,

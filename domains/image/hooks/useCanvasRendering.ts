@@ -5,7 +5,7 @@ import { UnifiedLayer, Point, CropArea, Guide, SnapSource } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
-import { CHECKERBOARD, HANDLE_SIZE } from "../constants";
+import { CHECKERBOARD, HANDLE_SIZE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 
 // ============================================
 // Types
@@ -669,6 +669,8 @@ export function useCanvasRendering(
 
       ctx.restore();
     }
+
+    window.dispatchEvent(new Event(LAYER_CANVAS_UPDATED_EVENT));
   }, [
     canvasRef,
     containerRef,

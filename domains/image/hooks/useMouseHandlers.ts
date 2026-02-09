@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, RefObject } from "react";
-import { EditorToolMode, CropArea, Point, DragType, Guide } from "../types";
+import { EditorToolMode, CropArea, Point, DragType, Guide, AspectRatio } from "../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { HANDLE_SIZE } from "../constants";
@@ -59,8 +59,8 @@ interface UseMouseHandlersOptions {
   // Crop functions (from useCropTool)
   cropArea: CropArea | null;
   setCropArea: (area: CropArea | null) => void;
-  aspectRatio: string;
-  getAspectRatioValue: (ratio: any) => number | null;
+  aspectRatio: AspectRatio;
+  getAspectRatioValue: (ratio: AspectRatio) => number | null;
   canvasExpandMode: boolean;
   updateCropExpand: (x: number, y: number, startX: number, startY: number) => void;
 
@@ -261,6 +261,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     activeLayerId,
     activeLayerPosition,
     updateLayerPosition,
+    updateMultipleLayerPositions,
     saveToHistory,
     // Multi-layer support
     selectedLayerIds,

@@ -3,7 +3,7 @@
 // ============================================
 
 import { RefObject } from "react";
-import { EditorToolMode, CropArea, Point, DragType, Guide } from "../../types";
+import { EditorToolMode, CropArea, Point, DragType, Guide, AspectRatio } from "../../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 
 // ============================================
@@ -128,8 +128,8 @@ export interface SelectionHandlerOptions extends BaseHandlerOptions {
 export interface CropHandlerOptions extends BaseHandlerOptions {
   cropArea: CropArea | null;
   setCropArea: (area: CropArea | null) => void;
-  aspectRatio: string;
-  getAspectRatioValue: (ratio: any) => number | null;
+  aspectRatio: AspectRatio;
+  getAspectRatioValue: (ratio: AspectRatio) => number | null;
   canvasExpandMode: boolean;
   updateCropExpand: (x: number, y: number, startX: number, startY: number) => void;
 }
@@ -148,6 +148,7 @@ export interface MoveHandlerOptions extends BaseHandlerOptions {
   activeLayerId?: string | null;
   activeLayerPosition?: { x: number; y: number } | null;
   updateLayerPosition?: (layerId: string, position: { x: number; y: number }) => void;
+  updateMultipleLayerPositions?: (updates: Array<{ layerId: string; position: { x: number; y: number } }>) => void;
   saveToHistory: () => void;
   // Multi-layer support
   selectedLayerIds?: string[];

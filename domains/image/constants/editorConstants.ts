@@ -72,3 +72,6 @@ export const DEFAULT_COLORS = {
   /** Default brush color */
   BRUSH: "#000000",
 } as const;
+
+/** Global event name dispatched when layer canvas pixels change */
+export const LAYER_CANVAS_UPDATED_EVENT = "image-editor:layer-canvas-updated" as const;

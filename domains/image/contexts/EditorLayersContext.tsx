@@ -21,8 +21,6 @@ export interface EditorLayersContextValue {
   // Multi-select state
   selectedLayerIds: string[];
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
-  layerImages: Map<string, HTMLImageElement>;
-  setLayerImages: React.Dispatch<React.SetStateAction<Map<string, HTMLImageElement>>>;
   // Drag state for layer panel reordering
   draggedLayerId: string | null;
   setDraggedLayerId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -41,6 +39,8 @@ export interface EditorLayersContextValue {
   toggleLayerVisibility: (layerId: string) => void;
   updateLayer: (layerId: string, updates: Partial<UnifiedLayer>) => void;
   updateLayerOpacity: (layerId: string, opacity: number) => void;
+  updateLayerPosition: (layerId: string, position: { x: number; y: number }) => void;
+  updateMultipleLayerPositions: (updates: Array<{ layerId: string; position: { x: number; y: number } }>) => void;
   renameLayer: (layerId: string, name: string) => void;
   toggleLayerLock: (layerId: string) => void;
   moveLayer: (layerId: string, direction: "up" | "down") => void;
