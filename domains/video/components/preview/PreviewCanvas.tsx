@@ -75,6 +75,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     fitPadding: 40,
     enableWheel: true,
     enablePinch: true,
+    coordinateSpace: "container",
   });
   const isPanningRef = useRef(false);
   const containerRectRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -94,6 +95,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     getZoom: vpGetZoom,
     setBaseScale: vpSetBaseScale,
     getTransform: vpGetTransform,
+    getRenderOffset: vpGetRenderOffset,
+    getEffectiveScale: vpGetEffectiveScale,
+    screenToContent: vpScreenToContent,
+    contentToScreen: vpContentToScreen,
   } = viewport;
 
   // Merge container ref with viewport wheel/pinch refs
@@ -116,13 +121,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     return () => { previewViewportRef.current = null; };
   }, [vpSetZoom, vpGetZoom, vpFitToContainer, onVideoViewportChange, previewViewportRef]);
 
-  const previewGeometryRef = useRef({
-    offsetX: 0,
-    offsetY: 0,
-    scale: 1,
-    previewWidth: 0,
-    previewHeight: 0,
-  });
   const dragStateRef = useRef<{
     clipId: string | null;
     pointerStart: { x: number; y: number };
@@ -437,13 +435,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Calculate preview area from shared viewport transform
     const projectWidth = project.canvasSize.width;
     const projectHeight = project.canvasSize.height;
-    const vt = viewport.getTransform();
-    const scale = vt.baseScale * vt.zoom;
+    const scale = vpGetEffectiveScale();
+    const renderOffset = vpGetRenderOffset();
     const previewWidth = projectWidth * scale;
     const previewHeight = projectHeight * scale;
-    const offsetX = (width - previewWidth) / 2 + vt.pan.x * vt.zoom;
-    const offsetY = (height - previewHeight) / 2 + vt.pan.y * vt.zoom;
-    previewGeometryRef.current = { offsetX, offsetY, scale, previewWidth, previewHeight };
+    const offsetX = renderOffset.x;
+    const offsetY = renderOffset.y;
 
     // Draw checkerboard for transparency
     ctx.save();
@@ -512,8 +509,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         if (sourceEl) {
-          const drawX = offsetX + clip.position.x * scale;
-          const drawY = offsetY + clip.position.y * scale;
+          const drawPoint = vpContentToScreen(clip.position);
+          const drawX = drawPoint.x;
+          const drawY = drawPoint.y;
           const drawW = clip.sourceSize.width * scale * clip.scale;
           const drawH = clip.sourceSize.height * scale * clip.scale;
 
@@ -609,8 +607,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         if (selectedVisualClipId && clip.id === selectedVisualClipId && clip.type !== "audio") {
-          const boxX = offsetX + clip.position.x * scale;
-          const boxY = offsetY + clip.position.y * scale;
+          const boxPoint = vpContentToScreen(clip.position);
+          const boxX = boxPoint.x;
+          const boxY = boxPoint.y;
           const boxW = clip.sourceSize.width * scale * clip.scale;
           const boxH = clip.sourceSize.height * scale * clip.scale;
 
@@ -638,8 +637,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         width: project.canvasSize.width,
         height: project.canvasSize.height,
       };
-      const cropX = offsetX + activeCrop.x * scale;
-      const cropY = offsetY + activeCrop.y * scale;
+      const cropPoint = vpContentToScreen({ x: activeCrop.x, y: activeCrop.y });
+      const cropX = cropPoint.x;
+      const cropY = cropPoint.y;
       const cropW = activeCrop.width * scale;
       const cropH = activeCrop.height * scale;
 
@@ -709,27 +709,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [project.canvasSize.height, project.canvasSize.width]);
 
   const screenToProject = useCallback((clientX: number, clientY: number, allowOutside: boolean = false) => {
-    const container = previewContainerRef.current;
-    if (!container) return null;
+    if (!previewContainerRef.current) return null;
+    const point = vpScreenToContent({ x: clientX, y: clientY });
 
-    const rect = container.getBoundingClientRect();
-    const { offsetX, offsetY, scale, previewWidth, previewHeight } = previewGeometryRef.current;
-    if (scale <= 0) return null;
-
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const localX = x - offsetX;
-    const localY = y - offsetY;
-
-    if (!allowOutside && (localX < 0 || localY < 0 || localX > previewWidth || localY > previewHeight)) {
+    if (!allowOutside && (
+      point.x < 0
+      || point.y < 0
+      || point.x > project.canvasSize.width
+      || point.y > project.canvasSize.height
+    )) {
       return null;
     }
 
-    return {
-      x: localX / scale,
-      y: localY / scale,
-    };
-  }, [previewContainerRef]);
+    return point;
+  }, [previewContainerRef, vpScreenToContent, project.canvasSize.width, project.canvasSize.height]);
 
   // Mask uses project coordinates (not clip-local) since it's track-level
   const screenToMaskCoords = useCallback((clientX: number, clientY: number) => {
@@ -1202,7 +1195,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       />
       {/* Brush cursor preview */}
       {isEditingMask && brushCursor && (() => {
-        const { scale } = previewGeometryRef.current;
+        const scale = vpGetEffectiveScale();
         const displaySize = brushSettings.size * scale;
         return (
           <div

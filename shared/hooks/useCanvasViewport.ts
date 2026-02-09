@@ -32,6 +32,9 @@ export interface UseCanvasViewportOptions {
   initial?: Partial<ViewportTransform>;
   enableWheel?: boolean;
   enablePinch?: boolean;
+  // Coordinate math space for screen/content transforms and render offset.
+  // `canvas` uses canvas.width/height (default), `container` uses CSS client size.
+  coordinateSpace?: "canvas" | "container";
 }
 
 export interface UseCanvasViewportReturn {
@@ -97,6 +100,7 @@ export function useCanvasViewport(
     initial,
     enableWheel = true,
     enablePinch = true,
+    coordinateSpace = "canvas",
   } = options;
 
   const config: ViewportConfig = {
@@ -153,15 +157,19 @@ export function useCanvasViewport(
     return { width: el.clientWidth, height: el.clientHeight };
   }, [containerRef]);
 
-  // Canvas pixel size for rendering-related coordinate transforms
-  const getCanvasPixelSize = useCallback((): Size => {
+  // Pixel size used by viewport math (coordinates/render offset).
+  const getMathPixelSize = useCallback((): Size => {
+    if (coordinateSpace === "container") {
+      return getContainerPixelSize();
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) {
       // Fallback to container size
       return getContainerPixelSize();
     }
     return { width: canvas.width, height: canvas.height };
-  }, [canvasRef, getContainerPixelSize]);
+  }, [coordinateSpace, canvasRef, getContainerPixelSize]);
 
   // ---- Public: reads ----
 
@@ -180,7 +188,7 @@ export function useCanvasViewport(
     (screenPos: Point): Point => {
       const rect = getContainerRect();
       if (!rect) return { x: 0, y: 0 };
-      const canvasPixelSize = getCanvasPixelSize();
+      const canvasPixelSize = getMathPixelSize();
       return screenToContent(
         screenPos,
         rect,
@@ -192,12 +200,12 @@ export function useCanvasViewport(
     },
     // Use primitive values to avoid new-object-per-render instability
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [getContainerRect, getCanvasPixelSize, contentSize.width, contentSize.height, config.origin],
+    [getContainerRect, getMathPixelSize, contentSize.width, contentSize.height, config.origin],
   );
 
   const contentToScreenFn = useCallback(
     (contentPos: Point): Point => {
-      const canvasPixelSize = getCanvasPixelSize();
+      const canvasPixelSize = getMathPixelSize();
       return contentToCanvas(
         contentPos,
         canvasPixelSize,
@@ -207,11 +215,11 @@ export function useCanvasViewport(
       );
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [getCanvasPixelSize, contentSize.width, contentSize.height, config.origin],
+    [getMathPixelSize, contentSize.width, contentSize.height, config.origin],
   );
 
   const getRenderOffsetFn = useCallback((): Point => {
-    const canvasPixelSize = getCanvasPixelSize();
+    const canvasPixelSize = getMathPixelSize();
     return calculateRenderOffset(
       canvasPixelSize,
       contentSize,
@@ -219,7 +227,7 @@ export function useCanvasViewport(
       config.origin,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getCanvasPixelSize, contentSize.width, contentSize.height, config.origin]);
+  }, [getMathPixelSize, contentSize.width, contentSize.height, config.origin]);
 
   // ---- Public: imperative controls ----
 
