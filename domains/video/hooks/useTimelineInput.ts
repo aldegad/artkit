@@ -6,6 +6,7 @@ import { useVideoCoordinates } from "./useVideoCoordinates";
 import { TimelineDragType, Clip } from "../types";
 import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
+import { timelineScrollXFromGestureAnchor } from "../utils/timelineViewportMath";
 
 interface DragItem {
   type: "clip" | "mask";
@@ -42,8 +43,6 @@ const LONG_PRESS_MS = 400;
 
 /** Minimum movement (px) before we resolve a touch gesture as scroll or drag */
 const TOUCH_GESTURE_THRESHOLD = 8;
-/** Horizontal touch pan sensitivity (1 = exact finger delta). */
-const TOUCH_HORIZONTAL_PAN_SENSITIVITY = 0.6;
 
 // ── Touch pending state ───────────────────────────────────────────────
 interface TouchPendingState {
@@ -265,13 +264,13 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       } else {
         const seekTime = Math.max(0, pending.time);
         seek(seekTime);
-        if (seekTime < viewState.scrollX) {
+        if (seekTime < touchScrollStateRef.current.scrollX) {
           setScrollX(seekTime);
         }
         deselectAll();
       }
     },
-    [selectClip, seek, viewState.scrollX, setScrollX, deselectAll]
+    [selectClip, seek, setScrollX, deselectAll]
   );
 
   // ── Touch gesture resolution effect ──
@@ -279,8 +278,11 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   useEffect(() => {
     if (!touchPending) return;
 
-    let lastClientX = touchPending.clientX;
-    let lastClientY = touchPending.clientY;
+    const gestureStartClientX = touchPending.clientX;
+    const gestureStartClientY = touchPending.clientY;
+    const gestureStartScrollX = touchScrollStateRef.current.scrollX;
+    const gestureStartZoom = Math.max(0.001, touchScrollStateRef.current.zoom);
+    const gestureStartScrollTop = tracksContainerRef.current?.scrollTop ?? 0;
     let resolved = false; // true once we determined scroll vs drag
     let isScrolling = false;
 
@@ -319,45 +321,38 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     const handleMove = (e: PointerEvent) => {
       if (e.pointerId !== touchPending.pointerId) return;
-      let justResolved = false;
 
       if (!resolved) {
-        const dx = Math.abs(e.clientX - touchPending.clientX);
-        const dy = Math.abs(e.clientY - touchPending.clientY);
+        const dx = Math.abs(e.clientX - gestureStartClientX);
+        const dy = Math.abs(e.clientY - gestureStartClientY);
 
         if (dx >= TOUCH_GESTURE_THRESHOLD || dy >= TOUCH_GESTURE_THRESHOLD) {
           resolved = true;
-          justResolved = true;
           if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
           // Touch drag defaults to panning the timeline (both X/Y).
           // Clip movement is only activated by long-press lift.
           isScrolling = true;
-          // Avoid a large first-frame jump by resetting scroll baseline.
-          lastClientX = e.clientX;
-          lastClientY = e.clientY;
         }
       }
 
-      // Pan mode: manually scroll timeline vertically + horizontally.
+      // Pan mode: anchor-based mapping (finger distance -> timeline distance 1:1 in pixels).
       if (isScrolling) {
-        if (justResolved) return;
-        const deltaX = lastClientX - e.clientX;
-        const deltaY = lastClientY - e.clientY;
+        const deltaYFromStart = gestureStartClientY - e.clientY;
 
         if (tracksContainerRef.current) {
-          tracksContainerRef.current.scrollTop += deltaY;
+          tracksContainerRef.current.scrollTop = Math.max(0, gestureStartScrollTop + deltaYFromStart);
         }
-        if (Math.abs(deltaX) > 0.01) {
-          const currentZoom = Math.max(0.001, touchScrollStateRef.current.zoom);
-          const nextScrollX = Math.max(
-            0,
-            touchScrollStateRef.current.scrollX + (deltaX * TOUCH_HORIZONTAL_PAN_SENSITIVITY) / currentZoom
-          );
+
+        const nextScrollX = timelineScrollXFromGestureAnchor(
+          gestureStartScrollX,
+          gestureStartClientX,
+          e.clientX,
+          gestureStartZoom
+        );
+        if (Math.abs(nextScrollX - touchScrollStateRef.current.scrollX) > 0.0001) {
           touchScrollStateRef.current.scrollX = nextScrollX;
           setScrollX(nextScrollX);
         }
-        lastClientX = e.clientX;
-        lastClientY = e.clientY;
       }
     };
 
