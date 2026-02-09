@@ -39,6 +39,7 @@ interface TimelineContextValue {
   // Track management
   tracks: VideoTrack[];
   addTrack: (name?: string, type?: "video" | "audio") => string;
+  duplicateTrack: (trackId: string) => string | null;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<VideoTrack>) => void;
   reorderTracks: (fromIndex: number, toIndex: number) => void;
@@ -116,6 +117,21 @@ function cloneClip(clip: Clip): Clip {
     ...base,
     sourceSize: { ...clip.sourceSize },
   };
+}
+
+function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[]): string {
+  const base = `${sourceName} (Copy)`;
+  if (!existingTracks.some((track) => track.name === base)) {
+    return base;
+  }
+
+  let suffix = 2;
+  let candidate = `${base} ${suffix}`;
+  while (existingTracks.some((track) => track.name === candidate)) {
+    suffix += 1;
+    candidate = `${base} ${suffix}`;
+  }
+  return candidate;
 }
 
 function normalizeClip(clip: Clip): Clip {
@@ -448,6 +464,48 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return newTrack.id;
   }, [tracks]);
 
+  const duplicateTrack = useCallback((trackId: string): string | null => {
+    const sourceTrack = tracks.find((track) => track.id === trackId);
+    if (!sourceTrack) return null;
+
+    const sourceTrackIndex = tracks.findIndex((track) => track.id === trackId);
+    const duplicatedTrack: VideoTrack = {
+      ...cloneTrack(sourceTrack),
+      id: crypto.randomUUID(),
+      name: getDuplicateTrackName(sourceTrack.name, tracks),
+    };
+
+    setTracks((prev) => {
+      const insertAt = sourceTrackIndex >= 0 ? sourceTrackIndex + 1 : prev.length;
+      const next = [...prev];
+      next.splice(insertAt, 0, duplicatedTrack);
+      return next.map((track, index) => ({ ...track, zIndex: next.length - 1 - index }));
+    });
+
+    const sourceClips = clips
+      .filter((clip) => clip.trackId === trackId)
+      .sort((a, b) => a.startTime - b.startTime);
+    const duplicatedClips = sourceClips.map((clip) => ({
+      ...cloneClip(clip),
+      id: crypto.randomUUID(),
+      trackId: duplicatedTrack.id,
+    }));
+
+    if (duplicatedClips.length > 0) {
+      void Promise.all(
+        duplicatedClips.map((newClip, index) =>
+          copyMediaBlob(sourceClips[index].id, newClip.id).catch((error) => {
+            console.error("Failed to copy media blob on track duplicate:", error);
+          })
+        )
+      );
+      setClips((prev) => [...prev, ...duplicatedClips]);
+      updateProjectDuration();
+    }
+
+    return duplicatedTrack.id;
+  }, [tracks, clips, updateProjectDuration]);
+
   const removeTrack = useCallback((trackId: string) => {
     // Don't remove the last track
     if (tracks.length <= 1) return;
@@ -733,6 +791,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setViewState,
     tracks,
     addTrack,
+    duplicateTrack,
     removeTrack,
     updateTrack,
     reorderTracks,
