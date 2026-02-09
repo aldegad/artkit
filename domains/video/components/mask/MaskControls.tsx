@@ -6,6 +6,7 @@ import { cn } from "@/shared/utils/cn";
 import { MASK_BRUSH } from "../../constants";
 import Tooltip from "@/shared/components/Tooltip";
 import { NumberScrubber } from "@/shared/components";
+import { useLanguage } from "@/shared/contexts";
 import {
   BrushIcon,
   EraserIcon,
@@ -37,6 +38,7 @@ export function MaskControls({ className }: MaskControlsProps) {
   } = useMask();
 
   const { clearMask, fillMask } = useMaskTool();
+  const { t } = useLanguage();
 
   const activeMask = activeMaskId ? masks.get(activeMaskId) : null;
 
@@ -80,7 +82,7 @@ export function MaskControls({ className }: MaskControlsProps) {
           <div className="w-px h-5 bg-border-default mx-1" />
 
           {/* Paint / Erase mode toggle */}
-          <Tooltip content="Paint mask" shortcut="B">
+          <Tooltip content={t.paintMask} shortcut="B">
             <button
               onClick={() => setBrushMode("paint")}
               className={modeBtn(brushSettings.mode === "paint")}
@@ -88,7 +90,7 @@ export function MaskControls({ className }: MaskControlsProps) {
               <BrushIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
-          <Tooltip content="Erase mask" shortcut="E">
+          <Tooltip content={t.eraseMask} shortcut="E">
             <button
               onClick={() => setBrushMode("erase")}
               className={modeBtn(brushSettings.mode === "erase")}
@@ -123,12 +125,12 @@ export function MaskControls({ className }: MaskControlsProps) {
           <div className="w-px h-5 bg-border-default mx-1" />
 
           {/* Fill / Clear */}
-          <Tooltip content="Fill mask">
+          <Tooltip content={t.fillMask}>
             <button onClick={() => { fillMask(); saveMaskData(); }} className={actionBtn}>
               <FillBucketIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
-          <Tooltip content="Clear mask">
+          <Tooltip content={t.clearMask}>
             <button onClick={() => { clearMask(); saveMaskData(); }} className={actionBtn}>
               <DeleteIcon className="w-3.5 h-3.5" />
             </button>
@@ -136,7 +138,7 @@ export function MaskControls({ className }: MaskControlsProps) {
         </>
       ) : (
         <span className="text-[10px] text-text-tertiary ml-1">
-          Double-click to edit
+          {t.longPressToEdit}
         </span>
       )}
     </div>

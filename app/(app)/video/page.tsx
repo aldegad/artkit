@@ -174,7 +174,7 @@ function VideoEditorContent() {
     canRedo,
     isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, duplicateMask, deselectMask, restoreMasks, masks: masksMap, saveMaskData, updateMaskTime } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, duplicateMask, deselectMask, selectMask, restoreMasks, masks: masksMap, saveMaskData, updateMaskTime } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -264,6 +264,17 @@ function VideoEditorContent() {
     }, 0);
     return () => clearTimeout(timer);
   }, [isAutosaveInitialized, project.masks, restoreMasks]);
+
+  // After autosave restore: sync selectedMaskIds → MaskContext.activeMaskId
+  // so that MaskControls shows when a mask was selected at save time
+  const maskSelectionSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!masksRestoredRef.current || maskSelectionSyncedRef.current) return;
+    if (masksMap.size > 0 && selectedMaskIds.length > 0) {
+      maskSelectionSyncedRef.current = true;
+      selectMask(selectedMaskIds[0]);
+    }
+  }, [masksMap, selectedMaskIds, selectMask]);
 
   // Sync MaskContext masks → project.masks (MaskContext is the single source of truth)
   useEffect(() => {
@@ -1069,9 +1080,11 @@ function VideoEditorContent() {
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
     if (mode === "mask" && selectedClipIds.length > 0) {
-      const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
-      if (selectedClip && selectedClip.type !== "audio") {
-        startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
+      const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
+      if (selected.length > 0) {
+        const maskStart = Math.min(...selected.map((c) => c.startTime));
+        const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
+        startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
       }
     }
     if (mode !== "mask" && isEditingMask) {
@@ -1096,9 +1109,11 @@ function VideoEditorContent() {
     if (selectedClipIds.length === 0) return;
     if (isEditingMask) return; // already editing
 
-    const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
-    if (selectedClip && selectedClip.type !== "audio") {
-      startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
+    const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
+    if (selected.length > 0) {
+      const maskStart = Math.min(...selected.map((c) => c.startTime));
+      const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
+      startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
     }
   }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
 

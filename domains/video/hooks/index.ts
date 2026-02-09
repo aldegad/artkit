@@ -8,3 +8,5 @@ export { useVideoSave } from "./useVideoSave";
 export { usePlaybackTick, usePlaybackTime } from "./usePlaybackTick";
 export { usePreRenderCache, subscribeCacheStatus, getCacheStatus } from "./usePreRenderCache";
 export { useVideoKeyboardShortcuts } from "./useVideoKeyboardShortcuts";
+export { useAudioBufferCache, getAudioBuffer, isAudioBufferReady, getSharedAudioContext } from "./useAudioBufferCache";
+export { useWebAudioPlayback } from "./useWebAudioPlayback";

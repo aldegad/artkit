@@ -116,6 +116,9 @@ export function renderCompositeFrame(
       }
       if (maskImg.complete && maskImg.naturalWidth > 0) {
         clipMaskSource = maskImg;
+      } else {
+        // Mask image still loading — mark frame as incomplete
+        allRendered = false;
       }
     }
 

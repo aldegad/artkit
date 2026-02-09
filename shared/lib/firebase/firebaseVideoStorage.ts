@@ -343,6 +343,16 @@ export async function saveVideoProjectToFirebase(
   thumbnailDataUrl?: string,
   onProgress?: (progress: SaveLoadProgress) => void
 ): Promise<void> {
+  const docRef = doc(db, "users", userId, "videoProjects", project.id);
+  const existingSnap = await getDoc(docRef);
+  const existingCreatedAt = existingSnap.exists()
+    ? (existingSnap.data() as { createdAt?: Timestamp }).createdAt
+    : undefined;
+  const createdAt =
+    existingCreatedAt && typeof existingCreatedAt.toMillis === "function"
+      ? existingCreatedAt
+      : Timestamp.fromMillis(project.savedAt || Date.now());
+
   const clips = project.project.clips;
   const masks = project.project.masks;
   const totalSteps = clips.length + (masks.length > 0 ? 1 : 0) + 1; // clips + masks + metadata
@@ -444,11 +454,10 @@ export async function saveVideoProjectToFirebase(
     timelineView: project.timelineView,
     currentTime: project.currentTime,
     thumbnailUrl,
-    createdAt: Timestamp.fromMillis(project.savedAt || Date.now()),
+    createdAt,
     updatedAt: Timestamp.now(),
   };
 
-  const docRef = doc(db, "users", userId, "videoProjects", project.id);
   await setDoc(docRef, removeUndefined(firestoreProject));
 }
 
