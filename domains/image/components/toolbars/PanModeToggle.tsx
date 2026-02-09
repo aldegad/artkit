@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditorState } from "../../contexts";
 import { PanIcon } from "@/shared/components/icons";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 
 const STORAGE_KEY = "artkit.editor.pan-toggle-position-v1";
 const BUTTON_SIZE = 48;
@@ -141,7 +142,7 @@ export function PanModeToggle() {
       if (!e.isPrimary) return;
 
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
 
       const dragState: DragState = {
         pointerId: e.pointerId,
@@ -194,9 +195,7 @@ export function PanModeToggle() {
       const dragState = dragRef.current;
       if (!dragState || dragState.pointerId !== e.pointerId) return;
 
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
+      safeReleasePointerCapture(e.currentTarget, e.pointerId);
 
       setIsDragging(false);
       dragRef.current = null;

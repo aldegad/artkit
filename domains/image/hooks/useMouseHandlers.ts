@@ -6,6 +6,7 @@ import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { HANDLE_SIZE } from "../constants";
 import { getRectHandleAtPosition } from "@/shared/utils/rectTransform";
+import { safeSetPointerCapture } from "@/shared/utils";
 import {
   buildContext,
   FloatingLayer,
@@ -294,7 +295,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       // Capture pointer for touch/pen to receive move events during drag
       if ("pointerId" in e && e.target instanceof Element) {
-        e.target.setPointerCapture(e.pointerId);
+        safeSetPointerCapture(e.target, e.pointerId);
       }
 
       const screenPos = getMousePos(e);

@@ -10,6 +10,7 @@ import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
@@ -388,9 +389,7 @@ export default function FramePreviewContent() {
         }
         lastMousePosRef.current = { x: coords.x, y: coords.y };
 
-        if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }
+        safeSetPointerCapture(e.currentTarget, e.pointerId);
       }
     },
     [
@@ -451,9 +450,7 @@ export default function FramePreviewContent() {
       activeTouchPointerIdsRef.current.delete(e.pointerId);
     }
 
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
+    safeReleasePointerCapture(e.currentTarget, e.pointerId);
 
     if (drawingPointerIdRef.current === e.pointerId) {
       drawingPointerIdRef.current = null;
