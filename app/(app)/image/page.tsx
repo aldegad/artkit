@@ -1612,6 +1612,7 @@ function ImageEditorContent() {
     async (id: string) => {
       if (!confirm(t.deleteConfirm)) return;
 
+      setIsLoading(true);
       try {
         await storageProvider.deleteProject(id);
         const projects = await storageProvider.getAllProjects();
@@ -1625,6 +1626,8 @@ function ImageEditorContent() {
       } catch (error) {
         console.error("Failed to delete project:", error);
         alert(`${t.deleteFailed}: ${(error as Error).message}`);
+      } finally {
+        setIsLoading(false);
       }
     },
     [currentProjectId, t, storageProvider],
@@ -2129,10 +2132,12 @@ function ImageEditorContent() {
         onLoadProject={handleLoadProject}
         onDeleteProject={handleDeleteProject}
         storageInfo={storageInfo}
+        isLoading={isLoading}
         translations={{
           savedProjects: t.savedProjects || "저장된 프로젝트",
           noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
           delete: t.delete,
+          loading: t.loading,
         }}
       />
 
