@@ -99,7 +99,7 @@ export function VideoExportModal({
                 className="flex-1 min-w-0 px-2 py-1.5 bg-surface-secondary border border-border-default rounded-l text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
               />
               <span className="px-2 py-1.5 bg-surface-tertiary border border-l-0 border-border-default rounded-r text-sm text-text-tertiary whitespace-nowrap">
-                .webm
+                .mp4
               </span>
             </div>
           </div>

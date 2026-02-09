@@ -30,6 +30,7 @@ import {
   clearVideoAutosave,
   saveMediaBlob,
   loadMediaBlob,
+  copyMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
@@ -202,6 +203,7 @@ function VideoEditorContent() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
   const [loadProgress, setLoadProgress] = useState<SaveLoadProgress | null>(null);
+  const [projectListOperation, setProjectListOperation] = useState<"load" | "delete" | null>(null);
   const [saveCount, setSaveCount] = useState(0);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
@@ -510,6 +512,7 @@ function VideoEditorContent() {
 
   const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
     setIsLoadingProject(true);
+    setProjectListOperation("load");
     setLoadProgress(null);
     try {
       const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
@@ -520,12 +523,38 @@ function VideoEditorContent() {
 
       const loadedProject = loaded.project;
       const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
+      const clipIdsBySourceId = new Map<string, string[]>();
+      for (const clip of normalizedClips) {
+        if (!clip.sourceId) continue;
+        const ids = clipIdsBySourceId.get(clip.sourceId) || [];
+        ids.push(clip.id);
+        clipIdsBySourceId.set(clip.sourceId, ids);
+      }
+      const sourceBlobCache = new Map<string, Blob>();
 
       // Restore media blobs from IndexedDB and create new blob URLs
       const restoredClips: Clip[] = [];
       for (const clip of normalizedClips) {
-        const blob = await loadMediaBlob(clip.id);
+        let blob = await loadMediaBlob(clip.id);
+        if (!blob && clip.sourceId) {
+          blob = sourceBlobCache.get(clip.sourceId) || null;
+          if (!blob) {
+            const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
+            for (const candidateId of candidateIds) {
+              if (candidateId === clip.id) continue;
+              const candidateBlob = await loadMediaBlob(candidateId);
+              if (candidateBlob) {
+                blob = candidateBlob;
+                sourceBlobCache.set(clip.sourceId, candidateBlob);
+                break;
+              }
+            }
+          }
+        }
         if (blob) {
+          if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
+            sourceBlobCache.set(clip.sourceId, blob);
+          }
           const newUrl = URL.createObjectURL(blob);
           restoredClips.push({ ...clip, sourceUrl: newUrl });
         } else if (!clip.sourceUrl.startsWith("blob:")) {
@@ -568,18 +597,26 @@ function VideoEditorContent() {
     } finally {
       setIsLoadingProject(false);
       setLoadProgress(null);
+      setProjectListOperation(null);
     }
   }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, selectClips, clearHistory]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;
+    setIsLoadingProject(true);
+    setProjectListOperation("delete");
+    setLoadProgress(null);
     try {
-      await storageProvider.deleteProject(id);
+      await storageProvider.deleteProject(id, setLoadProgress);
       const projects = await storageProvider.getAllProjects();
       setSavedProjects(projects);
       if (currentProjectId === id) setCurrentProjectId(null);
     } catch (error) {
       console.error("Failed to delete project:", error);
+    } finally {
+      setIsLoadingProject(false);
+      setLoadProgress(null);
+      setProjectListOperation(null);
     }
   }, [storageProvider, currentProjectId, t]);
 
@@ -605,11 +642,15 @@ function VideoEditorContent() {
     }
 
     const mimeTypeCandidates = [
-      "video/webm;codecs=vp9",
-      "video/webm;codecs=vp8",
-      "video/webm",
+      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+      "video/mp4;codecs=avc1",
+      "video/mp4",
     ];
     const selectedMimeType = mimeTypeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    if (!selectedMimeType) {
+      alert(`${t.exportFailed}: browser does not support MP4 recording`);
+      return;
+    }
 
     const canvasStream = canvas.captureStream(frameRate);
     const recordingStream = new MediaStream();
@@ -688,7 +729,7 @@ function VideoEditorContent() {
         };
         recorder.onerror = () => reject(new Error("MediaRecorder error"));
         recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: selectedMimeType || "video/webm" }));
+          resolve(new Blob(chunks, { type: selectedMimeType }));
         };
       });
 
@@ -713,7 +754,7 @@ function VideoEditorContent() {
       recorder.stop();
 
       const blob = await blobPromise;
-      downloadBlob(blob, `${sanitizeFileName(exportFileName || projectName)}.webm`);
+      downloadBlob(blob, `${sanitizeFileName(exportFileName || projectName)}.mp4`);
 
       seek(previousTime);
       if (wasPlaying) {
@@ -733,7 +774,7 @@ function VideoEditorContent() {
       setIsExporting(false);
       setShowExportModal(false);
     }
-  }, [isExporting, previewCanvasRef, videoElementsRef, audioElementsRef, project.duration, project.frameRate, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
+  }, [isExporting, project.duration, project.frameRate, previewCanvasRef, videoElementsRef, audioElementsRef, playback.currentTime, playback.isPlaying, stop, seek, play, projectName, t.exportFailed]);
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
@@ -792,6 +833,15 @@ function VideoEditorContent() {
       startTime: Math.max(0, clipData.startTime + timeOffset),
     }));
 
+    // Keep media persistence stable for duplicated IDs.
+    void Promise.all(
+      newClips.map((newClip, index) =>
+        copyMediaBlob(clipboard.clips[index].id, newClip.id).catch((error) => {
+          console.error("Failed to copy media blob on paste:", error);
+        })
+      )
+    );
+
     addClips(newClips);
     selectClips(newClips.map((c) => c.id));
 
@@ -845,6 +895,13 @@ function VideoEditorContent() {
         startTime: clip.startTime + 0.25,
         name: `${clip.name} (Copy)`,
       }));
+      void Promise.all(
+        duplicated.map((dupClip, index) =>
+          copyMediaBlob(selectedClips[index].id, dupClip.id).catch((error) => {
+            console.error("Failed to copy media blob on duplicate:", error);
+          })
+        )
+      );
       addClips(duplicated);
       duplicatedClipIds.push(...duplicated.map((c) => c.id));
     }
@@ -1580,7 +1637,7 @@ function VideoEditorContent() {
           savedProjects: t.savedProjects || "Saved Projects",
           noSavedProjects: t.noSavedProjects || "No saved projects",
           delete: t.delete,
-          loading: t.loading || "Loading",
+          loading: projectListOperation === "delete" ? `${t.delete || "Delete"}...` : (t.loading || "Loading"),
         }}
       />
 
