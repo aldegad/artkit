@@ -5,7 +5,7 @@ import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHisto
 import { useLayout } from "../contexts/LayoutContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
-import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, MenuIcon } from "../../../shared/components/icons";
+import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, MenuIcon, PlusIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
 
@@ -13,7 +13,6 @@ interface FrameCardProps {
   frame: SpriteFrame;
   idx: number;
   timelineMode: "reorder" | "offset";
-  showActiveOnly: boolean;
   isPlaying: boolean;
   isCurrent: boolean;
   isSelected: boolean;
@@ -35,7 +34,6 @@ const FrameCard = memo(function FrameCard({
   frame,
   idx,
   timelineMode,
-  showActiveOnly,
   isPlaying,
   isCurrent,
   isSelected,
@@ -54,12 +52,12 @@ const FrameCard = memo(function FrameCard({
 }: FrameCardProps) {
   return (
     <div
-      draggable={timelineMode === "reorder" && !showActiveOnly}
-      onDragStart={(e) => timelineMode === "reorder" && !showActiveOnly && onDragStart(e, frame.id)}
-      onDragOver={(e) => timelineMode === "reorder" && !showActiveOnly && onDragOver(e, idx)}
-      onDragLeave={timelineMode === "reorder" && !showActiveOnly ? onDragLeave : undefined}
-      onDrop={(e) => timelineMode === "reorder" && !showActiveOnly && onDrop(e, idx)}
-      onDragEnd={timelineMode === "reorder" && !showActiveOnly ? onDragEnd : undefined}
+      draggable={timelineMode === "reorder"}
+      onDragStart={(e) => timelineMode === "reorder" && onDragStart(e, frame.id)}
+      onDragOver={(e) => timelineMode === "reorder" && onDragOver(e, idx)}
+      onDragLeave={timelineMode === "reorder" ? onDragLeave : undefined}
+      onDrop={(e) => timelineMode === "reorder" && onDrop(e, idx)}
+      onDragEnd={timelineMode === "reorder" ? onDragEnd : undefined}
       onMouseDown={(e) => timelineMode === "offset" && onOffsetMouseDown(e, frame.id)}
       onClick={(e) => onFrameClick(e, idx, frame)}
       onDoubleClick={() => onFrameDoubleClick(idx)}
@@ -143,7 +141,7 @@ export default function FrameStrip() {
   const { isPlaying, setIsPlaying } = useEditorAnimation();
   const { timelineMode, setTimelineMode } = useEditorTools();
   const { pushHistory } = useEditorHistory();
-  const { addTrack, activeTrackId } = useEditorTracks();
+  const { addTrack, activeTrackId, insertEmptyFrameToTrack } = useEditorTracks();
   const {
     draggedFrameId, setDraggedFrameId, dragOverIndex, setDragOverIndex,
     editingOffsetFrameId, setEditingOffsetFrameId, offsetDragStart, setOffsetDragStart,
@@ -230,6 +228,7 @@ export default function FrameStrip() {
     (e: React.DragEvent, frameId: number) => {
       setDraggedFrameId(frameId);
       e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(frameId));
     },
     [setDraggedFrameId],
   );
@@ -260,11 +259,12 @@ export default function FrameStrip() {
       const [draggedFrame] = newFrames.splice(dragIndex, 1);
       newFrames.splice(dropIndex, 0, draggedFrame);
 
+      pushHistory();
       setFrames(newFrames);
       setDraggedFrameId(null);
       setDragOverIndex(null);
     },
-    [draggedFrameId, frames, setFrames, setDraggedFrameId, setDragOverIndex],
+    [draggedFrameId, frames, pushHistory, setFrames, setDraggedFrameId, setDragOverIndex],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -320,6 +320,31 @@ export default function FrameStrip() {
       setCurrentFrameIndex(currentFrameIndex - 1);
     }
   }, [frames, getCurrentFrameIndex, setFrames, selectedFrameId, setSelectedFrameId, pushHistory, setCurrentFrameIndex]);
+
+  const addEmptyFrame = useCallback(() => {
+    if (!activeTrackId) return;
+    const currentFrameIndex = getCurrentFrameIndex();
+    const insertIndex = frames.length === 0 ? 0 : currentFrameIndex + 1;
+
+    pushHistory();
+    const newFrameId = insertEmptyFrameToTrack(activeTrackId, insertIndex);
+    if (newFrameId === null) return;
+
+    setSelectedFrameId(newFrameId);
+    setSelectedFrameIds([newFrameId]);
+    setCurrentFrameIndex(insertIndex);
+    setIsPlaying(false);
+  }, [
+    activeTrackId,
+    frames.length,
+    getCurrentFrameIndex,
+    pushHistory,
+    insertEmptyFrameToTrack,
+    setSelectedFrameId,
+    setSelectedFrameIds,
+    setCurrentFrameIndex,
+    setIsPlaying,
+  ]);
 
   // Toggle disabled on a single frame
   const toggleFrameDisabled = useCallback(
@@ -635,6 +660,13 @@ export default function FrameStrip() {
                   </div>
                 )}
                 <div className="h-px bg-border-default mx-1" />
+                <button
+                  onClick={addEmptyFrame}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                >
+                  <PlusIcon className="w-3.5 h-3.5" />
+                  Add empty frame
+                </button>
                 {/* Delete */}
                 <button
                   onClick={deleteActiveFrame}
@@ -792,6 +824,17 @@ export default function FrameStrip() {
                 )}
               </div>
 
+              {/* Add empty frame */}
+              <Tooltip content="빈 프레임 추가">
+                <button
+                  onClick={addEmptyFrame}
+                  className="p-1 rounded text-text-tertiary hover:text-text-primary transition-colors"
+                  aria-label="Add empty frame"
+                >
+                  <PlusIcon className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
+
               {/* Delete active frame */}
               <Tooltip content={t.deleteFrame}>
                 <button
@@ -869,7 +912,6 @@ export default function FrameStrip() {
                   frame={frame}
                   idx={idx}
                   timelineMode={timelineMode}
-                  showActiveOnly={showActiveOnly}
                   isPlaying={isPlaying}
                   isCurrent={idx === displayCurrentFrameIndex}
                   isSelected={selectedFrameIdSet.has(frame.id)}

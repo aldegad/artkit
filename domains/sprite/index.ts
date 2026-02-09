@@ -31,13 +31,14 @@ export {
   FrameStrip,
   SpriteSheetImportModal,
   SpriteMenuBar,
+  SpriteTopToolbar,
   VideoImportModal,
   FrameBackgroundRemovalModals,
   SplitView,
 } from "./components";
 
 // Hooks
-export { useFrameBackgroundRemoval } from "./hooks";
+export { useFrameBackgroundRemoval, useSpriteKeyboardShortcuts } from "./hooks";
 
 // Types
 export type {
