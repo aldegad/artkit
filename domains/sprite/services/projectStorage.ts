@@ -15,6 +15,7 @@ import {
   getSpriteProjectFromFirebase,
   hasCloudSpriteProjects,
   saveSpriteProjectToFirebase,
+  type SpriteSaveLoadProgress,
 } from "@/shared/lib/firebase/firebaseSpriteStorage";
 
 export interface SpriteStorageInfo {
@@ -24,8 +25,14 @@ export interface SpriteStorageInfo {
 }
 
 export interface SpriteStorageProvider {
-  saveProject(project: SavedSpriteProject): Promise<void>;
-  getProject(id: string): Promise<SavedSpriteProject | null>;
+  saveProject(
+    project: SavedSpriteProject,
+    onProgress?: (progress: SpriteSaveLoadProgress) => void
+  ): Promise<void>;
+  getProject(
+    id: string,
+    onProgress?: (progress: SpriteSaveLoadProgress) => void
+  ): Promise<SavedSpriteProject | null>;
   getAllProjects(): Promise<SavedSpriteProject[]>;
   deleteProject(id: string): Promise<void>;
   getStorageInfo(): Promise<SpriteStorageInfo>;
@@ -35,11 +42,19 @@ export interface SpriteStorageProvider {
 class IndexedDBSpriteStorageProvider implements SpriteStorageProvider {
   readonly type = "local" as const;
 
-  async saveProject(project: SavedSpriteProject): Promise<void> {
+  async saveProject(
+    project: SavedSpriteProject,
+    onProgress?: (progress: SpriteSaveLoadProgress) => void
+  ): Promise<void> {
+    onProgress?.({ phase: "save", current: 1, total: 1, itemName: "Saving local project" });
     await saveProject(project);
   }
 
-  async getProject(id: string): Promise<SavedSpriteProject | null> {
+  async getProject(
+    id: string,
+    onProgress?: (progress: SpriteSaveLoadProgress) => void
+  ): Promise<SavedSpriteProject | null> {
+    onProgress?.({ phase: "load", current: 1, total: 1, itemName: "Loading local project" });
     const project = await getProject(id);
     return project ?? null;
   }
@@ -65,12 +80,18 @@ class FirebaseSpriteStorageProvider implements SpriteStorageProvider {
     this.userId = user.uid;
   }
 
-  async saveProject(project: SavedSpriteProject): Promise<void> {
-    await saveSpriteProjectToFirebase(this.userId, project);
+  async saveProject(
+    project: SavedSpriteProject,
+    onProgress?: (progress: SpriteSaveLoadProgress) => void
+  ): Promise<void> {
+    await saveSpriteProjectToFirebase(this.userId, project, onProgress);
   }
 
-  async getProject(id: string): Promise<SavedSpriteProject | null> {
-    return getSpriteProjectFromFirebase(this.userId, id);
+  async getProject(
+    id: string,
+    onProgress?: (progress: SpriteSaveLoadProgress) => void
+  ): Promise<SavedSpriteProject | null> {
+    return getSpriteProjectFromFirebase(this.userId, id, onProgress);
   }
 
   async getAllProjects(): Promise<SavedSpriteProject[]> {
