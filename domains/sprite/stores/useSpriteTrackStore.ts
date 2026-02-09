@@ -138,8 +138,8 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
   canRedo: false,
 
   // Image Actions
-  setImageSrc: (src) => set({ imageSrc: src }),
-  setImageSize: (size) => set({ imageSize: size }),
+  setImageSrc: (src) => set({ imageSrc: src, isPlaying: false }),
+  setImageSize: (size) => set({ imageSize: size, isPlaying: false }),
 
   // Track Actions
   addTrack: (name, frames) => {
@@ -163,6 +163,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
     set({
       tracks: newTracks,
       activeTrackId: id,
+      isPlaying: false,
     });
 
     return id;
@@ -179,6 +180,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
     set({
       tracks: filtered,
       activeTrackId: newActiveId,
+      isPlaying: false,
     });
   },
 
@@ -187,6 +189,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       tracks: state.tracks.map((t) =>
         t.id === trackId ? { ...t, ...updates } : t,
       ),
+      isPlaying: false,
     }));
   },
 
@@ -195,7 +198,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       const newTracks = [...state.tracks];
       const [moved] = newTracks.splice(fromIndex, 1);
       newTracks.splice(toIndex, 0, moved);
-      return { tracks: reindexZIndex(newTracks) };
+      return { tracks: reindexZIndex(newTracks), isPlaying: false };
     });
   },
 
@@ -209,6 +212,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
           ? { ...t, frames: [...t.frames, ...deepCopyFrames(frames)] }
           : t,
       ),
+      isPlaying: false,
     }));
   },
 
@@ -219,6 +223,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
           ? { ...t, frames: t.frames.filter((f) => f.id !== frameId) }
           : t,
       ),
+      isPlaying: false,
     }));
   },
 
@@ -234,6 +239,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
             }
           : t,
       ),
+      isPlaying: false,
     }));
   },
 
@@ -246,6 +252,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
         newFrames.splice(toIndex, 0, moved);
         return { ...t, frames: newFrames };
       }),
+      isPlaying: false,
     }));
   },
 
@@ -253,6 +260,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
     set((state) => ({
       nextFrameId:
         typeof idOrFn === "function" ? idOrFn(state.nextFrameId) : idOrFn,
+      isPlaying: false,
     })),
 
   // Selection / Pen Actions
@@ -285,6 +293,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
         typeof pointsOrFn === "function"
           ? pointsOrFn(state.currentPoints)
           : pointsOrFn,
+      isPlaying: false,
     })),
 
   // Playback Actions
@@ -360,6 +369,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
         nextFrameId: prev.nextFrameId,
         canUndo: historyIndex >= 0,
         canRedo: true,
+        isPlaying: false,
       });
     }
   },
@@ -374,6 +384,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
         nextFrameId: next.nextFrameId,
         canUndo: true,
         canRedo: historyIndex < historyStack.length - 1,
+        isPlaying: false,
       });
     }
   },
@@ -384,6 +395,8 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       tracks: deepCopyTracks(tracks),
       nextFrameId,
       activeTrackId: tracks[0]?.id ?? null,
+      currentFrameIndex: 0,
+      isPlaying: false,
     });
   },
 
