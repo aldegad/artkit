@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import { useTimeline, useVideoState, useMask } from "../../contexts";
-import { useTimelineInput, useTimelineViewportInput, useVideoCoordinates } from "../../hooks";
+import { useTimelineInput, useVideoCoordinates } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
 import { Track } from "./Track";
 import { Playhead } from "./Playhead";
@@ -48,13 +48,13 @@ export function Timeline({ className }: TimelineProps) {
   // Timeline input handling (clip drag, trim, seek, lift)
   const {
     handlePointerDown: handleTimelinePointerDown,
+    handleContainerPointerDown,
     liftedClipId,
     dropClipToTrack,
     cancelLift,
-  } = useTimelineInput(tracksContainerRef);
-  const { handleContainerPointerDown } = useTimelineViewportInput({
-    containerRef,
+  } = useTimelineInput({
     tracksContainerRef,
+    containerRef,
   });
 
   // Track ID of the currently lifted clip (for drop-target highlighting)

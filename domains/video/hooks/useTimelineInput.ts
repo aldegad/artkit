@@ -65,7 +65,21 @@ interface DragPointerPendingState {
   clientY: number;
 }
 
-export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElement | null>) {
+interface MiddlePanPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  scrollXOnStart: number;
+  zoomOnStart: number;
+}
+
+interface UseTimelineInputOptions {
+  tracksContainerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
+}
+
+export function useTimelineInput(options: UseTimelineInputOptions) {
+  const { tracksContainerRef, containerRef } = options;
   const {
     tracks,
     clips,
@@ -91,6 +105,8 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const { pixelToTime, timeToPixel, zoom } = useVideoCoordinates();
   const {
     stateRef: timelineViewportRef,
+    panByPixels,
+    setZoomAtPixel,
     ensureTimeVisibleOnLeft,
     setScrollFromGestureAnchor,
   } = useTimelineViewport();
@@ -123,9 +139,9 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   );
 
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
   const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
+  const [middlePanPending, setMiddlePanPending] = useState<MiddlePanPendingState | null>(null);
 
   // Long-press lift state for cross-track touch movement
   const [liftedClipId, setLiftedClipId] = useState<string | null>(null);
@@ -339,6 +355,66 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     },
   });
 
+  const handleContainerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 1) return;
+
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      const timelineViewport = timelineViewportRef.current;
+      setMiddlePanPending({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        scrollXOnStart: timelineViewport.scrollX,
+        zoomOnStart: Math.max(0.001, timelineViewport.zoom),
+      });
+    },
+    [timelineViewportRef]
+  );
+
+  useDeferredPointerGesture<MiddlePanPendingState>({
+    pending: middlePanPending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      setScrollFromGestureAnchor(
+        pending.scrollXOnStart,
+        pending.clientX,
+        event.clientX,
+        pending.zoomOnStart
+      );
+    },
+    onEnd: () => {
+      setMiddlePanPending(null);
+    },
+  });
+
+  useEffect(() => {
+    const target = containerRef?.current ?? tracksContainerRef.current;
+    if (!target) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      const { zoom } = timelineViewportRef.current;
+
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = tracksContainerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        setZoomAtPixel(Math.max(0.001, zoom * zoomFactor), x);
+      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        const delta = e.shiftKey ? e.deltaY : e.deltaX;
+        panByPixels(delta);
+      }
+    };
+
+    target.addEventListener("wheel", handleWheel, { passive: false });
+    return () => target.removeEventListener("wheel", handleWheel);
+  }, [containerRef, tracksContainerRef, timelineViewportRef, setZoomAtPixel, panByPixels]);
+
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -368,19 +444,6 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           contentY,
           time,
           clipResult,
-        });
-        return;
-      }
-
-      // Middle mouse for pan
-      if (e.button === 1) {
-        capturePointer(e.pointerId, e.clientX, e.clientY);
-        setDragState({
-          ...INITIAL_DRAG_STATE,
-          type: "playhead",
-          startX: x,
-          startY: contentY,
-          startTime: time,
         });
         return;
       }
@@ -820,8 +883,8 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   return {
     dragState,
     handlePointerDown,
+    handleContainerPointerDown,
     getCursor,
-    containerRef,
     liftedClipId,
     dropClipToTrack,
     cancelLift: resetLift,
