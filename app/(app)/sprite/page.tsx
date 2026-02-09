@@ -4,7 +4,7 @@ import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import {
   EditorProvider,
   useEditorImage,
-  useEditorFrames,
+  useEditorFramesMeta,
   useEditorTools,
   useEditorViewport,
   useEditorAnimation,
@@ -22,6 +22,7 @@ import {
   FrameBackgroundRemovalModals,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
+import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
@@ -58,7 +59,7 @@ import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet } from "@/
 function SpriteEditorMain() {
   const { user } = useAuth();
   const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditorImage();
-  const { frames, setFrames, nextFrameId, setNextFrameId, selectedFrameId, selectedFrameIds, selectedPointIndex, currentFrameIndex } = useEditorFrames();
+  const { frames, setFrames, nextFrameId, setNextFrameId, selectedFrameId, selectedFrameIds, selectedPointIndex } = useEditorFramesMeta();
   const { toolMode, setSpriteToolMode, currentPoints, setCurrentPoints, setIsSpacePressed } = useEditorTools();
   const { setScale, setZoom, setPan } = useEditorViewport();
   const { fps } = useEditorAnimation();
@@ -96,7 +97,7 @@ function SpriteEditorMain() {
     handleRemoveBackground,
   } = useFrameBackgroundRemoval({
     frames,
-    currentFrameIndex,
+    getCurrentFrameIndex: () => useSpriteTrackStore.getState().currentFrameIndex,
     selectedFrameIds,
     setFrames,
     pushHistory,

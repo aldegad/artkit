@@ -8,6 +8,7 @@ export {
   useEditorRefs,
   useEditorImage,
   useEditorFrames,
+  useEditorFramesMeta,
   useEditorTools,
   useEditorViewport,
   useEditorAnimation,
