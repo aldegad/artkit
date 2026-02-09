@@ -35,3 +35,12 @@ export function timelineScrollXFromGestureAnchor(
   const deltaPixels = gestureStartClientX - currentClientX;
   return panTimelineScrollXByPixels(gestureStartScrollX, deltaPixels, zoom);
 }
+
+export function timelineZoomFromWheelDelta(
+  currentZoom: number,
+  deltaY: number,
+  wheelZoomFactor: number
+): number {
+  const zoomFactor = deltaY < 0 ? 1 + wheelZoomFactor : 1 / (1 + wheelZoomFactor);
+  return normalizeTimelineZoom(currentZoom * zoomFactor);
+}
