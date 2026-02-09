@@ -840,6 +840,31 @@ function VideoEditorContent() {
       const outputFileName = `${filePrefix}.mov`;
       let hasAudioInput = false;
 
+      // Offscreen canvas at exact project dimensions
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = project.canvasSize.width;
+      exportCanvas.height = project.canvasSize.height;
+      const exportCtx = exportCanvas.getContext("2d")!;
+      const exportImageCache = new Map<string, HTMLImageElement>();
+      const exportMaskImgCache = new Map<string, HTMLImageElement>();
+      const exportMaskTmpCanvas = document.createElement("canvas");
+      exportMaskTmpCanvas.width = project.canvasSize.width;
+      exportMaskTmpCanvas.height = project.canvasSize.height;
+
+      // Helper: find clip at time for a track
+      const getClipForExport = (trackId: string, time: number) =>
+        clips.find(c => c.trackId === trackId && time >= c.startTime && time < c.startTime + c.duration) || null;
+
+      // Helper: get mask data at time for a track (no live canvas — export uses saved data only)
+      const getMaskForExport = (trackId: string, time: number): string | null => {
+        for (const mask of masksMap.values()) {
+          if (mask.trackId !== trackId) continue;
+          if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
+          return mask.maskData;
+        }
+        return null;
+      };
+
       try {
         setIsExporting(true);
         setExportProgress({
@@ -853,6 +878,31 @@ function VideoEditorContent() {
         const captureWeight = 65;
         const encodeBase = 70;
         const encodeWeight = 28;
+
+        // Pre-load all images used in clips
+        const imageClips = clips.filter(c => c.type === "image");
+        await Promise.all(imageClips.map(c =>
+          new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => { exportImageCache.set(c.sourceUrl, img); resolve(); };
+            img.onerror = () => resolve();
+            img.src = c.sourceUrl;
+          })
+        ));
+
+        // Pre-load all mask images
+        const maskDataUrls = new Set<string>();
+        for (const mask of masksMap.values()) {
+          if (mask.maskData) maskDataUrls.add(mask.maskData);
+        }
+        await Promise.all([...maskDataUrls].map(data =>
+          new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => { exportMaskImgCache.set(data, img); resolve(); };
+            img.onerror = () => resolve();
+            img.src = data;
+          })
+        ));
 
         setExportProgress({
           stage: "Capturing frames",
@@ -869,7 +919,51 @@ function VideoEditorContent() {
           seek(frameTime);
           await waitForAnimationFrames(2);
 
-          const frameBlob = await canvasToBlob(canvas, "image/png");
+          // Render composited frame to offscreen canvas at project dimensions
+          exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+          const sortedTracks = [...tracks].reverse();
+
+          for (const track of sortedTracks) {
+            if (!track.visible) continue;
+            const clip = getClipForExport(track.id, frameTime);
+            if (!clip || !clip.visible || clip.type === "audio") continue;
+
+            let sourceEl: CanvasImageSource | null = null;
+            if (clip.type === "video") {
+              const video = videoElementsRef.current?.get(clip.sourceUrl);
+              if (video && video.readyState >= 2) sourceEl = video;
+            } else if (clip.type === "image") {
+              const img = exportImageCache.get(clip.sourceUrl);
+              if (img && img.complete && img.naturalWidth > 0) sourceEl = img;
+            }
+            if (!sourceEl) continue;
+
+            const maskData = getMaskForExport(clip.trackId, frameTime);
+            if (maskData) {
+              const maskImg = exportMaskImgCache.get(maskData);
+              if (maskImg && maskImg.complete && maskImg.naturalWidth > 0) {
+                const tmpCtx = exportMaskTmpCanvas.getContext("2d");
+                if (tmpCtx) {
+                  tmpCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+                  tmpCtx.globalCompositeOperation = "source-over";
+                  tmpCtx.globalAlpha = 1;
+                  tmpCtx.drawImage(sourceEl, clip.position.x, clip.position.y, clip.sourceSize.width * clip.scale, clip.sourceSize.height * clip.scale);
+                  tmpCtx.globalCompositeOperation = "destination-in";
+                  tmpCtx.drawImage(maskImg, 0, 0, exportCanvas.width, exportCanvas.height);
+                  tmpCtx.globalCompositeOperation = "source-over";
+                  exportCtx.globalAlpha = clip.opacity / 100;
+                  exportCtx.drawImage(exportMaskTmpCanvas, 0, 0);
+                  exportCtx.globalAlpha = 1;
+                }
+              }
+            } else {
+              exportCtx.globalAlpha = clip.opacity / 100;
+              exportCtx.drawImage(sourceEl, clip.position.x, clip.position.y, clip.sourceSize.width * clip.scale, clip.sourceSize.height * clip.scale);
+              exportCtx.globalAlpha = 1;
+            }
+          }
+
+          const frameBlob = await canvasToBlob(exportCanvas, "image/png");
           const frameName = `${filePrefix}-frame-${String(frameIndex).padStart(6, "0")}.png`;
           frameNames.push(frameName);
           await ffmpeg.writeFile(frameName, new Uint8Array(await frameBlob.arrayBuffer()));
@@ -913,6 +1007,8 @@ function VideoEditorContent() {
         ffmpegArgs.push(
           "-c:v",
           "qtrle",
+          "-pix_fmt",
+          "rgb24",
         );
 
         if (hasAudioInput) {
