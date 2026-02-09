@@ -10,7 +10,8 @@ import { removeBackground } from "@/shared/utils/backgroundRemoval";
 
 interface UseFrameBackgroundRemovalOptions {
   frames: SpriteFrame[];
-  currentFrameIndex: number;
+  currentFrameIndex?: number;
+  getCurrentFrameIndex?: () => number;
   selectedFrameIds: number[];
   setFrames: Dispatch<SetStateAction<SpriteFrame[]>>;
   pushHistory: () => void;
@@ -39,6 +40,7 @@ export function useFrameBackgroundRemoval(
   const {
     frames,
     currentFrameIndex,
+    getCurrentFrameIndex,
     selectedFrameIds,
     setFrames,
     pushHistory,
@@ -56,7 +58,8 @@ export function useFrameBackgroundRemoval(
     const framesToProcess: SpriteFrame[] = [];
 
     if (mode === "current") {
-      const currentFrame = frames[currentFrameIndex];
+      const frameIndex = getCurrentFrameIndex ? getCurrentFrameIndex() : (currentFrameIndex ?? 0);
+      const currentFrame = frames[frameIndex];
       if (!currentFrame?.imageData) {
         alert(t.selectFrameForBgRemoval || "No frame available.");
         return;
@@ -129,7 +132,7 @@ export function useFrameBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, frames, currentFrameIndex, selectedFrameIds, setFrames, pushHistory, t]);
+  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, t]);
 
   return {
     isRemovingBackground,

@@ -52,10 +52,26 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const isInitializedRef = useRef(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Get store states for autosave
-  const trackStore = useSpriteTrackStore();
-  const viewportStore = useSpriteViewportStore();
-  const uiStore = useSpriteUIStore();
+  // Track store actions (selector-based to avoid provider-wide re-renders)
+  const setImageSrc = useSpriteTrackStore((s) => s.setImageSrc);
+  const setImageSize = useSpriteTrackStore((s) => s.setImageSize);
+  const restoreTracks = useSpriteTrackStore((s) => s.restoreTracks);
+  const setFps = useSpriteTrackStore((s) => s.setFps);
+  const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
+  const setIsPlaying = useSpriteTrackStore((s) => s.setIsPlaying);
+
+  // Viewport store actions (selector-based)
+  const setZoom = useSpriteViewportStore((s) => s.setZoom);
+  const setPan = useSpriteViewportStore((s) => s.setPan);
+  const setScale = useSpriteViewportStore((s) => s.setScale);
+  const setAnimPreviewZoom = useSpriteViewportStore((s) => s.setAnimPreviewZoom);
+  const setAnimPreviewPan = useSpriteViewportStore((s) => s.setAnimPreviewPan);
+  const setFrameEditZoom = useSpriteViewportStore((s) => s.setFrameEditZoom);
+  const setFrameEditPan = useSpriteViewportStore((s) => s.setFrameEditPan);
+
+  // UI store actions (selector-based)
+  const setProjectName = useSpriteUIStore((s) => s.setProjectName);
+  const setIsAutosaveLoading = useSpriteUIStore((s) => s.setIsAutosaveLoading);
 
   // Autosave: Load saved data on mount
   useEffect(() => {
@@ -63,141 +79,132 @@ export function EditorProvider({ children }: EditorProviderProps) {
       const data = await loadAutosaveData();
       if (data) {
         // Restore image
-        if (data.imageSrc) trackStore.setImageSrc(data.imageSrc);
-        if (data.imageSize) trackStore.setImageSize(data.imageSize);
+        if (data.imageSrc) setImageSrc(data.imageSrc);
+        if (data.imageSize) setImageSize(data.imageSize);
 
         // Restore tracks
         if (data.tracks && data.tracks.length > 0) {
-          trackStore.restoreTracks(data.tracks, data.nextFrameId ?? 1);
+          restoreTracks(data.tracks, data.nextFrameId ?? 1);
         }
-        if (data.fps) trackStore.setFps(data.fps);
-        if (data.currentFrameIndex !== undefined) trackStore.setCurrentFrameIndex(data.currentFrameIndex);
+        if (data.fps) setFps(data.fps);
+        if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
 
         // Restore viewport state
-        if (data.zoom) viewportStore.setZoom(data.zoom);
-        if (data.pan) viewportStore.setPan(data.pan);
-        if (data.scale) viewportStore.setScale(data.scale);
+        if (data.zoom) setZoom(data.zoom);
+        if (data.pan) setPan(data.pan);
+        if (data.scale) setScale(data.scale);
 
         // Restore per-panel viewport state
-        if (data.animPreviewZoom) viewportStore.setAnimPreviewZoom(data.animPreviewZoom);
-        if (data.animPreviewPan) viewportStore.setAnimPreviewPan(data.animPreviewPan);
-        if (data.frameEditZoom) viewportStore.setFrameEditZoom(data.frameEditZoom);
-        if (data.frameEditPan) viewportStore.setFrameEditPan(data.frameEditPan);
+        if (data.animPreviewZoom) setAnimPreviewZoom(data.animPreviewZoom);
+        if (data.animPreviewPan) setAnimPreviewPan(data.animPreviewPan);
+        if (data.frameEditZoom) setFrameEditZoom(data.frameEditZoom);
+        if (data.frameEditPan) setFrameEditPan(data.frameEditPan);
 
         // Restore animation state
-        if (data.isPlaying !== undefined) trackStore.setIsPlaying(data.isPlaying);
+        if (data.isPlaying !== undefined) setIsPlaying(data.isPlaying);
 
         // Restore UI state
-        if (data.projectName) uiStore.setProjectName(data.projectName);
+        if (data.projectName) setProjectName(data.projectName);
       }
       isInitializedRef.current = true;
-      uiStore.setIsAutosaveLoading(false);
+      setIsAutosaveLoading(false);
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Autosave: Save data when key states change (debounced)
-  useEffect(() => {
+  const queueAutosave = useCallback(() => {
     if (!isInitializedRef.current) return;
-
     if (autosaveTimeoutRef.current) {
       clearTimeout(autosaveTimeoutRef.current);
     }
-
     autosaveTimeoutRef.current = setTimeout(() => {
-      // Read panel viewport from getState() to avoid subscribing to rapid changes
-      const vpSnap = useSpriteViewportStore.getState();
+      const ts = useSpriteTrackStore.getState();
+      const vs = useSpriteViewportStore.getState();
+      const us = useSpriteUIStore.getState();
+
       void saveAutosaveData({
-        imageSrc: trackStore.imageSrc,
-        imageSize: trackStore.imageSize,
-        tracks: trackStore.tracks,
-        nextFrameId: trackStore.nextFrameId,
-        fps: trackStore.fps,
-        currentFrameIndex: trackStore.currentFrameIndex,
-        isPlaying: trackStore.isPlaying,
-        zoom: viewportStore.zoom,
-        pan: viewportStore.pan,
-        scale: viewportStore.scale,
-        projectName: uiStore.projectName,
-        animPreviewZoom: vpSnap.animPreviewZoom,
-        animPreviewPan: vpSnap.animPreviewPan,
-        frameEditZoom: vpSnap.frameEditZoom,
-        frameEditPan: vpSnap.frameEditPan,
+        imageSrc: ts.imageSrc,
+        imageSize: ts.imageSize,
+        tracks: ts.tracks,
+        nextFrameId: ts.nextFrameId,
+        fps: ts.fps,
+        currentFrameIndex: ts.currentFrameIndex,
+        isPlaying: ts.isPlaying,
+        zoom: vs.zoom,
+        pan: vs.pan,
+        scale: vs.scale,
+        projectName: us.projectName,
+        animPreviewZoom: vs.animPreviewZoom,
+        animPreviewPan: vs.animPreviewPan,
+        frameEditZoom: vs.frameEditZoom,
+        frameEditPan: vs.frameEditPan,
       });
     }, AUTOSAVE_DEBOUNCE_MS);
+  }, []);
+
+  // Autosave subscriptions (no provider re-renders)
+  useEffect(() => {
+    const unsubTrack = useSpriteTrackStore.subscribe((state, prev) => {
+      if (
+        state.imageSrc === prev.imageSrc &&
+        state.imageSize === prev.imageSize &&
+        state.tracks === prev.tracks &&
+        state.nextFrameId === prev.nextFrameId &&
+        state.fps === prev.fps &&
+        state.currentFrameIndex === prev.currentFrameIndex &&
+        state.isPlaying === prev.isPlaying
+      ) {
+        return;
+      }
+      queueAutosave();
+    });
+
+    const unsubViewport = useSpriteViewportStore.subscribe((state, prev) => {
+      if (
+        state.zoom === prev.zoom &&
+        state.pan.x === prev.pan.x &&
+        state.pan.y === prev.pan.y &&
+        state.scale === prev.scale &&
+        state.animPreviewZoom === prev.animPreviewZoom &&
+        state.animPreviewPan.x === prev.animPreviewPan.x &&
+        state.animPreviewPan.y === prev.animPreviewPan.y &&
+        state.frameEditZoom === prev.frameEditZoom &&
+        state.frameEditPan.x === prev.frameEditPan.x &&
+        state.frameEditPan.y === prev.frameEditPan.y
+      ) {
+        return;
+      }
+      queueAutosave();
+    });
+
+    const unsubUI = useSpriteUIStore.subscribe((state, prev) => {
+      if (state.projectName === prev.projectName) return;
+      queueAutosave();
+    });
 
     return () => {
+      unsubTrack();
+      unsubViewport();
+      unsubUI();
       if (autosaveTimeoutRef.current) {
         clearTimeout(autosaveTimeoutRef.current);
       }
     };
-  }, [
-    trackStore.imageSrc,
-    trackStore.imageSize,
-    trackStore.tracks,
-    trackStore.nextFrameId,
-    trackStore.fps,
-    trackStore.currentFrameIndex,
-    trackStore.isPlaying,
-    viewportStore.zoom,
-    viewportStore.pan,
-    viewportStore.scale,
-    uiStore.projectName,
-  ]);
+  }, [queueAutosave]);
 
-  // Separate subscribe for panel viewport changes (avoids re-rendering EditorProvider)
-  useEffect(() => {
-    const panelAutosaveRef = { timeout: null as NodeJS.Timeout | null };
-    const unsub = useSpriteViewportStore.subscribe(
-      (state, prev) => {
-        if (!isInitializedRef.current) return;
-        if (
-          state.animPreviewZoom === prev.animPreviewZoom &&
-          state.animPreviewPan === prev.animPreviewPan &&
-          state.frameEditZoom === prev.frameEditZoom &&
-          state.frameEditPan === prev.frameEditPan
-        ) return;
-        if (panelAutosaveRef.timeout) clearTimeout(panelAutosaveRef.timeout);
-        panelAutosaveRef.timeout = setTimeout(() => {
-          const ts = useSpriteTrackStore.getState();
-          const vs = useSpriteViewportStore.getState();
-          const us = useSpriteUIStore.getState();
-          void saveAutosaveData({
-            imageSrc: ts.imageSrc,
-            imageSize: ts.imageSize,
-            tracks: ts.tracks,
-            nextFrameId: ts.nextFrameId,
-            fps: ts.fps,
-            currentFrameIndex: ts.currentFrameIndex,
-            isPlaying: ts.isPlaying,
-            zoom: vs.zoom,
-            pan: vs.pan,
-            scale: vs.scale,
-            projectName: us.projectName,
-            animPreviewZoom: vs.animPreviewZoom,
-            animPreviewPan: vs.animPreviewPan,
-            frameEditZoom: vs.frameEditZoom,
-            frameEditPan: vs.frameEditPan,
-          });
-        }, AUTOSAVE_DEBOUNCE_MS);
-      },
-    );
-    return () => {
-      unsub();
-      if (panelAutosaveRef.timeout) clearTimeout(panelAutosaveRef.timeout);
-    };
-  }, []);
-
-  const refsValue: EditorRefsContextValue = {
-    canvasRef,
-    canvasContainerRef,
-    previewCanvasRef,
-    imageRef,
-    animationRef,
-    lastFrameTimeRef,
-    didPanOrDragRef,
-  };
+  const refsValue: EditorRefsContextValue = useMemo(
+    () => ({
+      canvasRef,
+      canvasContainerRef,
+      previewCanvasRef,
+      imageRef,
+      animationRef,
+      lastFrameTimeRef,
+      didPanOrDragRef,
+    }),
+    [],
+  );
 
   return <EditorRefsContext.Provider value={refsValue}>{children}</EditorRefsContext.Provider>;
 }
@@ -278,6 +285,53 @@ export function useEditorFrames() {
   };
 }
 
+export function useEditorFramesMeta() {
+  const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
+  const tracks = useSpriteTrackStore((s) => s.tracks);
+  const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
+  const nextFrameId = useSpriteTrackStore((s) => s.nextFrameId);
+  const setNextFrameId = useSpriteTrackStore((s) => s.setNextFrameId);
+  const selectedFrameId = useSpriteTrackStore((s) => s.selectedFrameId);
+  const setSelectedFrameId = useSpriteTrackStore((s) => s.setSelectedFrameId);
+  const selectedFrameIds = useSpriteTrackStore((s) => s.selectedFrameIds);
+  const setSelectedFrameIds = useSpriteTrackStore((s) => s.setSelectedFrameIds);
+  const toggleSelectedFrameId = useSpriteTrackStore((s) => s.toggleSelectedFrameId);
+  const selectFrameRange = useSpriteTrackStore((s) => s.selectFrameRange);
+  const selectedPointIndex = useSpriteTrackStore((s) => s.selectedPointIndex);
+  const setSelectedPointIndex = useSpriteTrackStore((s) => s.setSelectedPointIndex);
+
+  const frames = useMemo(() => {
+    const activeTrack = tracks.find((t) => t.id === activeTrackId);
+    return activeTrack?.frames ?? [];
+  }, [tracks, activeTrackId]);
+
+  const setFrames = useCallback(
+    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
+      if (!activeTrackId) return;
+      const activeTrack = tracks.find((t) => t.id === activeTrackId);
+      if (!activeTrack) return;
+      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
+      updateTrack(activeTrackId, { frames: newFrames });
+    },
+    [activeTrackId, tracks, updateTrack],
+  );
+
+  return {
+    frames,
+    setFrames,
+    nextFrameId,
+    setNextFrameId,
+    selectedFrameId,
+    setSelectedFrameId,
+    selectedFrameIds,
+    setSelectedFrameIds,
+    toggleSelectedFrameId,
+    selectFrameRange,
+    selectedPointIndex,
+    setSelectedPointIndex,
+  };
+}
+
 export function useEditorTools() {
   const toolMode = useSpriteToolStore((s) => s.toolMode);
   const setSpriteToolMode = useSpriteToolStore((s) => s.setSpriteToolMode);
@@ -300,90 +354,143 @@ export function useEditorTools() {
 }
 
 export function useEditorViewport() {
-  const store = useSpriteViewportStore();
+  const zoom = useSpriteViewportStore((s) => s.zoom);
+  const setZoom = useSpriteViewportStore((s) => s.setZoom);
+  const pan = useSpriteViewportStore((s) => s.pan);
+  const setPan = useSpriteViewportStore((s) => s.setPan);
+  const scale = useSpriteViewportStore((s) => s.scale);
+  const setScale = useSpriteViewportStore((s) => s.setScale);
+  const canvasHeight = useSpriteViewportStore((s) => s.canvasHeight);
+  const setCanvasHeight = useSpriteViewportStore((s) => s.setCanvasHeight);
+  const isCanvasCollapsed = useSpriteViewportStore((s) => s.isCanvasCollapsed);
+  const setIsCanvasCollapsed = useSpriteViewportStore((s) => s.setIsCanvasCollapsed);
+  const getTransformParams = useSpriteViewportStore((s) => s.getTransformParams);
+
   return {
-    zoom: store.zoom,
-    setZoom: store.setZoom,
-    pan: store.pan,
-    setPan: store.setPan,
-    scale: store.scale,
-    setScale: store.setScale,
-    canvasHeight: store.canvasHeight,
-    setCanvasHeight: store.setCanvasHeight,
-    isCanvasCollapsed: store.isCanvasCollapsed,
-    setIsCanvasCollapsed: store.setIsCanvasCollapsed,
-    getTransformParams: store.getTransformParams,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    scale,
+    setScale,
+    canvasHeight,
+    setCanvasHeight,
+    isCanvasCollapsed,
+    setIsCanvasCollapsed,
+    getTransformParams,
   };
 }
 
 export function useEditorAnimation() {
-  const trackStore = useSpriteTrackStore();
+  const isPlaying = useSpriteTrackStore((s) => s.isPlaying);
+  const setIsPlaying = useSpriteTrackStore((s) => s.setIsPlaying);
+  const fps = useSpriteTrackStore((s) => s.fps);
+  const setFps = useSpriteTrackStore((s) => s.setFps);
   const { animationRef, lastFrameTimeRef } = useEditorRefs();
+
   return {
-    isPlaying: trackStore.isPlaying,
-    setIsPlaying: trackStore.setIsPlaying,
-    fps: trackStore.fps,
-    setFps: trackStore.setFps,
+    isPlaying,
+    setIsPlaying,
+    fps,
+    setFps,
     animationRef,
     lastFrameTimeRef,
   };
 }
 
 export function useEditorDrag() {
-  const store = useSpriteDragStore();
+  const isDragging = useSpriteDragStore((s) => s.isDragging);
+  const setIsDragging = useSpriteDragStore((s) => s.setIsDragging);
+  const dragStart = useSpriteDragStore((s) => s.dragStart);
+  const setDragStart = useSpriteDragStore((s) => s.setDragStart);
+  const isPanning = useSpriteDragStore((s) => s.isPanning);
+  const setIsPanning = useSpriteDragStore((s) => s.setIsPanning);
+  const lastPanPoint = useSpriteDragStore((s) => s.lastPanPoint);
+  const setLastPanPoint = useSpriteDragStore((s) => s.setLastPanPoint);
+  const draggedFrameId = useSpriteDragStore((s) => s.draggedFrameId);
+  const setDraggedFrameId = useSpriteDragStore((s) => s.setDraggedFrameId);
+  const dragOverIndex = useSpriteDragStore((s) => s.dragOverIndex);
+  const setDragOverIndex = useSpriteDragStore((s) => s.setDragOverIndex);
+  const draggedTrackId = useSpriteDragStore((s) => s.draggedTrackId);
+  const setDraggedTrackId = useSpriteDragStore((s) => s.setDraggedTrackId);
+  const dragOverTrackIndex = useSpriteDragStore((s) => s.dragOverTrackIndex);
+  const setDragOverTrackIndex = useSpriteDragStore((s) => s.setDragOverTrackIndex);
+  const editingOffsetFrameId = useSpriteDragStore((s) => s.editingOffsetFrameId);
+  const setEditingOffsetFrameId = useSpriteDragStore((s) => s.setEditingOffsetFrameId);
+  const offsetDragStart = useSpriteDragStore((s) => s.offsetDragStart);
+  const setOffsetDragStart = useSpriteDragStore((s) => s.setOffsetDragStart);
+  const isResizing = useSpriteDragStore((s) => s.isResizing);
+  const setIsResizing = useSpriteDragStore((s) => s.setIsResizing);
   const { didPanOrDragRef } = useEditorRefs();
+
   return {
-    isDragging: store.isDragging,
-    setIsDragging: store.setIsDragging,
-    dragStart: store.dragStart,
-    setDragStart: store.setDragStart,
-    isPanning: store.isPanning,
-    setIsPanning: store.setIsPanning,
-    lastPanPoint: store.lastPanPoint,
-    setLastPanPoint: store.setLastPanPoint,
-    draggedFrameId: store.draggedFrameId,
-    setDraggedFrameId: store.setDraggedFrameId,
-    dragOverIndex: store.dragOverIndex,
-    setDragOverIndex: store.setDragOverIndex,
-    draggedTrackId: store.draggedTrackId,
-    setDraggedTrackId: store.setDraggedTrackId,
-    dragOverTrackIndex: store.dragOverTrackIndex,
-    setDragOverTrackIndex: store.setDragOverTrackIndex,
-    editingOffsetFrameId: store.editingOffsetFrameId,
-    setEditingOffsetFrameId: store.setEditingOffsetFrameId,
-    offsetDragStart: store.offsetDragStart,
-    setOffsetDragStart: store.setOffsetDragStart,
-    isResizing: store.isResizing,
-    setIsResizing: store.setIsResizing,
+    isDragging,
+    setIsDragging,
+    dragStart,
+    setDragStart,
+    isPanning,
+    setIsPanning,
+    lastPanPoint,
+    setLastPanPoint,
+    draggedFrameId,
+    setDraggedFrameId,
+    dragOverIndex,
+    setDragOverIndex,
+    draggedTrackId,
+    setDraggedTrackId,
+    dragOverTrackIndex,
+    setDragOverTrackIndex,
+    editingOffsetFrameId,
+    setEditingOffsetFrameId,
+    offsetDragStart,
+    setOffsetDragStart,
+    isResizing,
+    setIsResizing,
     didPanOrDragRef,
   };
 }
 
 export function useEditorWindows() {
-  const store = useSpriteUIStore();
+  const isPreviewWindowOpen = useSpriteUIStore((s) => s.isPreviewWindowOpen);
+  const setIsPreviewWindowOpen = useSpriteUIStore((s) => s.setIsPreviewWindowOpen);
+  const isFrameEditOpen = useSpriteUIStore((s) => s.isFrameEditOpen);
+  const setIsFrameEditOpen = useSpriteUIStore((s) => s.setIsFrameEditOpen);
+  const isProjectListOpen = useSpriteUIStore((s) => s.isProjectListOpen);
+  const setIsProjectListOpen = useSpriteUIStore((s) => s.setIsProjectListOpen);
+  const isSpriteSheetImportOpen = useSpriteUIStore((s) => s.isSpriteSheetImportOpen);
+  const setIsSpriteSheetImportOpen = useSpriteUIStore((s) => s.setIsSpriteSheetImportOpen);
+  const isVideoImportOpen = useSpriteUIStore((s) => s.isVideoImportOpen);
+  const setIsVideoImportOpen = useSpriteUIStore((s) => s.setIsVideoImportOpen);
+  const pendingVideoFile = useSpriteUIStore((s) => s.pendingVideoFile);
+  const setPendingVideoFile = useSpriteUIStore((s) => s.setPendingVideoFile);
+
   return {
-    isPreviewWindowOpen: store.isPreviewWindowOpen,
-    setIsPreviewWindowOpen: store.setIsPreviewWindowOpen,
-    isFrameEditOpen: store.isFrameEditOpen,
-    setIsFrameEditOpen: store.setIsFrameEditOpen,
-    isProjectListOpen: store.isProjectListOpen,
-    setIsProjectListOpen: store.setIsProjectListOpen,
-    isSpriteSheetImportOpen: store.isSpriteSheetImportOpen,
-    setIsSpriteSheetImportOpen: store.setIsSpriteSheetImportOpen,
-    isVideoImportOpen: store.isVideoImportOpen,
-    setIsVideoImportOpen: store.setIsVideoImportOpen,
-    pendingVideoFile: store.pendingVideoFile,
-    setPendingVideoFile: store.setPendingVideoFile,
+    isPreviewWindowOpen,
+    setIsPreviewWindowOpen,
+    isFrameEditOpen,
+    setIsFrameEditOpen,
+    isProjectListOpen,
+    setIsProjectListOpen,
+    isSpriteSheetImportOpen,
+    setIsSpriteSheetImportOpen,
+    isVideoImportOpen,
+    setIsVideoImportOpen,
+    pendingVideoFile,
+    setPendingVideoFile,
   };
 }
 
 export function useEditorBrush() {
-  const store = useSpriteToolStore();
+  const brushColor = useSpriteToolStore((s) => s.brushColor);
+  const setBrushColor = useSpriteToolStore((s) => s.setBrushColor);
+  const brushSize = useSpriteToolStore((s) => s.brushSize);
+  const setBrushSize = useSpriteToolStore((s) => s.setBrushSize);
+
   return {
-    brushColor: store.brushColor,
-    setBrushColor: store.setBrushColor,
-    brushSize: store.brushSize,
-    setBrushSize: store.setBrushSize,
+    brushColor,
+    setBrushColor,
+    brushSize,
+    setBrushSize,
   };
 }
 
@@ -438,91 +545,108 @@ export function useEditorTracks() {
 }
 
 export function useEditorProject() {
-  const uiStore = useSpriteUIStore();
-  const trackStore = useSpriteTrackStore();
-  const viewportStore = useSpriteViewportStore();
-  const toolStore = useSpriteToolStore();
-  const dragStore = useSpriteDragStore();
+  const projectName = useSpriteUIStore((s) => s.projectName);
+  const setProjectName = useSpriteUIStore((s) => s.setProjectName);
+  const savedProjects = useSpriteUIStore((s) => s.savedProjects);
+  const setSavedSpriteProjects = useSpriteUIStore((s) => s.setSavedSpriteProjects);
+  const currentProjectId = useSpriteUIStore((s) => s.currentProjectId);
+  const setCurrentProjectId = useSpriteUIStore((s) => s.setCurrentProjectId);
+  const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
+  const resetUI = useSpriteUIStore((s) => s.reset);
+  const resetTrack = useSpriteTrackStore((s) => s.reset);
+  const resetViewport = useSpriteViewportStore((s) => s.reset);
+  const resetTool = useSpriteToolStore((s) => s.reset);
+  const resetDrag = useSpriteDragStore((s) => s.reset);
   const refs = useEditorRefs();
 
   const newProject = useCallback(() => {
-    trackStore.reset();
-    viewportStore.reset();
-    toolStore.reset();
-    dragStore.reset();
-    uiStore.reset();
+    resetTrack();
+    resetViewport();
+    resetTool();
+    resetDrag();
+    resetUI();
     refs.imageRef.current = null;
     void clearAutosaveData();
-  }, [trackStore, viewportStore, toolStore, dragStore, uiStore, refs.imageRef]);
+  }, [resetTrack, resetViewport, resetTool, resetDrag, resetUI, refs.imageRef]);
 
   return {
-    projectName: uiStore.projectName,
-    setProjectName: uiStore.setProjectName,
-    savedProjects: uiStore.savedProjects,
-    setSavedSpriteProjects: uiStore.setSavedSpriteProjects,
-    currentProjectId: uiStore.currentProjectId,
-    setCurrentProjectId: uiStore.setCurrentProjectId,
+    projectName,
+    setProjectName,
+    savedProjects,
+    setSavedSpriteProjects,
+    currentProjectId,
+    setCurrentProjectId,
     newProject,
-    isAutosaveLoading: uiStore.isAutosaveLoading,
+    isAutosaveLoading,
   };
 }
 
 export function useEditorClipboard() {
-  const uiStore = useSpriteUIStore();
-  const trackStore = useSpriteTrackStore();
-
-  const frames = trackStore.getActiveTrackFrames();
+  const copyFrameToClipboard = useSpriteUIStore((s) => s.copyFrame);
+  const getClipboardFrame = useSpriteUIStore((s) => s.getClipboardFrame);
+  const copyTrackToClipboard = useSpriteUIStore((s) => s.copyTrack);
+  const getClipboardTrack = useSpriteUIStore((s) => s.getClipboardTrack);
+  const clipboardFrame = useSpriteUIStore((s) => s.clipboardFrame);
+  const clipboardTrack = useSpriteUIStore((s) => s.clipboardTrack);
+  const pushHistory = useSpriteTrackStore((s) => s.pushHistory);
+  const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
+  const setNextFrameId = useSpriteTrackStore((s) => s.setNextFrameId);
+  const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
+  const addTrack = useSpriteTrackStore((s) => s.addTrack);
 
   const copyFrame = useCallback(() => {
+    const state = useSpriteTrackStore.getState();
+    const frames = state.getActiveTrackFrames();
     if (frames.length === 0) return;
-    const frameToCopy = frames[trackStore.currentFrameIndex];
+    const frameToCopy = frames[state.currentFrameIndex];
     if (frameToCopy) {
-      uiStore.copyFrame(frameToCopy);
+      copyFrameToClipboard(frameToCopy);
     }
-  }, [frames, trackStore.currentFrameIndex, uiStore]);
+  }, [copyFrameToClipboard]);
 
   const pasteFrame = useCallback(() => {
-    const clipboardFrame = uiStore.getClipboardFrame();
-    if (!clipboardFrame) return;
-    const { activeTrackId, tracks } = useSpriteTrackStore.getState();
+    const copiedFrame = getClipboardFrame();
+    if (!copiedFrame) return;
+    const state = useSpriteTrackStore.getState();
+    const { activeTrackId, tracks } = state;
     if (!activeTrackId) return;
     const activeTrack = tracks.find((t) => t.id === activeTrackId);
     if (!activeTrack) return;
 
     const newFrame: SpriteFrame = {
-      ...deepCopyFrame(clipboardFrame),
-      id: trackStore.nextFrameId,
+      ...deepCopyFrame(copiedFrame),
+      id: state.nextFrameId,
     };
 
-    trackStore.pushHistory();
-    const insertIndex = trackStore.currentFrameIndex + 1;
+    pushHistory();
+    const insertIndex = state.currentFrameIndex + 1;
     const newFrames = [...activeTrack.frames];
     newFrames.splice(insertIndex, 0, newFrame);
-    trackStore.updateTrack(activeTrackId, { frames: newFrames });
-    trackStore.setNextFrameId((prev: number) => prev + 1);
-    trackStore.setCurrentFrameIndex(insertIndex);
-  }, [uiStore, trackStore]);
+    updateTrack(activeTrackId, { frames: newFrames });
+    setNextFrameId((prev: number) => prev + 1);
+    setCurrentFrameIndex(insertIndex);
+  }, [getClipboardFrame, pushHistory, updateTrack, setNextFrameId, setCurrentFrameIndex]);
 
   const copyTrack = useCallback(() => {
-    const activeTrack = trackStore.getActiveTrack();
+    const activeTrack = useSpriteTrackStore.getState().getActiveTrack();
     if (activeTrack) {
-      uiStore.copyTrack(activeTrack);
+      copyTrackToClipboard(activeTrack);
     }
-  }, [trackStore, uiStore]);
+  }, [copyTrackToClipboard]);
 
   const pasteTrack = useCallback(() => {
-    const clipboard = uiStore.getClipboardTrack();
+    const clipboard = getClipboardTrack();
     if (!clipboard) return;
-    trackStore.pushHistory();
-    trackStore.addTrack(clipboard.name + " (Copy)", clipboard.frames);
-  }, [uiStore, trackStore]);
+    pushHistory();
+    addTrack(clipboard.name + " (Copy)", clipboard.frames);
+  }, [getClipboardTrack, pushHistory, addTrack]);
 
   return {
     copyFrame,
     pasteFrame,
-    clipboardFrame: uiStore.clipboardFrame,
+    clipboardFrame,
     copyTrack,
     pasteTrack,
-    clipboardTrack: uiStore.clipboardTrack,
+    clipboardTrack,
   };
 }

@@ -1,21 +1,145 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useEditorFrames, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag, useEditorWindows } from "../contexts/SpriteEditorContext";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag, useEditorWindows } from "../contexts/SpriteEditorContext";
 import { useLayout } from "../contexts/LayoutContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar } from "../../../shared/components";
 import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
+import { useSpriteTrackStore } from "../stores";
+
+interface FrameCardProps {
+  frame: SpriteFrame;
+  idx: number;
+  timelineMode: "reorder" | "offset";
+  showActiveOnly: boolean;
+  isPlaying: boolean;
+  isCurrent: boolean;
+  isSelected: boolean;
+  isDragOver: boolean;
+  isDragged: boolean;
+  isEditingOffset: boolean;
+  onDragStart: (e: React.DragEvent, frameId: number) => void;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent, dropIndex: number) => void;
+  onDragEnd: () => void;
+  onOffsetMouseDown: (e: React.MouseEvent, frameId: number) => void;
+  onFrameClick: (e: React.MouseEvent, idx: number, frame: SpriteFrame) => void;
+  onFrameDoubleClick: (idx: number) => void;
+  onToggleDisabled: (frameId: number) => void;
+}
+
+const FrameCard = memo(function FrameCard({
+  frame,
+  idx,
+  timelineMode,
+  showActiveOnly,
+  isPlaying,
+  isCurrent,
+  isSelected,
+  isDragOver,
+  isDragged,
+  isEditingOffset,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  onOffsetMouseDown,
+  onFrameClick,
+  onFrameDoubleClick,
+  onToggleDisabled,
+}: FrameCardProps) {
+  return (
+    <div
+      draggable={timelineMode === "reorder" && !showActiveOnly}
+      onDragStart={(e) => timelineMode === "reorder" && !showActiveOnly && onDragStart(e, frame.id)}
+      onDragOver={(e) => timelineMode === "reorder" && !showActiveOnly && onDragOver(e, idx)}
+      onDragLeave={timelineMode === "reorder" && !showActiveOnly ? onDragLeave : undefined}
+      onDrop={(e) => timelineMode === "reorder" && !showActiveOnly && onDrop(e, idx)}
+      onDragEnd={timelineMode === "reorder" && !showActiveOnly ? onDragEnd : undefined}
+      onMouseDown={(e) => timelineMode === "offset" && onOffsetMouseDown(e, frame.id)}
+      onClick={(e) => onFrameClick(e, idx, frame)}
+      onDoubleClick={() => onFrameDoubleClick(idx)}
+      className={`
+        relative rounded-lg border-2 transition-all
+        ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
+        ${isPlaying && isCurrent ? "border-accent-warning shadow-sm shadow-accent-warning/30" : isSelected ? "border-accent-warning/60 bg-accent-warning/15" : isCurrent ? "border-accent-primary shadow-sm" : "border-border-default"}
+        ${isDragOver ? "border-accent-primary! scale-105" : ""}
+        ${isDragged ? "opacity-50" : ""}
+        ${isEditingOffset ? "border-accent-warning!" : ""}
+        ${frame.disabled ? "opacity-40" : ""}
+      `}
+    >
+      {/* Frame number - on active or playing frame */}
+      {isCurrent && (
+        <div className={`absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 ${isPlaying ? "bg-accent-warning text-white" : "bg-text-primary text-surface-primary"}`}>
+          {idx + 1}
+        </div>
+      )}
+
+      {/* Skip toggle button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleDisabled(frame.id);
+        }}
+        className={`absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
+          frame.disabled
+            ? "bg-accent-warning/90 text-white"
+            : "bg-surface-tertiary/60 text-text-tertiary opacity-0 group-hover:opacity-100 hover:opacity-100!"
+        }`}
+        title={frame.disabled ? "건너뛰기 해제" : "건너뛰기"}
+      >
+        {frame.disabled ? (
+          <EyeClosedIcon className="w-2.5 h-2.5" />
+        ) : (
+          <EyeOpenIcon className="w-2.5 h-2.5" />
+        )}
+      </button>
+
+      {/* SKIP badge */}
+      {frame.disabled && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-accent-warning/80 text-white text-[8px] font-bold px-1.5 py-0.5 rounded pointer-events-none">
+          SKIP
+        </div>
+      )}
+
+      {/* Frame image */}
+      <div className="checkerboard aspect-5/4 rounded flex items-center justify-center overflow-hidden">
+        {frame.imageData && (
+          <img
+            src={frame.imageData}
+            alt={frame.name}
+            className="max-w-full max-h-full object-contain"
+            style={{
+              transform: `translate(${frame.offset.x}px, ${frame.offset.y}px)`,
+            }}
+            draggable={false}
+          />
+        )}
+      </div>
+
+      {/* Offset display */}
+      {(frame.offset.x !== 0 || frame.offset.y !== 0) && (
+        <div className="absolute bottom-0 left-0 right-0 bg-surface-tertiary/90 text-[8px] text-center py-0.5 rounded-b text-text-secondary font-mono">
+          {frame.offset.x},{frame.offset.y}
+        </div>
+      )}
+    </div>
+  );
+});
 
 export default function FrameStrip() {
   const {
     frames, setFrames, nextFrameId, setNextFrameId,
-    currentFrameIndex, setCurrentFrameIndex,
     selectedFrameId, setSelectedFrameId,
     selectedFrameIds, setSelectedFrameIds,
     toggleSelectedFrameId, selectFrameRange,
-  } = useEditorFrames();
+  } = useEditorFramesMeta();
+  const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const { isPlaying, setIsPlaying } = useEditorAnimation();
   const { timelineMode, setTimelineMode } = useEditorTools();
   const { pushHistory } = useEditorHistory();
@@ -30,8 +154,55 @@ export default function FrameStrip() {
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [showNthPopover, setShowNthPopover] = useState(false);
   const [nthValue, setNthValue] = useState(2);
+  const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
   const { openFloatingWindow } = useLayout();
   const { t } = useLanguage();
+
+  const getCurrentFrameIndex = useCallback(() => useSpriteTrackStore.getState().currentFrameIndex, []);
+
+  // Throttle visual frame indicator updates while playing to reduce timeline grid re-renders.
+  useEffect(() => {
+    const MAX_UI_FPS_WHILE_PLAYING = 12;
+    const MIN_FRAME_MS = 1000 / MAX_UI_FPS_WHILE_PLAYING;
+    let rafId: number | null = null;
+    let pendingIndex: number | null = null;
+    let lastPaintTs = 0;
+
+    const flush = (ts: number) => {
+      rafId = null;
+      if (pendingIndex === null) return;
+      if (!isPlaying || ts - lastPaintTs >= MIN_FRAME_MS) {
+        lastPaintTs = ts;
+        setDisplayCurrentFrameIndex(pendingIndex);
+        pendingIndex = null;
+        return;
+      }
+      rafId = requestAnimationFrame(flush);
+    };
+
+    const unsub = useSpriteTrackStore.subscribe((state, prev) => {
+      if (state.currentFrameIndex === prev.currentFrameIndex) return;
+
+      if (!isPlaying) {
+        setDisplayCurrentFrameIndex(state.currentFrameIndex);
+        return;
+      }
+
+      pendingIndex = state.currentFrameIndex;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(flush);
+      }
+    });
+
+    if (!isPlaying) {
+      setDisplayCurrentFrameIndex(useSpriteTrackStore.getState().currentFrameIndex);
+    }
+
+    return () => {
+      unsub();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying]);
 
   // Timeline drag handlers (reorder)
   const handleDragStart = useCallback(
@@ -115,6 +286,7 @@ export default function FrameStrip() {
 
   // Delete active frame
   const deleteActiveFrame = useCallback(() => {
+    const currentFrameIndex = getCurrentFrameIndex();
     if (frames.length === 0) return;
     const frame = frames[currentFrameIndex];
     if (!frame) return;
@@ -126,11 +298,12 @@ export default function FrameStrip() {
     if (currentFrameIndex >= frames.length - 1 && currentFrameIndex > 0) {
       setCurrentFrameIndex(currentFrameIndex - 1);
     }
-  }, [frames, currentFrameIndex, setFrames, selectedFrameId, setSelectedFrameId, pushHistory, setCurrentFrameIndex]);
+  }, [frames, getCurrentFrameIndex, setFrames, selectedFrameId, setSelectedFrameId, pushHistory, setCurrentFrameIndex]);
 
   // Toggle disabled on a single frame
   const toggleFrameDisabled = useCallback(
     (frameId: number) => {
+      const currentFrameIndex = getCurrentFrameIndex();
       pushHistory();
       const newFrames = frames.map((f: SpriteFrame) =>
         f.id === frameId ? { ...f, disabled: !f.disabled } : f,
@@ -148,11 +321,12 @@ export default function FrameStrip() {
         }
       }
     },
-    [frames, currentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex],
+    [frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex],
   );
 
   // Toggle disabled on selected frames (batch)
   const toggleSelectedFramesDisabled = useCallback(() => {
+    const currentFrameIndex = getCurrentFrameIndex();
     if (selectedFrameIds.length === 0) return;
     pushHistory();
     // If any selected frame is enabled, disable all; otherwise enable all
@@ -174,10 +348,11 @@ export default function FrameStrip() {
         if (first >= 0) setCurrentFrameIndex(first);
       }
     }
-  }, [selectedFrameIds, frames, currentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
+  }, [selectedFrameIds, frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
 
   // Nth skip: mark every non-nth frame as disabled (instead of deleting)
   const applyNthSkip = useCallback(() => {
+    const currentFrameIndex = getCurrentFrameIndex();
     if (frames.length === 0 || nthValue < 1) return;
     pushHistory();
     const startIndex = currentFrameIndex;
@@ -195,7 +370,7 @@ export default function FrameStrip() {
       if (next >= 0) setCurrentFrameIndex(next);
     }
     setShowNthPopover(false);
-  }, [frames, currentFrameIndex, nthValue, pushHistory, setFrames, setCurrentFrameIndex]);
+  }, [frames, getCurrentFrameIndex, nthValue, pushHistory, setFrames, setCurrentFrameIndex]);
 
   // Clear all disabled states
   const clearAllDisabled = useCallback(() => {
@@ -274,15 +449,54 @@ export default function FrameStrip() {
     [nextFrameId, setNextFrameId, pushHistory, setCurrentFrameIndex, addTrack],
   );
 
+  const handleFrameClick = useCallback(
+    (e: React.MouseEvent, idx: number, frame: SpriteFrame) => {
+      setIsPlaying(false);
+      const anchorFrameId = useSpriteTrackStore.getState().selectedFrameId;
+
+      if (e.shiftKey && anchorFrameId !== null) {
+        selectFrameRange(anchorFrameId, frame.id);
+      } else if (e.ctrlKey || e.metaKey) {
+        toggleSelectedFrameId(frame.id);
+      } else {
+        setSelectedFrameIds([frame.id]);
+      }
+
+      if (!frame.disabled) {
+        setCurrentFrameIndex(idx);
+      }
+      setSelectedFrameId(frame.id);
+    },
+    [setIsPlaying, selectFrameRange, toggleSelectedFrameId, setSelectedFrameIds, setCurrentFrameIndex, setSelectedFrameId],
+  );
+
+  const handleFrameDoubleClick = useCallback(
+    (idx: number) => {
+      setCurrentFrameIndex(idx);
+      setIsFrameEditOpen(true);
+      openFloatingWindow("frame-edit", { x: 150, y: 150 });
+    },
+    [setCurrentFrameIndex, setIsFrameEditOpen, openFloatingWindow],
+  );
+
   // Count disabled frames
-  const disabledCount = frames.filter((f: SpriteFrame) => f.disabled).length;
+  const disabledCount = useMemo(
+    () => frames.filter((f: SpriteFrame) => f.disabled).length,
+    [frames],
+  );
 
   // Determine which frames to display
-  const displayFrames = showActiveOnly
-    ? frames
-        .map((frame: SpriteFrame, idx: number) => ({ frame, originalIndex: idx }))
-        .filter(({ frame }: { frame: SpriteFrame }) => !frame.disabled)
-    : frames.map((frame: SpriteFrame, idx: number) => ({ frame, originalIndex: idx }));
+  const displayFrames = useMemo(
+    () =>
+      showActiveOnly
+        ? frames
+            .map((frame: SpriteFrame, idx: number) => ({ frame, originalIndex: idx }))
+            .filter(({ frame }: { frame: SpriteFrame }) => !frame.disabled)
+        : frames.map((frame: SpriteFrame, idx: number) => ({ frame, originalIndex: idx })),
+    [frames, showActiveOnly],
+  );
+
+  const selectedFrameIdSet = useMemo(() => new Set(selectedFrameIds), [selectedFrameIds]);
 
   if (!activeTrackId) {
     return (
@@ -303,7 +517,7 @@ export default function FrameStrip() {
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border-default shrink-0 bg-surface-secondary/50">
         {/* Frame indicator */}
         <span className="text-xs text-text-secondary font-mono tabular-nums">
-          {frames.length > 0 ? `${currentFrameIndex + 1} / ${frames.length}` : "0"}
+          {frames.length > 0 ? `${displayCurrentFrameIndex + 1} / ${frames.length}` : "0"}
           {selectedFrameIds.length > 1 && (
             <span className="text-accent-primary ml-1">({selectedFrameIds.length} sel)</span>
           )}
@@ -454,101 +668,28 @@ export default function FrameStrip() {
               </div>
             ) : (
               displayFrames.map(({ frame, originalIndex: idx }: { frame: SpriteFrame; originalIndex: number }) => (
-                <div
+                <FrameCard
                   key={frame.id}
-                  draggable={timelineMode === "reorder" && !showActiveOnly}
-                  onDragStart={(e) => timelineMode === "reorder" && !showActiveOnly && handleDragStart(e, frame.id)}
-                  onDragOver={(e) => timelineMode === "reorder" && !showActiveOnly && handleDragOver(e, idx)}
-                  onDragLeave={timelineMode === "reorder" && !showActiveOnly ? handleDragLeave : undefined}
-                  onDrop={(e) => timelineMode === "reorder" && !showActiveOnly && handleDrop(e, idx)}
-                  onDragEnd={timelineMode === "reorder" && !showActiveOnly ? handleDragEnd : undefined}
-                  onMouseDown={(e) => timelineMode === "offset" && handleOffsetMouseDown(e, frame.id)}
-                  onClick={(e) => {
-                    setIsPlaying(false);
-                    if (e.shiftKey && selectedFrameId !== null) {
-                      selectFrameRange(selectedFrameId, frame.id);
-                    } else if (e.ctrlKey || e.metaKey) {
-                      toggleSelectedFrameId(frame.id);
-                    } else {
-                      setSelectedFrameIds([frame.id]);
-                    }
-                    // Don't navigate to disabled frames
-                    if (!frame.disabled) {
-                      setCurrentFrameIndex(idx);
-                    }
-                    setSelectedFrameId(frame.id);
-                  }}
-                  onDoubleClick={() => {
-                    setCurrentFrameIndex(idx);
-                    setIsFrameEditOpen(true);
-                    openFloatingWindow("frame-edit", { x: 150, y: 150 });
-                  }}
-                  className={`
-                    relative rounded-lg border-2 transition-all
-                    ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
-                    ${isPlaying && idx === currentFrameIndex ? "border-accent-warning shadow-sm shadow-accent-warning/30" : selectedFrameIds.includes(frame.id) ? "border-accent-warning/60 bg-accent-warning/15" : idx === currentFrameIndex ? "border-accent-primary shadow-sm" : "border-border-default"}
-                    ${dragOverIndex === idx ? "border-accent-primary! scale-105" : ""}
-                    ${draggedFrameId === frame.id ? "opacity-50" : ""}
-                    ${editingOffsetFrameId === frame.id ? "border-accent-warning!" : ""}
-                    ${frame.disabled ? "opacity-40" : ""}
-                  `}
-                >
-                  {/* Frame number - on active or playing frame */}
-                  {idx === currentFrameIndex && (
-                    <div className={`absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold z-10 ${isPlaying ? "bg-accent-warning text-white" : "bg-text-primary text-surface-primary"}`}>
-                      {idx + 1}
-                    </div>
-                  )}
-
-                  {/* Skip toggle button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFrameDisabled(frame.id);
-                    }}
-                    className={`absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
-                      frame.disabled
-                        ? "bg-accent-warning/90 text-white"
-                        : "bg-surface-tertiary/60 text-text-tertiary opacity-0 group-hover:opacity-100 hover:opacity-100!"
-                    }`}
-                    title={frame.disabled ? "건너뛰기 해제" : "건너뛰기"}
-                  >
-                    {frame.disabled ? (
-                      <EyeClosedIcon className="w-2.5 h-2.5" />
-                    ) : (
-                      <EyeOpenIcon className="w-2.5 h-2.5" />
-                    )}
-                  </button>
-
-                  {/* SKIP badge */}
-                  {frame.disabled && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 bg-accent-warning/80 text-white text-[8px] font-bold px-1.5 py-0.5 rounded pointer-events-none">
-                      SKIP
-                    </div>
-                  )}
-
-                  {/* Frame image */}
-                  <div className="checkerboard aspect-5/4 rounded flex items-center justify-center overflow-hidden">
-                    {frame.imageData && (
-                      <img
-                        src={frame.imageData}
-                        alt={frame.name}
-                        className="max-w-full max-h-full object-contain"
-                        style={{
-                          transform: `translate(${frame.offset.x}px, ${frame.offset.y}px)`,
-                        }}
-                        draggable={false}
-                      />
-                    )}
-                  </div>
-
-                  {/* Offset display */}
-                  {(frame.offset.x !== 0 || frame.offset.y !== 0) && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-surface-tertiary/90 text-[8px] text-center py-0.5 rounded-b text-text-secondary font-mono">
-                      {frame.offset.x},{frame.offset.y}
-                    </div>
-                  )}
-                </div>
+                  frame={frame}
+                  idx={idx}
+                  timelineMode={timelineMode}
+                  showActiveOnly={showActiveOnly}
+                  isPlaying={isPlaying}
+                  isCurrent={idx === displayCurrentFrameIndex}
+                  isSelected={selectedFrameIdSet.has(frame.id)}
+                  isDragOver={dragOverIndex === idx}
+                  isDragged={draggedFrameId === frame.id}
+                  isEditingOffset={editingOffsetFrameId === frame.id}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onDragEnd={handleDragEnd}
+                  onOffsetMouseDown={handleOffsetMouseDown}
+                  onFrameClick={handleFrameClick}
+                  onFrameDoubleClick={handleFrameDoubleClick}
+                  onToggleDisabled={toggleFrameDisabled}
+                />
               ))
             )}
           </div>

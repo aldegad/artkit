@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useEditorFrames, useEditorBrush, useEditorHistory, useEditorTools } from "../contexts/SpriteEditorContext";
+import { useEditorFramesMeta, useEditorBrush, useEditorHistory, useEditorTools } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
@@ -51,7 +51,7 @@ type EditToolMode = "brush" | "eyedropper" | "eraser";
 // ============================================
 
 export default function FramePreviewContent() {
-  const { frames, setFrames, selectedFrameId } = useEditorFrames();
+  const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
   const { brushColor, setBrushColor, brushSize, setBrushSize } = useEditorBrush();
   const { pushHistory } = useEditorHistory();
   const { toolMode } = useEditorTools();

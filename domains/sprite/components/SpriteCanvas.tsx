@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useRef, useState, DragEvent } from "react";
-import { useEditorImage, useEditorFrames, useEditorTools, useEditorViewport, useEditorDrag, useEditorRefs } from "../contexts/SpriteEditorContext";
+import { useEditorImage, useEditorFramesMeta, useEditorTools, useEditorViewport, useEditorDrag, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { useTheme } from "../../../shared/contexts";
 import { Point, SpriteFrame } from "../types";
 import { getBoundingBox, isPointInPolygon } from "../utils/geometry";
@@ -20,7 +20,7 @@ export default function CanvasContent() {
   const {
     frames, setFrames, nextFrameId, setNextFrameId,
     selectedFrameId, setSelectedFrameId, selectedPointIndex, setSelectedPointIndex,
-  } = useEditorFrames();
+  } = useEditorFramesMeta();
   const { toolMode, currentPoints, setCurrentPoints, isSpacePressed } = useEditorTools();
   const { zoom, pan, scale, setScale, setZoom, setPan } = useEditorViewport();
   const { isDragging, setIsDragging, dragStart, setDragStart, didPanOrDragRef } = useEditorDrag();
