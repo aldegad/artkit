@@ -19,6 +19,8 @@ export type {
 
 // Components
 export { ProjectListModal } from "./components";
+export { EditorHeader } from "./components";
+export { EditorOverlays } from "./components";
 export { EditorToolOptions } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
