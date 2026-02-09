@@ -61,6 +61,12 @@ export const UI = {
   THUMBNAIL_HEIGHT: 40,
 } as const;
 
+// Pointer gesture policy constants
+export const GESTURE = {
+  LONG_PRESS_MS: 400,
+  TOUCH_GESTURE_THRESHOLD_PX: 8,
+} as const;
+
 // Supported formats
 export const SUPPORTED_VIDEO_FORMATS = [
   "video/mp4",

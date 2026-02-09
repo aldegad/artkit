@@ -5,7 +5,7 @@ import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { useTimelineViewport } from "./useTimelineViewport";
 import { TimelineDragType, Clip } from "../types";
-import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
+import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
@@ -39,12 +39,6 @@ const INITIAL_DRAG_STATE: DragState = {
   originalClipDuration: 0,
   originalTrimIn: 0,
 };
-
-/** Long-press duration (ms) before a clip is "lifted" for cross-track movement on touch */
-const LONG_PRESS_MS = 400;
-
-/** Minimum movement (px) before we resolve a touch gesture as scroll or drag */
-const TOUCH_GESTURE_THRESHOLD = 8;
 
 // ── Touch pending state ───────────────────────────────────────────────
 interface TouchPendingState {
@@ -290,8 +284,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   useDeferredPointerGesture<TouchPendingState>({
     pending: touchPending,
-    thresholdPx: TOUCH_GESTURE_THRESHOLD,
-    longPressMs: LONG_PRESS_MS,
+    thresholdPx: GESTURE.TOUCH_GESTURE_THRESHOLD_PX,
+    longPressMs: GESTURE.LONG_PRESS_MS,
     shouldStartLongPress: (pending) =>
       !!(pending.clipResult && pending.clipResult.handle === "body"),
     onLongPress: (pending) => {
