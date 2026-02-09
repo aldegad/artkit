@@ -1069,9 +1069,11 @@ function VideoEditorContent() {
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
     if (mode === "mask" && selectedClipIds.length > 0) {
-      const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
-      if (selectedClip && selectedClip.type !== "audio") {
-        startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
+      const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
+      if (selected.length > 0) {
+        const maskStart = Math.min(...selected.map((c) => c.startTime));
+        const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
+        startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
       }
     }
     if (mode !== "mask" && isEditingMask) {
@@ -1096,9 +1098,11 @@ function VideoEditorContent() {
     if (selectedClipIds.length === 0) return;
     if (isEditingMask) return; // already editing
 
-    const selectedClip = clips.find((c) => c.id === selectedClipIds[0]);
-    if (selectedClip && selectedClip.type !== "audio") {
-      startMaskEdit(selectedClip.trackId, project.canvasSize, playback.currentTime);
+    const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
+    if (selected.length > 0) {
+      const maskStart = Math.min(...selected.map((c) => c.startTime));
+      const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
+      startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
     }
   }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
 
