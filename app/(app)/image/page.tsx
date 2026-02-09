@@ -44,7 +44,7 @@ import {
   EditorHeader,
   EditorOverlays,
   EditorActionToolbar,
-  EditorToolOptions,
+  EditorToolOptionsBar,
   PanModeToggle,
   EditorLayersProvider,
   EditorCanvasProvider,
@@ -857,7 +857,7 @@ function ImageEditorContent() {
 
       {/* Top Toolbar - Row 3: Tool-specific controls */}
       {layers.length > 0 && (
-        <EditorToolOptions
+        <EditorToolOptionsBar
           toolMode={toolMode}
           brushSize={brushSize}
           setBrushSize={setBrushSize}
@@ -890,10 +890,8 @@ function ImageEditorContent() {
           transformAspectRatio={transformAspectRatio}
           setTransformAspectRatio={setTransformAspectRatio}
           onApplyTransform={applyTransform}
-          onCancelTransform={() => {
-            cancelTransform();
-            setToolMode("move");
-          }}
+          cancelTransform={cancelTransform}
+          setToolMode={setToolMode}
           translations={uiText.toolOptions}
         />
       )}

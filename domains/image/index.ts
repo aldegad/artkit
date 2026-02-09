@@ -22,6 +22,7 @@ export { ProjectListModal } from "./components";
 export { EditorHeader } from "./components";
 export { EditorOverlays } from "./components";
 export { EditorToolOptions } from "./components";
+export { EditorToolOptionsBar } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
 export { TransformDiscardConfirmModal } from "./components";
