@@ -39,6 +39,7 @@ interface TimelineContextValue {
   // Track management
   tracks: VideoTrack[];
   addTrack: (name?: string, type?: "video" | "audio") => string;
+  duplicateTrack: (trackId: string) => string | null;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<VideoTrack>) => void;
   reorderTracks: (fromIndex: number, toIndex: number) => void;
@@ -71,7 +72,7 @@ interface TimelineContextValue {
   ) => string;
   removeClip: (clipId: string) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
-  moveClip: (clipId: string, trackId: string, startTime: number) => void;
+  moveClip: (clipId: string, trackId: string, startTime: number, ignoreClipIds?: string[]) => void;
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
   duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
@@ -116,6 +117,21 @@ function cloneClip(clip: Clip): Clip {
     ...base,
     sourceSize: { ...clip.sourceSize },
   };
+}
+
+function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[]): string {
+  const base = `${sourceName} (Copy)`;
+  if (!existingTracks.some((track) => track.name === base)) {
+    return base;
+  }
+
+  let suffix = 2;
+  let candidate = `${base} ${suffix}`;
+  while (existingTracks.some((track) => track.name === candidate)) {
+    suffix += 1;
+    candidate = `${base} ${suffix}`;
+  }
+  return candidate;
 }
 
 function normalizeClip(clip: Clip): Clip {
@@ -173,6 +189,53 @@ function getFittedVisualTransform(sourceSize: Size, canvasSize: Size): { positio
     },
     scale,
   };
+}
+
+function rangesOverlap(startA: number, durationA: number, startB: number, durationB: number): boolean {
+  const endA = startA + durationA;
+  const endB = startB + durationB;
+  return startA < endB && endA > startB;
+}
+
+function hasTrackOverlap(
+  allClips: Clip[],
+  candidate: { trackId: string; startTime: number; duration: number },
+  excludeClipIds: Set<string> = new Set()
+): boolean {
+  for (const clip of allClips) {
+    if (clip.trackId !== candidate.trackId) continue;
+    if (excludeClipIds.has(clip.id)) continue;
+    if (rangesOverlap(candidate.startTime, candidate.duration, clip.startTime, clip.duration)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findNextNonOverlappingStart(
+  allClips: Clip[],
+  trackId: string,
+  startTime: number,
+  duration: number,
+  excludeClipIds: Set<string> = new Set()
+): number {
+  let nextStart = Math.max(0, startTime);
+  const trackClips = allClips
+    .filter((clip) => clip.trackId === trackId && !excludeClipIds.has(clip.id))
+    .sort((a, b) => a.startTime - b.startTime);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const clip of trackClips) {
+      if (rangesOverlap(nextStart, duration, clip.startTime, clip.duration)) {
+        nextStart = clip.startTime + clip.duration;
+        changed = true;
+      }
+    }
+  }
+
+  return nextStart;
 }
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
@@ -448,6 +511,48 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return newTrack.id;
   }, [tracks]);
 
+  const duplicateTrack = useCallback((trackId: string): string | null => {
+    const sourceTrack = tracks.find((track) => track.id === trackId);
+    if (!sourceTrack) return null;
+
+    const sourceTrackIndex = tracks.findIndex((track) => track.id === trackId);
+    const duplicatedTrack: VideoTrack = {
+      ...cloneTrack(sourceTrack),
+      id: crypto.randomUUID(),
+      name: getDuplicateTrackName(sourceTrack.name, tracks),
+    };
+
+    setTracks((prev) => {
+      const insertAt = sourceTrackIndex >= 0 ? sourceTrackIndex + 1 : prev.length;
+      const next = [...prev];
+      next.splice(insertAt, 0, duplicatedTrack);
+      return next.map((track, index) => ({ ...track, zIndex: next.length - 1 - index }));
+    });
+
+    const sourceClips = clips
+      .filter((clip) => clip.trackId === trackId)
+      .sort((a, b) => a.startTime - b.startTime);
+    const duplicatedClips = sourceClips.map((clip) => ({
+      ...cloneClip(clip),
+      id: crypto.randomUUID(),
+      trackId: duplicatedTrack.id,
+    }));
+
+    if (duplicatedClips.length > 0) {
+      void Promise.all(
+        duplicatedClips.map((newClip, index) =>
+          copyMediaBlob(sourceClips[index].id, newClip.id).catch((error) => {
+            console.error("Failed to copy media blob on track duplicate:", error);
+          })
+        )
+      );
+      setClips((prev) => [...prev, ...duplicatedClips]);
+      updateProjectDuration();
+    }
+
+    return duplicatedTrack.id;
+  }, [tracks, clips, updateProjectDuration]);
+
   const removeTrack = useCallback((trackId: string) => {
     // Don't remove the last track
     if (tracks.length <= 1) return;
@@ -501,8 +606,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
       const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
+      const safeStartTime = findNextNonOverlappingStart(
+        clipsRef.current,
+        resolvedTrackId,
+        startTime,
+        baseClip.duration
+      );
       const clip: Clip = {
         ...baseClip,
+        startTime: safeStartTime,
         position: fitted.position,
         scale: fitted.scale,
       };
@@ -529,9 +641,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           : trackId;
 
       const clip = createAudioClip(resolvedTrackId, sourceUrl, sourceDuration, startTime, sourceSize);
-      setClips((prev) => [...prev, clip]);
+      const safeStartTime = findNextNonOverlappingStart(
+        clipsRef.current,
+        resolvedTrackId,
+        startTime,
+        clip.duration
+      );
+      const normalizedClip: Clip = {
+        ...clip,
+        startTime: safeStartTime,
+      };
+      setClips((prev) => [...prev, normalizedClip]);
       updateProjectDuration();
-      return clip.id;
+      return normalizedClip.id;
     },
     [tracks, updateProjectDuration]
   );
@@ -554,8 +676,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
       const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
+      const safeStartTime = findNextNonOverlappingStart(
+        clipsRef.current,
+        resolvedTrackId,
+        startTime,
+        baseClip.duration
+      );
       const clip: Clip = {
         ...baseClip,
+        startTime: safeStartTime,
         position: fitted.position,
         scale: fitted.scale,
       };
@@ -585,7 +714,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     updateProjectDuration();
   }, [updateProjectDuration]);
 
-  const moveClip = useCallback((clipId: string, trackId: string, startTime: number) => {
+  const moveClip = useCallback((clipId: string, trackId: string, startTime: number, ignoreClipIds: string[] = []) => {
     const targetTrack = tracks.find((t) => t.id === trackId) || null;
     if (!targetTrack) return;
 
@@ -593,7 +722,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       prev.map((c) => {
         if (c.id !== clipId) return c;
         if (!fitsTrackType(targetTrack, c)) return c;
-        return { ...c, trackId, startTime: Math.max(0, startTime) };
+        const candidateStart = Math.max(0, startTime);
+        const excludeIds = new Set<string>([clipId, ...ignoreClipIds]);
+        const overlaps = hasTrackOverlap(prev, {
+          trackId,
+          startTime: candidateStart,
+          duration: c.duration,
+        }, excludeIds);
+        if (overlaps) return c;
+        return { ...c, trackId, startTime: candidateStart };
       })
     );
     updateProjectDuration();
@@ -610,6 +747,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
         // Validate
         if (newTrimIn < 0 || newDuration < TIMELINE.CLIP_MIN_DURATION) return c;
+
+        const candidate = {
+          trackId: c.trackId,
+          startTime: newStartTime,
+          duration: newDuration,
+        };
+        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]));
+        if (overlaps) return c;
 
         return {
           ...c,
@@ -633,6 +778,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         // Validate
         if (newDuration < TIMELINE.CLIP_MIN_DURATION) return c;
         if ((c.type === "video" || c.type === "audio") && newTrimOut > c.sourceDuration) return c;
+
+        const candidate = {
+          trackId: c.trackId,
+          startTime: c.startTime,
+          duration: newDuration,
+        };
+        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]));
+        if (overlaps) return c;
 
         return {
           ...c,
@@ -671,11 +824,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }
 
     // Create duplicate with new ID
+    const candidateStart = findNextNonOverlappingStart(
+      clips,
+      trackId,
+      sourceClip.startTime + 0.25,
+      sourceClip.duration
+    );
+
     const newClip: Clip = {
       ...sourceClip,
       id: crypto.randomUUID(),
       trackId,
       name: `${sourceClip.name} (Copy)`,
+      startTime: candidateStart,
     };
 
     void copyMediaBlob(sourceClip.id, newClip.id).catch((error) => {
@@ -689,7 +850,28 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Add pre-formed clips (for paste)
   const addClips = useCallback((newClips: Clip[]) => {
-    setClips((prev) => [...prev, ...newClips]);
+    setClips((prev) => {
+      const next = [...prev];
+      const normalized: Clip[] = [];
+
+      for (const clip of newClips) {
+        const candidateStart = findNextNonOverlappingStart(
+          next,
+          clip.trackId,
+          clip.startTime,
+          clip.duration,
+          new Set([clip.id])
+        );
+        const adjusted: Clip = {
+          ...cloneClip(clip),
+          startTime: candidateStart,
+        };
+        normalized.push(adjusted);
+        next.push(adjusted);
+      }
+
+      return [...prev, ...normalized];
+    });
     updateProjectDuration();
   }, [updateProjectDuration]);
 
@@ -733,6 +915,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setViewState,
     tracks,
     addTrack,
+    duplicateTrack,
     removeTrack,
     updateTrack,
     reorderTracks,

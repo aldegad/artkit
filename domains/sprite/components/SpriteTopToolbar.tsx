@@ -7,6 +7,7 @@ import {
   CursorIcon,
   HandIcon,
   BackgroundRemovalIcon,
+  MagicWandIcon,
   UndoIcon,
   RedoIcon,
 } from "@/shared/components/icons";
@@ -20,7 +21,9 @@ interface SpriteTopToolbarProps {
   selectedPointIndex: number | null;
   frames: SpriteFrame[];
   isRemovingBackground: boolean;
+  isInterpolating: boolean;
   hasFramesWithImage: boolean;
+  hasInterpolatableSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -29,6 +32,7 @@ interface SpriteTopToolbarProps {
   onCancelCurrentPolygon: () => void;
   onCompleteFrame: () => void;
   onRequestBackgroundRemoval: () => void;
+  onRequestFrameInterpolation: () => void;
 }
 
 export default function SpriteTopToolbar({
@@ -39,7 +43,9 @@ export default function SpriteTopToolbar({
   selectedPointIndex,
   frames,
   isRemovingBackground,
+  isInterpolating,
   hasFramesWithImage,
+  hasInterpolatableSelection,
   canUndo,
   canRedo,
   onUndo,
@@ -48,6 +54,7 @@ export default function SpriteTopToolbar({
   onCancelCurrentPolygon,
   onCompleteFrame,
   onRequestBackgroundRemoval,
+  onRequestFrameInterpolation,
 }: SpriteTopToolbarProps) {
   const { t } = useLanguage();
 
@@ -137,6 +144,32 @@ export default function SpriteTopToolbar({
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.frameInterpolation}</span>
+                <span className="text-text-tertiary text-[11px]">
+                  {t.frameInterpolationDescription}
+                </span>
+                <span className="text-[10px] text-text-tertiary">
+                  {t.interpolationFirstRunDownload}
+                </span>
+              </div>
+            }
+          >
+            <button
+              onClick={onRequestFrameInterpolation}
+              disabled={isInterpolating || !hasInterpolatableSelection}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                isInterpolating
+                  ? "bg-accent-primary text-white cursor-wait"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <MagicWandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
                 <span className="font-medium">{t.removeBackground}</span>
                 <span className="text-text-tertiary text-[11px]">
                   AI 모델을 사용해 프레임 배경을 제거합니다
@@ -149,7 +182,7 @@ export default function SpriteTopToolbar({
           >
             <button
               onClick={onRequestBackgroundRemoval}
-              disabled={isRemovingBackground || !hasFramesWithImage}
+              disabled={isRemovingBackground || isInterpolating || !hasFramesWithImage}
               className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                 isRemovingBackground
                   ? "bg-accent-primary text-white cursor-wait"
