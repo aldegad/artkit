@@ -114,7 +114,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   // Touch pending state: deferred gesture resolution
   const [touchPending, setTouchPending] = useState<TouchPendingState | null>(null);
 
-  const { getMasksForTrack, duplicateMask, updateMaskTime, masks } = useMask();
+  const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
 
   /** Get Y in content coordinates (accounts for scroll offset) */
   const getContentY = useCallback(
@@ -520,6 +520,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
                 activeClipIds = [clip.id];
                 activeMaskIds = [];
                 selectClip(clip.id, false);
+                // Clear mask active/editing state
+                if (isEditingMask) {
+                  endMaskEdit();
+                } else {
+                  deselectMask();
+                }
               }
 
               let primaryClipId = clip.id;
@@ -602,6 +608,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             setScrollX(seekTime);
           }
           deselectAll();
+          // Clear mask active/editing state
+          if (isEditingMask) {
+            endMaskEdit();
+          } else {
+            deselectMask();
+          }
           setDragState({
             type: "playhead",
             clipId: null,
@@ -639,6 +651,9 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       masks,
       buildDragItems,
       cancelLongPress,
+      deselectMask,
+      endMaskEdit,
+      isEditingMask,
       viewState.scrollX,
       setScrollX,
     ]
