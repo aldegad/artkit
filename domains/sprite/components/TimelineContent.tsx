@@ -3,10 +3,10 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import { useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext";
-import { Scrollbar, NumberScrubber } from "@/shared/components";
+import { Scrollbar, NumberScrubber, Popover } from "@/shared/components";
 import { SpriteTrack } from "../types";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
-import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon } from "@/shared/components/icons";
+import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon } from "@/shared/components/icons";
 
 // ============================================
 // Multi-Track Timeline
@@ -17,6 +17,8 @@ const CELL_WIDTH = 40;
 const HEADER_MIN = 100;
 const HEADER_MAX = 300;
 const HEADER_DEFAULT = 144;
+const HEADER_COMPACT_BREAKPOINT = 120;
+const CONTROL_BAR_COMPACT_BREAKPOINT = 240;
 const LS_KEY = "sprite-timeline-header-width";
 
 export default function TimelineContent() {
@@ -51,6 +53,23 @@ export default function TimelineContent() {
   const trackHeadersRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
   const scrollbarRef = useRef<OverlayScrollbarsComponentRef>(null);
+
+  // Compact mode
+  const controlBarRef = useRef<HTMLDivElement>(null);
+  const [isControlBarCompact, setIsControlBarCompact] = useState(false);
+
+  // Control bar compact mode detection
+  useEffect(() => {
+    const el = controlBarRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setIsControlBarCompact(entry.contentRect.width < CONTROL_BAR_COMPACT_BREAKPOINT);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Animation loop
   useEffect(() => {
@@ -357,8 +376,8 @@ export default function TimelineContent() {
   return (
     <div className="flex flex-col h-full bg-surface-primary">
       {/* Control bar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-default shrink-0 bg-surface-secondary/50">
-        {/* Playback */}
+      <div ref={controlBarRef} className="flex items-center gap-2 px-3 py-1.5 border-b border-border-default shrink-0 bg-surface-secondary/50">
+        {/* Playback - always visible */}
         <button
           onClick={() => setIsPlaying(!isPlaying)}
           disabled={maxFrameCount === 0}
@@ -367,34 +386,57 @@ export default function TimelineContent() {
           {isPlaying ? <StopIcon className="w-3.5 h-3.5" /> : <PlayIcon className="w-3.5 h-3.5" />}
         </button>
 
-        {/* FPS */}
-        <NumberScrubber
-          value={fps}
-          onChange={setFps}
-          min={1}
-          max={60}
-          step={1}
-          label="FPS"
-          size="sm"
-        />
+        {isControlBarCompact ? (
+          <>
+            <div className="flex-1" />
+            <Popover
+              trigger={
+                <button className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors" title="Timeline controls">
+                  <MenuIcon className="w-3.5 h-3.5" />
+                </button>
+              }
+              align="start"
+              side="bottom"
+              closeOnScroll={false}
+            >
+              <div className="flex flex-col gap-1 p-2 min-w-[160px]">
+                <div className="flex items-center gap-2 px-1">
+                  <NumberScrubber value={fps} onChange={setFps} min={1} max={60} step={1} label="FPS" size="sm" />
+                </div>
+                <div className="px-2 py-1 text-[10px] text-text-secondary">
+                  {maxEnabledCount > 0 ? `Frame ${(currentVisualIndex + 1) || "—"} / ${maxEnabledCount}` : "No frames"}
+                </div>
+                <div className="h-px bg-border-default mx-1" />
+                <button
+                  onClick={handleAddTrack}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                >
+                  + Add Track
+                </button>
+              </div>
+            </Popover>
+          </>
+        ) : (
+          <>
+            {/* FPS */}
+            <NumberScrubber value={fps} onChange={setFps} min={1} max={60} step={1} label="FPS" size="sm" />
 
-        {/* Frame counter */}
-        <span className="text-[10px] text-text-secondary">
-          {maxEnabledCount > 0
-            ? `${(currentVisualIndex + 1) || "—"}/${maxEnabledCount}`
-            : "—"}
-        </span>
+            {/* Frame counter */}
+            <span className="text-[10px] text-text-secondary">
+              {maxEnabledCount > 0 ? `${(currentVisualIndex + 1) || "—"}/${maxEnabledCount}` : "—"}
+            </span>
 
-        <div className="flex-1" />
+            <div className="flex-1" />
 
-        {/* Add track */}
-        <button
-          onClick={handleAddTrack}
-          className="px-2 py-1 bg-surface-tertiary hover:bg-interactive-hover text-text-secondary rounded text-xs transition-colors"
-        >
-          + Track
-        </button>
-
+            {/* Add track */}
+            <button
+              onClick={handleAddTrack}
+              className="px-2 py-1 bg-surface-tertiary hover:bg-interactive-hover text-text-secondary rounded text-xs transition-colors"
+            >
+              + Track
+            </button>
+          </>
+        )}
       </div>
 
       {/* Ruler row */}
@@ -445,70 +487,134 @@ export default function TimelineContent() {
               } ${!track.visible ? "opacity-40" : ""}`}
               style={{ height: TRACK_HEIGHT }}
             >
-              {/* Visibility toggle */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateTrack(track.id, { visible: !track.visible });
-                }}
-                className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
-                  track.visible ? "text-text-primary" : "text-text-tertiary opacity-50"
-                }`}
-                title={track.visible ? "Hide" : "Show"}
-              >
-                {track.visible ? <EyeOpenIcon className="w-3.5 h-3.5" /> : <EyeClosedIcon className="w-3.5 h-3.5" />}
-              </button>
-
-              {/* Lock toggle */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateTrack(track.id, { locked: !track.locked });
-                }}
-                className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
-                  track.locked ? "text-accent-warning" : "text-text-tertiary"
-                }`}
-                title={track.locked ? "Unlock" : "Lock"}
-              >
-                {track.locked ? <LockClosedIcon className="w-3.5 h-3.5" /> : <LockOpenIcon className="w-3.5 h-3.5" />}
-              </button>
-
-              {/* Track name */}
-              <div className="flex-1 min-w-0">
-                {editingTrackId === track.id ? (
-                  <input
-                    ref={nameInputRef}
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onBlur={finishEditingName}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") finishEditingName();
-                      if (e.key === "Escape") setEditingTrackId(null);
+              {headerWidth >= HEADER_COMPACT_BREAKPOINT ? (
+                <>
+                  {/* Visibility toggle */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateTrack(track.id, { visible: !track.visible });
                     }}
-                    className="w-full bg-surface-secondary border border-border-default rounded px-1 text-[10px] outline-none focus:border-accent-primary"
-                  />
-                ) : (
-                  <span
-                    className="text-[10px] truncate block cursor-text"
-                    onDoubleClick={() => startEditingName(track)}
+                    className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
+                      track.visible ? "text-text-primary" : "text-text-tertiary opacity-50"
+                    }`}
+                    title={track.visible ? "Hide" : "Show"}
                   >
-                    {track.name}
-                  </span>
-                )}
-              </div>
+                    {track.visible ? <EyeOpenIcon className="w-3.5 h-3.5" /> : <EyeClosedIcon className="w-3.5 h-3.5" />}
+                  </button>
 
-              {/* Delete track */}
-              {tracks.length > 1 && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteTrack(track.id);
-                  }}
-                  className="w-4 h-4 flex items-center justify-center rounded text-[9px] text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10 transition-colors"
-                  title="Delete track"
+                  {/* Lock toggle */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateTrack(track.id, { locked: !track.locked });
+                    }}
+                    className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
+                      track.locked ? "text-accent-warning" : "text-text-tertiary"
+                    }`}
+                    title={track.locked ? "Unlock" : "Lock"}
+                  >
+                    {track.locked ? <LockClosedIcon className="w-3.5 h-3.5" /> : <LockOpenIcon className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {/* Track name */}
+                  <div className="flex-1 min-w-0">
+                    {editingTrackId === track.id ? (
+                      <input
+                        ref={nameInputRef}
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={finishEditingName}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") finishEditingName();
+                          if (e.key === "Escape") setEditingTrackId(null);
+                        }}
+                        className="w-full bg-surface-secondary border border-border-default rounded px-1 text-[10px] outline-none focus:border-accent-primary"
+                      />
+                    ) : (
+                      <span
+                        className="text-[10px] truncate block cursor-text"
+                        onDoubleClick={() => startEditingName(track)}
+                      >
+                        {track.name}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Delete track */}
+                  {tracks.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteTrack(track.id);
+                      }}
+                      className="w-4 h-4 flex items-center justify-center rounded text-[9px] text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                      title="Delete track"
+                    >
+                      ×
+                    </button>
+                  )}
+                </>
+              ) : (
+                /* Compact mode: single menu icon */
+                <Popover
+                  trigger={
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+                      title={track.name}
+                    >
+                      <MenuIcon className="w-3 h-3" />
+                    </button>
+                  }
+                  align="start"
+                  side="bottom"
+                  closeOnScroll={false}
                 >
-                  ×
-                </button>
+                  <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
+                    <span
+                      className="text-xs font-medium text-text-primary px-2 py-1 truncate cursor-text"
+                      onDoubleClick={() => startEditingName(track)}
+                    >
+                      {track.name}
+                    </span>
+                    <div className="h-px bg-border-default mx-1" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateTrack(track.id, { visible: !track.visible });
+                      }}
+                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                    >
+                      {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
+                      {track.visible ? "Hide" : "Show"}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateTrack(track.id, { locked: !track.locked });
+                      }}
+                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                    >
+                      {track.locked ? <LockClosedIcon className="w-3 h-3" /> : <LockOpenIcon className="w-3 h-3" />}
+                      {track.locked ? "Unlock" : "Lock"}
+                    </button>
+                    {tracks.length > 1 && (
+                      <>
+                        <div className="h-px bg-border-default mx-1" />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTrack(track.id);
+                          }}
+                          className="flex items-center gap-2 px-2 py-1 rounded text-xs text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                        >
+                          × Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </Popover>
               )}
             </div>
           ))}
