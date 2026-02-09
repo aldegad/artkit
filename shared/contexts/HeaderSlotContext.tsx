@@ -1,33 +1,63 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useSyncExternalStore, ReactNode } from "react";
 
 // ============================================
 // Types
 // ============================================
 
-interface HeaderSlotContextValue {
-  slot: ReactNode;
-  setSlot: (slot: ReactNode) => void;
+type HeaderSlotSetter = (slot: ReactNode) => void;
+
+interface HeaderSlotStore {
+  getSlot: () => ReactNode;
+  setSlot: HeaderSlotSetter;
+  subscribe: (listener: () => void) => () => void;
+}
+
+function createHeaderSlotStore(): HeaderSlotStore {
+  let slot: ReactNode = null;
+  const listeners = new Set<() => void>();
+
+  const notify = () => {
+    for (const listener of listeners) {
+      listener();
+    }
+  };
+
+  return {
+    getSlot: () => slot,
+    setSlot: (nextSlot: ReactNode) => {
+      if (Object.is(slot, nextSlot)) return;
+      slot = nextSlot;
+      notify();
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
 }
 
 // ============================================
 // Context
 // ============================================
 
-const HeaderSlotContext = createContext<HeaderSlotContextValue | null>(null);
+const HeaderSlotStoreContext = createContext<HeaderSlotStore | null>(null);
 
 // ============================================
 // Provider
 // ============================================
 
 export function HeaderSlotProvider({ children }: { children: ReactNode }) {
-  const [slot, setSlot] = useState<ReactNode>(null);
+  const storeRef = useRef<HeaderSlotStore | null>(null);
+  if (!storeRef.current) {
+    storeRef.current = createHeaderSlotStore();
+  }
 
   return (
-    <HeaderSlotContext.Provider value={{ slot, setSlot }}>
+    <HeaderSlotStoreContext.Provider value={storeRef.current}>
       {children}
-    </HeaderSlotContext.Provider>
+    </HeaderSlotStoreContext.Provider>
   );
 }
 
@@ -36,11 +66,20 @@ export function HeaderSlotProvider({ children }: { children: ReactNode }) {
 // ============================================
 
 export function useHeaderSlot() {
-  const ctx = useContext(HeaderSlotContext);
-  if (!ctx) {
+  const store = useContext(HeaderSlotStoreContext);
+  if (!store) {
     throw new Error("useHeaderSlot must be used within HeaderSlotProvider");
   }
-  return ctx;
+  const slot = useSyncExternalStore(store.subscribe, store.getSlot, store.getSlot);
+  return { slot };
+}
+
+export function useSetHeaderSlot() {
+  const store = useContext(HeaderSlotStoreContext);
+  if (!store) {
+    throw new Error("useSetHeaderSlot must be used within HeaderSlotProvider");
+  }
+  return store.setSlot;
 }
 
 // ============================================
@@ -58,7 +97,7 @@ export function useHeaderSlot() {
  * </HeaderSlot>
  */
 export function HeaderSlot({ children }: { children: ReactNode }) {
-  const { setSlot } = useHeaderSlot();
+  const setSlot = useSetHeaderSlot();
 
   useEffect(() => {
     setSlot(children);
