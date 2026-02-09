@@ -7,6 +7,7 @@ import { useTimelineViewport } from "./useTimelineViewport";
 import { TimelineDragType, Clip } from "../types";
 import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
+import { useDeferredPointerGesture } from "@/shared/hooks";
 
 interface DragItem {
   type: "clip" | "mask";
@@ -49,6 +50,9 @@ interface TouchPendingState {
   pointerId: number;
   clientX: number;
   clientY: number;
+  scrollXOnStart: number;
+  zoomOnStart: number;
+  scrollTopOnStart: number;
   x: number; // relative to container
   contentY: number; // in content coords (with scroll offset)
   time: number;
@@ -273,109 +277,58 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     [selectClip, seek, ensureTimeVisibleOnLeft, deselectAll]
   );
 
-  // ── Touch gesture resolution effect ──
-  // When touchPending is set, listen for movement to determine: scroll / drag / tap / long-press
-  useEffect(() => {
-    if (!touchPending) return;
+  useDeferredPointerGesture<TouchPendingState>({
+    pending: touchPending,
+    thresholdPx: TOUCH_GESTURE_THRESHOLD,
+    longPressMs: LONG_PRESS_MS,
+    shouldStartLongPress: (pending) =>
+      !!(pending.clipResult && pending.clipResult.handle === "body"),
+    onLongPress: (pending) => {
+      if (!pending.clipResult) return;
+      const clip = pending.clipResult.clip;
 
-    const gestureStartClientX = touchPending.clientX;
-    const gestureStartClientY = touchPending.clientY;
-    const gestureStartScrollX = timelineViewportRef.current.scrollX;
-    const gestureStartZoom = Math.max(0.001, timelineViewportRef.current.zoom);
-    const gestureStartScrollTop = tracksContainerRef.current?.scrollTop ?? 0;
-    let resolved = false; // true once we determined scroll vs drag
-    let isScrolling = false;
+      // Select and lift the clip.
+      selectClip(clip.id, false);
+      saveToHistory();
+      isLiftedRef.current = true;
+      setLiftedClipId(clip.id);
+      if (navigator.vibrate) navigator.vibrate(30);
 
-    // Long-press timer: if on a clip body and no movement for LONG_PRESS_MS → lift
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    if (touchPending.clipResult && touchPending.clipResult.handle === "body") {
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        if (resolved) return; // already scrolling or dragging
-        resolved = true;
-
-        const clip = touchPending.clipResult!.clip;
-        // Select and lift the clip
-        selectClip(clip.id, false);
-        saveToHistory();
-        isLiftedRef.current = true;
-        setLiftedClipId(clip.id);
-        if (navigator.vibrate) navigator.vibrate(30);
-
-        // Start clip-move drag
-        const items = buildDragItems([clip.id], []);
-        setDragState({
-          type: "clip-move",
-          clipId: clip.id,
-          items,
-          startX: touchPending.x,
-          startY: touchPending.contentY,
-          startTime: touchPending.time,
-          originalClipStart: clip.startTime,
-          originalClipDuration: clip.duration,
-          originalTrimIn: clip.trimIn,
-        });
-        setTouchPending(null);
-      }, LONG_PRESS_MS);
-    }
-
-    const handleMove = (e: PointerEvent) => {
-      if (e.pointerId !== touchPending.pointerId) return;
-
-      if (!resolved) {
-        const dx = Math.abs(e.clientX - gestureStartClientX);
-        const dy = Math.abs(e.clientY - gestureStartClientY);
-
-        if (dx >= TOUCH_GESTURE_THRESHOLD || dy >= TOUCH_GESTURE_THRESHOLD) {
-          resolved = true;
-          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-          // Touch drag defaults to panning the timeline (both X/Y).
-          // Clip movement is only activated by long-press lift.
-          isScrolling = true;
-        }
-      }
-
-      // Pan mode: anchor-based mapping (finger distance -> timeline distance 1:1 in pixels).
-      if (isScrolling) {
-        const deltaYFromStart = gestureStartClientY - e.clientY;
-
-        if (tracksContainerRef.current) {
-          tracksContainerRef.current.scrollTop = Math.max(0, gestureStartScrollTop + deltaYFromStart);
-        }
-
-        setScrollFromGestureAnchor(
-          gestureStartScrollX,
-          gestureStartClientX,
-          e.clientX,
-          gestureStartZoom
+      const items = buildDragItems([clip.id], []);
+      setDragState({
+        type: "clip-move",
+        clipId: clip.id,
+        items,
+        startX: pending.x,
+        startY: pending.contentY,
+        startTime: pending.time,
+        originalClipStart: clip.startTime,
+        originalClipDuration: clip.duration,
+        originalTrimIn: clip.trimIn,
+      });
+      setTouchPending(null);
+    },
+    onMoveResolved: ({ pending, event }) => {
+      const deltaYFromStart = pending.clientY - event.clientY;
+      if (tracksContainerRef.current) {
+        tracksContainerRef.current.scrollTop = Math.max(
+          0,
+          pending.scrollTopOnStart + deltaYFromStart
         );
       }
-    };
-
-    const handleUp = (e: PointerEvent) => {
-      if (e.pointerId !== touchPending.pointerId) return;
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-
-      if (!resolved) {
-        // No significant movement → tap
-        handleTouchTap(touchPending);
-      }
-
+      setScrollFromGestureAnchor(
+        pending.scrollXOnStart,
+        pending.clientX,
+        event.clientX,
+        pending.zoomOnStart
+      );
+    },
+    onTap: handleTouchTap,
+    onEnd: (_pending, event) => {
       setTouchPending(null);
-      releasePointer(e.pointerId);
-    };
-
-    document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp);
-    document.addEventListener("pointercancel", handleUp);
-
-    return () => {
-      if (longPressTimer) clearTimeout(longPressTimer);
-      document.removeEventListener("pointermove", handleMove);
-      document.removeEventListener("pointerup", handleUp);
-      document.removeEventListener("pointercancel", handleUp);
-    };
-  }, [touchPending, handleTouchTap, tracksContainerRef, selectClip, saveToHistory, buildDragItems, releasePointer, setScrollFromGestureAnchor]);
+      releasePointer(event.pointerId);
+    },
+  });
 
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(
@@ -392,12 +345,16 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
         const { inMaskLane } = getTrackAtY(contentY);
         if (inMaskLane) return; // Let MaskClip handle it
         capturePointer(e.pointerId);
+        const timelineViewport = timelineViewportRef.current;
 
         const clipResult = findClipAtPosition(x, contentY);
         setTouchPending({
           pointerId: e.pointerId,
           clientX: e.clientX,
           clientY: e.clientY,
+          scrollXOnStart: timelineViewport.scrollX,
+          zoomOnStart: Math.max(0.001, timelineViewport.zoom),
+          scrollTopOnStart: tracksContainerRef.current?.scrollTop ?? 0,
           x,
           contentY,
           time,
@@ -659,6 +616,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       endMaskEdit,
       isEditingMask,
       ensureTimeVisibleOnLeft,
+      timelineViewportRef,
     ]
   );
 
