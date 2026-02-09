@@ -361,31 +361,46 @@ export async function saveVideoProjectToFirebase(
     });
 
     let storageRefPath = "";
+    let mediaBlob: Blob | null = null;
 
+    // Preferred path: explicit IndexedDB URL (legacy/optional path)
     if (isStoredMedia(clip.sourceUrl)) {
-      // Load blob from IndexedDB and upload to Firebase Storage
-      const clipId = getClipIdFromStoredUrl(clip.sourceUrl);
-      const blob = await loadMediaBlob(clipId);
+      const sourceClipId = getClipIdFromStoredUrl(clip.sourceUrl);
+      mediaBlob = await loadMediaBlob(sourceClipId);
+    }
 
-      if (blob) {
-        storageRefPath = await uploadMediaFile(
-          userId,
-          project.id,
-          clip.id,
-          blob,
-          blob.type || "application/octet-stream"
-        );
+    // Common path: imported media is stored by clip.id in IndexedDB
+    // while clip.sourceUrl stays as blob: URL for runtime playback.
+    if (!mediaBlob) {
+      mediaBlob = await loadMediaBlob(clip.id);
+    }
+
+    // Last-resort path: if runtime still has an object URL, fetch it.
+    if (!mediaBlob && clip.sourceUrl.startsWith("blob:")) {
+      try {
+        const response = await fetch(clip.sourceUrl);
+        if (response.ok) {
+          mediaBlob = await response.blob();
+        }
+      } catch {
+        // Ignore and continue with empty storageRef.
       }
     }
-    // If sourceUrl is a regular URL (not idb://), we can't upload it
-    // Store empty storageRef - this clip's media won't be available in cloud
+
+    if (mediaBlob) {
+      storageRefPath = await uploadMediaFile(
+        userId,
+        project.id,
+        clip.id,
+        mediaBlob,
+        mediaBlob.type || "application/octet-stream"
+      );
+    }
+    // If no media blob is available, keep empty storageRef.
+    // This preserves backward compatibility for non-uploadable clips.
 
     const meta = clipToMeta(clip, storageRefPath);
-    meta.mediaType = storageRefPath
-      ? (isStoredMedia(clip.sourceUrl)
-          ? (await loadMediaBlob(getClipIdFromStoredUrl(clip.sourceUrl)))?.type || ""
-          : "")
-      : "";
+    meta.mediaType = mediaBlob?.type || "";
     clipMetas.push(meta);
   }
 
