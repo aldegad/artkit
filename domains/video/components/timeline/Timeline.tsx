@@ -51,7 +51,7 @@ export function Timeline({ className }: TimelineProps) {
   } = useTimeline();
   const { project, playback } = useVideoState();
   const { getMasksForTrack, duplicateMasksToTrack } = useMask();
-  useVideoCoordinates();
+  const { timeToPixel, durationToWidth } = useVideoCoordinates();
 
   // Timeline input handling (clip drag, trim, seek, lift)
   const {
@@ -98,8 +98,9 @@ export function Timeline({ className }: TimelineProps) {
     ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, project.duration))
     : project.duration;
   const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < project.duration - 0.001);
-  const rangeStartX = rangeStart * viewState.zoom;
-  const rangeEndX = rangeEnd * viewState.zoom;
+  const rangeStartX = timeToPixel(rangeStart);
+  const rangeEndX = timeToPixel(rangeEnd);
+  const timelineContentWidth = durationToWidth(project.duration);
 
   const headerWidthStyle = { width: trackHeaderWidth };
   const headerWidthPx = `${trackHeaderWidth}px`;
@@ -439,11 +440,11 @@ export function Timeline({ className }: TimelineProps) {
             {/* Background for click handling */}
             <div
               className="timeline-bg absolute inset-0"
-              style={{ minWidth: project.duration * viewState.zoom }}
+              style={{ minWidth: timelineContentWidth }}
             />
 
             {/* Tracks */}
-            <div className="relative" style={{ minWidth: project.duration * viewState.zoom }}>
+            <div className="relative" style={{ minWidth: timelineContentWidth }}>
               {hasCustomRange && (
                 <>
                   <div
