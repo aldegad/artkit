@@ -90,3 +90,4 @@ export { useRulerRenderSync } from "./useRulerRenderSync";
 export { useEditorLayerContextValue } from "./useEditorLayerContextValue";
 export { useEditorCanvasContextValue } from "./useEditorCanvasContextValue";
 export { useEditorTranslationBundles } from "./useEditorTranslationBundles";
+export { useImageEditorController } from "./useImageEditorController";

@@ -7,7 +7,7 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions, useEditorCanvasActions, useEditorCursor, useTransformShortcuts, useImageImport, useLayersPanelToggle, useEditorHistoryAdapter, useToolModeGuard, useEditorToolRuntime, useViewportBridge, useGuideDragPreview, useRotateMenu, useEditorPanelRegistration, useRulerRenderSync, useEditorLayerContextValue, useEditorCanvasContextValue, useEditorTranslationBundles } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions, useEditorCanvasActions, useEditorCursor, useTransformShortcuts, useImageImport, useLayersPanelToggle, useEditorHistoryAdapter, useToolModeGuard, useEditorToolRuntime, useViewportBridge, useGuideDragPreview, useRotateMenu, useEditorPanelRegistration, useRulerRenderSync, useEditorLayerContextValue, useEditorCanvasContextValue, useEditorTranslationBundles, useImageEditorController } from "./hooks";
 export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn, EditorHistorySnapshot } from "./hooks";
 export type {
   CanvasInputEvent,
