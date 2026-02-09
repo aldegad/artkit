@@ -22,7 +22,7 @@ export default function CanvasContent() {
     frames, setFrames, nextFrameId, setNextFrameId,
     selectedFrameId, setSelectedFrameId, selectedPointIndex, setSelectedPointIndex,
   } = useEditorFramesMeta();
-  const { toolMode, currentPoints, setCurrentPoints, isSpacePressed } = useEditorTools();
+  const { toolMode, currentPoints, setCurrentPoints, isSpacePressed, isPanLocked } = useEditorTools();
   const { zoom, pan, scale, setScale, setZoom, setPan } = useEditorViewport();
   const { isDragging, setIsDragging, dragStart, setDragStart, didPanOrDragRef } = useEditorDrag();
   const { canvasRef, canvasContainerRef } = useEditorRefs();
@@ -36,6 +36,8 @@ export default function CanvasContent() {
 
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
+  const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
+  const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
 
   // ---- Shared viewport hook ----
   const viewport = useCanvasViewport({
@@ -399,6 +401,7 @@ export default function CanvasContent() {
   // Canvas click handler
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (lastPointerTypeRef.current === "touch" && isPanLocked) return;
       if (didPanOrDragRef.current) {
         didPanOrDragRef.current = false;
         return;
@@ -466,20 +469,35 @@ export default function CanvasContent() {
       setSelectedFrameId,
       didPanOrDragRef,
       viewport,
+      isPanLocked,
     ],
   );
 
-  // Mouse down handler
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Pointer down handler
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      lastPointerTypeRef.current = e.pointerType as "mouse" | "touch" | "pen";
+      if (e.pointerType === "touch") {
+        activeTouchPointerIdsRef.current.add(e.pointerId);
+      }
       didPanOrDragRef.current = false;
+
+      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
+      if (activeTouchPointerIdsRef.current.size > 1) {
+        viewport.endPanDrag();
+        return;
+      }
 
       if (
         e.button === 1 ||
         (e.button === 0 && e.altKey) ||
         (e.button === 0 && isSpacePressed) ||
-        (e.button === 0 && toolMode === "hand")
+        (e.button === 0 && toolMode === "hand") ||
+        isTouchPanOnlyInput
       ) {
+        if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }
         viewport.startPanDrag({ x: e.clientX, y: e.clientY });
         e.preventDefault();
         return;
@@ -491,6 +509,9 @@ export default function CanvasContent() {
         if (selectedFrameId !== null && selectedPointIndex !== null) {
           const selectedFrame = frames.find((f) => f.id === selectedFrameId);
           if (selectedFrame && isNearPoint(point, selectedFrame.points[selectedPointIndex], 12)) {
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }
             setIsDragging(true);
             setDragStart(point);
             return;
@@ -500,6 +521,9 @@ export default function CanvasContent() {
         if (selectedFrameId !== null) {
           const selectedFrame = frames.find((f) => f.id === selectedFrameId);
           if (selectedFrame && isPointInPolygon(point, selectedFrame.points)) {
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }
             setIsDragging(true);
             setDragStart(point);
             return;
@@ -519,12 +543,18 @@ export default function CanvasContent() {
       setIsDragging,
       setDragStart,
       didPanOrDragRef,
+      isPanLocked,
     ],
   );
 
-  // Mouse move handler
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Pointer move handler
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
+        viewport.endPanDrag();
+        return;
+      }
+
       if (viewport.isPanDragging()) {
         didPanOrDragRef.current = true;
         viewport.updatePanDrag({ x: e.clientX, y: e.clientY });
@@ -573,8 +603,15 @@ export default function CanvasContent() {
     ],
   );
 
-  // Mouse up handler
-  const handleMouseUp = useCallback(() => {
+  // Pointer up handler
+  const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e && e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    if (e?.pointerType === "touch") {
+      activeTouchPointerIdsRef.current.delete(e.pointerId);
+    }
+
     if (isDragging && selectedFrameId !== null) {
       setFrames((prev) =>
         prev.map((frame) => {
@@ -584,7 +621,9 @@ export default function CanvasContent() {
         }),
       );
     }
-    viewport.endPanDrag();
+    if (!e || activeTouchPointerIdsRef.current.size <= 1) {
+      viewport.endPanDrag();
+    }
     setIsDragging(false);
   }, [isDragging, selectedFrameId, setFrames, imageRef, viewport, setIsDragging]);
 
@@ -601,10 +640,11 @@ export default function CanvasContent() {
           <canvas
             ref={canvasCallbackRef}
             onClick={handleCanvasClick}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onPointerCancel={handlePointerUp}
             className={`w-full h-full rounded border border-border-default ${
               isSpacePressed || toolMode === "hand"
                 ? viewport.isPanDragging()
@@ -616,6 +656,7 @@ export default function CanvasContent() {
                     ? "cursor-grabbing"
                     : "cursor-default"
             }`}
+            style={{ touchAction: "none" }}
           />
           {/* 드래그 오버레이 - 이미지가 있을 때도 드래그 앤 드롭 피드백 표시 */}
           {isDragOver && (

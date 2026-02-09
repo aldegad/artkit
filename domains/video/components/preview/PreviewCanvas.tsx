@@ -785,7 +785,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         setBrushMode("erase");
       }
 
-      startDraw(maskCoords.x, maskCoords.y);
+      const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+      startDraw(maskCoords.x, maskCoords.y, pressure);
       isMaskDrawingRef.current = true;
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
@@ -888,7 +889,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (isMaskDrawingRef.current) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords) {
-        continueDraw(maskCoords.x, maskCoords.y);
+        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        continueDraw(maskCoords.x, maskCoords.y, pressure);
         cancelAnimationFrame(renderRequestRef.current);
         renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
       }

@@ -1,8 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag, useEditorWindows } from "../contexts/SpriteEditorContext";
-import { useLayout } from "../contexts/LayoutContext";
+import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
 import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, MenuIcon, PlusIcon } from "../../../shared/components/icons";
@@ -26,7 +25,6 @@ interface FrameCardProps {
   onDragEnd: () => void;
   onOffsetMouseDown: (e: React.MouseEvent, frameId: number) => void;
   onFrameClick: (e: React.MouseEvent, idx: number, frame: SpriteFrame) => void;
-  onFrameDoubleClick: (idx: number) => void;
   onToggleDisabled: (frameId: number) => void;
 }
 
@@ -47,7 +45,6 @@ const FrameCard = memo(function FrameCard({
   onDragEnd,
   onOffsetMouseDown,
   onFrameClick,
-  onFrameDoubleClick,
   onToggleDisabled,
 }: FrameCardProps) {
   return (
@@ -60,7 +57,6 @@ const FrameCard = memo(function FrameCard({
       onDragEnd={timelineMode === "reorder" ? onDragEnd : undefined}
       onMouseDown={(e) => timelineMode === "offset" && onOffsetMouseDown(e, frame.id)}
       onClick={(e) => onFrameClick(e, idx, frame)}
-      onDoubleClick={() => onFrameDoubleClick(idx)}
       className={`
         relative rounded-lg border-2 transition-all
         ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
@@ -146,7 +142,6 @@ export default function FrameStrip() {
     draggedFrameId, setDraggedFrameId, dragOverIndex, setDragOverIndex,
     editingOffsetFrameId, setEditingOffsetFrameId, offsetDragStart, setOffsetDragStart,
   } = useEditorDrag();
-  const { setIsFrameEditOpen } = useEditorWindows();
 
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
@@ -154,7 +149,6 @@ export default function FrameStrip() {
   const [showNthPopover, setShowNthPopover] = useState(false);
   const [nthValue, setNthValue] = useState(2);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
-  const { openFloatingWindow } = useLayout();
   const { t } = useLanguage();
 
   // Compact mode
@@ -521,15 +515,6 @@ export default function FrameStrip() {
       setSelectedFrameId(frame.id);
     },
     [setIsPlaying, isSkipToggleMode, toggleFrameDisabled, selectFrameRange, toggleSelectedFrameId, setSelectedFrameIds, setCurrentFrameIndex, setSelectedFrameId],
-  );
-
-  const handleFrameDoubleClick = useCallback(
-    (idx: number) => {
-      setCurrentFrameIndex(idx);
-      setIsFrameEditOpen(true);
-      openFloatingWindow("frame-edit", { x: 150, y: 150 });
-    },
-    [setCurrentFrameIndex, setIsFrameEditOpen, openFloatingWindow],
   );
 
   // Count disabled frames
@@ -923,11 +908,10 @@ export default function FrameStrip() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onDragEnd={handleDragEnd}
-                  onOffsetMouseDown={handleOffsetMouseDown}
-                  onFrameClick={handleFrameClick}
-                  onFrameDoubleClick={handleFrameDoubleClick}
-                  onToggleDisabled={toggleFrameDisabled}
-                />
+                onOffsetMouseDown={handleOffsetMouseDown}
+                onFrameClick={handleFrameClick}
+                onToggleDisabled={toggleFrameDisabled}
+              />
               ))
             )}
           </div>

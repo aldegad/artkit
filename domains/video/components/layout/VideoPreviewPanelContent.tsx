@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useMask, useTimeline } from "../../contexts";
+import { useTimeline } from "../../contexts";
 import { useMediaImport } from "../../hooks";
-import { MaskControls } from "../mask";
 import { PreviewCanvas, PreviewControls } from "../preview";
 import ImageDropZone from "@/shared/components/ImageDropZone";
 import { SUPPORTED_VIDEO_FORMATS, SUPPORTED_IMAGE_FORMATS, SUPPORTED_AUDIO_FORMATS } from "../../constants";
@@ -19,7 +18,6 @@ const ACCEPTED_FORMATS_STR = ACCEPTED_FORMATS.join(",");
 
 export function VideoPreviewPanelContent() {
   const { clips } = useTimeline();
-  const { activeMaskId } = useMask();
   const { importFiles } = useMediaImport();
   const { t } = useLanguage();
   const hasContent = clips.length > 0;
@@ -71,11 +69,6 @@ export function VideoPreviewPanelContent() {
         >
           <div className="flex-1 min-h-0 relative">
             <PreviewCanvas />
-            {activeMaskId && (
-              <div className="absolute top-4 right-4 z-10">
-                <MaskControls />
-              </div>
-            )}
           </div>
           <PreviewControls />
 

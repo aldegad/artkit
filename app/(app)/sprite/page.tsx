@@ -6,6 +6,7 @@ import {
   useEditorImage,
   useEditorFramesMeta,
   useEditorTools,
+  useEditorBrush,
   useEditorViewport,
   useEditorAnimation,
   useEditorHistory,
@@ -19,6 +20,8 @@ import {
   SpriteSheetImportModal,
   SpriteFrame,
   SpriteTopToolbar,
+  SpriteToolOptionsBar,
+  SpritePanModeToggle,
   useFrameBackgroundRemoval,
   useFrameInterpolation,
   useSpriteKeyboardShortcuts,
@@ -28,7 +31,6 @@ import {
 import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
-import { extractFrameImageFromSource } from "@/domains/sprite/utils";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
@@ -68,7 +70,27 @@ function SpriteEditorMain() {
     setSelectedFrameIds,
     selectedPointIndex,
   } = useEditorFramesMeta();
-  const { toolMode, setSpriteToolMode, currentPoints, setCurrentPoints, setIsSpacePressed } = useEditorTools();
+  const {
+    toolMode,
+    setSpriteToolMode,
+    frameEditToolMode,
+    setFrameEditToolMode,
+    setCurrentPoints,
+    setIsSpacePressed,
+  } = useEditorTools();
+  const {
+    brushColor,
+    setBrushColor,
+    brushSize,
+    setBrushSize,
+    brushHardness,
+    setBrushHardness,
+    activePreset,
+    setActivePreset,
+    presets,
+    pressureEnabled,
+    setPressureEnabled,
+  } = useEditorBrush();
   const { setScale, setZoom, setPan } = useEditorViewport();
   const { fps } = useEditorAnimation();
   const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
@@ -272,46 +294,6 @@ function SpriteEditorMain() {
     },
     [nextFrameId, setNextFrameId, pushHistory, addTrack, setIsVideoImportOpen, setPendingVideoFile],
   );
-
-  // Undo last point
-  const undoLastPoint = useCallback(() => {
-    setCurrentPoints((prev) => prev.slice(0, -1));
-  }, [setCurrentPoints]);
-
-  // Cancel current polygon
-  const cancelCurrentPolygon = useCallback(() => {
-    setCurrentPoints([]);
-  }, [setCurrentPoints]);
-
-  // Complete frame
-  const completeFrame = useCallback(() => {
-    if (currentPoints.length < 3) return;
-
-    // Save history before adding new frame
-    pushHistory();
-
-    const imageData = extractFrameImageFromSource(imageRef.current, currentPoints);
-
-    const newFrame = {
-      id: nextFrameId,
-      points: [...currentPoints],
-      name: `Frame ${nextFrameId}`,
-      imageData,
-      offset: { x: 0, y: 0 },
-    };
-
-    setFrames((prev) => [...prev, newFrame]);
-    setNextFrameId((prev) => prev + 1);
-    setCurrentPoints([]);
-  }, [
-    currentPoints,
-    nextFrameId,
-    imageRef,
-    setFrames,
-    setNextFrameId,
-    setCurrentPoints,
-    pushHistory,
-  ]);
 
   // Helper: get all frames across all tracks
   const allFrames = tracks.flatMap((t) => t.frames);
@@ -568,6 +550,7 @@ function SpriteEditorMain() {
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
     setSpriteToolMode,
+    setFrameEditToolMode,
     canUndo,
     canRedo,
     undo,
@@ -577,6 +560,12 @@ function SpriteEditorMain() {
     saveProject,
     saveProjectAs,
   });
+
+  useEffect(() => {
+    if (toolMode !== "select") {
+      setSpriteToolMode("select");
+    }
+  }, [toolMode, setSpriteToolMode]);
 
   // Handle new project with confirmation
   const handleNew = useCallback(() => {
@@ -678,10 +667,8 @@ function SpriteEditorMain() {
       <SpriteTopToolbar
         toolMode={toolMode}
         setSpriteToolMode={setSpriteToolMode}
-        currentPoints={currentPoints}
-        selectedFrameId={selectedFrameId}
-        selectedPointIndex={selectedPointIndex}
-        frames={frames}
+        frameEditToolMode={frameEditToolMode}
+        setFrameEditToolMode={setFrameEditToolMode}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
@@ -690,16 +677,47 @@ function SpriteEditorMain() {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
-        onUndoLastPoint={undoLastPoint}
-        onCancelCurrentPolygon={cancelCurrentPolygon}
-        onCompleteFrame={completeFrame}
         onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
         onRequestFrameInterpolation={() => setShowFrameInterpolationConfirm(true)}
+      />
+
+      <SpriteToolOptionsBar
+        toolMode={toolMode}
+        frameEditToolMode={frameEditToolMode}
+        brushColor={brushColor}
+        setBrushColor={setBrushColor}
+        brushSize={brushSize}
+        setBrushSize={setBrushSize}
+        brushHardness={brushHardness}
+        setBrushHardness={setBrushHardness}
+        activePreset={activePreset}
+        setActivePreset={setActivePreset}
+        presets={presets}
+        pressureEnabled={pressureEnabled}
+        setPressureEnabled={setPressureEnabled}
+        selectedFrameId={selectedFrameId}
+        selectedPointIndex={selectedPointIndex}
+        frames={frames}
+        labels={{
+          size: t.size,
+          hardness: t.hardness,
+          colorPickerTip: t.colorPickerTip,
+          brush: t.brush,
+          eraser: t.eraser,
+          eyedropper: t.eyedropper,
+          frame: t.frame,
+          selected: t.selected,
+          point: t.point,
+          presets: t.presets,
+          pressure: t.pressure,
+          builtIn: t.builtIn,
+        }}
       />
 
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">
         <SplitView />
+        <SpritePanModeToggle />
       </div>
 
       {/* Project List Modal */}

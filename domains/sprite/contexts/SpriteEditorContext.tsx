@@ -285,19 +285,27 @@ export function useEditorFramesMeta() {
 export function useEditorTools() {
   const toolMode = useSpriteToolStore((s) => s.toolMode);
   const setSpriteToolMode = useSpriteToolStore((s) => s.setSpriteToolMode);
+  const frameEditToolMode = useSpriteToolStore((s) => s.frameEditToolMode);
+  const setFrameEditToolMode = useSpriteToolStore((s) => s.setFrameEditToolMode);
   const currentPoints = useSpriteTrackStore((s) => s.currentPoints);
   const setCurrentPoints = useSpriteTrackStore((s) => s.setCurrentPoints);
   const isSpacePressed = useSpriteToolStore((s) => s.isSpacePressed);
   const setIsSpacePressed = useSpriteToolStore((s) => s.setIsSpacePressed);
+  const isPanLocked = useSpriteToolStore((s) => s.isPanLocked);
+  const setIsPanLocked = useSpriteToolStore((s) => s.setIsPanLocked);
   const timelineMode = useSpriteToolStore((s) => s.timelineMode);
   const setTimelineMode = useSpriteToolStore((s) => s.setTimelineMode);
   return {
     toolMode,
     setSpriteToolMode,
+    frameEditToolMode,
+    setFrameEditToolMode,
     currentPoints,
     setCurrentPoints,
     isSpacePressed,
     setIsSpacePressed,
+    isPanLocked,
+    setIsPanLocked,
     timelineMode,
     setTimelineMode,
   };
@@ -435,12 +443,26 @@ export function useEditorBrush() {
   const setBrushColor = useSpriteToolStore((s) => s.setBrushColor);
   const brushSize = useSpriteToolStore((s) => s.brushSize);
   const setBrushSize = useSpriteToolStore((s) => s.setBrushSize);
+  const brushHardness = useSpriteToolStore((s) => s.brushHardness);
+  const setBrushHardness = useSpriteToolStore((s) => s.setBrushHardness);
+  const activePreset = useSpriteToolStore((s) => s.activePreset);
+  const setActivePreset = useSpriteToolStore((s) => s.setActivePreset);
+  const presets = useSpriteToolStore((s) => s.presets);
+  const pressureEnabled = useSpriteToolStore((s) => s.pressureEnabled);
+  const setPressureEnabled = useSpriteToolStore((s) => s.setPressureEnabled);
 
   return {
     brushColor,
     setBrushColor,
     brushSize,
     setBrushSize,
+    brushHardness,
+    setBrushHardness,
+    activePreset,
+    setActivePreset,
+    presets,
+    pressureEnabled,
+    setPressureEnabled,
   };
 }
 

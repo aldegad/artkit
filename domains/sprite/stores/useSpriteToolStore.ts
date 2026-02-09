@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { SpriteToolMode, TimelineMode } from "../types";
+import { SpriteToolMode, TimelineMode, FrameEditToolMode } from "../types";
+import type { BrushPreset } from "@/domains/image/types/brush";
+import { DEFAULT_BRUSH_PRESETS } from "@/domains/image/constants/brushPresets";
 
 // ============================================
 // Types
@@ -8,7 +10,9 @@ import { SpriteToolMode, TimelineMode } from "../types";
 interface SpriteToolStore {
   // Tool State
   toolMode: SpriteToolMode;
+  frameEditToolMode: FrameEditToolMode;
   isSpacePressed: boolean;
+  isPanLocked: boolean;
 
   // Timeline
   timelineMode: TimelineMode;
@@ -16,10 +20,16 @@ interface SpriteToolStore {
   // Brush Tool
   brushColor: string;
   brushSize: number;
+  brushHardness: number;
+  activePreset: BrushPreset;
+  presets: BrushPreset[];
+  pressureEnabled: boolean;
 
   // Actions - Tool
   setSpriteToolMode: (mode: SpriteToolMode) => void;
+  setFrameEditToolMode: (mode: FrameEditToolMode) => void;
   setIsSpacePressed: (pressed: boolean) => void;
+  setIsPanLocked: (locked: boolean) => void;
 
   // Actions - Timeline
   setTimelineMode: (mode: TimelineMode) => void;
@@ -27,6 +37,9 @@ interface SpriteToolStore {
   // Actions - Brush
   setBrushColor: (color: string) => void;
   setBrushSize: (size: number) => void;
+  setBrushHardness: (hardness: number) => void;
+  setActivePreset: (preset: BrushPreset) => void;
+  setPressureEnabled: (enabled: boolean) => void;
 
   // Reset
   reset: () => void;
@@ -38,15 +51,23 @@ interface SpriteToolStore {
 
 export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   // Initial State
-  toolMode: "pen",
+  toolMode: "select",
+  frameEditToolMode: "brush",
   isSpacePressed: false,
+  isPanLocked: false,
   timelineMode: "reorder",
   brushColor: "#000000",
-  brushSize: 1,
+  brushSize: DEFAULT_BRUSH_PRESETS[0].defaultSize,
+  brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
+  activePreset: DEFAULT_BRUSH_PRESETS[0],
+  presets: [...DEFAULT_BRUSH_PRESETS],
+  pressureEnabled: true,
 
   // Tool Actions
   setSpriteToolMode: (mode) => set({ toolMode: mode }),
+  setFrameEditToolMode: (mode) => set({ frameEditToolMode: mode }),
   setIsSpacePressed: (pressed) => set({ isSpacePressed: pressed }),
+  setIsPanLocked: (locked) => set({ isPanLocked: locked }),
 
   // Timeline Actions
   setTimelineMode: (mode) => set({ timelineMode: mode }),
@@ -54,14 +75,28 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   // Brush Actions
   setBrushColor: (color) => set({ brushColor: color }),
   setBrushSize: (size) => set({ brushSize: size }),
+  setBrushHardness: (hardness) => set({ brushHardness: hardness }),
+  setActivePreset: (preset) =>
+    set({
+      activePreset: preset,
+      brushSize: preset.defaultSize,
+      brushHardness: preset.defaultHardness,
+    }),
+  setPressureEnabled: (enabled) => set({ pressureEnabled: enabled }),
 
   // Reset
   reset: () =>
     set({
-      toolMode: "pen",
+      toolMode: "select",
+      frameEditToolMode: "brush",
       isSpacePressed: false,
+      isPanLocked: false,
       timelineMode: "reorder",
       brushColor: "#000000",
-      brushSize: 1,
+      brushSize: DEFAULT_BRUSH_PRESETS[0].defaultSize,
+      brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
+      activePreset: DEFAULT_BRUSH_PRESETS[0],
+      presets: [...DEFAULT_BRUSH_PRESETS],
+      pressureEnabled: true,
     }),
 }));

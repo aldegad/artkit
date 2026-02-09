@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import type { SpriteToolMode } from "../types";
+import type { SpriteToolMode, FrameEditToolMode } from "../types";
 
 interface UseSpriteKeyboardShortcutsOptions {
   setIsSpacePressed: (pressed: boolean) => void;
   setSpriteToolMode: (mode: SpriteToolMode) => void;
+  setFrameEditToolMode: (mode: FrameEditToolMode) => void;
   canUndo: boolean;
   canRedo: boolean;
   undo: () => void;
@@ -19,6 +20,7 @@ interface UseSpriteKeyboardShortcutsOptions {
 export function useSpriteKeyboardShortcuts({
   setIsSpacePressed,
   setSpriteToolMode,
+  setFrameEditToolMode,
   canUndo,
   canRedo,
   undo,
@@ -50,9 +52,10 @@ export function useSpriteKeyboardShortcuts({
       }
 
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.key === "p") setSpriteToolMode("pen");
         if (e.key === "v") setSpriteToolMode("select");
-        if (e.key === "h") setSpriteToolMode("hand");
+        if (e.key === "b") setFrameEditToolMode("brush");
+        if (e.key === "e") setFrameEditToolMode("eraser");
+        if (e.key === "i") setFrameEditToolMode("eyedropper");
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -106,6 +109,7 @@ export function useSpriteKeyboardShortcuts({
   }, [
     setIsSpacePressed,
     setSpriteToolMode,
+    setFrameEditToolMode,
     canUndo,
     canRedo,
     undo,

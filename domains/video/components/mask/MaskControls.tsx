@@ -7,6 +7,7 @@ import { MASK_BRUSH } from "../../constants";
 import Tooltip from "@/shared/components/Tooltip";
 import { NumberScrubber } from "@/shared/components";
 import { useLanguage } from "@/shared/contexts";
+import { BrushPresetSelector } from "@/domains/image/components/toolbars/BrushPresetSelector";
 import {
   BrushIcon,
   EraserIcon,
@@ -16,6 +17,7 @@ import {
 
 interface MaskControlsProps {
   className?: string;
+  variant?: "floating" | "toolbar";
 }
 
 function formatMaskTime(seconds: number): string {
@@ -25,13 +27,18 @@ function formatMaskTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}:${frames.toString().padStart(2, "0")}`;
 }
 
-export function MaskControls({ className }: MaskControlsProps) {
+export function MaskControls({ className, variant = "floating" }: MaskControlsProps) {
   const {
     activeMaskId,
     brushSettings,
     setBrushSize,
     setBrushHardness,
     setBrushMode,
+    activePreset,
+    setActivePreset,
+    presets,
+    pressureEnabled,
+    setPressureEnabled,
     isEditingMask,
     masks,
     saveMaskData,
@@ -59,10 +66,15 @@ export function MaskControls({ className }: MaskControlsProps) {
   const actionBtn =
     "p-1.5 rounded transition-colors hover:bg-interactive-hover text-text-secondary hover:text-text-primary";
 
+  const containerClass =
+    variant === "toolbar"
+      ? "flex items-center gap-1 px-3.5 py-1 whitespace-nowrap"
+      : "flex items-center gap-1 px-2 py-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg";
+
   return (
     <div
       className={cn(
-        "flex items-center gap-1 px-2 py-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg",
+        containerClass,
         className
       )}
     >
@@ -98,6 +110,21 @@ export function MaskControls({ className }: MaskControlsProps) {
               <EraserIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
+
+          <div className="w-px h-5 bg-border-default mx-1" />
+
+          <BrushPresetSelector
+            presets={presets}
+            activePreset={activePreset}
+            onSelectPreset={setActivePreset}
+            pressureEnabled={pressureEnabled}
+            onPressureToggle={setPressureEnabled}
+            translations={{
+              presets: t.presets,
+              pressure: t.pressure,
+              builtIn: t.builtIn,
+            }}
+          />
 
           <div className="w-px h-5 bg-border-default mx-1" />
 

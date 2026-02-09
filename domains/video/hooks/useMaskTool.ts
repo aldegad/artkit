@@ -4,11 +4,12 @@ import { useCallback, useRef } from "react";
 import { useMask } from "../contexts/MaskContext";
 import { Point } from "@/shared/types";
 import { drawDab as sharedDrawDab, drawLine as sharedDrawLine } from "@/shared/utils/brushEngine";
+import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 
 interface UseMaskToolReturn {
   // Drawing
-  startDraw: (x: number, y: number) => void;
-  continueDraw: (x: number, y: number) => void;
+  startDraw: (x: number, y: number, pressure?: number) => void;
+  continueDraw: (x: number, y: number, pressure?: number) => void;
   endDraw: () => void;
 
   // Get current mask as data URL
@@ -23,15 +24,24 @@ interface UseMaskToolReturn {
 }
 
 export function useMaskTool(): UseMaskToolReturn {
-  const { brushSettings, maskCanvasRef, isEditingMask } = useMask();
+  const { brushSettings, activePreset, pressureEnabled, maskCanvasRef, isEditingMask } = useMask();
   const lastPointRef = useRef<Point | null>(null);
   const isDrawingRef = useRef(false);
 
+  const normalizePressure = (pressure: number): number =>
+    Number.isFinite(pressure) ? Math.max(0.01, Math.min(1, pressure)) : 1;
+
   // Draw a single dab using shared brush engine
   const drawMaskDab = useCallback(
-    (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+    (ctx: CanvasRenderingContext2D, x: number, y: number, pressure: number = 1) => {
       const { size, hardness, opacity, mode } = brushSettings;
       const isEraser = mode === "erase";
+      const params = calculateDrawingParameters(
+        normalizePressure(pressure),
+        activePreset,
+        size,
+        pressureEnabled,
+      );
 
       ctx.save();
       if (isEraser) {
@@ -41,23 +51,29 @@ export function useMaskTool(): UseMaskToolReturn {
       sharedDrawDab(ctx, {
         x,
         y,
-        radius: size / 2,
+        radius: params.size / 2,
         hardness: hardness / 100,
         color: "#ffffff",
-        alpha: opacity / 100,
+        alpha: (opacity / 100) * params.opacity * params.flow,
         isEraser,
       });
 
       ctx.restore();
     },
-    [brushSettings]
+    [brushSettings, activePreset, pressureEnabled]
   );
 
   // Draw a line of dabs using shared brush engine
   const drawMaskLine = useCallback(
-    (ctx: CanvasRenderingContext2D, from: Point, to: Point) => {
+    (ctx: CanvasRenderingContext2D, from: Point, to: Point, pressure: number = 1) => {
       const { size, hardness, opacity, mode } = brushSettings;
       const isEraser = mode === "erase";
+      const params = calculateDrawingParameters(
+        normalizePressure(pressure),
+        activePreset,
+        size,
+        pressureEnabled,
+      );
 
       ctx.save();
       if (isEraser) {
@@ -67,24 +83,24 @@ export function useMaskTool(): UseMaskToolReturn {
       sharedDrawLine(ctx, {
         from,
         to,
-        spacing: Math.max(1, size * 0.1),
+        spacing: Math.max(1, params.size * (activePreset.spacing / 100)),
         dab: {
-          radius: size / 2,
+          radius: params.size / 2,
           hardness: hardness / 100,
           color: "#ffffff",
-          alpha: opacity / 100,
+          alpha: (opacity / 100) * params.opacity * params.flow,
           isEraser,
         },
       });
 
       ctx.restore();
     },
-    [brushSettings]
+    [brushSettings, activePreset, pressureEnabled]
   );
 
   // Start drawing
   const startDraw = useCallback(
-    (x: number, y: number) => {
+    (x: number, y: number, pressure: number = 1) => {
       if (!isEditingMask || !maskCanvasRef.current) return;
 
       const ctx = maskCanvasRef.current.getContext("2d");
@@ -92,23 +108,23 @@ export function useMaskTool(): UseMaskToolReturn {
 
       isDrawingRef.current = true;
       lastPointRef.current = { x, y };
-      drawMaskDab(ctx, x, y);
+      drawMaskDab(ctx, x, y, pressure);
     },
     [isEditingMask, maskCanvasRef, drawMaskDab]
   );
 
   // Continue drawing
   const continueDraw = useCallback(
-    (x: number, y: number) => {
+    (x: number, y: number, pressure: number = 1) => {
       if (!isDrawingRef.current || !isEditingMask || !maskCanvasRef.current) return;
 
       const ctx = maskCanvasRef.current.getContext("2d");
       if (!ctx) return;
 
       if (lastPointRef.current) {
-        drawMaskLine(ctx, lastPointRef.current, { x, y });
+        drawMaskLine(ctx, lastPointRef.current, { x, y }, pressure);
       } else {
-        drawMaskDab(ctx, x, y);
+        drawMaskDab(ctx, x, y, pressure);
       }
 
       lastPointRef.current = { x, y };

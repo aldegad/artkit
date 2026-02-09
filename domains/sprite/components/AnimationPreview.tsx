@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useEditorTools, useEditorHistory, useEditorWindows } from "../contexts/SpriteEditorContext";
+import { useEditorTools, useEditorBrush, useEditorHistory, useEditorWindows } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { ImageDropZone, Popover } from "../../../shared/components";
 import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../../shared/components/icons";
@@ -92,7 +92,8 @@ export default function AnimationPreviewContent() {
   const storeFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
   const setStoreFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
-  const { toolMode } = useEditorTools();
+  const { toolMode, frameEditToolMode, isPanLocked } = useEditorTools();
+  const { setBrushColor } = useEditorBrush();
   const { pushHistory } = useEditorHistory();
   const { setPendingVideoFile, setIsVideoImportOpen } = useEditorWindows();
   const { t } = useLanguage();
@@ -106,6 +107,7 @@ export default function AnimationPreviewContent() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
 
   // Keep the latest composited frame as a canvas to avoid image re-decoding per frame.
   const compositedCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -466,33 +468,97 @@ export default function AnimationPreviewContent() {
   // 손 툴 또는 스페이스바로 패닝 활성화
   const isHandMode = toolMode === "hand" || isPanning;
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (isPanning || toolMode === "hand") {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointerIdsRef.current.add(e.pointerId);
+      }
+
+      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
+      if (isTouchPanOnlyInput && !e.isPrimary) {
+        return;
+      }
+
+      if (activeTouchPointerIdsRef.current.size > 1) {
+        animEndPanDrag();
+        return;
+      }
+
+      if (isPanning || toolMode === "hand" || isTouchPanOnlyInput) {
         e.preventDefault();
         animStartPanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [isPanning, toolMode, animStartPanDrag],
+    [isPanning, toolMode, isPanLocked, animStartPanDrag, animEndPanDrag],
   );
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
+        animEndPanDrag();
+        return;
+      }
+
       if (animIsPanDragging()) {
         animUpdatePanDrag({ x: e.clientX, y: e.clientY });
       }
     },
-    [animIsPanDragging, animUpdatePanDrag],
+    [animIsPanDragging, animUpdatePanDrag, animEndPanDrag],
   );
 
-  const handleMouseUp = useCallback(() => {
-    animEndPanDrag();
-  }, [animEndPanDrag]);
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointerIdsRef.current.delete(e.pointerId);
+      }
+      if (activeTouchPointerIdsRef.current.size <= 1) {
+        animEndPanDrag();
+      }
+    },
+    [animEndPanDrag],
+  );
+
+  const handlePreviewCanvasPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
+      if (isTouchPanOnlyInput || isHandMode || frameEditToolMode !== "eyedropper") {
+        return;
+      }
+
+      const sourceCanvas = compositedCanvasRef.current;
+      const displayCanvas = canvasRef.current;
+      if (!sourceCanvas || !displayCanvas) return;
+
+      const rect = displayCanvas.getBoundingClientRect();
+      const zoom = getAnimVpZoom();
+      if (zoom <= 0) return;
+
+      const srcX = Math.floor((e.clientX - rect.left) / zoom);
+      const srcY = Math.floor((e.clientY - rect.top) / zoom);
+      if (srcX < 0 || srcY < 0 || srcX >= sourceCanvas.width || srcY >= sourceCanvas.height) {
+        return;
+      }
+
+      const sourceCtx = sourceCanvas.getContext("2d");
+      if (!sourceCtx) return;
+      const pixel = sourceCtx.getImageData(srcX, srcY, 1, 1).data;
+      if (pixel[3] === 0) return;
+
+      const hex = `#${pixel[0].toString(16).padStart(2, "0")}${pixel[1]
+        .toString(16)
+        .padStart(2, "0")}${pixel[2].toString(16).padStart(2, "0")}`;
+      setBrushColor(hex);
+    },
+    [frameEditToolMode, getAnimVpZoom, isHandMode, isPanLocked, setBrushColor],
+  );
 
   // 커서 결정
   const getCursor = () => {
     if (isHandMode) {
       return animIsPanDragging() ? "grabbing" : "grab";
+    }
+    if (frameEditToolMode === "eyedropper") {
+      return "crosshair";
     }
     return "default";
   };
@@ -520,11 +586,12 @@ export default function AnimationPreviewContent() {
               animPinchRef(el);
             }}
             className="flex-1 overflow-hidden relative bg-surface-secondary"
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            style={{ cursor: getCursor() }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            style={{ cursor: getCursor(), touchAction: "none" }}
           >
             {hasCompositedFrame ? (
               <div
@@ -545,10 +612,12 @@ export default function AnimationPreviewContent() {
                 )}
                 <canvas
                   ref={canvasRef}
+                  onPointerDown={handlePreviewCanvasPointerDown}
                   className="block relative"
                   style={{
                     cursor: getCursor(),
                     pointerEvents: isHandMode ? "none" : "auto",
+                    touchAction: "none",
                   }}
                 />
               </div>

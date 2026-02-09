@@ -15,6 +15,8 @@ import {
   createMaskData,
 } from "../types";
 import { Size } from "@/shared/types";
+import type { BrushPreset } from "@/domains/image/types/brush";
+import { DEFAULT_BRUSH_PRESETS } from "@/domains/image/constants/brushPresets";
 
 interface MaskContextValue {
   // Current mask being edited
@@ -28,6 +30,11 @@ interface MaskContextValue {
   setBrushSize: (size: number) => void;
   setBrushHardness: (hardness: number) => void;
   setBrushMode: (mode: "paint" | "erase") => void;
+  activePreset: BrushPreset;
+  setActivePreset: (preset: BrushPreset) => void;
+  presets: BrushPreset[];
+  pressureEnabled: boolean;
+  setPressureEnabled: (enabled: boolean) => void;
 
   // Mask data
   masks: Map<string, MaskData>;
@@ -60,6 +67,9 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [isEditingMask, setIsEditingMask] = useState(false);
   const [brushSettings, setBrushSettingsState] = useState<MaskBrushSettings>(DEFAULT_MASK_BRUSH);
+  const [presets] = useState<BrushPreset[]>(() => [...DEFAULT_BRUSH_PRESETS]);
+  const [activePreset, setActivePresetState] = useState<BrushPreset>(() => DEFAULT_BRUSH_PRESETS[0]);
+  const [pressureEnabled, setPressureEnabledState] = useState(true);
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -78,6 +88,19 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   const setBrushMode = useCallback((mode: "paint" | "erase") => {
     setBrushSettingsState((prev) => ({ ...prev, mode }));
+  }, []);
+
+  const setActivePreset = useCallback((preset: BrushPreset) => {
+    setActivePresetState(preset);
+    setBrushSettingsState((prev) => ({
+      ...prev,
+      size: preset.defaultSize,
+      hardness: preset.defaultHardness,
+    }));
+  }, []);
+
+  const setPressureEnabled = useCallback((enabled: boolean) => {
+    setPressureEnabledState(enabled);
   }, []);
 
   // Restore masks from saved data (autosave / project load)
@@ -372,6 +395,11 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setBrushSize,
     setBrushHardness,
     setBrushMode,
+    activePreset,
+    setActivePreset,
+    presets,
+    pressureEnabled,
+    setPressureEnabled,
     masks,
     restoreMasks,
     selectMask,

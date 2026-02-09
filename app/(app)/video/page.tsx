@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay, Select } from "@/shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar } from "@/shared/components";
 import { ZoomInIcon, ZoomOutIcon, LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, CanvasExpandIcon } from "@/shared/components/icons";
 import {
   VideoStateProvider,
@@ -20,6 +20,7 @@ import {
   VideoMenuBar,
   VideoToolbar,
   VideoExportModal,
+  MaskControls,
   VideoSplitContainer,
   VideoFloatingWindows,
   VideoProjectListModal,
@@ -1422,6 +1423,15 @@ function VideoEditorContent() {
           </button>
         </div>
       </div>
+
+      {toolMode === "mask" && activeMaskId && (
+        <Scrollbar
+          className="bg-surface-primary border-b border-border-default shrink-0"
+          overflow={{ x: "scroll", y: "hidden" }}
+        >
+          <MaskControls variant="toolbar" />
+        </Scrollbar>
+      )}
 
       {/* Main Content (shared docking/split system) */}
       <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
