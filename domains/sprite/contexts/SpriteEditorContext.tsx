@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useRef, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useRef, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { SpriteFrame } from "../types";
 import { AUTOSAVE_DEBOUNCE_MS, loadAutosaveData, saveAutosaveData, clearAutosaveData } from "../utils/autosave";
 import { deepCopyFrame } from "../utils/frameUtils";
@@ -219,57 +219,83 @@ export function useEditorRefs(): EditorRefsContextValue {
 // ============================================
 
 export function useEditorImage() {
-  const { imageSrc, setImageSrc, imageSize, setImageSize } = useSpriteTrackStore();
+  const imageSrc = useSpriteTrackStore((s) => s.imageSrc);
+  const setImageSrc = useSpriteTrackStore((s) => s.setImageSrc);
+  const imageSize = useSpriteTrackStore((s) => s.imageSize);
+  const setImageSize = useSpriteTrackStore((s) => s.setImageSize);
   const { imageRef } = useEditorRefs();
   return { imageSrc, setImageSrc, imageSize, setImageSize, imageRef };
 }
 
 export function useEditorFrames() {
-  const store = useSpriteTrackStore();
-  const frames = store.getActiveTrackFrames();
+  const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
+  const tracks = useSpriteTrackStore((s) => s.tracks);
+  const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
+  const nextFrameId = useSpriteTrackStore((s) => s.nextFrameId);
+  const setNextFrameId = useSpriteTrackStore((s) => s.setNextFrameId);
+  const currentFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
+  const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
+  const selectedFrameId = useSpriteTrackStore((s) => s.selectedFrameId);
+  const setSelectedFrameId = useSpriteTrackStore((s) => s.setSelectedFrameId);
+  const selectedFrameIds = useSpriteTrackStore((s) => s.selectedFrameIds);
+  const setSelectedFrameIds = useSpriteTrackStore((s) => s.setSelectedFrameIds);
+  const toggleSelectedFrameId = useSpriteTrackStore((s) => s.toggleSelectedFrameId);
+  const selectFrameRange = useSpriteTrackStore((s) => s.selectFrameRange);
+  const selectedPointIndex = useSpriteTrackStore((s) => s.selectedPointIndex);
+  const setSelectedPointIndex = useSpriteTrackStore((s) => s.setSelectedPointIndex);
+
+  const frames = useMemo(() => {
+    const activeTrack = tracks.find((t) => t.id === activeTrackId);
+    return activeTrack?.frames ?? [];
+  }, [tracks, activeTrackId]);
 
   const setFrames = useCallback(
     (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
-      const { activeTrackId, tracks } = useSpriteTrackStore.getState();
       if (!activeTrackId) return;
       const activeTrack = tracks.find((t) => t.id === activeTrackId);
       if (!activeTrack) return;
       const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
-      store.updateTrack(activeTrackId, { frames: newFrames });
+      updateTrack(activeTrackId, { frames: newFrames });
     },
-    [store],
+    [activeTrackId, tracks, updateTrack],
   );
 
   return {
     frames,
     setFrames,
-    nextFrameId: store.nextFrameId,
-    setNextFrameId: store.setNextFrameId,
-    currentFrameIndex: store.currentFrameIndex,
-    setCurrentFrameIndex: store.setCurrentFrameIndex,
-    selectedFrameId: store.selectedFrameId,
-    setSelectedFrameId: store.setSelectedFrameId,
-    selectedFrameIds: store.selectedFrameIds,
-    setSelectedFrameIds: store.setSelectedFrameIds,
-    toggleSelectedFrameId: store.toggleSelectedFrameId,
-    selectFrameRange: store.selectFrameRange,
-    selectedPointIndex: store.selectedPointIndex,
-    setSelectedPointIndex: store.setSelectedPointIndex,
+    nextFrameId,
+    setNextFrameId,
+    currentFrameIndex,
+    setCurrentFrameIndex,
+    selectedFrameId,
+    setSelectedFrameId,
+    selectedFrameIds,
+    setSelectedFrameIds,
+    toggleSelectedFrameId,
+    selectFrameRange,
+    selectedPointIndex,
+    setSelectedPointIndex,
   };
 }
 
 export function useEditorTools() {
-  const trackStore = useSpriteTrackStore();
-  const toolStore = useSpriteToolStore();
+  const toolMode = useSpriteToolStore((s) => s.toolMode);
+  const setSpriteToolMode = useSpriteToolStore((s) => s.setSpriteToolMode);
+  const currentPoints = useSpriteTrackStore((s) => s.currentPoints);
+  const setCurrentPoints = useSpriteTrackStore((s) => s.setCurrentPoints);
+  const isSpacePressed = useSpriteToolStore((s) => s.isSpacePressed);
+  const setIsSpacePressed = useSpriteToolStore((s) => s.setIsSpacePressed);
+  const timelineMode = useSpriteToolStore((s) => s.timelineMode);
+  const setTimelineMode = useSpriteToolStore((s) => s.setTimelineMode);
   return {
-    toolMode: toolStore.toolMode,
-    setSpriteToolMode: toolStore.setSpriteToolMode,
-    currentPoints: trackStore.currentPoints,
-    setCurrentPoints: trackStore.setCurrentPoints,
-    isSpacePressed: toolStore.isSpacePressed,
-    setIsSpacePressed: toolStore.setIsSpacePressed,
-    timelineMode: toolStore.timelineMode,
-    setTimelineMode: toolStore.setTimelineMode,
+    toolMode,
+    setSpriteToolMode,
+    currentPoints,
+    setCurrentPoints,
+    isSpacePressed,
+    setIsSpacePressed,
+    timelineMode,
+    setTimelineMode,
   };
 }
 
@@ -362,34 +388,52 @@ export function useEditorBrush() {
 }
 
 export function useEditorHistory() {
-  const store = useSpriteTrackStore();
+  const canUndo = useSpriteTrackStore((s) => s.canUndo);
+  const canRedo = useSpriteTrackStore((s) => s.canRedo);
+  const undo = useSpriteTrackStore((s) => s.undo);
+  const redo = useSpriteTrackStore((s) => s.redo);
+  const pushHistory = useSpriteTrackStore((s) => s.pushHistory);
   return {
-    canUndo: store.canUndo,
-    canRedo: store.canRedo,
-    undo: store.undo,
-    redo: store.redo,
-    pushHistory: store.pushHistory,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    pushHistory,
   };
 }
 
 export function useEditorTracks() {
-  const store = useSpriteTrackStore();
+  const tracks = useSpriteTrackStore((s) => s.tracks);
+  const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
+  const setActiveTrackId = useSpriteTrackStore((s) => s.setActiveTrackId);
+  const addTrack = useSpriteTrackStore((s) => s.addTrack);
+  const removeTrack = useSpriteTrackStore((s) => s.removeTrack);
+  const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
+  const reorderTracks = useSpriteTrackStore((s) => s.reorderTracks);
+  const addFramesToTrack = useSpriteTrackStore((s) => s.addFramesToTrack);
+  const removeFrame = useSpriteTrackStore((s) => s.removeFrame);
+  const updateFrame = useSpriteTrackStore((s) => s.updateFrame);
+  const reorderFrames = useSpriteTrackStore((s) => s.reorderFrames);
+  const getActiveTrack = useSpriteTrackStore((s) => s.getActiveTrack);
+  const getActiveTrackFrames = useSpriteTrackStore((s) => s.getActiveTrackFrames);
+  const getMaxFrameCount = useSpriteTrackStore((s) => s.getMaxFrameCount);
+  const restoreTracks = useSpriteTrackStore((s) => s.restoreTracks);
   return {
-    tracks: store.tracks,
-    activeTrackId: store.activeTrackId,
-    setActiveTrackId: store.setActiveTrackId,
-    addTrack: store.addTrack,
-    removeTrack: store.removeTrack,
-    updateTrack: store.updateTrack,
-    reorderTracks: store.reorderTracks,
-    addFramesToTrack: store.addFramesToTrack,
-    removeFrame: store.removeFrame,
-    updateFrame: store.updateFrame,
-    reorderFrames: store.reorderFrames,
-    getActiveTrack: store.getActiveTrack,
-    getActiveTrackFrames: store.getActiveTrackFrames,
-    getMaxFrameCount: store.getMaxFrameCount,
-    restoreTracks: store.restoreTracks,
+    tracks,
+    activeTrackId,
+    setActiveTrackId,
+    addTrack,
+    removeTrack,
+    updateTrack,
+    reorderTracks,
+    addFramesToTrack,
+    removeFrame,
+    updateFrame,
+    reorderFrames,
+    getActiveTrack,
+    getActiveTrackFrames,
+    getMaxFrameCount,
+    restoreTracks,
   };
 }
 
@@ -482,4 +526,3 @@ export function useEditorClipboard() {
     clipboardTrack: uiStore.clipboardTrack,
   };
 }
-

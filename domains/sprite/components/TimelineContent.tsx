@@ -2,13 +2,10 @@
 
 import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
-import { useEditorTracks, useEditorFrames, useEditorAnimation, useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext";
+import { useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { Scrollbar, NumberScrubber } from "@/shared/components";
-import ExportDropdown from "./ExportDropdown";
 import { SpriteTrack } from "../types";
-import { compositeFrame } from "../utils/compositor";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
-import { generateCompositedSpriteSheet } from "../utils/export";
 import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon } from "@/shared/components/icons";
 
 // ============================================
@@ -23,11 +20,23 @@ const HEADER_DEFAULT = 144;
 const LS_KEY = "sprite-timeline-header-width";
 
 export default function TimelineContent() {
-  const { tracks, activeTrackId, setActiveTrackId, addTrack, removeTrack, updateTrack, getMaxFrameCount } = useEditorTracks();
-  const { currentFrameIndex, setCurrentFrameIndex } = useEditorFrames();
-  const { isPlaying, setIsPlaying, fps, setFps, animationRef, lastFrameTimeRef } = useEditorAnimation();
+  const tracks = useSpriteTrackStore((s) => s.tracks);
+  const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
+  const setActiveTrackId = useSpriteTrackStore((s) => s.setActiveTrackId);
+  const addTrack = useSpriteTrackStore((s) => s.addTrack);
+  const removeTrack = useSpriteTrackStore((s) => s.removeTrack);
+  const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
+  const currentFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
+  const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
+  const isPlaying = useSpriteTrackStore((s) => s.isPlaying);
+  const setIsPlaying = useSpriteTrackStore((s) => s.setIsPlaying);
+  const fps = useSpriteTrackStore((s) => s.fps);
+  const setFps = useSpriteTrackStore((s) => s.setFps);
+  const maxFrameCount = useSpriteTrackStore((s) =>
+    s.tracks.length === 0 ? 0 : Math.max(...s.tracks.map((t) => t.frames.length))
+  );
+  const { animationRef, lastFrameTimeRef } = useEditorRefs();
   const { pushHistory } = useEditorHistory();
-  const { previewCanvasRef } = useEditorRefs();
 
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -43,36 +52,9 @@ export default function TimelineContent() {
   const rulerRef = useRef<HTMLDivElement>(null);
   const scrollbarRef = useRef<OverlayScrollbarsComponentRef>(null);
 
-  // Preview frame drawing (composited from all tracks)
-  const drawPreviewFrame = useCallback(
-    (frameIndex: number) => {
-      if (!previewCanvasRef.current) return;
-
-      compositeFrame(tracks, frameIndex).then((result) => {
-        if (!result || !previewCanvasRef.current) return;
-
-        const canvas = previewCanvasRef.current;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        const img = new Image();
-        img.onload = () => {
-          const maxSize = 100;
-          const frameScale = Math.min(maxSize / img.width, maxSize / img.height, 1);
-          canvas.width = img.width * frameScale;
-          canvas.height = img.height * frameScale;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        };
-        img.src = result.dataUrl;
-      });
-    },
-    [tracks, previewCanvasRef],
-  );
-
   // Animation loop
   useEffect(() => {
-    const maxFrames = getMaxFrameCount();
+    const maxFrames = maxFrameCount;
     if (!isPlaying || maxFrames === 0) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
@@ -82,26 +64,48 @@ export default function TimelineContent() {
     }
 
     const frameDuration = 1000 / fps;
+    const maxCatchUpSteps = Math.max(1, Math.min(maxFrames, 8));
 
     const animate = (timestamp: number) => {
-      if (timestamp - lastFrameTimeRef.current >= frameDuration) {
+      if (lastFrameTimeRef.current === 0) {
         lastFrameTimeRef.current = timestamp;
+      }
+
+      const elapsed = timestamp - lastFrameTimeRef.current;
+      if (elapsed >= frameDuration) {
+        const rawSteps = Math.floor(elapsed / frameDuration);
+        const steps = Math.max(1, Math.min(rawSteps, maxCatchUpSteps));
+        lastFrameTimeRef.current += steps * frameDuration;
+
         setCurrentFrameIndex((prev: number) => {
           const latestTracks = useSpriteTrackStore.getState().tracks;
-          let next = (prev + 1) % maxFrames;
-          let checked = 0;
-          while (checked < maxFrames) {
-            const allDisabled = latestTracks
-              .filter((t) => t.visible && t.frames.length > 0)
-              .every((t) => {
-                const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
-                return idx === -1 || t.frames[idx]?.disabled;
-              });
-            if (!allDisabled) return next;
-            next = (next + 1) % maxFrames;
-            checked++;
+          let current = prev;
+
+          for (let step = 0; step < steps; step++) {
+            let next = (current + 1) % maxFrames;
+            let checked = 0;
+            while (checked < maxFrames) {
+              const allDisabled = latestTracks
+                .filter((t) => t.visible && t.frames.length > 0)
+                .every((t) => {
+                  const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
+                  return idx === -1 || t.frames[idx]?.disabled;
+                });
+              if (!allDisabled) {
+                current = next;
+                break;
+              }
+              next = (next + 1) % maxFrames;
+              checked++;
+            }
+
+            // No playable frame found
+            if (checked >= maxFrames) {
+              break;
+            }
           }
-          return prev;
+
+          return current;
         });
       }
       animationRef.current = requestAnimationFrame(animate);
@@ -112,11 +116,14 @@ export default function TimelineContent() {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [isPlaying, fps, getMaxFrameCount, animationRef, lastFrameTimeRef, setCurrentFrameIndex]);
+  }, [isPlaying, fps, maxFrameCount, animationRef, lastFrameTimeRef, setCurrentFrameIndex]);
 
   useEffect(() => {
-    drawPreviewFrame(currentFrameIndex);
-  }, [currentFrameIndex, drawPreviewFrame]);
+    // Keep timestamp in sync when playback stops/starts to avoid first-frame jump.
+    if (!isPlaying) {
+      lastFrameTimeRef.current = 0;
+    }
+  }, [isPlaying, lastFrameTimeRef]);
 
   // Load header width from localStorage
   useEffect(() => {
@@ -178,17 +185,6 @@ export default function TimelineContent() {
     return () => viewport.removeEventListener("scroll", onScroll);
   }, [tracks]);
 
-  // Export composited sprite sheet
-  const exportSpriteSheet = useCallback(async () => {
-    const dataUrl = await generateCompositedSpriteSheet(tracks);
-    if (!dataUrl) return;
-
-    const link = document.createElement("a");
-    link.download = "spritesheet.png";
-    link.href = dataUrl;
-    link.click();
-  }, [tracks]);
-
   // Add new track
   const handleAddTrack = useCallback(() => {
     pushHistory();
@@ -220,8 +216,6 @@ export default function TimelineContent() {
     setEditingTrackId(null);
   }, [editingTrackId, editingName, updateTrack]);
 
-  const maxFrameCount = getMaxFrameCount();
-
   // Per-track enabled (non-disabled) frame indices — disabled frames are "trimmed" from timeline
   const trackEnabledIndicesMap = useMemo(() => {
     const map = new Map<string, number[]>();
@@ -245,6 +239,22 @@ export default function TimelineContent() {
   }, [trackEnabledIndicesMap]);
 
   const activeEnabledIndices = trackEnabledIndicesMap.get(activeTrackId ?? "") ?? [];
+  const currentVisualIndex = activeEnabledIndices.indexOf(currentFrameIndex);
+  const playheadLeft = currentVisualIndex >= 0 ? currentVisualIndex * CELL_WIDTH + CELL_WIDTH / 2 : null;
+
+  const rulerCells = useMemo(
+    () =>
+      Array.from({ length: maxEnabledCount }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] pointer-events-none text-text-tertiary"
+          style={{ width: CELL_WIDTH, height: "100%" }}
+        >
+          {i + 1}
+        </div>
+      )),
+    [maxEnabledCount],
+  );
 
   // ---- Scrubbing (drag-to-navigate) ----
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -294,6 +304,56 @@ export default function TimelineContent() {
     };
   }, [isScrubbing, setCurrentFrameIndex]);
 
+  const trackRows = useMemo(
+    () =>
+      tracks.map((track: SpriteTrack) => {
+        const enabledIndices = trackEnabledIndicesMap.get(track.id) ?? [];
+        return (
+          <div
+            key={track.id}
+            className={`flex border-b border-border-default transition-colors cursor-pointer ${
+              track.id === activeTrackId ? "bg-accent-primary/5" : ""
+            } ${!track.visible ? "opacity-40" : ""}`}
+            style={{ height: TRACK_HEIGHT }}
+            onMouseDown={(e) => handleScrubStart(e, track.id)}
+          >
+            {Array.from({ length: maxEnabledCount }).map((_, visualIdx) => {
+              const absIdx = enabledIndices[visualIdx];
+              const frame = absIdx !== undefined ? track.frames[absIdx] : undefined;
+
+              return (
+                <div
+                  key={visualIdx}
+                  className="shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors pointer-events-none"
+                  style={{ width: CELL_WIDTH, height: TRACK_HEIGHT }}
+                >
+                  {frame ? (
+                    <div className="w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary">
+                      {frame.imageData ? (
+                        <img
+                          src={frame.imageData}
+                          alt=""
+                          className="w-full h-full object-contain"
+                          draggable={false}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[8px] text-text-tertiary">
+                          {visualIdx + 1}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="w-1 h-1 rounded-full bg-border-default/30" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      }),
+    [tracks, trackEnabledIndicesMap, activeTrackId, maxEnabledCount, handleScrubStart],
+  );
+
   return (
     <div className="flex flex-col h-full bg-surface-primary">
       {/* Control bar */}
@@ -321,18 +381,9 @@ export default function TimelineContent() {
         {/* Frame counter */}
         <span className="text-[10px] text-text-secondary">
           {maxEnabledCount > 0
-            ? `${(activeEnabledIndices.indexOf(currentFrameIndex) + 1) || "—"}/${maxEnabledCount}`
+            ? `${(currentVisualIndex + 1) || "—"}/${maxEnabledCount}`
             : "—"}
         </span>
-
-        {/* Preview */}
-        <div className="checkerboard w-10 h-10 rounded flex items-center justify-center overflow-hidden border border-border-default">
-          {maxFrameCount > 0 ? (
-            <canvas ref={previewCanvasRef} className="max-w-full max-h-full" />
-          ) : (
-            <span className="text-text-tertiary text-[9px]">—</span>
-          )}
-        </div>
 
         <div className="flex-1" />
 
@@ -344,10 +395,6 @@ export default function TimelineContent() {
           + Track
         </button>
 
-        {/* Export */}
-        {getMaxFrameCount() > 0 && (
-          <ExportDropdown tracks={tracks} fps={fps} onExportSpriteSheet={exportSpriteSheet} />
-        )}
       </div>
 
       {/* Ruler row */}
@@ -365,23 +412,16 @@ export default function TimelineContent() {
           className="flex-1 overflow-hidden h-6 cursor-ew-resize"
           onMouseDown={(e) => handleScrubStart(e)}
         >
-          <div className="flex items-end h-full bg-surface-secondary" style={{ width: maxEnabledCount * CELL_WIDTH }}>
-            {Array.from({ length: maxEnabledCount }).map((_, i) => {
-              const isCurrent = activeEnabledIndices[i] === currentFrameIndex;
-              return (
-                <div
-                  key={i}
-                  className={`flex items-center justify-center shrink-0 border-r border-border-default/30 text-[9px] pointer-events-none transition-colors ${
-                    isCurrent
-                      ? "text-accent-primary font-bold bg-accent-primary/10"
-                      : "text-text-tertiary"
-                  }`}
-                  style={{ width: CELL_WIDTH, height: "100%" }}
-                >
-                  {i + 1}
-                </div>
-              );
-            })}
+          <div className="relative h-full bg-surface-secondary" style={{ width: maxEnabledCount * CELL_WIDTH }}>
+            <div className="flex items-end h-full">
+              {rulerCells}
+            </div>
+            {playheadLeft !== null && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-accent-primary pointer-events-none"
+                style={{ left: playheadLeft }}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -483,56 +523,14 @@ export default function TimelineContent() {
 
         {/* Right: Frame content (scrollable) */}
         <Scrollbar ref={scrollbarRef} className="flex-1 min-w-0">
-          <div style={{ minWidth: maxEnabledCount * CELL_WIDTH }}>
-            {tracks.map((track: SpriteTrack) => {
-              const enabledIndices = trackEnabledIndicesMap.get(track.id) ?? [];
-              return (
-                <div
-                  key={track.id}
-                  className={`flex border-b border-border-default transition-colors cursor-pointer ${
-                    track.id === activeTrackId ? "bg-accent-primary/5" : ""
-                  } ${!track.visible ? "opacity-40" : ""}`}
-                  style={{ height: TRACK_HEIGHT }}
-                  onMouseDown={(e) => handleScrubStart(e, track.id)}
-                >
-                  {/* Frame cells (only enabled frames — disabled are trimmed) */}
-                  {Array.from({ length: maxEnabledCount }).map((_, visualIdx) => {
-                    const absIdx = enabledIndices[visualIdx];
-                    const frame = absIdx !== undefined ? track.frames[absIdx] : undefined;
-                    const isCurrentFrame = absIdx !== undefined && absIdx === currentFrameIndex;
-
-                    return (
-                      <div
-                        key={visualIdx}
-                        className={`shrink-0 border-r border-border-default/20 flex items-center justify-center transition-colors pointer-events-none ${
-                          isCurrentFrame ? "bg-accent-primary/10" : ""
-                        }`}
-                        style={{ width: CELL_WIDTH, height: TRACK_HEIGHT }}
-                      >
-                        {frame ? (
-                          <div className="w-[34px] h-[34px] rounded overflow-hidden bg-surface-tertiary">
-                            {frame.imageData ? (
-                              <img
-                                src={frame.imageData}
-                                alt=""
-                                className="w-full h-full object-contain"
-                                draggable={false}
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[8px] text-text-tertiary">
-                                {visualIdx + 1}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="w-1 h-1 rounded-full bg-border-default/30" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+          <div className="relative" style={{ minWidth: maxEnabledCount * CELL_WIDTH }}>
+            {trackRows}
+            {playheadLeft !== null && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-accent-primary/80 pointer-events-none"
+                style={{ left: playheadLeft }}
+              />
+            )}
 
             {/* Empty state */}
             {tracks.length === 0 && (
