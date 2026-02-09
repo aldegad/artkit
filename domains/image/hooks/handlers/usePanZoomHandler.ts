@@ -4,6 +4,8 @@
 
 import { useCallback } from "react";
 import { Point } from "../../types";
+import { VIEWPORT } from "../../constants";
+import { clampZoom, zoomAtPoint } from "@/shared/utils";
 import type { MouseEventContext, HandlerResult, PanZoomHandlerOptions } from "./types";
 
 export interface UsePanZoomHandlerReturn {
@@ -12,7 +14,7 @@ export interface UsePanZoomHandlerReturn {
 }
 
 export function usePanZoomHandler(options: PanZoomHandlerOptions): UsePanZoomHandlerReturn {
-  const { canvasRef, zoom, setZoom, setPan } = options;
+  const { canvasRef, zoom, pan, setZoom, setPan } = options;
 
   const handleMouseDown = useCallback(
     (ctx: MouseEventContext): HandlerResult => {
@@ -32,26 +34,30 @@ export function usePanZoomHandler(options: PanZoomHandlerOptions): UsePanZoomHan
         const canvas = canvasRef.current;
         if (!canvas) return { handled: false };
 
-        const zoomFactor = e.altKey ? 0.8 : 1.25;
-        const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
-        const scale = newZoom / zoom;
+        const zoomFactor = e.altKey ? VIEWPORT.ZOOM_STEP_OUT : VIEWPORT.ZOOM_STEP_IN;
+        const newZoom = clampZoom(
+          zoom * zoomFactor,
+          VIEWPORT.MIN_ZOOM,
+          VIEWPORT.MAX_ZOOM
+        );
 
-        // Zoom centered on cursor position
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        const result = zoomAtPoint(
+          screenPos,
+          { zoom, pan, baseScale: 1 },
+          newZoom,
+          "center",
+          { width: canvas.width, height: canvas.height }
+        );
 
-        setPan((p) => ({
-          x: p.x * scale + (1 - scale) * (screenPos.x - centerX),
-          y: p.y * scale + (1 - scale) * (screenPos.y - centerY),
-        }));
-        setZoom(newZoom);
+        setPan(result.pan);
+        setZoom(result.zoom);
 
         return { handled: true };
       }
 
       return { handled: false };
     },
-    [canvasRef, zoom, setZoom, setPan]
+    [canvasRef, zoom, pan, setZoom, setPan]
   );
 
   const handleMouseMove = useCallback(
