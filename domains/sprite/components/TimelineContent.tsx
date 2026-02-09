@@ -4,6 +4,7 @@ import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import { useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { Scrollbar, NumberScrubber, Popover } from "@/shared/components";
+import { useDeferredPointerGesture } from "@/shared/hooks";
 import { SpriteTrack } from "../types";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
 import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon, DuplicateIcon, RotateIcon } from "@/shared/components/icons";
@@ -20,6 +21,13 @@ const HEADER_DEFAULT = 144;
 const HEADER_COMPACT_BREAKPOINT = 120;
 const CONTROL_BAR_COMPACT_BREAKPOINT = 240;
 const LS_KEY = "sprite-timeline-header-width";
+
+interface ScrubPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  trackId: string | null;
+}
 
 export default function TimelineContent() {
   const tracks = useSpriteTrackStore((s) => s.tracks);
@@ -294,8 +302,8 @@ export default function TimelineContent() {
   );
 
   // ---- Scrubbing (drag-to-navigate) ----
-  const [isScrubbing, setIsScrubbing] = useState(false);
   const scrubTrackIdRef = useRef<string | null>(null);
+  const [scrubPending, setScrubPending] = useState<ScrubPendingState | null>(null);
 
   const getFrameFromClientX = useCallback((clientX: number, overrideTrackId?: string) => {
     const el = rulerRef.current;
@@ -313,10 +321,9 @@ export default function TimelineContent() {
   const getFrameFnRef = useRef(getFrameFromClientX);
   getFrameFnRef.current = getFrameFromClientX;
 
-  const handleScrubStart = useCallback((e: React.MouseEvent, trackId?: string, jumpOnStart = true) => {
+  const handleScrubStart = useCallback((e: React.PointerEvent, trackId?: string, jumpOnStart = true) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    setIsScrubbing(true);
     setIsPlaying(false);
     scrubTrackIdRef.current = trackId ?? activeTrackId ?? null;
     if (trackId) setActiveTrackId(trackId);
@@ -325,30 +332,27 @@ export default function TimelineContent() {
       const idx = getFrameFromClientX(e.clientX, scrubTrackIdRef.current ?? undefined);
       if (idx >= 0) setCurrentFrameIndex(idx);
     }
+    setScrubPending({
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      trackId: scrubTrackIdRef.current,
+    });
   }, [getFrameFromClientX, setIsPlaying, setCurrentFrameIndex, setActiveTrackId, activeTrackId]);
 
-  useEffect(() => {
-    if (!isScrubbing) return;
-
-    const handleMove = (e: MouseEvent) => {
-      e.preventDefault();
-      const idx = getFrameFnRef.current(e.clientX, scrubTrackIdRef.current ?? undefined);
+  useDeferredPointerGesture<ScrubPendingState>({
+    pending: scrubPending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      event.preventDefault();
+      const idx = getFrameFnRef.current(event.clientX, pending.trackId ?? undefined);
       if (idx >= 0) setCurrentFrameIndex(idx);
-    };
-
-    const handleUp = () => {
-      setIsScrubbing(false);
+    },
+    onEnd: () => {
+      setScrubPending(null);
       scrubTrackIdRef.current = null;
-    };
-
-    document.addEventListener("mousemove", handleMove);
-    document.addEventListener("mouseup", handleUp);
-
-    return () => {
-      document.removeEventListener("mousemove", handleMove);
-      document.removeEventListener("mouseup", handleUp);
-    };
-  }, [isScrubbing, setCurrentFrameIndex]);
+    },
+  });
 
   const trackRows = useMemo(
     () =>
@@ -361,7 +365,7 @@ export default function TimelineContent() {
               track.id === activeTrackId ? "bg-accent-primary/5" : ""
             } ${!track.visible ? "opacity-40" : ""}`}
             style={{ height: TRACK_HEIGHT }}
-            onMouseDown={(e) => handleScrubStart(e, track.id, false)}
+            onPointerDown={(e) => handleScrubStart(e, track.id, false)}
           >
             {Array.from({ length: maxEnabledCount }).map((_, visualIdx) => {
               const absIdx = enabledIndices[visualIdx];
@@ -479,7 +483,7 @@ export default function TimelineContent() {
         <div
           ref={rulerRef}
           className="flex-1 overflow-hidden h-6 cursor-ew-resize"
-          onMouseDown={(e) => handleScrubStart(e, undefined, true)}
+          onPointerDown={(e) => handleScrubStart(e, undefined, true)}
         >
           <div className="relative h-full bg-surface-secondary" style={{ width: maxEnabledCount * CELL_WIDTH }}>
             <div className="flex items-end h-full">
