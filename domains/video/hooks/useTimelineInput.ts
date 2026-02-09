@@ -106,18 +106,22 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     setScrollFromGestureAnchor,
   } = useTimelineViewport();
 
-  // Snap a time value to nearby clip edges on the same track.
+  // Snap a time value to nearby clip edges (optionally track-scoped).
   const snapToPoints = useCallback(
-    (time: number, options?: { trackId?: string; excludeClipIds?: Set<string> }): number => {
+    (
+      time: number,
+      options?: { scope?: "all" | "track"; trackId?: string; excludeClipIds?: Set<string> }
+    ): number => {
       if (!viewState.snapEnabled) return time;
 
       const threshold = TIMELINE.SNAP_THRESHOLD / zoom; // convert pixels to time
       const points: number[] = [0]; // always include time 0
+      const scope = options?.scope ?? "all";
       const trackId = options?.trackId;
       const excludeClipIds = options?.excludeClipIds || new Set<string>();
 
       for (const clip of clips) {
-        if (trackId && clip.trackId !== trackId) continue;
+        if (scope === "track" && trackId && clip.trackId !== trackId) continue;
         if (excludeClipIds.has(clip.id)) continue;
         points.push(clip.startTime);
         points.push(clip.startTime + clip.duration);
@@ -469,7 +473,14 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
           } else if (handle === "body") {
             if (toolMode === "razor") {
               // Split clip at cursor
-              const splitTime = Math.max(clip.startTime, Math.min(time, clip.startTime + clip.duration));
+              const rawSplitTime = Math.max(clip.startTime, Math.min(time, clip.startTime + clip.duration));
+              const snappedSplitTime = snapToPoints(rawSplitTime, {
+                excludeClipIds: new Set([clip.id]),
+              });
+              const splitTime = Math.max(
+                clip.startTime,
+                Math.min(snappedSplitTime, clip.startTime + clip.duration)
+              );
               const splitOffset = splitTime - clip.startTime;
 
               // Ignore split at very edges
@@ -666,6 +677,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       isEditingMask,
       ensureTimeVisibleOnLeft,
       timelineViewportRef,
+      snapToPoints,
     ]
   );
 
@@ -705,10 +717,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         const primaryClip = clips.find((cl) => cl.id === dragState.clipId);
         if (!primaryClip) break;
 
-        const primaryTargetTrackId = isLiftedRef.current
-          ? (getTrackAtY(contentY).trackId || primaryClip.trackId)
-          : primaryClip.trackId;
-
         const movingClipIds = new Set(
           dragState.items
             .filter((item) => item.type === "clip")
@@ -717,13 +725,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
         const rawStart = Math.max(0, dragState.originalClipStart + deltaTime);
         const snappedStart = snapToPoints(rawStart, {
-          trackId: primaryTargetTrackId,
           excludeClipIds: movingClipIds,
         });
         // Also snap end edge: if end snaps, adjust start accordingly
         const rawEnd = rawStart + dragState.originalClipDuration;
         const snappedEnd = snapToPoints(rawEnd, {
-          trackId: primaryTargetTrackId,
           excludeClipIds: movingClipIds,
         });
         const endAdjusted = Math.max(0, snappedEnd - dragState.originalClipDuration);
@@ -759,13 +765,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
       case "clip-trim-start":
         if (dragState.clipId) {
-          const clip = clips.find((candidate) => candidate.id === dragState.clipId);
-          if (!clip) break;
+          if (!clips.some((candidate) => candidate.id === dragState.clipId)) break;
           const rawTrimStart = Math.max(0, dragState.originalClipStart + deltaTime);
           const maxStart = dragState.originalClipStart + dragState.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
           const clampedStart = Math.min(rawTrimStart, maxStart);
           trimClipStart(dragState.clipId, snapToPoints(clampedStart, {
-            trackId: clip.trackId,
             excludeClipIds: new Set([dragState.clipId]),
           }));
         }
@@ -773,13 +777,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
       case "clip-trim-end":
         if (dragState.clipId) {
-          const clip = clips.find((candidate) => candidate.id === dragState.clipId);
-          if (!clip) break;
+          if (!clips.some((candidate) => candidate.id === dragState.clipId)) break;
           const rawTrimEnd = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
           const minEnd = dragState.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
           const clampedEnd = Math.max(rawTrimEnd, minEnd);
           trimClipEnd(dragState.clipId, snapToPoints(clampedEnd, {
-            trackId: clip.trackId,
             excludeClipIds: new Set([dragState.clipId]),
           }));
         }
