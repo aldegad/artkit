@@ -582,6 +582,7 @@ function ImageEditorContent() {
     layers,
     activeLayerId,
     saveToHistory,
+    selection,
     // Snap options
     guides,
     canvasSize,
@@ -756,6 +757,7 @@ function ImageEditorContent() {
     isTransformActive: transformState.isActive,
     transformLayerId: transformState.layerId,
     transformOriginalImageData: transformState.originalImageData,
+    isSelectionBasedTransform: transformState.isSelectionBased,
     guides,
     showGuides,
     lockGuides,
@@ -2161,4 +2163,3 @@ function ImageEditorContent() {
     </EditorLayersProvider>
   );
 }
-
