@@ -18,7 +18,9 @@ import {
   SplitView,
   SpriteSheetImportModal,
   SpriteFrame,
+  SpriteTopToolbar,
   useFrameBackgroundRemoval,
+  useSpriteKeyboardShortcuts,
   FrameBackgroundRemovalModals,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
@@ -26,22 +28,13 @@ import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
+import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
-import { Tooltip, Scrollbar } from "@/shared/components";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
-  BrushIcon,
-  CursorIcon,
-  HandIcon,
-  BackgroundRemovalIcon,
-  UndoIcon,
-  RedoIcon,
-} from "@/shared/components/icons";
-import {
   migrateFromLocalStorage,
-  formatBytes,
 } from "@/shared/utils/storage";
 import {
   getSpriteStorageProvider,
@@ -549,6 +542,8 @@ function SpriteEditorMain() {
     async (projectId: string) => {
       if (!confirm(t.deleteConfirm)) return;
 
+      setIsProjectLoading(true);
+      setLoadProgress(null);
       try {
         await storageProvider.deleteProject(projectId);
         setSavedSpriteProjects((prev) => prev.filter((p) => p.id !== projectId));
@@ -559,99 +554,26 @@ function SpriteEditorMain() {
       } catch (error) {
         console.error("Delete failed:", error);
         alert(`${t.deleteFailed}: ${(error as Error).message}`);
+      } finally {
+        setIsProjectLoading(false);
+        setLoadProgress(null);
       }
     },
     [storageProvider, setSavedSpriteProjects, t],
   );
 
-  // Spacebar handler for temporary hand mode + Undo/Redo
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Spacebar - prevent button re-trigger and enable panning
-      if (e.code === "Space" && !e.repeat) {
-        // Skip if focus is on interactive elements (input, select, textarea, etc.)
-        const target = e.target as HTMLElement;
-        const isInteractiveElement =
-          target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable;
-
-        if (isInteractiveElement) {
-          return; // Let the element handle the spacebar normally
-        }
-
-        e.preventDefault();
-        // Blur focused button to prevent spacebar from triggering it
-        if (document.activeElement instanceof HTMLButtonElement) {
-          document.activeElement.blur();
-        }
-        setIsSpacePressed(true);
-      }
-
-      // Tool shortcuts (skip if modifier keys are pressed)
-      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.key === "p") setSpriteToolMode("pen");
-        if (e.key === "v") setSpriteToolMode("select");
-        if (e.key === "h") setSpriteToolMode("hand");
-      }
-
-      // Ctrl+Z / Cmd+Z = Undo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-        e.preventDefault();
-        if (canUndo) undo();
-      }
-
-      // Ctrl+Shift+Z / Cmd+Shift+Z = Redo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && e.shiftKey) {
-        e.preventDefault();
-        if (canRedo) redo();
-      }
-
-      // Ctrl+Y / Cmd+Y = Redo (alternative)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        if (canRedo) redo();
-      }
-
-      // Ctrl+C / Cmd+C = Copy frame
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && !e.shiftKey) {
-        e.preventDefault();
-        copyFrame();
-      }
-
-      // Ctrl+V / Cmd+V = Paste frame
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v" && !e.shiftKey) {
-        e.preventDefault();
-        pasteFrame();
-      }
-
-      // Ctrl+S / Cmd+S = Save
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          saveProjectAs();
-        } else {
-          saveProject();
-        }
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsSpacePressed(false);
-      }
-    };
-
-    // Use capture phase to intercept before button default behavior
-    window.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("keyup", handleKeyUp, true);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("keyup", handleKeyUp, true);
-    };
-  }, [setIsSpacePressed, undo, redo, canUndo, canRedo, copyFrame, pasteFrame, saveProject, saveProjectAs]);
+  useSpriteKeyboardShortcuts({
+    setIsSpacePressed,
+    setSpriteToolMode,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    copyFrame,
+    pasteFrame,
+    saveProject,
+    saveProjectAs,
+  });
 
   // Handle new project with confirmation
   const handleNew = useCallback(() => {
@@ -750,185 +672,24 @@ function SpriteEditorMain() {
         }}
       />
 
-      {/* Top Toolbar */}
-      {/* Top Toolbar */}
-      <Scrollbar
-        className="bg-surface-primary border-b border-border-default shrink-0"
-        overflow={{ x: "scroll", y: "hidden" }}
-      >
-        <div className="flex items-center gap-1 px-3.5 py-1 whitespace-nowrap">
-          {/* Tool buttons */}
-          <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.pen}</span>
-                  <span className="text-text-tertiary text-[11px]">{t.penToolTip}</span>
-                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                    <span>{t.clickToAddPoint}</span>
-                    <span>{t.firstPointToComplete}</span>
-                  </div>
-                </div>
-              }
-              shortcut="P"
-            >
-              <button
-                onClick={() => setSpriteToolMode("pen")}
-                className={`p-1.5 rounded transition-colors ${
-                  toolMode === "pen"
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <BrushIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.select}</span>
-                  <span className="text-text-tertiary text-[11px]">{t.selectToolTip}</span>
-                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                    <span>{t.clickToSelect}</span>
-                    <span>{t.dragToMove}</span>
-                  </div>
-                </div>
-              }
-              shortcut="V"
-            >
-              <button
-                onClick={() => setSpriteToolMode("select")}
-                className={`p-1.5 rounded transition-colors ${
-                  toolMode === "select"
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <CursorIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.hand}</span>
-                  <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
-                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                    <span>{t.dragToPan}</span>
-                    <span>{t.spaceAltToPan}</span>
-                    <span>{t.wheelToZoom}</span>
-                  </div>
-                </div>
-              }
-              shortcut="H"
-            >
-              <button
-                onClick={() => setSpriteToolMode("hand")}
-                className={`p-1.5 rounded transition-colors ${
-                  toolMode === "hand"
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <HandIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-
-            {/* Divider */}
-            <div className="w-px bg-border-default mx-0.5" />
-
-            {/* AI Background Removal */}
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.removeBackground}</span>
-                  <span className="text-text-tertiary text-[11px]">
-                    AI 모델을 사용해 프레임 배경을 제거합니다
-                  </span>
-                  <span className="text-[10px] text-text-tertiary">
-                    첫 실행 시 모델 다운로드 (~30MB)
-                  </span>
-                </div>
-              }
-            >
-              <button
-                onClick={() => setShowBgRemovalConfirm(true)}
-                disabled={isRemovingBackground || frames.filter((f) => f.imageData).length === 0}
-                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                  isRemovingBackground
-                    ? "bg-accent-primary text-white cursor-wait"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <BackgroundRemovalIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-0.5">
-            <Tooltip content={`${t.undo} (Ctrl+Z)`}>
-              <button
-                onClick={undo}
-                disabled={!canUndo}
-                className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-              >
-                <UndoIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
-              <button
-                onClick={redo}
-                disabled={!canRedo}
-                className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-              >
-                <RedoIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Context-specific controls */}
-          {toolMode === "pen" && currentPoints.length > 0 && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={undoLastPoint}
-                className="px-2 py-1 bg-accent-warning hover:bg-accent-warning-hover text-white rounded text-xs transition-colors"
-              >
-                {t.undo}
-              </button>
-              <button
-                onClick={cancelCurrentPolygon}
-                className="px-2 py-1 bg-accent-danger hover:bg-accent-danger-hover text-white rounded text-xs transition-colors"
-              >
-                {t.cancel}
-              </button>
-              {currentPoints.length >= 3 && (
-                <button
-                  onClick={completeFrame}
-                  className="px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-xs transition-colors"
-                >
-                  {t.complete}
-                </button>
-              )}
-              <span className="text-text-secondary text-xs">
-                {t.points}: {currentPoints.length}
-              </span>
-            </div>
-          )}
-
-          {toolMode === "select" && selectedFrameId !== null && (
-            <span className="text-accent-primary text-xs">
-              {t.frame} {frames.findIndex((f) => f.id === selectedFrameId) + 1} {t.selected}
-              {selectedPointIndex !== null && ` (${t.point} ${selectedPointIndex + 1})`}
-            </span>
-          )}
-
-          <div className="flex-1 min-w-0" />
-        </div>
-      </Scrollbar>
+      <SpriteTopToolbar
+        toolMode={toolMode}
+        setSpriteToolMode={setSpriteToolMode}
+        currentPoints={currentPoints}
+        selectedFrameId={selectedFrameId}
+        selectedPointIndex={selectedPointIndex}
+        frames={frames}
+        isRemovingBackground={isRemovingBackground}
+        hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        onUndoLastPoint={undoLastPoint}
+        onCancelCurrentPolygon={cancelCurrentPolygon}
+        onCompleteFrame={completeFrame}
+        onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
+      />
 
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">
@@ -936,93 +697,26 @@ function SpriteEditorMain() {
       </div>
 
       {/* Project List Modal */}
-      {isProjectListOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-surface-primary border border-border-default rounded-xl w-[500px] max-h-[80vh] flex flex-col shadow-xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">{t.savedProjects}</h2>
-                {storageInfo.quota > 0 && (
-                  <div className="text-xs text-text-tertiary flex items-center gap-2 mt-1">
-                    <span>
-                      {t.storage}: {formatBytes(storageInfo.used)} / {formatBytes(storageInfo.quota)}
-                    </span>
-                    <div className="w-20 h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${storageInfo.percentage > 80 ? "bg-accent-danger" : "bg-accent-primary"}`}
-                        style={{ width: `${Math.min(storageInfo.percentage, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setIsProjectListOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Project list */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {savedProjects.length === 0 ? (
-                <div className="text-center text-text-tertiary py-8">
-                  {t.noSavedProjects}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {savedProjects.map((project) => (
-                    <div
-                      key={project.id}
-                      className="flex items-center gap-3 p-3 bg-surface-secondary rounded-lg hover:bg-interactive-hover group transition-colors"
-                    >
-                      {/* Thumbnail */}
-                      <div className="w-16 h-16 bg-surface-tertiary rounded-lg shrink-0 overflow-hidden">
-                        {(project.thumbnailUrl || project.tracks[0]?.frames[0]?.imageData) && (
-                          <img
-                            src={project.thumbnailUrl || project.tracks[0]?.frames[0]?.imageData}
-                            alt=""
-                            className="w-full h-full object-contain"
-                          />
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate text-text-primary">{project.name}</div>
-                        <div className="text-xs text-text-secondary">
-                          {project.tracks.length} tracks · {project.tracks.reduce((sum, tr) => sum + tr.frames.length, 0)} {t.frames} · {project.fps}fps
-                        </div>
-                        <div className="text-xs text-text-tertiary">
-                          {new Date(project.savedAt).toLocaleString()}
-                        </div>
-                      </div>
-
-                      {/* Buttons */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => loadProject(project)}
-                          className="px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-sm transition-colors"
-                        >
-                          {t.load}
-                        </button>
-                        <button
-                          onClick={() => deleteProject(project.id)}
-                          className="px-2 py-1.5 bg-accent-danger hover:bg-accent-danger-hover text-white rounded-lg text-sm transition-colors"
-                        >
-                          {t.delete}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <SpriteProjectListModal
+        isOpen={isProjectListOpen}
+        onClose={() => setIsProjectListOpen(false)}
+        projects={savedProjects}
+        currentProjectId={currentProjectId}
+        onLoadProject={loadProject}
+        onDeleteProject={deleteProject}
+        storageInfo={storageInfo}
+        isLoading={isProjectLoading}
+        loadProgress={loadProgress}
+        translations={{
+          savedProjects: t.savedProjects || "저장된 프로젝트",
+          noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
+          storage: t.storage || "저장소",
+          load: t.load || "불러오기",
+          delete: t.delete,
+          frames: t.frames || "프레임",
+          loading: t.loading,
+        }}
+      />
 
       <SyncDialog
         isOpen={showSyncDialog}

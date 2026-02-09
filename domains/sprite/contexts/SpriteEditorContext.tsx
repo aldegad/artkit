@@ -511,10 +511,13 @@ export function useEditorTracks() {
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
   const setActiveTrackId = useSpriteTrackStore((s) => s.setActiveTrackId);
   const addTrack = useSpriteTrackStore((s) => s.addTrack);
+  const duplicateTrack = useSpriteTrackStore((s) => s.duplicateTrack);
   const removeTrack = useSpriteTrackStore((s) => s.removeTrack);
+  const reverseTrackFrames = useSpriteTrackStore((s) => s.reverseTrackFrames);
   const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
   const reorderTracks = useSpriteTrackStore((s) => s.reorderTracks);
   const addFramesToTrack = useSpriteTrackStore((s) => s.addFramesToTrack);
+  const insertEmptyFrameToTrack = useSpriteTrackStore((s) => s.insertEmptyFrameToTrack);
   const removeFrame = useSpriteTrackStore((s) => s.removeFrame);
   const updateFrame = useSpriteTrackStore((s) => s.updateFrame);
   const reorderFrames = useSpriteTrackStore((s) => s.reorderFrames);
@@ -527,10 +530,13 @@ export function useEditorTracks() {
     activeTrackId,
     setActiveTrackId,
     addTrack,
+    duplicateTrack,
     removeTrack,
+    reverseTrackFrames,
     updateTrack,
     reorderTracks,
     addFramesToTrack,
+    insertEmptyFrameToTrack,
     removeFrame,
     updateFrame,
     reorderFrames,
