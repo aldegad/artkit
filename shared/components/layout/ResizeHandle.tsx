@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useLayout } from "./LayoutConfigContext";
 import { SplitDirection } from "@/shared/types/layout";
+import { useDeferredPointerGesture } from "@/shared/hooks";
 
 // ============================================
 // Types
@@ -14,6 +15,12 @@ interface ResizeHandleProps {
   handleIndex: number;
 }
 
+interface ResizePendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+}
+
 // ============================================
 // Component
 // ============================================
@@ -21,6 +28,7 @@ interface ResizeHandleProps {
 export default function ResizeHandle({ direction, splitId, handleIndex }: ResizeHandleProps) {
   const { startResize, updateResizeAbsolute, endResize, resizeState } = useLayout();
   const handleRef = useRef<HTMLDivElement>(null);
+  const [resizePending, setResizePending] = useState<ResizePendingState | null>(null);
   // Store the original start position at drag start (not updated during drag)
   const originalStartPositionRef = useRef<number>(0);
   // Store the actual split container size at drag start
@@ -54,35 +62,30 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
         direction,
         actualContainerSize: containerSizeRef.current,
       });
+
+      setResizePending({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
     },
     [direction, splitId, handleIndex, startResize, getActualContainerSize]
   );
 
-  // Global pointer move and up handlers
-  useEffect(() => {
-    if (!isActiveHandle) return;
-
-    const handlePointerMove = (e: PointerEvent) => {
-      const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
-      // Calculate total delta from original start position (not incremental)
+  useDeferredPointerGesture<ResizePendingState>({
+    pending: resizePending,
+    thresholdPx: 0,
+    onMoveResolved: ({ event }) => {
+      if (!isActiveHandle) return;
+      const currentPos = direction === "horizontal" ? event.clientX : event.clientY;
       const totalDelta = currentPos - originalStartPositionRef.current;
       updateResizeAbsolute(totalDelta);
-    };
-
-    const handleEnd = () => {
+    },
+    onEnd: () => {
+      setResizePending(null);
       endResize();
-    };
-
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handleEnd);
-    document.addEventListener("pointercancel", handleEnd);
-
-    return () => {
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handleEnd);
-      document.removeEventListener("pointercancel", handleEnd);
-    };
-  }, [isActiveHandle, direction, updateResizeAbsolute, endResize]);
+    },
+  });
 
   const isHorizontal = direction === "horizontal";
 
