@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import { useVideoElements, usePlaybackTick, usePreRenderCache, useAudioBufferCache, useWebAudioPlayback } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { PREVIEW, PLAYBACK } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
@@ -785,7 +786,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Middle mouse button drag for pan
     if (e.button === 1) {
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
       vpStartPanDrag({ x: e.clientX, y: e.clientY });
       isPanningRef.current = true;
       return;
@@ -795,7 +796,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (!maskCoords) return;
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
 
       // Alt key toggles erase mode temporarily
       if (e.altKey && brushSettings.mode !== "erase") {
@@ -817,7 +818,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const point = canvasExpandMode ? rawPoint : clampToCanvas(rawPoint);
 
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
 
       // Check handle hit first (resize)
       if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
@@ -877,7 +878,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (!hitClip || hitClip.type === "audio") return;
 
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    safeSetPointerCapture(e.currentTarget, e.pointerId);
     saveToHistory();
     selectClip(hitClip.id, false);
     dragStateRef.current = {
@@ -1068,8 +1069,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
     }
 
-    if (e && e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+    if (e) {
+      safeReleasePointerCapture(e.currentTarget, e.pointerId);
     }
     dragStateRef.current = {
       clipId: null,

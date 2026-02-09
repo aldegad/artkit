@@ -8,6 +8,7 @@ import { TimelineDragType, Clip } from "../types";
 import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
 import { useDeferredPointerGesture } from "@/shared/hooks";
+import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
 interface DragItem {
   type: "clip" | "mask";
@@ -157,30 +158,15 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     activePointerIdRef.current = pointerId;
     setDragPointerPending({ pointerId, clientX, clientY });
     const el = tracksContainerRef.current;
-    if (!el || typeof el.setPointerCapture !== "function") return;
-    try {
-      el.setPointerCapture(pointerId);
-    } catch {
-      // Best effort.
-    }
+    if (!el) return;
+    safeSetPointerCapture(el, pointerId);
   }, [tracksContainerRef]);
 
   const releasePointer = useCallback((pointerId?: number) => {
     const targetPointerId = pointerId ?? activePointerIdRef.current;
     const el = tracksContainerRef.current;
-    if (
-      targetPointerId !== null &&
-      el &&
-      typeof el.hasPointerCapture === "function" &&
-      typeof el.releasePointerCapture === "function"
-    ) {
-      try {
-        if (el.hasPointerCapture(targetPointerId)) {
-          el.releasePointerCapture(targetPointerId);
-        }
-      } catch {
-        // Best effort.
-      }
+    if (targetPointerId !== null && el) {
+      safeReleasePointerCapture(el, targetPointerId);
     }
 
     if (pointerId === undefined || activePointerIdRef.current === pointerId) {
@@ -360,7 +346,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (e.button !== 1) return;
 
       e.preventDefault();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.target, e.pointerId);
       const timelineViewport = timelineViewportRef.current;
       setMiddlePanPending({
         pointerId: e.pointerId,
