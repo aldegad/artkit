@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
+import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
 
 // ============================================
@@ -13,14 +14,17 @@ interface LayerThumbnailProps {
   layerId: string;
   visible: boolean;
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
+  renderTick: number;
 }
 
 const THUMB_SIZE = 40;
+const THUMBNAIL_REFRESH_THROTTLE_MS = 120;
 
 const LayerThumbnail = React.memo(function LayerThumbnail({
   layerId,
   visible,
   layerCanvasesRef,
+  renderTick,
 }: LayerThumbnailProps) {
   const thumbRef = useRef<HTMLCanvasElement>(null);
 
@@ -39,9 +43,7 @@ const LayerThumbnail = React.memo(function LayerThumbnail({
     };
 
     updateThumbnail();
-    const interval = setInterval(updateThumbnail, 500);
-    return () => clearInterval(interval);
-  }, [layerId, layerCanvasesRef]);
+  }, [layerId, layerCanvasesRef, renderTick]);
 
   return (
     <div className="w-10 h-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PHJlY3Qgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iI2NjYyIvPjxyZWN0IHg9IjgiIHk9IjgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNjY2MiLz48L3N2Zz4=')] border border-border-default rounded overflow-hidden shrink-0">
@@ -187,6 +189,26 @@ export default function LayersPanelContent() {
   // Editing state for layer names
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [thumbRenderTick, setThumbRenderTick] = useState(0);
+  const lastThumbUpdateMsRef = useRef(0);
+
+  useEffect(() => {
+    const handleLayerCanvasUpdated = () => {
+      const now = performance.now();
+      if (now - lastThumbUpdateMsRef.current < THUMBNAIL_REFRESH_THROTTLE_MS) return;
+      lastThumbUpdateMsRef.current = now;
+      setThumbRenderTick((tick) => tick + 1);
+    };
+
+    window.addEventListener(LAYER_CANVAS_UPDATED_EVENT, handleLayerCanvasUpdated);
+    return () => {
+      window.removeEventListener(LAYER_CANVAS_UPDATED_EVENT, handleLayerCanvasUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    setThumbRenderTick((tick) => tick + 1);
+  }, [layers.length]);
 
   // Handle image file upload
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -327,6 +349,7 @@ export default function LayersPanelContent() {
                     layerId={layer.id}
                     visible={layer.visible}
                     layerCanvasesRef={layerCanvasesRef}
+                    renderTick={thumbRenderTick}
                   />
 
                   {/* Layer name */}
