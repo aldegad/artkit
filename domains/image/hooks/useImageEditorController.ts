@@ -45,6 +45,9 @@ import { useRulerRenderSync } from "./useRulerRenderSync";
 import { useEditorLayerContextValue } from "./useEditorLayerContextValue";
 import { useEditorCanvasContextValue } from "./useEditorCanvasContextValue";
 import { useEditorTranslationBundles } from "./useEditorTranslationBundles";
+import { useEditorHeaderModel } from "./useEditorHeaderModel";
+import { useEditorOverlayModel } from "./useEditorOverlayModel";
+import { useEditorToolbarModels } from "./useEditorToolbarModels";
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -678,65 +681,70 @@ export function useImageEditorController() {
 
   const toolButtons = useMemo(() => createEditorToolButtons(t), [t]);
   const hasLayers = layers.length > 0;
+  const hasSelectedLayers = selectedLayerIds.length > 0 || activeLayerId !== null;
 
-  return {
-    layerContextValue,
-    canvasContextValue,
-    loadingOverlay: {
-      isLoading: isAutosaveLoading,
-      message: t.loading || "Loading...",
-    },
-    saveToast: {
-      isSaving,
-      saveCount,
-      savingLabel: t.saving || "Saving…",
-      savedLabel: t.saved || "Saved",
-    },
-    headerProps: {
-      title: t.imageEditor,
-      layersCount: layers.length,
-      projectName,
-      onProjectNameChange: setProjectName,
-      projectNamePlaceholder: t.projectName,
-      onNew: handleNewCanvas,
-      onLoad: () => setIsProjectListOpen(true),
-      onSave: handleSaveProjectAction,
-      onSaveAs: handleSaveAsProjectAction,
-      onImportImage: () => fileInputRef.current?.click(),
-      onExport: () => {
-        setExportMode("single");
-        setShowExportModal(true);
-      },
-      onExportLayers: () => {
-        setExportMode("layers");
-        setShowExportModal(true);
-      },
-      onToggleLayers: handleToggleLayers,
-      isLayersOpen,
-      canSave: hasLayers,
-      hasSelectedLayers: selectedLayerIds.length > 0 || activeLayerId !== null,
-      isLoading: isLoading || isSaving,
-      onUndo: handleUndo,
-      onRedo: handleRedo,
-      canUndo: canUndo(),
-      canRedo: canRedo(),
-      showRulers,
-      showGuides,
-      lockGuides,
-      snapToGuides,
-      onToggleRulers: () => setShowRulers(!showRulers),
-      onToggleGuides: () => setShowGuides(!showGuides),
-      onToggleLockGuides: () => setLockGuides(!lockGuides),
-      onToggleSnapToGuides: () => setSnapToGuides(!snapToGuides),
-      onClearGuides: clearAllGuides,
-      translations: uiText.menu,
-    },
-    showToolbars: hasLayers,
-    actionToolbarProps: {
+  const openProjectList = useCallback(() => {
+    setIsProjectListOpen(true);
+  }, [setIsProjectListOpen]);
+
+  const openExportSingle = useCallback(() => {
+    setExportMode("single");
+    setShowExportModal(true);
+  }, []);
+
+  const openExportLayers = useCallback(() => {
+    setExportMode("layers");
+    setShowExportModal(true);
+  }, []);
+
+  const openImportImage = useCallback(() => {
+    fileInputRef.current?.click();
+  }, [fileInputRef]);
+
+  const openBackgroundRemovalConfirm = useCallback(() => {
+    setShowBgRemovalConfirm(true);
+  }, [setShowBgRemovalConfirm]);
+
+  const headerProps = useEditorHeaderModel({
+    title: t.imageEditor,
+    layersCount: layers.length,
+    projectName,
+    onProjectNameChange: setProjectName,
+    projectNamePlaceholder: t.projectName,
+    onNew: handleNewCanvas,
+    onLoad: openProjectList,
+    onSave: handleSaveProjectAction,
+    onSaveAs: handleSaveAsProjectAction,
+    onImportImage: openImportImage,
+    onExport: openExportSingle,
+    onExportLayers: openExportLayers,
+    onToggleLayers: handleToggleLayers,
+    isLayersOpen,
+    canSave: hasLayers,
+    hasSelectedLayers,
+    isLoading: isLoading || isSaving,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    canUndo: canUndo(),
+    canRedo: canRedo(),
+    showRulers,
+    showGuides,
+    lockGuides,
+    snapToGuides,
+    setShowRulers,
+    setShowGuides,
+    setLockGuides,
+    setSnapToGuides,
+    onClearGuides: clearAllGuides,
+    translations: uiText.menu,
+  });
+
+  const actionToolbarProps = useMemo(
+    () => ({
       toolButtons,
       toolMode,
       onToolModeChange: handleToolModeChange,
-      onOpenBackgroundRemoval: () => setShowBgRemovalConfirm(true),
+      onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
       isRemovingBackground,
       onUndo: handleUndo,
       onRedo: handleRedo,
@@ -748,8 +756,28 @@ export function useImageEditorController() {
       setZoom,
       onFitToScreen: fitToScreen,
       translations: uiText.actionToolbar,
-    },
-    toolOptionsBarProps: {
+    }),
+    [
+      toolButtons,
+      toolMode,
+      handleToolModeChange,
+      openBackgroundRemovalConfirm,
+      isRemovingBackground,
+      handleUndo,
+      handleRedo,
+      showRotateMenu,
+      toggleRotateMenu,
+      handleRotateLeft,
+      handleRotateRight,
+      zoom,
+      setZoom,
+      fitToScreen,
+      uiText.actionToolbar,
+    ]
+  );
+
+  const toolOptionsBarProps = useMemo(
+    () => ({
       toolMode,
       brushSize,
       setBrushSize,
@@ -785,51 +813,115 @@ export function useImageEditorController() {
       cancelTransform,
       setToolMode,
       translations: uiText.toolOptions,
-    },
-    showPanModeToggle: hasLayers,
-    overlaysProps: {
-      showExportModal,
-      setShowExportModal,
-      handleExportFromModal,
-      exportMode,
-      projectName,
-      exportTranslations: uiText.exportModal,
-      showBgRemovalConfirm,
-      setShowBgRemovalConfirm,
-      handleRemoveBackground,
-      hasSelection: !!selection,
-      isRemovingBackground,
-      bgRemovalProgress,
-      bgRemovalStatus,
-      backgroundRemovalTranslations: uiText.backgroundRemoval,
-      showTransformDiscardConfirm,
-      handleTransformDiscardCancel,
-      handleTransformDiscardConfirm,
-      handleTransformApplyAndSwitch,
-      transformDiscardTranslations: uiText.transformDiscard,
-      showStatusBar: hasLayers,
-      canvasSize,
-      rotation,
-      zoom,
+    }),
+    [
+      toolMode,
+      brushSize,
+      setBrushSize,
+      brushHardness,
+      setBrushHardness,
+      brushColor,
+      setBrushColor,
+      stampSource,
+      activePreset,
+      presets,
+      setActivePreset,
+      deletePreset,
+      pressureEnabled,
+      setPressureEnabled,
+      aspectRatio,
+      setAspectRatio,
       cropArea,
-      selection,
-      fileInputRef,
-      handleFileSelect,
-      isProjectListOpen,
-      setIsProjectListOpen,
-      savedProjects,
-      currentProjectId,
-      handleLoadProject,
-      handleDeleteProject,
-      storageInfo,
-      isLoading,
-      projectListTranslations: uiText.projectList,
-      showSyncDialog,
-      localProjectCount,
-      cloudProjectCount,
-      handleKeepCloud,
-      handleKeepLocal,
-      handleCancelSync,
+      selectAllCrop,
+      clearCrop,
+      canvasExpandMode,
+      setCanvasExpandMode,
+      lockAspect,
+      setLockAspect,
+      setCropSize,
+      expandToSquare,
+      fitToSquare,
+      handleApplyCrop,
+      toolButtons,
+      transformState.isActive,
+      transformAspectRatio,
+      setTransformAspectRatio,
+      applyTransform,
+      cancelTransform,
+      setToolMode,
+      uiText.toolOptions,
+    ]
+  );
+
+  const toolbarModels = useEditorToolbarModels({
+    hasLayers,
+    actionToolbarProps,
+    toolOptionsBarProps,
+  });
+
+  const overlaysProps = useEditorOverlayModel({
+    showExportModal,
+    setShowExportModal,
+    handleExportFromModal,
+    exportMode,
+    projectName,
+    exportTranslations: uiText.exportModal,
+    showBgRemovalConfirm,
+    setShowBgRemovalConfirm,
+    handleRemoveBackground,
+    hasSelection: !!selection,
+    isRemovingBackground,
+    bgRemovalProgress,
+    bgRemovalStatus,
+    backgroundRemovalTranslations: uiText.backgroundRemoval,
+    showTransformDiscardConfirm,
+    handleTransformDiscardCancel,
+    handleTransformDiscardConfirm,
+    handleTransformApplyAndSwitch,
+    transformDiscardTranslations: uiText.transformDiscard,
+    showStatusBar: hasLayers,
+    canvasSize,
+    rotation,
+    zoom,
+    cropArea,
+    selection,
+    fileInputRef,
+    handleFileSelect,
+    isProjectListOpen,
+    setIsProjectListOpen,
+    savedProjects,
+    currentProjectId,
+    handleLoadProject,
+    handleDeleteProject,
+    storageInfo,
+    isLoading,
+    projectListTranslations: uiText.projectList,
+    showSyncDialog,
+    localProjectCount,
+    cloudProjectCount,
+    handleKeepCloud,
+    handleKeepLocal,
+    handleCancelSync,
+  });
+
+  return {
+    layerContextValue,
+    canvasContextValue,
+    loadingOverlay: {
+      isLoading: isAutosaveLoading,
+      message: t.loading || "Loading...",
     },
+    saveToast: {
+      isSaving,
+      saveCount,
+      savingLabel: t.saving || "Saving…",
+      savedLabel: t.saved || "Saved",
+    },
+    headerProps,
+    showToolbars: toolbarModels.showToolbars,
+    actionToolbarProps: toolbarModels.actionToolbarProps,
+    toolOptionsBarProps: toolbarModels.toolOptionsBarProps,
+    showPanModeToggle: toolbarModels.showPanModeToggle,
+    overlaysProps,
   };
 }

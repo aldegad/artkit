@@ -5,7 +5,7 @@ import EditorMenuBar from "./EditorMenuBar";
 
 type EditorMenuBarProps = React.ComponentProps<typeof EditorMenuBar>;
 
-interface EditorHeaderProps extends EditorMenuBarProps {
+export interface EditorHeaderProps extends EditorMenuBarProps {
   title: string;
   layersCount: number;
   projectName: string;

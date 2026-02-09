@@ -91,3 +91,6 @@ export { useEditorLayerContextValue } from "./useEditorLayerContextValue";
 export { useEditorCanvasContextValue } from "./useEditorCanvasContextValue";
 export { useEditorTranslationBundles } from "./useEditorTranslationBundles";
 export { useImageEditorController } from "./useImageEditorController";
+export { useEditorHeaderModel } from "./useEditorHeaderModel";
+export { useEditorOverlayModel } from "./useEditorOverlayModel";
+export { useEditorToolbarModels } from "./useEditorToolbarModels";
