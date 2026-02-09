@@ -33,6 +33,7 @@ export function MaskControls({ className }: MaskControlsProps) {
     setBrushMode,
     isEditingMask,
     masks,
+    saveMaskData,
   } = useMask();
 
   const { clearMask, fillMask } = useMaskTool();
@@ -123,12 +124,12 @@ export function MaskControls({ className }: MaskControlsProps) {
 
           {/* Fill / Clear */}
           <Tooltip content="Fill mask">
-            <button onClick={fillMask} className={actionBtn}>
+            <button onClick={() => { fillMask(); saveMaskData(); }} className={actionBtn}>
               <FillBucketIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
           <Tooltip content="Clear mask">
-            <button onClick={clearMask} className={actionBtn}>
+            <button onClick={() => { clearMask(); saveMaskData(); }} className={actionBtn}>
               <DeleteIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
