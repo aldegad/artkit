@@ -26,6 +26,7 @@ import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
+import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
 import { Tooltip, Scrollbar } from "@/shared/components";
@@ -77,6 +78,9 @@ function SpriteEditorMain() {
   // Save feedback state
   const [isSaving, setIsSaving] = useState(false);
   const [saveCount, setSaveCount] = useState(0);
+  const [saveProgress, setSaveProgress] = useState<SpriteSaveLoadProgress | null>(null);
+  const [isProjectLoading, setIsProjectLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<SpriteSaveLoadProgress | null>(null);
 
   // Video import modal state is now in the UI store (pendingVideoFile, isVideoImportOpen)
 
@@ -349,6 +353,7 @@ function SpriteEditorMain() {
     const saveImageSrc = imageSrc || firstFrameImage || "";
 
     setIsSaving(true);
+    setSaveProgress(null);
     if (currentProjectId) {
       const updatedProject = {
         id: currentProjectId,
@@ -362,7 +367,7 @@ function SpriteEditorMain() {
       };
 
       try {
-        await storageProvider.saveProject(updatedProject);
+        await storageProvider.saveProject(updatedProject, setSaveProgress);
         setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
           prev.map((p) => (p.id === currentProjectId ? updatedProject : p)),
         );
@@ -375,6 +380,7 @@ function SpriteEditorMain() {
         alert(`${t.saveFailed}: ${(error as Error).message}`);
       } finally {
         setIsSaving(false);
+        setSaveProgress(null);
       }
     } else {
       const newId = Date.now().toString();
@@ -390,7 +396,7 @@ function SpriteEditorMain() {
       };
 
       try {
-        await storageProvider.saveProject(newProj);
+        await storageProvider.saveProject(newProj, setSaveProgress);
         setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
         setCurrentProjectId(newId);
 
@@ -402,6 +408,7 @@ function SpriteEditorMain() {
         alert(`${t.saveFailed}: ${(error as Error).message}`);
       } finally {
         setIsSaving(false);
+        setSaveProgress(null);
       }
     }
   }, [
@@ -445,8 +452,9 @@ function SpriteEditorMain() {
     };
 
     setIsSaving(true);
+    setSaveProgress(null);
     try {
-      await storageProvider.saveProject(newProj);
+      await storageProvider.saveProject(newProj, setSaveProgress);
       setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
       setCurrentProjectId(newId);
       setProjectName(name);
@@ -459,6 +467,7 @@ function SpriteEditorMain() {
       alert(`${t.saveFailed}: ${(error as Error).message}`);
     } finally {
       setIsSaving(false);
+      setSaveProgress(null);
     }
   }, [
     imageSrc,
@@ -479,8 +488,13 @@ function SpriteEditorMain() {
   // Load project by id (supports cloud metadata-only list)
   const loadProject = useCallback(
     async (projectMeta: (typeof savedProjects)[0]) => {
+      const trackStore = useSpriteTrackStore.getState();
+      trackStore.setIsPlaying(false);
+      trackStore.setCurrentFrameIndex(0);
+      setIsProjectLoading(true);
+      setLoadProgress(null);
       try {
-        const project = await storageProvider.getProject(projectMeta.id);
+        const project = await storageProvider.getProject(projectMeta.id, setLoadProgress);
         if (!project) {
           throw new Error("Project not found");
         }
@@ -511,6 +525,9 @@ function SpriteEditorMain() {
       } catch (error) {
         console.error("Load failed:", error);
         alert((error as Error).message);
+      } finally {
+        setIsProjectLoading(false);
+        setLoadProgress(null);
       }
     },
     [
@@ -650,13 +667,24 @@ function SpriteEditorMain() {
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
       {/* Loading overlay during autosave restore */}
-      <LoadingOverlay isLoading={isAutosaveLoading} message={t.loading || "Loading..."} />
+      <LoadingOverlay
+        isLoading={isAutosaveLoading || isProjectLoading}
+        message={
+          isProjectLoading
+            ? `${t.loading || "Loading..."} ${loadProgress ? `${loadProgress.current}/${Math.max(1, loadProgress.total)} - ${loadProgress.itemName}` : ""}`
+            : (t.loading || "Loading...")
+        }
+      />
 
       {/* Save toast notification */}
       <SaveToast
         isSaving={isSaving}
         saveCount={saveCount}
-        savingLabel={t.saving || "Saving…"}
+        savingLabel={
+          saveProgress
+            ? `${t.saving || "Saving…"} ${saveProgress.current}/${Math.max(1, saveProgress.total)} - ${saveProgress.itemName}`
+            : (t.saving || "Saving…")
+        }
         savedLabel={t.saved || "Saved"}
       />
 

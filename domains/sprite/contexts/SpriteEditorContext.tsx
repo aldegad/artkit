@@ -87,7 +87,8 @@ export function EditorProvider({ children }: EditorProviderProps) {
           restoreTracks(data.tracks, data.nextFrameId ?? 1);
         }
         if (data.fps) setFps(data.fps);
-        if (data.currentFrameIndex !== undefined) setCurrentFrameIndex(data.currentFrameIndex);
+        // Playback state is intentionally not restored.
+        setCurrentFrameIndex(0);
 
         // Restore viewport state
         if (data.zoom) setZoom(data.zoom);
@@ -100,8 +101,8 @@ export function EditorProvider({ children }: EditorProviderProps) {
         if (data.frameEditZoom) setFrameEditZoom(data.frameEditZoom);
         if (data.frameEditPan) setFrameEditPan(data.frameEditPan);
 
-        // Restore animation state
-        if (data.isPlaying !== undefined) setIsPlaying(data.isPlaying);
+        // Always start in paused state after restore/load.
+        setIsPlaying(false);
 
         // Restore UI state
         if (data.projectName) setProjectName(data.projectName);
@@ -129,8 +130,6 @@ export function EditorProvider({ children }: EditorProviderProps) {
         tracks: ts.tracks,
         nextFrameId: ts.nextFrameId,
         fps: ts.fps,
-        currentFrameIndex: ts.currentFrameIndex,
-        isPlaying: ts.isPlaying,
         zoom: vs.zoom,
         pan: vs.pan,
         scale: vs.scale,
@@ -151,9 +150,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         state.imageSize === prev.imageSize &&
         state.tracks === prev.tracks &&
         state.nextFrameId === prev.nextFrameId &&
-        state.fps === prev.fps &&
-        state.currentFrameIndex === prev.currentFrameIndex &&
-        state.isPlaying === prev.isPlaying
+        state.fps === prev.fps
       ) {
         return;
       }
