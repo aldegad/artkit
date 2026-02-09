@@ -82,6 +82,8 @@ function configureOrt(): void {
 
   if (typeof window === "undefined") return;
 
+  // Keep ORT warnings out of user-facing console noise.
+  ort.env.logLevel = "error";
   ort.env.wasm.simd = true;
 
   const supportsThreads = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated;
