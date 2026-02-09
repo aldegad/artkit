@@ -59,6 +59,12 @@ interface TouchPendingState {
   clipResult: { clip: Clip; handle: "start" | "end" | "body" } | null;
 }
 
+interface DragPointerPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+}
+
 export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElement | null>) {
   const {
     tracks,
@@ -119,6 +125,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
   const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
+  const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
 
   // Long-press lift state for cross-track touch movement
   const [liftedClipId, setLiftedClipId] = useState<string | null>(null);
@@ -130,8 +137,9 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
 
-  const capturePointer = useCallback((pointerId: number) => {
+  const capturePointer = useCallback((pointerId: number, clientX: number = 0, clientY: number = 0) => {
     activePointerIdRef.current = pointerId;
+    setDragPointerPending({ pointerId, clientX, clientY });
     const el = tracksContainerRef.current;
     if (!el || typeof el.setPointerCapture !== "function") return;
     try {
@@ -161,6 +169,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
     if (pointerId === undefined || activePointerIdRef.current === pointerId) {
       activePointerIdRef.current = null;
+      setDragPointerPending(null);
     }
   }, [tracksContainerRef]);
 
@@ -344,7 +353,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
       if (e.pointerType === "touch" && e.button === 0) {
         const { inMaskLane } = getTrackAtY(contentY);
         if (inMaskLane) return; // Let MaskClip handle it
-        capturePointer(e.pointerId);
+        capturePointer(e.pointerId, e.clientX, e.clientY);
         const timelineViewport = timelineViewportRef.current;
 
         const clipResult = findClipAtPosition(x, contentY);
@@ -365,7 +374,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
 
       // Middle mouse for pan
       if (e.button === 1) {
-        capturePointer(e.pointerId);
+        capturePointer(e.pointerId, e.clientX, e.clientY);
         setDragState({
           ...INITIAL_DRAG_STATE,
           type: "playhead",
@@ -388,7 +397,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           const { clip, handle } = result;
 
           if (handle === "start" && (toolMode === "select" || toolMode === "trim")) {
-            capturePointer(e.pointerId);
+            capturePointer(e.pointerId, e.clientX, e.clientY);
             saveToHistory();
             setDragState({
               type: "clip-trim-start",
@@ -403,7 +412,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
             });
             selectClip(clip.id, e.shiftKey);
           } else if (handle === "end" && (toolMode === "select" || toolMode === "trim")) {
-            capturePointer(e.pointerId);
+            capturePointer(e.pointerId, e.clientX, e.clientY);
             saveToHistory();
             setDragState({
               type: "clip-trim-end",
@@ -528,7 +537,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
                 }
 
                 isLiftedRef.current = true;
-                capturePointer(e.pointerId);
+                capturePointer(e.pointerId, e.clientX, e.clientY);
 
                 setDragState({
                   type: "clip-move",
@@ -543,7 +552,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
                 });
               } else {
                 // Normal drag: move all selected items
-                capturePointer(e.pointerId);
+                capturePointer(e.pointerId, e.clientX, e.clientY);
                 const items = buildDragItems(activeClipIds, activeMaskIds);
                 isLiftedRef.current = true;
 
@@ -573,7 +582,7 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           } else {
             deselectMask();
           }
-          capturePointer(e.pointerId);
+          capturePointer(e.pointerId, e.clientX, e.clientY);
           setDragState({
             type: "playhead",
             clipId: null,
@@ -738,37 +747,31 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
     }
   };
 
-  // Attach document-level listeners during drag for smooth dragging outside timeline
-  useEffect(() => {
-    if (dragState.type === "none") return;
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
-      moveHandlerRef.current(e);
-    };
-    const onPointerUp = (e: PointerEvent) => {
-      if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
+  useDeferredPointerGesture<DragPointerPendingState>({
+    pending: dragState.type === "none" ? null : dragPointerPending,
+    thresholdPx: 0,
+    onMoveResolved: ({ event }) => {
+      if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
+      moveHandlerRef.current(event);
+    },
+    onEnd: (_pending, event) => {
+      if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
       cancelLongPress();
-      releasePointer(e.pointerId);
+      releasePointer(event.pointerId);
       // Keep liftedClipId active after pointerup so the track-selector popup stays visible.
       // Only reset the non-touch lift (mouse cross-track drag).
       if (!liftedClipId) {
         isLiftedRef.current = false;
       }
       setDragState(INITIAL_DRAG_STATE);
-    };
+    },
+  });
 
-    document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp);
-    document.addEventListener("pointercancel", onPointerUp);
-
+  useEffect(() => {
     return () => {
-      document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerup", onPointerUp);
-      document.removeEventListener("pointercancel", onPointerUp);
       releasePointer();
     };
-  }, [dragState.type, cancelLongPress, liftedClipId, releasePointer]);
+  }, [releasePointer]);
 
   // Get cursor style based on position
   const getCursor = useCallback(
