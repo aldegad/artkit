@@ -36,7 +36,7 @@ interface MaskContextValue {
   restoreMasks: (masks: MaskData[]) => void;
   selectMask: (maskId: string) => void;
   deselectMask: () => void;
-  startMaskEdit: (trackId: string, canvasSize: Size, currentTime: number) => string;
+  startMaskEdit: (trackId: string, canvasSize: Size, currentTime: number, clipStartTime?: number, clipDuration?: number) => string;
   startMaskEditById: (maskId: string) => void;
   endMaskEdit: () => void;
   saveMaskData: () => void;
@@ -201,7 +201,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   // Start editing a mask (find existing or create new)
   const startMaskEdit = useCallback(
-    (trackId: string, canvasSize: Size, currentTime: number): string => {
+    (trackId: string, canvasSize: Size, currentTime: number, clipStartTime?: number, clipDuration?: number): string => {
       // Save current mask before switching
       if (activeMaskId && maskCanvasRef.current) {
         const dataUrl = maskCanvasRef.current.toDataURL("image/png");
@@ -224,8 +224,10 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       }
 
       if (!mask) {
-        const maskId = addMask(trackId, canvasSize, currentTime, 5);
-        mask = { ...createMaskData(trackId, canvasSize, currentTime, 5), id: maskId };
+        const start = clipStartTime ?? currentTime;
+        const dur = clipDuration ?? 5;
+        const maskId = addMask(trackId, canvasSize, start, dur);
+        mask = { ...createMaskData(trackId, canvasSize, start, dur), id: maskId };
       }
 
       setActiveMaskId(mask.id);
@@ -239,9 +241,13 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         const ctx = maskCanvasRef.current.getContext("2d");
         if (ctx) {
           ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-          // Load existing mask data
           if (mask.maskData) {
+            // Load existing mask data
             loadMaskOntoCanvas(mask.maskData, canvasSize.width, canvasSize.height);
+          } else {
+            // Default: fill white (everything visible)
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
           }
         }
       }
@@ -283,9 +289,13 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         const ctx = maskCanvasRef.current.getContext("2d");
         if (ctx) {
           ctx.clearRect(0, 0, mask.size.width, mask.size.height);
-          // Load existing mask data
           if (mask.maskData) {
+            // Load existing mask data
             loadMaskOntoCanvas(mask.maskData, mask.size.width, mask.size.height);
+          } else {
+            // Default: fill white (everything visible)
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, mask.size.width, mask.size.height);
           }
         }
       }
