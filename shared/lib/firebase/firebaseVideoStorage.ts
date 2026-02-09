@@ -365,18 +365,6 @@ export async function saveVideoProjectToFirebase(
     // stays as blob: URL for runtime playback.
     mediaBlob = await loadMediaBlob(clip.id);
 
-    // Last-resort path: if runtime still has an object URL, fetch it.
-    if (!mediaBlob && clip.sourceUrl.startsWith("blob:")) {
-      try {
-        const response = await fetch(clip.sourceUrl);
-        if (response.ok) {
-          mediaBlob = await response.blob();
-        }
-      } catch {
-        // Ignore and continue with empty storageRef.
-      }
-    }
-
     if (mediaBlob) {
       storageRefPath = await uploadMediaFile(
         userId,
