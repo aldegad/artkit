@@ -4,8 +4,8 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag, useEditorWindows } from "../contexts/SpriteEditorContext";
 import { useLayout } from "../contexts/LayoutContext";
 import { useLanguage } from "../../../shared/contexts";
-import { Scrollbar } from "../../../shared/components";
-import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon } from "../../../shared/components/icons";
+import { Scrollbar, Tooltip } from "../../../shared/components";
+import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
 
@@ -152,6 +152,7 @@ export default function FrameStrip() {
 
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [isSkipToggleMode, setIsSkipToggleMode] = useState(false);
   const [showNthPopover, setShowNthPopover] = useState(false);
   const [nthValue, setNthValue] = useState(2);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
@@ -452,6 +453,13 @@ export default function FrameStrip() {
   const handleFrameClick = useCallback(
     (e: React.MouseEvent, idx: number, frame: SpriteFrame) => {
       setIsPlaying(false);
+
+      // Skip toggle mode: clicking a frame toggles its disabled state
+      if (isSkipToggleMode) {
+        toggleFrameDisabled(frame.id);
+        return;
+      }
+
       const anchorFrameId = useSpriteTrackStore.getState().selectedFrameId;
 
       if (e.shiftKey && anchorFrameId !== null) {
@@ -467,7 +475,7 @@ export default function FrameStrip() {
       }
       setSelectedFrameId(frame.id);
     },
-    [setIsPlaying, selectFrameRange, toggleSelectedFrameId, setSelectedFrameIds, setCurrentFrameIndex, setSelectedFrameId],
+    [setIsPlaying, isSkipToggleMode, toggleFrameDisabled, selectFrameRange, toggleSelectedFrameId, setSelectedFrameIds, setCurrentFrameIndex, setSelectedFrameId],
   );
 
   const handleFrameDoubleClick = useCallback(
@@ -514,7 +522,11 @@ export default function FrameStrip() {
       onMouseLeave={handleOffsetMouseUp}
     >
       {/* Mini toolbar */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border-default shrink-0 bg-surface-secondary/50">
+      <Scrollbar
+        className="border-b border-border-default shrink-0 bg-surface-secondary/50"
+        overflow={{ x: "scroll", y: "hidden" }}
+      >
+      <div className="flex items-center gap-1.5 px-2 py-1.5 whitespace-nowrap">
         {/* Frame indicator */}
         <span className="text-xs text-text-secondary font-mono tabular-nums">
           {frames.length > 0 ? `${displayCurrentFrameIndex + 1} / ${frames.length}` : "0"}
@@ -551,35 +563,53 @@ export default function FrameStrip() {
         )}
 
         {/* Show active only toggle */}
-        <button
-          onClick={() => setShowActiveOnly(!showActiveOnly)}
-          className={`p-1 rounded transition-colors ${
-            showActiveOnly
-              ? "bg-accent-primary/15 text-accent-primary"
-              : "text-text-tertiary hover:text-text-secondary"
-          }`}
-          title={showActiveOnly ? "모든 프레임 보기" : "활성 프레임만 보기"}
-        >
-          {showActiveOnly ? (
-            <EyeClosedIcon className="w-3.5 h-3.5" />
-          ) : (
-            <EyeOpenIcon className="w-3.5 h-3.5" />
-          )}
-        </button>
-
-        {/* Nth skip */}
-        <div className="relative">
+        <Tooltip content={showActiveOnly ? "모든 프레임 보기" : "활성 프레임만 보기"}>
           <button
-            onClick={() => setShowNthPopover(!showNthPopover)}
-            className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
-              showNthPopover
+            onClick={() => setShowActiveOnly(!showActiveOnly)}
+            className={`p-1 rounded transition-colors ${
+              showActiveOnly
                 ? "bg-accent-primary/15 text-accent-primary"
                 : "text-text-tertiary hover:text-text-secondary"
             }`}
-            title="N번째 프레임 외 건너뛰기"
+            aria-label={showActiveOnly ? "Show all frames" : "Show only active frames"}
           >
-            Nth
+            {showActiveOnly ? (
+              <EyeClosedIcon className="w-3.5 h-3.5" />
+            ) : (
+              <EyeOpenIcon className="w-3.5 h-3.5" />
+            )}
           </button>
+        </Tooltip>
+
+        <Tooltip content={isSkipToggleMode ? "프레임 스킵 토글 모드 해제" : "프레임 스킵 토글 모드 (클릭으로 프레임 스킵/표시 전환)"}>
+          <button
+            onClick={() => setIsSkipToggleMode(!isSkipToggleMode)}
+            className={`p-1 rounded transition-colors ${
+              isSkipToggleMode
+                ? "bg-accent-warning/20 text-accent-warning"
+                : "text-text-tertiary hover:text-text-secondary"
+            }`}
+            aria-label="Toggle frame skip mode"
+          >
+            <FrameSkipToggleIcon className="w-3.5 h-3.5" />
+          </button>
+        </Tooltip>
+
+        {/* Nth skip */}
+        <div className="relative">
+          <Tooltip content="N번째 프레임만 유지하고 나머지 스킵">
+            <button
+              onClick={() => setShowNthPopover(!showNthPopover)}
+              className={`p-1 rounded transition-colors ${
+                showNthPopover
+                  ? "bg-accent-primary/15 text-accent-primary"
+                  : "text-text-tertiary hover:text-text-secondary"
+              }`}
+              aria-label="Nth frame skip settings"
+            >
+              <NthFrameSkipIcon className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
           {showNthPopover && (
             <div className="absolute right-0 top-full mt-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg p-2 z-20 min-w-[160px]">
               <div className="text-[10px] text-text-secondary mb-1.5">
@@ -606,44 +636,51 @@ export default function FrameStrip() {
         </div>
 
         {/* Delete active frame */}
-        <button
-          onClick={deleteActiveFrame}
-          disabled={frames.length === 0}
-          className="p-1 rounded text-text-tertiary hover:text-accent-danger disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title={t.deleteFrame}
-        >
-          <DeleteIcon className="w-3.5 h-3.5" />
-        </button>
+        <Tooltip content={t.deleteFrame}>
+          <button
+            onClick={deleteActiveFrame}
+            disabled={frames.length === 0}
+            className="p-1 rounded text-text-tertiary hover:text-accent-danger disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            aria-label={t.deleteFrame}
+          >
+            <DeleteIcon className="w-3.5 h-3.5" />
+          </button>
+        </Tooltip>
 
         {/* Separator */}
         <div className="w-px h-4 bg-border-default" />
 
         {/* Mode toggle (icon-based) */}
         <div className="flex gap-0.5 bg-surface-tertiary rounded p-0.5">
-          <button
-            onClick={() => setTimelineMode("reorder")}
-            className={`p-1 rounded transition-colors ${
-              timelineMode === "reorder"
-                ? "bg-accent-primary text-white"
-                : "text-text-secondary hover:text-text-primary"
-            }`}
-            title="순서 변경"
-          >
-            <ReorderIcon className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setTimelineMode("offset")}
-            className={`p-1 rounded transition-colors ${
-              timelineMode === "offset"
-                ? "bg-accent-primary text-white"
-                : "text-text-secondary hover:text-text-primary"
-            }`}
-            title="위치 조정"
-          >
-            <OffsetIcon className="w-3.5 h-3.5" />
-          </button>
+          <Tooltip content="프레임 순서 변경">
+            <button
+              onClick={() => setTimelineMode("reorder")}
+              className={`p-1 rounded transition-colors ${
+                timelineMode === "reorder"
+                  ? "bg-accent-primary text-white"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
+              aria-label="Reorder mode"
+            >
+              <ReorderIcon className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="프레임 오프셋 이동">
+            <button
+              onClick={() => setTimelineMode("offset")}
+              className={`p-1 rounded transition-colors ${
+                timelineMode === "offset"
+                  ? "bg-accent-primary text-white"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
+              aria-label="Offset mode"
+            >
+              <OffsetIcon className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
       </div>
+      </Scrollbar>
 
       {/* Frame strip */}
       <Scrollbar className="flex-1" overflow={{ x: "hidden", y: "scroll" }}>

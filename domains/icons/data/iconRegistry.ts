@@ -99,6 +99,8 @@ import {
   LandingImageIcon,
   LandingVideoIcon,
   LandingSpriteIcon,
+  FrameSkipToggleIcon,
+  NthFrameSkipIcon,
 } from "@/shared/components/icons";
 import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
 import ArtkitWordmark from "@/shared/components/app/icons/ArtkitWordmark";
@@ -162,6 +164,8 @@ const iconRegistry: IconMeta[] = [
   { name: "HandIcon", component: HandIcon, category: "editorTools", tags: ["hand", "pan", "grab", "move canvas"] },
   { name: "ZoomSearchIcon", component: ZoomSearchIcon, category: "editorTools", tags: ["zoom", "search", "magnify", "magnifying glass"] },
   { name: "PanIcon", component: PanIcon, category: "editorTools", tags: ["pan", "arrows", "four-way", "move"] },
+  { name: "FrameSkipToggleIcon", component: FrameSkipToggleIcon, category: "editorTools", tags: ["frame", "skip", "toggle", "disable", "sprite"] },
+  { name: "NthFrameSkipIcon", component: NthFrameSkipIcon, category: "editorTools", tags: ["nth", "frame", "skip", "pattern", "filter", "sprite"] },
 
   // Layers & Alignment
   { name: "EyeOpenIcon", component: EyeOpenIcon, category: "layers", tags: ["eye", "open", "visible", "show"] },
