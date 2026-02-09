@@ -7,8 +7,8 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave } from "./hooks";
-export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions, useEditorCanvasActions, useEditorCursor, useTransformShortcuts, useImageImport, useLayersPanelToggle, useEditorHistoryAdapter, useToolModeGuard, useEditorToolRuntime, useViewportBridge, useGuideDragPreview, useRotateMenu, useEditorPanelRegistration, useRulerRenderSync, useEditorLayerContextValue, useEditorCanvasContextValue, useEditorTranslationBundles } from "./hooks";
+export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn, EditorHistorySnapshot } from "./hooks";
 export type {
   CanvasInputEvent,
   InputModifiers,
@@ -19,13 +19,17 @@ export type {
 
 // Components
 export { ProjectListModal } from "./components";
+export { EditorHeader } from "./components";
+export { EditorOverlays } from "./components";
 export { EditorToolOptions } from "./components";
+export { EditorToolOptionsBar } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
 export { TransformDiscardConfirmModal } from "./components";
 export { EditorMenuBar } from "./components";
 export { LayersPanelContent } from "./components";
 export { CanvasPanelContent } from "./components";
+export { EditorActionToolbar } from "./components";
 export { BrushPresetSelector } from "./components/toolbars/BrushPresetSelector";
 export { PanModeToggle } from "./components/toolbars/PanModeToggle";
 
@@ -101,6 +105,7 @@ export {
   saveActivePresetId,
   BRUSH_PRESETS_STORAGE_KEY,
   ACTIVE_PRESET_STORAGE_KEY,
+  createEditorToolButtons,
 } from "./constants";
 
 export type { ShortcutDefinition } from "./constants";

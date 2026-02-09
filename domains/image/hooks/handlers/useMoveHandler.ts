@@ -25,8 +25,8 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
     setIsMovingSelection,
     setIsDuplicating,
     activeLayerId,
-    activeLayerPosition,
     updateLayerPosition,
+    updateMultipleLayerPositions,
     saveToHistory,
     // Multi-layer support
     selectedLayerIds,
@@ -116,7 +116,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
         ? selectedLayerIds
         : (activeLayerId ? [activeLayerId] : []);
 
-      if (targetLayerIds.length > 0 && updateLayerPosition && layers) {
+      if (targetLayerIds.length > 0 && (updateLayerPosition || updateMultipleLayerPositions) && layers) {
         // Filter out locked layers
         const movableLayers = targetLayerIds.filter(id => {
           const layer = layers.find(l => l.id === id);
@@ -160,8 +160,8 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
       setIsMovingSelection,
       setIsDuplicating,
       activeLayerId,
-      activeLayerPosition,
       updateLayerPosition,
+      updateMultipleLayerPositions,
       selectedLayerIds,
       layers,
     ]
@@ -173,7 +173,12 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
       const { width: displayWidth, height: displayHeight } = displayDimensions;
 
       // Handle multi-layer movement (no selection)
-      if (isMovingLayer && layerDragStartRef.current && layerDragStartRef.current.size > 0 && updateLayerPosition) {
+      if (
+        isMovingLayer &&
+        layerDragStartRef.current &&
+        layerDragStartRef.current.size > 0 &&
+        (updateLayerPosition || updateMultipleLayerPositions)
+      ) {
         // Use the first layer's mousePos as reference for delta calculation
         const firstEntry = layerDragStartRef.current.entries().next().value;
         if (!firstEntry) return;
@@ -193,13 +198,23 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
           }
         }
 
-        // Update all layer positions
-        layerDragStartRef.current.forEach((start, layerId) => {
-          updateLayerPosition(layerId, {
-            x: start.layerPos.x + dx,
-            y: start.layerPos.y + dy,
+        if (updateMultipleLayerPositions) {
+          const updates = Array.from(layerDragStartRef.current.entries()).map(([layerId, start]) => ({
+            layerId,
+            position: {
+              x: start.layerPos.x + dx,
+              y: start.layerPos.y + dy,
+            },
+          }));
+          updateMultipleLayerPositions(updates);
+        } else if (updateLayerPosition) {
+          layerDragStartRef.current.forEach((start, layerId) => {
+            updateLayerPosition(layerId, {
+              x: start.layerPos.x + dx,
+              y: start.layerPos.y + dy,
+            });
           });
-        });
+        }
         return;
       }
 
@@ -231,7 +246,14 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
         floatingLayerRef.current.y = newY;
       }
     },
-    [isMovingLayer, activeLayerId, updateLayerPosition, selection, floatingLayerRef, dragStartOriginRef]
+    [
+      isMovingLayer,
+      updateLayerPosition,
+      updateMultipleLayerPositions,
+      selection,
+      floatingLayerRef,
+      dragStartOriginRef,
+    ]
   );
 
   const handleMouseUp = useCallback(() => {

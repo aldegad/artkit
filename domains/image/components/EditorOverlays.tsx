@@ -1,0 +1,218 @@
+"use client";
+
+import { ChangeEventHandler, RefObject } from "react";
+import { SyncDialog } from "@/shared/components/app/auth";
+import { CropArea, OutputFormat, SavedImageProject } from "../types";
+import { BackgroundRemovalModals } from "./BackgroundRemovalModals";
+import { EditorStatusBar } from "./toolbars/EditorStatusBar";
+import { ExportModal } from "./ExportModal";
+import ProjectListModal from "./ProjectListModal";
+import { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
+
+interface EditorOverlaysProps {
+  // Export modal
+  showExportModal: boolean;
+  setShowExportModal: (show: boolean) => void;
+  handleExportFromModal: (
+    fileName: string,
+    format: OutputFormat,
+    quality: number,
+    backgroundColor: string | null,
+    mode: "single" | "layers"
+  ) => void;
+  exportMode: "single" | "layers";
+  projectName: string;
+  exportTranslations: {
+    export: string;
+    cancel: string;
+    fileName: string;
+    format: string;
+    quality: string;
+    backgroundColor: string;
+    transparent: string;
+  };
+
+  // Background removal
+  showBgRemovalConfirm: boolean;
+  setShowBgRemovalConfirm: (show: boolean) => void;
+  handleRemoveBackground: () => void;
+  hasSelection: boolean;
+  isRemovingBackground: boolean;
+  bgRemovalProgress: number;
+  bgRemovalStatus: string;
+  backgroundRemovalTranslations: {
+    removeBackground: string;
+    cancel: string;
+    confirm: string;
+  };
+
+  // Transform discard
+  showTransformDiscardConfirm: boolean;
+  handleTransformDiscardCancel: () => void;
+  handleTransformDiscardConfirm: () => void;
+  handleTransformApplyAndSwitch: () => void;
+  transformDiscardTranslations: {
+    title: string;
+    message: string;
+    discard: string;
+    apply: string;
+    cancel: string;
+  };
+
+  // Status bar
+  showStatusBar: boolean;
+  canvasSize: { width: number; height: number };
+  rotation: number;
+  zoom: number;
+  cropArea: CropArea | null;
+  selection: CropArea | null;
+
+  // Hidden file input
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  handleFileSelect: ChangeEventHandler<HTMLInputElement>;
+
+  // Project list
+  isProjectListOpen: boolean;
+  setIsProjectListOpen: (open: boolean) => void;
+  savedProjects: SavedImageProject[];
+  currentProjectId: string | null;
+  handleLoadProject: (projectMeta: SavedImageProject) => Promise<void>;
+  handleDeleteProject: (id: string) => Promise<void>;
+  storageInfo: { used: number; quota: number; percentage: number };
+  isLoading: boolean;
+  projectListTranslations: {
+    savedProjects: string;
+    noSavedProjects: string;
+    delete: string;
+    loading: string;
+  };
+
+  // Sync dialog
+  showSyncDialog: boolean;
+  localProjectCount: number;
+  cloudProjectCount: number;
+  handleKeepCloud: () => Promise<void>;
+  handleKeepLocal: () => Promise<void>;
+  handleCancelSync: () => void;
+}
+
+export function EditorOverlays({
+  showExportModal,
+  setShowExportModal,
+  handleExportFromModal,
+  exportMode,
+  projectName,
+  exportTranslations,
+  showBgRemovalConfirm,
+  setShowBgRemovalConfirm,
+  handleRemoveBackground,
+  hasSelection,
+  isRemovingBackground,
+  bgRemovalProgress,
+  bgRemovalStatus,
+  backgroundRemovalTranslations,
+  showTransformDiscardConfirm,
+  handleTransformDiscardCancel,
+  handleTransformDiscardConfirm,
+  handleTransformApplyAndSwitch,
+  transformDiscardTranslations,
+  showStatusBar,
+  canvasSize,
+  rotation,
+  zoom,
+  cropArea,
+  selection,
+  fileInputRef,
+  handleFileSelect,
+  isProjectListOpen,
+  setIsProjectListOpen,
+  savedProjects,
+  currentProjectId,
+  handleLoadProject,
+  handleDeleteProject,
+  storageInfo,
+  isLoading,
+  projectListTranslations,
+  showSyncDialog,
+  localProjectCount,
+  cloudProjectCount,
+  handleKeepCloud,
+  handleKeepLocal,
+  handleCancelSync,
+}: EditorOverlaysProps) {
+  return (
+    <>
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={(fileName, format, quality, backgroundColor) =>
+          handleExportFromModal(fileName, format, quality, backgroundColor, exportMode)
+        }
+        defaultFileName={projectName || "Untitled"}
+        mode={exportMode}
+        translations={exportTranslations}
+      />
+
+      <BackgroundRemovalModals
+        showConfirm={showBgRemovalConfirm}
+        onCloseConfirm={() => setShowBgRemovalConfirm(false)}
+        onConfirm={() => {
+          setShowBgRemovalConfirm(false);
+          handleRemoveBackground();
+        }}
+        hasSelection={hasSelection}
+        isRemoving={isRemovingBackground}
+        progress={bgRemovalProgress}
+        status={bgRemovalStatus}
+        translations={backgroundRemovalTranslations}
+      />
+
+      <TransformDiscardConfirmModal
+        show={showTransformDiscardConfirm}
+        onClose={handleTransformDiscardCancel}
+        onDiscard={handleTransformDiscardConfirm}
+        onApply={handleTransformApplyAndSwitch}
+        translations={transformDiscardTranslations}
+      />
+
+      {showStatusBar && (
+        <EditorStatusBar
+          canvasSize={canvasSize}
+          rotation={rotation}
+          zoom={zoom}
+          cropArea={cropArea}
+          selection={selection}
+        />
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
+      <ProjectListModal
+        isOpen={isProjectListOpen}
+        onClose={() => setIsProjectListOpen(false)}
+        projects={savedProjects}
+        currentProjectId={currentProjectId}
+        onLoadProject={handleLoadProject}
+        onDeleteProject={handleDeleteProject}
+        storageInfo={storageInfo}
+        isLoading={isLoading}
+        translations={projectListTranslations}
+      />
+
+      <SyncDialog
+        isOpen={showSyncDialog}
+        localCount={localProjectCount}
+        cloudCount={cloudProjectCount}
+        onKeepCloud={handleKeepCloud}
+        onKeepLocal={handleKeepLocal}
+        onCancel={handleCancelSync}
+      />
+    </>
+  );
+}
