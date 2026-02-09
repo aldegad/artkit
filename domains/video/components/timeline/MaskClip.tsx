@@ -32,10 +32,12 @@ export function MaskClip({ mask }: MaskClipProps) {
     startMaskEditById,
     endMaskEdit,
     updateMaskTime,
+    duplicateMask,
     masks,
   } = useMask();
-  const { tracks, clips, viewState, moveClip } = useTimeline();
+  const { tracks, clips, viewState, moveClip, saveToHistory } = useTimeline();
   const {
+    toolMode,
     selectedMaskIds,
     selectedClipIds,
     selectMaskForTimeline,
@@ -95,15 +97,57 @@ export function MaskClip({ mask }: MaskClipProps) {
     [viewState.snapEnabled, zoom, clips, tracks, mask.trackId]
   );
 
+  const splitMaskAtPosition = useCallback((localX: number, widthPx: number) => {
+    if (widthPx <= 0) return;
+    const ratio = Math.max(0, Math.min(1, localX / widthPx));
+    const splitTime = mask.startTime + mask.duration * ratio;
+    const splitOffset = splitTime - mask.startTime;
+    const remainDuration = mask.duration - splitOffset;
+
+    if (
+      splitOffset <= TIMELINE.CLIP_MIN_DURATION ||
+      remainDuration <= TIMELINE.CLIP_MIN_DURATION
+    ) {
+      return;
+    }
+
+    saveToHistory();
+    const secondMaskId = duplicateMask(mask.id);
+    if (!secondMaskId) return;
+
+    updateMaskTime(mask.id, mask.startTime, splitOffset);
+    updateMaskTime(secondMaskId, splitTime, remainDuration);
+    selectMaskForTimeline(secondMaskId, false);
+    selectMask(secondMaskId);
+  }, [
+    mask.id,
+    mask.startTime,
+    mask.duration,
+    saveToHistory,
+    duplicateMask,
+    updateMaskTime,
+    selectMaskForTimeline,
+    selectMask,
+  ]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
     didDragRef.current = false;
     wasActiveOnDownRef.current = isActive;
     wasEditingOnDownRef.current = isEditing;
     wasTimelineSelectedOnDownRef.current = isTimelineSelected;
     shiftKeyOnDownRef.current = e.shiftKey;
+
+    const rect = target.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+
+    if (toolMode === "razor") {
+      splitMaskAtPosition(localX, rect.width);
+      return;
+    }
 
     // Timeline selection for multi-select
     const isAlreadySelected = isTimelineSelected;
@@ -123,9 +167,6 @@ export function MaskClip({ mask }: MaskClipProps) {
     if (!isActive) {
       selectMask(mask.id);
     }
-
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const localX = e.clientX - rect.left;
 
     let mode: DragMode = "move";
     if (localX < UI.TRIM_HANDLE_WIDTH) {
@@ -173,7 +214,7 @@ export function MaskClip({ mask }: MaskClipProps) {
     }
 
     setDragMode(mode);
-  }, [selectMask, selectMaskForTimeline, deselectAllState, isActive, isEditing, isTimelineSelected,
+  }, [toolMode, splitMaskAtPosition, selectMask, selectMaskForTimeline, deselectAllState, isActive, isEditing, isTimelineSelected,
       mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks, startMaskEditById]);
 
   useEffect(() => {
