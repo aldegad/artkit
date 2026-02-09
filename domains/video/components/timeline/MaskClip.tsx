@@ -5,6 +5,7 @@ import { MaskData } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useMask, useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
+import { safeSetPointerCapture } from "@/shared/utils";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { UI, TIMELINE } from "../../constants";
 
@@ -146,7 +147,7 @@ export function MaskClip({ mask }: MaskClipProps) {
     e.stopPropagation();
     e.preventDefault();
     const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
+    safeSetPointerCapture(target, e.pointerId);
     didDragRef.current = false;
     wasActiveOnDownRef.current = isActive;
     wasEditingOnDownRef.current = isEditing;

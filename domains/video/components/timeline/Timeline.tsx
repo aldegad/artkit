@@ -9,6 +9,7 @@ import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
 import { cn } from "@/shared/utils/cn";
+import { safeSetPointerCapture } from "@/shared/utils";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
 import { useDeferredPointerGesture } from "@/shared/hooks";
@@ -113,7 +114,7 @@ export function Timeline({ className }: TimelineProps) {
   const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation(); // prevent timeline pointerdown from firing (seek/drag)
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    safeSetPointerCapture(e.target, e.pointerId);
     setHeaderResizePending({
       pointerId: e.pointerId,
       clientX: e.clientX,

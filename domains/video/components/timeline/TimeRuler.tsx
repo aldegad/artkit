@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback } from "react";
 import { useTimeline, useVideoState } from "../../contexts";
 import { usePlaybackTick, useTimelineViewport, useVideoCoordinates } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { TIMELINE } from "../../constants";
 
@@ -171,7 +172,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
       isDraggingRef.current = true;
 
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -233,9 +234,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       isDraggingRef.current = false;
       dragHandleRef.current = null;
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
+      safeReleasePointerCapture(e.currentTarget, e.pointerId);
     },
     []
   );
