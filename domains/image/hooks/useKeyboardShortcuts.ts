@@ -14,6 +14,7 @@ import {
   matchesAnyCodes,
   hasCmdOrCtrl,
   matchesShortcut,
+  VIEWPORT,
 } from "../constants";
 
 // ============================================
@@ -134,11 +135,11 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       if (hasCmdOrCtrl(e)) {
         if (matchesAnyCodes(e, ZOOM_SHORTCUTS.zoomIn)) {
           e.preventDefault();
-          setZoom((z) => Math.min(10, z * 1.25));
+          setZoom((z) => Math.min(VIEWPORT.MAX_ZOOM, z * VIEWPORT.ZOOM_STEP_IN));
         }
         if (matchesAnyCodes(e, ZOOM_SHORTCUTS.zoomOut)) {
           e.preventDefault();
-          setZoom((z) => Math.max(0.1, z * 0.8));
+          setZoom((z) => Math.max(VIEWPORT.MIN_ZOOM, z * VIEWPORT.ZOOM_STEP_OUT));
         }
         if (matchesAnyCodes(e, ZOOM_SHORTCUTS.resetZoom)) {
           e.preventDefault();

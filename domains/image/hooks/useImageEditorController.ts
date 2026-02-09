@@ -9,7 +9,7 @@ import {
   useEditorRefs,
   useEditorState,
 } from "../contexts";
-import { createEditorToolButtons } from "../constants";
+import { createEditorToolButtons, VIEWPORT } from "../constants";
 import { useHistory, HistoryAdapter } from "./useHistory";
 import { useLayerManagement } from "./useLayerManagement";
 import { useBrushTool } from "./useBrushTool";
@@ -134,9 +134,9 @@ export function useImageEditorController() {
     contentSize: displayDimensions,
     config: {
       origin: "center",
-      minZoom: 0.1,
-      maxZoom: 10,
-      wheelZoomFactor: 0.1,
+      minZoom: VIEWPORT.MIN_ZOOM,
+      maxZoom: VIEWPORT.MAX_ZOOM,
+      wheelZoomFactor: VIEWPORT.WHEEL_ZOOM_FACTOR,
     },
   });
 

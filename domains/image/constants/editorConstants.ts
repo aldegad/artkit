@@ -48,6 +48,22 @@ export const INTERACTION = {
 } as const;
 
 // ============================================
+// Viewport
+// ============================================
+
+/** Shared zoom/pan constants used across image editor interactions */
+export const VIEWPORT = {
+  /** Hard zoom bounds */
+  MIN_ZOOM: 0.1,
+  MAX_ZOOM: 10,
+  /** Wheel/pinch-ish zoom intensity used by canvas viewport */
+  WHEEL_ZOOM_FACTOR: 0.1,
+  /** Discrete zoom tool / keyboard multipliers */
+  ZOOM_STEP_IN: 1.25,
+  ZOOM_STEP_OUT: 0.8,
+} as const;
+
+// ============================================
 // Floating Window Layout
 // ============================================
 
