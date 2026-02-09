@@ -469,7 +469,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             const sourceTime = clip.trimIn + clipTime;
             if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
               videoElement.currentTime = sourceTime;
-              continue;
+              // Keep rendering the currently available frame while seek settles.
+              // Without this, mask-selected state (cache bypass) can show blank frames.
             }
           }
           sourceEl = videoElement;
