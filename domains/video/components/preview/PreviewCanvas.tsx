@@ -77,6 +77,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     enablePinch: true,
   });
   const isPanningRef = useRef(false);
+  const containerRectRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const { zoom: viewportZoom } = viewport.useReactSync(200);
   const zoomPercent = Math.round(viewportZoom * 100);
 
@@ -188,6 +189,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Cache for getComputedStyle results (avoid forcing style recalc every frame)
   const cssColorsRef = useRef<{ surfacePrimary: string; borderDefault: string } | null>(null);
   const invalidateCssCache = useCallback(() => { cssColorsRef.current = null; }, []);
+  const checkerPatternRef = useRef<CanvasPattern | null>(null);
+  const checkerPatternKeyRef = useRef<string>("");
+  const checkerPatternCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Handle playback state changes - sync video/audio elements.
   // Runs only when play state or clip/track structure changes, NOT every frame.
@@ -351,22 +355,36 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     };
   }, [clips, videoElementsRef]);
 
-  // Draw checkerboard pattern for transparency
-  const drawCheckerboard = useCallback(
-    (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-      const size = PREVIEW.CHECKERBOARD_SIZE;
-      const colors = getCanvasColorsSync();
+  // Draw checkerboard with cached CanvasPattern to avoid per-frame tile loops.
+  const drawCheckerboard = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const size = PREVIEW.CHECKERBOARD_SIZE;
+    const colors = getCanvasColorsSync();
+    const patternKey = `${size}:${colors.checkerboardLight}:${colors.checkerboardDark}`;
 
-      for (let y = 0; y < height; y += size) {
-        for (let x = 0; x < width; x += size) {
-          const isEven = ((x / size + y / size) % 2) === 0;
-          ctx.fillStyle = isEven ? colors.checkerboardLight : colors.checkerboardDark;
-          ctx.fillRect(x, y, size, size);
-        }
-      }
-    },
-    []
-  );
+    if (checkerPatternKeyRef.current !== patternKey || !checkerPatternRef.current) {
+      const tileCanvas = checkerPatternCanvasRef.current ?? document.createElement("canvas");
+      checkerPatternCanvasRef.current = tileCanvas;
+      tileCanvas.width = size * 2;
+      tileCanvas.height = size * 2;
+
+      const tileCtx = tileCanvas.getContext("2d");
+      if (!tileCtx) return;
+
+      tileCtx.clearRect(0, 0, tileCanvas.width, tileCanvas.height);
+      tileCtx.fillStyle = colors.checkerboardLight;
+      tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
+      tileCtx.fillStyle = colors.checkerboardDark;
+      tileCtx.fillRect(0, 0, size, size);
+      tileCtx.fillRect(size, size, size, size);
+
+      checkerPatternRef.current = ctx.createPattern(tileCanvas, "repeat");
+      checkerPatternKeyRef.current = patternKey;
+    }
+
+    if (!checkerPatternRef.current) return;
+    ctx.fillStyle = checkerPatternRef.current;
+    ctx.fillRect(0, 0, width, height);
+  }, []);
 
   // Render the composited frame - assigned to ref to avoid stale closures
   renderRef.current = () => {
@@ -381,19 +399,23 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const ct = currentTimeRef.current;
 
     const dpr = window.devicePixelRatio || 1;
-    const rect = container.getBoundingClientRect();
+    let width = containerRectRef.current.width;
+    let height = containerRectRef.current.height;
+    if (width <= 0 || height <= 0) {
+      const rect = container.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      containerRectRef.current = { width, height };
+    }
 
     // Set canvas size with DPI scaling
-    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const width = rect.width;
-    const height = rect.height;
     const colors = getCanvasColorsSync();
     // Cache getComputedStyle results to avoid per-frame style recalculation
     if (!cssColorsRef.current) {
@@ -1097,8 +1119,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Re-render when viewport changes (zoom/pan)
   useEffect(() => {
-    return onVideoViewportChange((state) => {
-      console.log("[Video Viewport] change:", { zoom: state.zoom, pan: state.pan });
+    return onVideoViewportChange(() => {
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
     });
@@ -1109,17 +1130,28 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const container = previewContainerRef.current;
     if (!container) return;
 
-    const resizeObserver = new ResizeObserver(() => {
+    const updateContainerRect = (width: number, height: number) => {
+      containerRectRef.current = { width, height };
+    };
+
+    const initialRect = container.getBoundingClientRect();
+    updateContainerRect(initialRect.width, initialRect.height);
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const observedRect = entries[0]?.contentRect;
+      const width = observedRect?.width ?? containerRectRef.current.width;
+      const height = observedRect?.height ?? containerRectRef.current.height;
+      updateContainerRect(width, height);
+
       const { zoom, pan } = vpGetTransform();
       if (zoom === 1 && pan.x === 0 && pan.y === 0) {
         // Default view — fit to container
         vpFitToContainer(40);
       } else {
         // User has zoomed/panned — only update baseScale
-        const rect = container.getBoundingClientRect();
         const padding = 40;
-        const maxW = rect.width - padding * 2;
-        const maxH = rect.height - padding * 2;
+        const maxW = width - padding * 2;
+        const maxH = height - padding * 2;
         const pw = project.canvasSize.width;
         const ph = project.canvasSize.height;
         if (maxW > 0 && maxH > 0 && pw > 0 && ph > 0) {

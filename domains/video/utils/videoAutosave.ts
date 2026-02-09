@@ -10,6 +10,7 @@ import {
   MaskData,
   TimelineViewState,
   VideoToolMode,
+  PlaybackRangeState,
 } from "../types";
 import { clearAllMediaBlobs } from "./mediaStorage";
 
@@ -32,6 +33,7 @@ export interface VideoAutosaveData extends BaseAutosaveData {
   // View state
   timelineView: TimelineViewState;
   currentTime: number;
+  playbackRange?: PlaybackRangeState;
 
   // Tool state
   toolMode: VideoToolMode;

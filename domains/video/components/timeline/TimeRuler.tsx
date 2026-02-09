@@ -98,17 +98,18 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     }
 
     // Draw ticks
-    const startTime = Math.floor(viewState.scrollX / tickInterval) * tickInterval;
+    const startTime = Math.max(0, Math.floor(viewState.scrollX / tickInterval) * tickInterval);
     const endTime = viewState.scrollX + width / pixelsPerSecond;
 
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "center";
 
     for (let time = startTime; time <= endTime; time += tickInterval) {
-      const x = timeToPixel(time);
+      const safeTime = Math.max(0, time);
+      const x = timeToPixel(safeTime);
       if (x < 0 || x > width) continue;
 
-      const isMajor = time % majorTickInterval < 0.001 || time % majorTickInterval > majorTickInterval - 0.001;
+      const isMajor = safeTime % majorTickInterval < 0.001 || safeTime % majorTickInterval > majorTickInterval - 0.001;
       const tickHeight = isMajor ? 8 : 4;
 
       ctx.strokeStyle = isMajor ? colors.rulerTickMajor : colors.rulerTick;
@@ -120,8 +121,8 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
 
       // Draw time label for major ticks
       if (isMajor) {
-        const mins = Math.floor(time / 60);
-        const secs = Math.floor(time % 60);
+        const mins = Math.floor(safeTime / 60);
+        const secs = Math.floor(safeTime % 60);
         const label = mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : `${secs}s`;
         ctx.fillStyle = colors.rulerText;
         ctx.fillText(label, x, height - 9);
