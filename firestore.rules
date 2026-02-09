@@ -10,5 +10,10 @@ service cloud.firestore {
     match /users/{userId}/videoProjects/{projectId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // 사용자별 스프라이트 프로젝트
+    match /users/{userId}/spriteProjects/{projectId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }
