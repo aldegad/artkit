@@ -5,6 +5,7 @@ import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { TimelineDragType, Clip } from "../types";
 import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
+import { copyMediaBlob } from "../utils/mediaStorage";
 
 interface DragItem {
   type: "clip" | "mask";
@@ -229,6 +230,12 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
           saveToHistory();
           const firstClip: Clip = { ...clip, id: crypto.randomUUID(), duration: splitOffset, trimOut: clip.trimIn + splitOffset };
           const secondClip: Clip = { ...clip, id: crypto.randomUUID(), name: `${clip.name} (2)`, startTime: splitTime, duration: clip.duration - splitOffset, trimIn: clip.trimIn + splitOffset };
+          void Promise.all([
+            copyMediaBlob(clip.id, firstClip.id),
+            copyMediaBlob(clip.id, secondClip.id),
+          ]).catch((error) => {
+            console.error("Failed to copy media blob on razor split:", error);
+          });
           removeClip(clip.id);
           addClips([firstClip, secondClip]);
           selectClip(secondClip.id, false);
@@ -496,6 +503,13 @@ export function useTimelineInput(tracksContainerRef: React.RefObject<HTMLDivElem
                 duration: secondDuration,
                 trimIn: clip.trimIn + splitOffset,
               };
+
+              void Promise.all([
+                copyMediaBlob(clip.id, firstClip.id),
+                copyMediaBlob(clip.id, secondClip.id),
+              ]).catch((error) => {
+                console.error("Failed to copy media blob on razor split:", error);
+              });
 
               removeClip(clip.id);
               addClips([firstClip, secondClip]);

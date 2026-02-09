@@ -59,6 +59,7 @@ export {
   usePreviewRendering,
   useMaskTool,
   useVideoSave,
+  useVideoExport,
 } from "./hooks";
 
 // Components

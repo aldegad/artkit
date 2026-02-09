@@ -99,7 +99,7 @@ export const CANVAS_PRESETS = [
 export const PRE_RENDER = {
   FRAME_RATE: 30, // frames per second for cache granularity
   MAX_FRAMES: 600, // max cached frames (~20s at 30fps)
-  CACHE_RESOLUTION_SCALE: 0.5, // render at half project resolution
+  CACHE_RESOLUTION_SCALE: 1, // render at project resolution
   BATCH_DELAY_MS: 0, // setTimeout delay between frames (yield to UI)
   SEEK_TIMEOUT_MS: 2000, // max wait for video seek
 } as const;
