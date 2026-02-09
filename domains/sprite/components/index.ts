@@ -11,6 +11,7 @@ export { default as SpriteMenuBar } from "./SpriteMenuBar";
 export { default as SpriteTopToolbar } from "./SpriteTopToolbar";
 export { default as VideoImportModal } from "./VideoImportModal";
 export { FrameBackgroundRemovalModals } from "./FrameBackgroundRemovalModals";
+export { FrameInterpolationModals } from "./FrameInterpolationModals";
 
 // Layout components
 export * from "./layout";
