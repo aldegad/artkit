@@ -13,6 +13,7 @@ import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useCanvasViewportBridge, type CanvasViewportState } from "@/shared/hooks/useCanvasViewportBridge";
 import { useRenderScheduler } from "@/shared/hooks/useRenderScheduler";
+import { SPRITE_CANVAS_VIEWPORT } from "../constants";
 
 // ============================================
 // Component
@@ -48,9 +49,9 @@ export default function CanvasContent() {
     contentSize: { width: imageSize.width, height: imageSize.height },
     config: {
       origin: "topLeft",
-      minZoom: 0.1,
-      maxZoom: 5,
-      wheelZoomFactor: 0.03,
+      minZoom: SPRITE_CANVAS_VIEWPORT.MIN_ZOOM,
+      maxZoom: SPRITE_CANVAS_VIEWPORT.MAX_ZOOM,
+      wheelZoomFactor: SPRITE_CANVAS_VIEWPORT.WHEEL_ZOOM_FACTOR,
     },
     enableWheel: true,
     enablePinch: true,

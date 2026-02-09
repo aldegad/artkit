@@ -10,6 +10,7 @@ import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
+import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
 // Background icon for popover trigger
 const BackgroundPatternIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -150,8 +151,13 @@ export default function AnimationPreviewContent() {
     containerRef,
     canvasRef,
     contentSize: { width: 1, height: 1 },
-    config: { origin: "center", minZoom: 0.1, maxZoom: 20, wheelZoomFactor: 0.1 },
-    initial: { zoom: 2 },
+    config: {
+      origin: "center",
+      minZoom: SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
+      maxZoom: SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
+      wheelZoomFactor: SPRITE_PREVIEW_VIEWPORT.WHEEL_ZOOM_FACTOR,
+    },
+    initial: { zoom: SPRITE_PREVIEW_VIEWPORT.INITIAL_ANIM_ZOOM },
     enableWheel: true,
     enablePinch: true,
   });
@@ -753,14 +759,28 @@ export default function AnimationPreviewContent() {
               {/* Right: Zoom controls */}
               <div className="ml-auto flex items-center gap-1">
                 <button
-                  onClick={() => setAnimVpZoom(Math.max(0.1, getAnimVpZoom() * 0.8))}
+                  onClick={() =>
+                    setAnimVpZoom(
+                      Math.max(
+                        SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
+                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_OUT
+                      )
+                    )
+                  }
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
                 </button>
                 <span className="text-xs w-10 text-center text-text-primary">{Math.round(viewportSync.zoom * 100)}%</span>
                 <button
-                  onClick={() => setAnimVpZoom(Math.min(20, getAnimVpZoom() * 1.25))}
+                  onClick={() =>
+                    setAnimVpZoom(
+                      Math.min(
+                        SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
+                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_IN
+                      )
+                    )
+                  }
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
