@@ -150,6 +150,16 @@ export async function saveProjectToFirebase(
   userId: string,
   project: SavedImageProject
 ): Promise<void> {
+  const docRef = doc(db, "users", userId, "imageProjects", project.id);
+  const existingSnap = await getDoc(docRef);
+  const existingCreatedAt = existingSnap.exists()
+    ? (existingSnap.data() as { createdAt?: Timestamp }).createdAt
+    : undefined;
+  const createdAt =
+    existingCreatedAt && typeof existingCreatedAt.toMillis === "function"
+      ? existingCreatedAt
+      : Timestamp.fromMillis(project.savedAt || Date.now());
+
   // 1. Upload all layer images to Storage
   const layerMetas: FirestoreLayerMeta[] = [];
 
@@ -211,11 +221,10 @@ export async function saveProjectToFirebase(
     layers: layerMetas,
     activeLayerId: project.activeLayerId ?? null,
     thumbnailUrl,
-    createdAt: Timestamp.fromMillis(project.savedAt || Date.now()),
+    createdAt,
     updatedAt: Timestamp.now(),
   };
 
-  const docRef = doc(db, "users", userId, "imageProjects", project.id);
   await setDoc(docRef, firestoreProject);
 }
 
