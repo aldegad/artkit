@@ -34,11 +34,12 @@ export {
   SpriteTopToolbar,
   VideoImportModal,
   FrameBackgroundRemovalModals,
+  FrameInterpolationModals,
   SplitView,
 } from "./components";
 
 // Hooks
-export { useFrameBackgroundRemoval, useSpriteKeyboardShortcuts } from "./hooks";
+export { useFrameBackgroundRemoval, useFrameInterpolation, useSpriteKeyboardShortcuts } from "./hooks";
 
 // Types
 export type {
