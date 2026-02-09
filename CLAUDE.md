@@ -15,6 +15,18 @@ npm run lint     # Run ESLint
 npm run deploy   # Build and deploy to Firebase Hosting
 ```
 
+## Git Commit Convention
+
+- Use Conventional Commits for all future commits.
+- Required format: `<type>: <subject>`
+- Preferred `type` values:
+  - `feat`: user-visible feature
+  - `fix`: bug fix
+  - `refactor`: structural change without behavior change
+  - `chore`: maintenance/internal task
+  - `docs`: documentation update
+- Avoid commits without a prefix.
+
 ## Git Worktrees
 
 병렬 작업을 위한 worktree 구성:
