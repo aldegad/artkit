@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useLayout } from "./LayoutConfigContext";
 import { SplitDirection } from "@/shared/types/layout";
 import { useDeferredPointerGesture } from "@/shared/hooks";
+import { safeSetPointerCapture } from "@/shared/utils";
 
 // ============================================
 // Types
@@ -49,7 +50,7 @@ export default function ResizeHandle({ direction, splitId, handleIndex }: Resize
     (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.target, e.pointerId);
 
       const startPos = direction === "horizontal" ? e.clientX : e.clientY;
       originalStartPositionRef.current = startPos;
