@@ -7,10 +7,7 @@ import { useMask, useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { safeSetPointerCapture } from "@/shared/utils";
 import { useDeferredPointerGesture } from "@/shared/hooks";
-import { UI, TIMELINE } from "../../constants";
-
-/** Long-press duration (ms) to enter mask edit mode */
-const LONG_PRESS_MS = 400;
+import { GESTURE, UI, TIMELINE } from "../../constants";
 
 type DragMode = "none" | "move" | "trim-start" | "trim-end";
 
@@ -233,7 +230,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   useDeferredPointerGesture<MaskMovePendingState>({
     pending: movePending,
     thresholdPx: 2,
-    longPressMs: LONG_PRESS_MS,
+    longPressMs: GESTURE.LONG_PRESS_MS,
     onResolve: () => {
       didDragRef.current = true;
     },
