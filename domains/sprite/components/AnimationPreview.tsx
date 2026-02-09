@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useEditorTracks, useEditorAnimation, useEditorTools, useEditorHistory, useEditorWindows, useEditorFrames } from "../contexts/SpriteEditorContext";
+import { useEditorTools, useEditorHistory, useEditorWindows } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { ImageDropZone, Popover } from "../../../shared/components";
 import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../../shared/components/icons";
@@ -85,30 +85,35 @@ function FrameIndicator({
 // ============================================
 
 export default function AnimationPreviewContent() {
-  const { tracks, addTrack, getMaxFrameCount } = useEditorTracks();
-  const { fps, isPlaying, setIsPlaying } = useEditorAnimation();
+  const tracks = useSpriteTrackStore((s) => s.tracks);
+  const addTrack = useSpriteTrackStore((s) => s.addTrack);
+  const isPlaying = useSpriteTrackStore((s) => s.isPlaying);
+  const setIsPlaying = useSpriteTrackStore((s) => s.setIsPlaying);
+  const storeFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
+  const setStoreFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
+  const maxFrameCount = useSpriteTrackStore((s) =>
+    s.tracks.length === 0 ? 0 : Math.max(...s.tracks.map((t) => t.frames.length))
+  );
   const { toolMode } = useEditorTools();
   const { pushHistory } = useEditorHistory();
   const { setPendingVideoFile, setIsVideoImportOpen } = useEditorWindows();
-  const { currentFrameIndex: storeFrameIndex, setCurrentFrameIndex: setStoreFrameIndex } = useEditorFrames();
   const { t } = useLanguage();
 
-  const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
-  const [compositedDataUrl, setCompositedDataUrl] = useState<string | null>(null);
+  const [hasCompositedFrame, setHasCompositedFrame] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Composited image ref for rendering without re-creating Image objects
-  const compositedImgRef = useRef<HTMLImageElement | null>(null);
+  // Keep the latest composited frame as a canvas to avoid image re-decoding per frame.
+  const compositedCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const maxFrameCount = getMaxFrameCount();
   const hasContent = maxFrameCount > 0;
+  const currentFrameIndex = storeFrameIndex;
 
   // ---- Viewport (ref-based zoom/pan, no React re-renders for viewport changes) ----
   const viewport = useCanvasViewport({
@@ -176,12 +181,12 @@ export default function AnimationPreviewContent() {
   useEffect(() => {
     setRenderFn(() => {
       const canvas = canvasRef.current;
-      const img = compositedImgRef.current;
-      if (!canvas || !img || !img.complete || img.naturalWidth === 0) return;
+      const sourceCanvas = compositedCanvasRef.current;
+      if (!canvas || !sourceCanvas) return;
 
       const zoom = getAnimVpZoom();
-      const w = img.width * zoom;
-      const h = img.height * zoom;
+      const w = sourceCanvas.width * zoom;
+      const h = sourceCanvas.height * zoom;
 
       canvas.width = w;
       canvas.height = h;
@@ -191,9 +196,13 @@ export default function AnimationPreviewContent() {
 
       ctx.clearRect(0, 0, w, h);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, 0, 0, w, h);
+      ctx.drawImage(sourceCanvas, 0, 0, w, h);
     });
-  }, [setRenderFn, getAnimVpZoom]);
+
+    // Ensure first paint after autosave restore even if a render was requested
+    // before the scheduler render function was registered.
+    requestRender();
+  }, [setRenderFn, getAnimVpZoom, requestRender]);
 
   // Subscribe viewport changes → render
   useEffect(() => {
@@ -326,83 +335,56 @@ export default function AnimationPreviewContent() {
     }
   }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
 
-  // Sync store → local when not playing (user clicked in FrameStrip)
-  useEffect(() => {
-    if (!isPlaying) {
-      setCurrentFrameIndex(storeFrameIndex);
-    }
-  }, [storeFrameIndex, isPlaying]);
-
-  // Sync local → store when playing (for FrameStrip visual feedback)
-  useEffect(() => {
-    if (isPlaying) {
-      setStoreFrameIndex(currentFrameIndex);
-    }
-  }, [currentFrameIndex, isPlaying, setStoreFrameIndex]);
-
-  // Animation playback - reads tracks directly from store to avoid stale closures
-  useEffect(() => {
-    if (!isPlaying || maxFrameCount === 0) return;
-
-    const interval = setInterval(() => {
-      const latestTracks = useSpriteTrackStore.getState().tracks;
-      setCurrentFrameIndex((prev) => {
-        let next = (prev + 1) % maxFrameCount;
-        let checked = 0;
-        while (checked < maxFrameCount) {
-          const allDisabled = latestTracks
-            .filter((t) => t.visible && t.frames.length > 0)
-            .every((t) => {
-              const idx = next < t.frames.length ? next : t.loop ? next % t.frames.length : -1;
-              return idx === -1 || t.frames[idx]?.disabled;
-            });
-          if (!allDisabled) return next;
-          next = (next + 1) % maxFrameCount;
-          checked++;
-        }
-        return prev; // all frames disabled, stay put
-      });
-    }, 1000 / fps);
-
-    return () => clearInterval(interval);
-  }, [isPlaying, fps, maxFrameCount]);
-
   // Composite current frame from all tracks
   useEffect(() => {
+    if (isAutosaveLoading) {
+      return;
+    }
+
     if (maxFrameCount === 0) {
-      setCompositedDataUrl(null);
+      compositedCanvasRef.current = null;
+      setHasCompositedFrame(false);
       return;
     }
 
     let cancelled = false;
-    compositeFrame(tracks, currentFrameIndex).then((result) => {
+    compositeFrame(tracks, currentFrameIndex, undefined, { includeDataUrl: false }).then((result) => {
       if (!cancelled) {
-        setCompositedDataUrl(result?.dataUrl ?? null);
+        compositedCanvasRef.current = result?.canvas ?? null;
+        setHasCompositedFrame(Boolean(result));
+        requestRender();
+
+        // Ensure render after DOM commit when canvas visibility toggles.
+        if (result) {
+          requestAnimationFrame(() => {
+            requestRender();
+          });
+        }
+
+        // Prefetch next frame to reduce first-loop stutter.
+        if (maxFrameCount > 1) {
+          const nextFrameIndex = (currentFrameIndex + 1) % maxFrameCount;
+          void compositeFrame(tracks, nextFrameIndex, undefined, { includeDataUrl: false });
+        }
       }
     });
 
     return () => { cancelled = true; };
-  }, [tracks, currentFrameIndex, maxFrameCount]);
+  }, [isAutosaveLoading, tracks, currentFrameIndex, maxFrameCount, requestRender]);
 
-  // Load composited image and trigger render
+  // Autosave restore can toggle hasCompositedFrame after initial scheduler tick.
+  // Trigger another paint once the canvas is visibly mounted.
   useEffect(() => {
-    if (!compositedDataUrl) {
-      compositedImgRef.current = null;
-      return;
-    }
-
-    const img = new Image();
-    img.onload = () => {
-      compositedImgRef.current = img;
+    if (!hasCompositedFrame) return;
+    requestAnimationFrame(() => {
       requestRender();
-    };
-    img.src = compositedDataUrl;
-  }, [compositedDataUrl, requestRender]);
+    });
+  }, [hasCompositedFrame, requestRender]);
 
   const handlePrev = useCallback(() => {
     if (maxFrameCount === 0) return;
     const latestTracks = useSpriteTrackStore.getState().tracks;
-    setCurrentFrameIndex((prev) => {
+    setStoreFrameIndex((prev: number) => {
       let next = ((prev - 1) % maxFrameCount + maxFrameCount) % maxFrameCount;
       let checked = 0;
       while (checked < maxFrameCount) {
@@ -418,12 +400,12 @@ export default function AnimationPreviewContent() {
       }
       return prev;
     });
-  }, [maxFrameCount]);
+  }, [maxFrameCount, setStoreFrameIndex]);
 
   const handleNext = useCallback(() => {
     if (maxFrameCount === 0) return;
     const latestTracks = useSpriteTrackStore.getState().tracks;
-    setCurrentFrameIndex((prev) => {
+    setStoreFrameIndex((prev: number) => {
       let next = (prev + 1) % maxFrameCount;
       let checked = 0;
       while (checked < maxFrameCount) {
@@ -439,7 +421,7 @@ export default function AnimationPreviewContent() {
       }
       return prev;
     });
-  }, [maxFrameCount]);
+  }, [maxFrameCount, setStoreFrameIndex]);
 
   // 스페이스바 패닝 기능
   useEffect(() => {
@@ -538,7 +520,7 @@ export default function AnimationPreviewContent() {
             onMouseLeave={handleMouseUp}
             style={{ cursor: getCursor() }}
           >
-            {compositedDataUrl ? (
+            {hasCompositedFrame ? (
               <div
                 className={`absolute border border-border-default overflow-hidden ${bgType === "checkerboard" ? "checkerboard" : ""}`}
                 style={{
@@ -586,7 +568,7 @@ export default function AnimationPreviewContent() {
                 <FrameIndicator
                   currentIndex={currentFrameIndex}
                   maxCount={maxFrameCount}
-                  onChange={setCurrentFrameIndex}
+                  onChange={setStoreFrameIndex}
                 />
                 <input
                   ref={fileInputRef}

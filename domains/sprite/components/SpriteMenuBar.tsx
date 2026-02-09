@@ -17,6 +17,8 @@ interface SpriteMenuBarProps {
   onLoad: () => void;
   onSave: () => void;
   onSaveAs: () => void;
+  onExportZip: () => void;
+  onExportSpriteSheet: () => void;
   onImportImage: () => void;
   onImportSheet: () => void;
   onImportVideo: () => void;
@@ -26,6 +28,7 @@ interface SpriteMenuBarProps {
   isPreviewOpen: boolean;
   isFrameEditOpen: boolean;
   canSave: boolean;
+  canExport: boolean;
   isLoading?: boolean;
   // Edit menu props
   onUndo: () => void;
@@ -40,6 +43,7 @@ interface SpriteMenuBarProps {
     load: string;
     save: string;
     saveAs: string;
+    export: string;
     importImage: string;
     importSheet: string;
     importVideo: string;
@@ -60,6 +64,8 @@ export default function SpriteMenuBar({
   onLoad,
   onSave,
   onSaveAs,
+  onExportZip,
+  onExportSpriteSheet,
   onImportImage,
   onImportSheet,
   onImportVideo,
@@ -69,6 +75,7 @@ export default function SpriteMenuBar({
   isPreviewOpen,
   isFrameEditOpen,
   canSave,
+  canExport,
   isLoading,
   onUndo,
   onRedo,
@@ -86,6 +93,9 @@ export default function SpriteMenuBar({
     { divider: true },
     { label: t.save, onClick: onSave, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.save) },
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.saveAs) },
+    { divider: true },
+    { label: `${t.export} PNG ZIP`, onClick: onExportZip, disabled: !canExport },
+    { label: `${t.export} Sprite Sheet`, onClick: onExportSpriteSheet, disabled: !canExport },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
     { label: t.importSheet, onClick: onImportSheet },

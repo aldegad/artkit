@@ -8,18 +8,59 @@ export interface CompositedFrame {
   dataUrl: string;
   width: number;
   height: number;
+  canvas: HTMLCanvasElement;
 }
 
 /**
  * Load an image from a data URL
  */
+const imageCache = new Map<string, Promise<HTMLImageElement>>();
+const imageTokenCache = new Map<string, number>();
+let imageTokenCounter = 1;
+
+const compositedFrameCache = new Map<string, Promise<CompositedFrame | null>>();
+const MAX_COMPOSITED_CACHE = 240;
+
+function getImageToken(src: string): number {
+  const cached = imageTokenCache.get(src);
+  if (cached) return cached;
+  const token = imageTokenCounter++;
+  imageTokenCache.set(src, token);
+  return token;
+}
+
+function rememberCompositePromise(
+  key: string,
+  promise: Promise<CompositedFrame | null>,
+): Promise<CompositedFrame | null> {
+  compositedFrameCache.set(key, promise);
+  while (compositedFrameCache.size > MAX_COMPOSITED_CACHE) {
+    const oldest = compositedFrameCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    compositedFrameCache.delete(oldest);
+  }
+  promise.catch(() => {
+    compositedFrameCache.delete(key);
+  });
+  return promise;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
+  const cached = imageCache.get(src);
+  if (cached) return cached;
+
+  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    img.onerror = () => {
+      imageCache.delete(src);
+      reject(new Error("Failed to load image"));
+    };
     img.src = src;
   });
+
+  imageCache.set(src, promise);
+  return promise;
 }
 
 /**
@@ -50,7 +91,10 @@ export async function compositeFrame(
   tracks: SpriteTrack[],
   frameIndex: number,
   outputSize?: { width: number; height: number },
+  options?: { includeDataUrl?: boolean },
 ): Promise<CompositedFrame | null> {
+  const includeDataUrl = options?.includeDataUrl ?? true;
+
   // Filter visible tracks and sort by zIndex (low to high = bottom to top)
   const visibleTracks = tracks
     .filter((t) => t.visible && t.frames.length > 0)
@@ -73,51 +117,83 @@ export async function compositeFrame(
 
   if (framesToDraw.length === 0) return null;
 
-  // Load all images in parallel
-  const loaded = await Promise.all(
-    framesToDraw.map(async ({ track, frameIdx }) => {
+  const trackKey = framesToDraw
+    .map(({ track, frameIdx }) => {
       const frame = track.frames[frameIdx];
-      const img = await loadImage(frame.imageData!);
-      return { img, frame, opacity: track.opacity };
-    }),
-  );
+      return [
+        track.id,
+        frameIdx,
+        track.opacity,
+        track.zIndex,
+        frame.id,
+        frame.offset?.x ?? 0,
+        frame.offset?.y ?? 0,
+        frame.imageData ? getImageToken(frame.imageData) : "n",
+      ].join(":");
+    })
+    .join("|");
 
-  // Determine output dimensions
-  let width = outputSize?.width ?? 0;
-  let height = outputSize?.height ?? 0;
+  const cacheKey = [
+    frameIndex,
+    includeDataUrl ? 1 : 0,
+    outputSize?.width ?? "auto",
+    outputSize?.height ?? "auto",
+    trackKey,
+  ].join("::");
 
-  if (!outputSize) {
-    for (const { img, frame } of loaded) {
-      const right = img.width + (frame.offset?.x ?? 0);
-      const bottom = img.height + (frame.offset?.y ?? 0);
-      if (right > width) width = right;
-      if (bottom > height) height = bottom;
+  const cachedComposite = compositedFrameCache.get(cacheKey);
+  if (cachedComposite) return cachedComposite;
+
+  const composedPromise = (async (): Promise<CompositedFrame | null> => {
+    // Load all images in parallel
+    const loaded = await Promise.all(
+      framesToDraw.map(async ({ track, frameIdx }) => {
+        const frame = track.frames[frameIdx];
+        const img = await loadImage(frame.imageData!);
+        return { img, frame, opacity: track.opacity };
+      }),
+    );
+
+    // Determine output dimensions
+    let width = outputSize?.width ?? 0;
+    let height = outputSize?.height ?? 0;
+
+    if (!outputSize) {
+      for (const { img, frame } of loaded) {
+        const right = img.width + (frame.offset?.x ?? 0);
+        const bottom = img.height + (frame.offset?.y ?? 0);
+        if (right > width) width = right;
+        if (bottom > height) height = bottom;
+      }
     }
-  }
 
-  if (width === 0 || height === 0) return null;
+    if (width === 0 || height === 0) return null;
 
-  // Create composite canvas
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d")!;
+    // Create composite canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d")!;
 
-  // Draw each layer bottom-to-top
-  for (const { img, frame, opacity } of loaded) {
-    ctx.globalAlpha = opacity / 100;
-    const ox = frame.offset?.x ?? 0;
-    const oy = frame.offset?.y ?? 0;
-    ctx.drawImage(img, ox, oy);
-  }
+    // Draw each layer bottom-to-top
+    for (const { img, frame, opacity } of loaded) {
+      ctx.globalAlpha = opacity / 100;
+      const ox = frame.offset?.x ?? 0;
+      const oy = frame.offset?.y ?? 0;
+      ctx.drawImage(img, ox, oy);
+    }
 
-  ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
 
-  return {
-    dataUrl: canvas.toDataURL("image/png"),
-    width,
-    height,
-  };
+    return {
+      dataUrl: includeDataUrl ? canvas.toDataURL("image/png") : "",
+      width,
+      height,
+      canvas,
+    };
+  })();
+
+  return rememberCompositePromise(cacheKey, composedPromise);
 }
 
 /**

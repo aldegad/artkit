@@ -49,6 +49,7 @@ import {
   clearLocalProjects,
   clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
+import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet } from "@/domains/sprite/utils/export";
 
 // ============================================
 // Main Editor Component
@@ -314,6 +315,28 @@ function SpriteEditorMain() {
   // Helper: get all frames across all tracks
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
+  const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
+
+  // Export actions (moved from timeline panel to File menu)
+  const exportZip = useCallback(async () => {
+    if (!hasRenderableFrames) return;
+    try {
+      await downloadCompositedFramesAsZip(tracks, projectName.trim() || "sprite-project");
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
+    }
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
+
+  const exportSpriteSheet = useCallback(async () => {
+    if (!hasRenderableFrames) return;
+    try {
+      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project");
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
+    }
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
 
   // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
@@ -654,6 +677,8 @@ function SpriteEditorMain() {
             onLoad={() => setIsProjectListOpen(true)}
             onSave={saveProject}
             onSaveAs={saveProjectAs}
+            onExportZip={exportZip}
+            onExportSpriteSheet={exportSpriteSheet}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -662,7 +687,8 @@ function SpriteEditorMain() {
             onResetLayout={resetLayout}
             isPreviewOpen={isPreviewOpen}
             isFrameEditOpen={isFrameEditOpen}
-            canSave={frames.length > 0 && frames.some((f) => f.imageData) && !isSaving}
+            canSave={hasRenderableFrames && !isSaving}
+            canExport={hasRenderableFrames}
             isLoading={isSaving}
             onUndo={undo}
             onRedo={redo}
@@ -676,6 +702,7 @@ function SpriteEditorMain() {
               load: t.load,
               save: t.save,
               saveAs: t.saveAs,
+              export: t.export,
               importImage: t.importImage,
               importSheet: t.importSheet,
               importVideo: t.importVideo,
