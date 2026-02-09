@@ -25,6 +25,16 @@ interface MaskMovePendingState {
   clientY: number;
 }
 
+interface MaskDragPendingState {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  mode: Exclude<DragMode, "none">;
+  originalStart: number;
+  originalDuration: number;
+  otherItems: DragItem[];
+}
+
 interface MaskClipProps {
   mask: MaskData;
 }
@@ -60,12 +70,7 @@ export function MaskClip({ mask }: MaskClipProps) {
   const width = Math.max(durationToWidth(mask.duration), 20);
 
   const [dragMode, setDragMode] = useState<DragMode>("none");
-  const dragRef = useRef({
-    startClientX: 0,
-    originalStart: 0,
-    originalDuration: 0,
-  });
-  const dragItemsRef = useRef<DragItem[]>([]);
+  const [dragPending, setDragPending] = useState<MaskDragPendingState | null>(null);
   const didDragRef = useRef(false);
   const wasActiveOnDownRef = useRef(false);
   const wasEditingOnDownRef = useRef(false);
@@ -182,13 +187,8 @@ export function MaskClip({ mask }: MaskClipProps) {
       mode = "trim-end";
     }
 
-    dragRef.current = {
-      startClientX: e.clientX,
-      originalStart: mask.startTime,
-      originalDuration: mask.duration,
-    };
-
     // Build drag items for multi-drag (only for move mode)
+    let otherItems: DragItem[] = [];
     if (mode === "move") {
       const effectiveClipIds = isAlreadySelected ? selectedClipIds : (e.shiftKey ? selectedClipIds : []);
       const effectiveMaskIds = isAlreadySelected ? selectedMaskIds : (e.shiftKey ? [...selectedMaskIds, mask.id] : [mask.id]);
@@ -202,10 +202,18 @@ export function MaskClip({ mask }: MaskClipProps) {
         const m = masks.get(mid);
         if (m) items.push({ type: "mask", id: mid, originalStartTime: m.startTime });
       }
-      dragItemsRef.current = items;
-    } else {
-      dragItemsRef.current = [];
+      otherItems = items;
     }
+
+    setDragPending({
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      mode,
+      originalStart: mask.startTime,
+      originalDuration: mask.duration,
+      otherItems,
+    });
 
     if (mode === "move") {
       setMovePending({
@@ -233,38 +241,38 @@ export function MaskClip({ mask }: MaskClipProps) {
       didDragRef.current = true;
       startMaskEditById(mask.id);
       setDragMode("none");
+      setDragPending(null);
     },
     onEnd: () => {
       setMovePending(null);
     },
   });
 
-  useEffect(() => {
-    if (dragMode === "none") return;
-
-    const { originalStart, originalDuration, startClientX } = dragRef.current;
-    const otherItems = dragItemsRef.current;
-
-    const onPointerMove = (e: PointerEvent) => {
-      const deltaX = e.clientX - startClientX;
+  useDeferredPointerGesture<MaskDragPendingState>({
+    pending: dragPending,
+    thresholdPx: 0,
+    onMoveResolved: ({ pending, event }) => {
+      const deltaX = event.clientX - pending.clientX;
       if (Math.abs(deltaX) > 2) {
         didDragRef.current = true;
       }
       const deltaTime = deltaX / durationToWidth(1);
 
-      if (dragMode === "move") {
-        const rawStart = Math.max(0, originalStart + deltaTime);
-        const rawEnd = rawStart + originalDuration;
+      if (pending.mode === "move") {
+        const rawStart = Math.max(0, pending.originalStart + deltaTime);
+        const rawEnd = rawStart + pending.originalDuration;
         const snappedStart = snapToPoints(rawStart);
         const snappedEnd = snapToPoints(rawEnd);
         const startDelta = Math.abs(snappedStart - rawStart);
         const endDelta = Math.abs(snappedEnd - rawEnd);
-        const finalStart = startDelta <= endDelta ? snappedStart : Math.max(0, snappedEnd - originalDuration);
-        updateMaskTime(mask.id, finalStart, originalDuration);
+        const finalStart = startDelta <= endDelta
+          ? snappedStart
+          : Math.max(0, snappedEnd - pending.originalDuration);
+        updateMaskTime(mask.id, finalStart, pending.originalDuration);
 
-        // Move other selected items by the same time delta
-        const timeDelta = finalStart - originalStart;
-        for (const item of otherItems) {
+        // Move other selected items by the same time delta.
+        const timeDelta = finalStart - pending.originalStart;
+        for (const item of pending.otherItems) {
           const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
           if (item.type === "clip") {
             const c = clips.find((cl) => cl.id === item.id);
@@ -274,51 +282,40 @@ export function MaskClip({ mask }: MaskClipProps) {
             if (m) updateMaskTime(item.id, newStartTime, m.duration);
           }
         }
-      } else if (dragMode === "trim-start") {
-        const rawStart = Math.max(0, originalStart + deltaTime);
-        const maxStart = originalStart + originalDuration - 0.1;
+      } else if (pending.mode === "trim-start") {
+        const rawStart = Math.max(0, pending.originalStart + deltaTime);
+        const maxStart = pending.originalStart + pending.originalDuration - 0.1;
         const snappedStart = snapToPoints(rawStart);
         const clampedStart = Math.min(snappedStart, maxStart);
-        const newDuration = originalDuration - (clampedStart - originalStart);
+        const newDuration = pending.originalDuration - (clampedStart - pending.originalStart);
         updateMaskTime(mask.id, clampedStart, newDuration);
-      } else if (dragMode === "trim-end") {
-        const rawEnd = originalStart + Math.max(0.1, originalDuration + deltaTime);
+      } else if (pending.mode === "trim-end") {
+        const rawEnd = pending.originalStart + Math.max(0.1, pending.originalDuration + deltaTime);
         const snappedEnd = snapToPoints(rawEnd);
-        const newDuration = Math.max(0.1, snappedEnd - originalStart);
-        updateMaskTime(mask.id, originalStart, newDuration);
+        const newDuration = Math.max(0.1, snappedEnd - pending.originalStart);
+        updateMaskTime(mask.id, pending.originalStart, newDuration);
       }
-    };
-
-    const onPointerUp = () => {
+    },
+    onEnd: () => {
       if (!didDragRef.current) {
         if (wasEditingOnDownRef.current) {
-          // Was editing → click exits edit mode (stays selected)
+          // Was editing -> click exits edit mode (stays selected).
           endMaskEdit();
         } else if (wasTimelineSelectedOnDownRef.current) {
-          // Was already selected → toggle deselect
+          // Was already selected -> toggle deselect.
           if (shiftKeyOnDownRef.current) {
-            // Shift: remove only this mask from selection
-            const remaining = selectedMaskIds.filter(id => id !== mask.id);
+            const remaining = selectedMaskIds.filter((id) => id !== mask.id);
             selectMasksForTimeline(remaining);
           } else {
-            // No shift: deselect all
             deselectAllState();
           }
           deselectMask();
         }
       }
+      setDragPending(null);
       setDragMode("none");
-    };
-
-    document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp);
-    return () => {
-      document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("pointerup", onPointerUp);
-    };
-  }, [dragMode, mask.id, isTimelineSelected, updateMaskTime, endMaskEdit, deselectMask,
-      durationToWidth, snapToPoints, clips, masks, moveClip,
-      selectedMaskIds, selectMasksForTimeline, deselectAllState]);
+    },
+  });
 
   // Cursor based on hover position
   const handlePointerMoveLocal = useCallback((e: React.PointerEvent) => {
