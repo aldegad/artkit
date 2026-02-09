@@ -232,54 +232,7 @@ export function useEditorImage() {
 }
 
 export function useEditorFrames() {
-  const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
-  const tracks = useSpriteTrackStore((s) => s.tracks);
-  const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
-  const nextFrameId = useSpriteTrackStore((s) => s.nextFrameId);
-  const setNextFrameId = useSpriteTrackStore((s) => s.setNextFrameId);
-  const currentFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
-  const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
-  const selectedFrameId = useSpriteTrackStore((s) => s.selectedFrameId);
-  const setSelectedFrameId = useSpriteTrackStore((s) => s.setSelectedFrameId);
-  const selectedFrameIds = useSpriteTrackStore((s) => s.selectedFrameIds);
-  const setSelectedFrameIds = useSpriteTrackStore((s) => s.setSelectedFrameIds);
-  const toggleSelectedFrameId = useSpriteTrackStore((s) => s.toggleSelectedFrameId);
-  const selectFrameRange = useSpriteTrackStore((s) => s.selectFrameRange);
-  const selectedPointIndex = useSpriteTrackStore((s) => s.selectedPointIndex);
-  const setSelectedPointIndex = useSpriteTrackStore((s) => s.setSelectedPointIndex);
-
-  const frames = useMemo(() => {
-    const activeTrack = tracks.find((t) => t.id === activeTrackId);
-    return activeTrack?.frames ?? [];
-  }, [tracks, activeTrackId]);
-
-  const setFrames = useCallback(
-    (framesOrFn: SpriteFrame[] | ((prev: SpriteFrame[]) => SpriteFrame[])) => {
-      if (!activeTrackId) return;
-      const activeTrack = tracks.find((t) => t.id === activeTrackId);
-      if (!activeTrack) return;
-      const newFrames = typeof framesOrFn === "function" ? framesOrFn(activeTrack.frames) : framesOrFn;
-      updateTrack(activeTrackId, { frames: newFrames });
-    },
-    [activeTrackId, tracks, updateTrack],
-  );
-
-  return {
-    frames,
-    setFrames,
-    nextFrameId,
-    setNextFrameId,
-    currentFrameIndex,
-    setCurrentFrameIndex,
-    selectedFrameId,
-    setSelectedFrameId,
-    selectedFrameIds,
-    setSelectedFrameIds,
-    toggleSelectedFrameId,
-    selectFrameRange,
-    selectedPointIndex,
-    setSelectedPointIndex,
-  };
+  return useEditorFramesMeta();
 }
 
 export function useEditorFramesMeta() {
