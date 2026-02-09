@@ -229,6 +229,7 @@ function VideoEditorContent() {
   const { isExporting, exportProgress, exportVideo: handleExport } = useVideoExport({
     project,
     projectName,
+    playback,
     clips,
     tracks,
     masksMap,
