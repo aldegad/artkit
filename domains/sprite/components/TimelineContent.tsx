@@ -5,6 +5,7 @@ import { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import { useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { Scrollbar, NumberScrubber, Popover } from "@/shared/components";
 import { useDeferredPointerGesture } from "@/shared/hooks";
+import { safeSetPointerCapture } from "@/shared/utils";
 import { SpriteTrack } from "../types";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
 import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon, DuplicateIcon, RotateIcon } from "@/shared/components/icons";
@@ -173,7 +174,7 @@ export default function TimelineContent() {
   // Header resize drag
   const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    safeSetPointerCapture(e.target, e.pointerId);
     setHeaderResizePending({
       pointerId: e.pointerId,
       clientX: e.clientX,

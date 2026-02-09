@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { getCanvasColorsSync } from "@/shared/hooks";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import type { GuideOrientation } from "../../types";
 import {
   calculateTickIntervals,
@@ -227,7 +228,7 @@ export function Ruler({
       setIsDragging(true);
       setDragPosition(position);
       onDragStateChange?.({ orientation: guideOrientation, position });
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.target, e.pointerId);
     },
     [onGuideCreate, orientation, guideOrientation, zoom, getPerpendicularOffset, onDragStateChange]
   );
@@ -274,7 +275,7 @@ export function Ruler({
       setIsDragging(false);
       setDragPosition(null);
       onDragStateChange?.(null);
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      safeReleasePointerCapture(e.target, e.pointerId);
     },
     [isDragging, dragPosition, onGuideCreate, orientation, guideOrientation, displaySize, onDragStateChange]
   );

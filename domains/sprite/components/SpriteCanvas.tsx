@@ -8,6 +8,7 @@ import { isPointInPolygon } from "../utils/geometry";
 import { extractFrameImageFromSource } from "../utils";
 import { ImageDropZone } from "../../../shared/components";
 import { getCanvasColorsSync } from "@/shared/hooks";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useCanvasViewportBridge, type CanvasViewportState } from "@/shared/hooks/useCanvasViewportBridge";
@@ -482,9 +483,7 @@ export default function CanvasContent() {
         (e.button === 0 && toolMode === "hand") ||
         isTouchPanOnlyInput
       ) {
-        if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }
+        safeSetPointerCapture(e.currentTarget, e.pointerId);
         viewport.startPanDrag({ x: e.clientX, y: e.clientY });
         e.preventDefault();
         return;
@@ -496,9 +495,7 @@ export default function CanvasContent() {
         if (selectedFrameId !== null && selectedPointIndex !== null) {
           const selectedFrame = frames.find((f) => f.id === selectedFrameId);
           if (selectedFrame && isNearPoint(point, selectedFrame.points[selectedPointIndex], 12)) {
-            if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }
+            safeSetPointerCapture(e.currentTarget, e.pointerId);
             setIsDragging(true);
             setDragStart(point);
             return;
@@ -508,9 +505,7 @@ export default function CanvasContent() {
         if (selectedFrameId !== null) {
           const selectedFrame = frames.find((f) => f.id === selectedFrameId);
           if (selectedFrame && isPointInPolygon(point, selectedFrame.points)) {
-            if (!e.currentTarget.hasPointerCapture(e.pointerId)) {
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }
+            safeSetPointerCapture(e.currentTarget, e.pointerId);
             setIsDragging(true);
             setDragStart(point);
             return;
@@ -592,8 +587,8 @@ export default function CanvasContent() {
 
   // Pointer up handler
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e && e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+    if (e) {
+      safeReleasePointerCapture(e.currentTarget, e.pointerId);
     }
     if (e?.pointerType === "touch") {
       activeTouchPointerIdsRef.current.delete(e.pointerId);

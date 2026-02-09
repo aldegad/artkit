@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PanIcon } from "@/shared/components/icons";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { useEditorTools } from "../contexts/SpriteEditorContext";
 
 const STORAGE_KEY = "artkit.sprite.pan-toggle-position-v1";
@@ -133,7 +134,7 @@ export default function SpritePanModeToggle() {
       if (!e.isPrimary) return;
 
       e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
 
       dragRef.current = {
         pointerId: e.pointerId,
@@ -184,9 +185,7 @@ export default function SpritePanModeToggle() {
       const dragState = dragRef.current;
       if (!dragState || dragState.pointerId !== e.pointerId) return;
 
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
+      safeReleasePointerCapture(e.currentTarget, e.pointerId);
 
       setIsDragging(false);
       dragRef.current = null;
