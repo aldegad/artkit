@@ -174,7 +174,7 @@ function VideoEditorContent() {
     canRedo,
     isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, duplicateMask, deselectMask, restoreMasks, masks: masksMap, saveMaskData, updateMaskTime } = useMask();
+  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, duplicateMask, deselectMask, selectMask, restoreMasks, masks: masksMap, saveMaskData, updateMaskTime } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -264,6 +264,17 @@ function VideoEditorContent() {
     }, 0);
     return () => clearTimeout(timer);
   }, [isAutosaveInitialized, project.masks, restoreMasks]);
+
+  // After autosave restore: sync selectedMaskIds → MaskContext.activeMaskId
+  // so that MaskControls shows when a mask was selected at save time
+  const maskSelectionSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!masksRestoredRef.current || maskSelectionSyncedRef.current) return;
+    if (masksMap.size > 0 && selectedMaskIds.length > 0) {
+      maskSelectionSyncedRef.current = true;
+      selectMask(selectedMaskIds[0]);
+    }
+  }, [masksMap, selectedMaskIds, selectMask]);
 
   // Sync MaskContext masks → project.masks (MaskContext is the single source of truth)
   useEffect(() => {
