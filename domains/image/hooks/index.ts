@@ -57,3 +57,35 @@ export { useImageProjectIO } from "./useImageProjectIO";
 
 // Save actions hook
 export { useEditorSaveActions } from "./useEditorSaveActions";
+
+// Canvas action hook
+export { useEditorCanvasActions } from "./useEditorCanvasActions";
+
+// Cursor hook
+export { useEditorCursor } from "./useEditorCursor";
+
+// Transform shortcuts hook
+export { useTransformShortcuts } from "./useTransformShortcuts";
+
+// Image import hook
+export { useImageImport } from "./useImageImport";
+
+// Layers panel toggle hook
+export { useLayersPanelToggle } from "./useLayersPanelToggle";
+
+// History snapshot adapter hook
+export { useEditorHistoryAdapter } from "./useEditorHistoryAdapter";
+export type { EditorHistorySnapshot } from "./useEditorHistoryAdapter";
+
+// Tool mode + transform confirmation guard hook
+export { useToolModeGuard } from "./useToolModeGuard";
+
+// Editor runtime helpers
+export { useEditorToolRuntime } from "./useEditorToolRuntime";
+export { useViewportBridge } from "./useViewportBridge";
+export { useGuideDragPreview } from "./useGuideDragPreview";
+export { useRotateMenu } from "./useRotateMenu";
+export { useEditorPanelRegistration } from "./useEditorPanelRegistration";
+export { useRulerRenderSync } from "./useRulerRenderSync";
+export { useEditorLayerContextValue } from "./useEditorLayerContextValue";
+export { useEditorCanvasContextValue } from "./useEditorCanvasContextValue";

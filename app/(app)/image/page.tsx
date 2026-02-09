@@ -1,23 +1,14 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
-import { Tooltip, Scrollbar, NumberScrubber } from "@/shared/components";
 import { ExportModal } from "@/domains/image/components/ExportModal";
 import {
-  BackgroundRemovalIcon,
-  UndoIcon,
-  RedoIcon,
-  RotateIcon,
-} from "@/shared/components/icons";
-import {
   EditorToolMode,
-  UnifiedLayer,
   HistoryAdapter,
-  GuideOrientation,
-  createPaintLayer,
+  EditorHistorySnapshot,
   ProjectListModal,
   useHistory,
   useLayerManagement,
@@ -36,16 +27,30 @@ import {
   useImageExport,
   useImageProjectIO,
   createEditorToolButtons,
+  useEditorCanvasActions,
+  useEditorCursor,
+  useTransformShortcuts,
+  useImageImport,
+  useLayersPanelToggle,
+  useEditorHistoryAdapter,
+  useToolModeGuard,
+  useEditorToolRuntime,
+  useViewportBridge,
+  useGuideDragPreview,
+  useRotateMenu,
+  useEditorPanelRegistration,
+  useRulerRenderSync,
+  useEditorLayerContextValue,
+  useEditorCanvasContextValue,
   BackgroundRemovalModals,
   TransformDiscardConfirmModal,
+  EditorActionToolbar,
   EditorToolOptions,
   EditorStatusBar,
   PanModeToggle,
   EditorMenuBar,
   EditorLayersProvider,
-  LayersPanelContent,
   EditorCanvasProvider,
-  CanvasPanelContent,
 } from "@/domains/image";
 // IndexedDB storage functions are now used through storageProvider
 import { getStorageProvider } from "@/domains/image/services/projectStorage";
@@ -61,10 +66,7 @@ import {
 import {
   EditorSplitContainer,
   EditorFloatingWindows,
-  registerEditorPanelComponent,
-  clearEditorPanelComponents,
 } from "@/domains/image/components/layout";
-import { isSplitNode, type SplitNode, type PanelNode } from "@/shared/types/layout";
 
 // Inner component that accesses the layout context
 function EditorDockableArea() {
@@ -75,28 +77,6 @@ function EditorDockableArea() {
       <EditorFloatingWindows />
     </>
   );
-}
-
-interface LayerCanvasHistoryState {
-  layerId: string;
-  width: number;
-  height: number;
-  imageData: ImageData;
-}
-
-interface EditorHistorySnapshot {
-  layers: UnifiedLayer[];
-  activeLayerId: string | null;
-  selectedLayerIds: string[];
-  canvases: LayerCanvasHistoryState[];
-}
-
-function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
-  return {
-    ...layer,
-    position: layer.position ? { ...layer.position } : undefined,
-    originalSize: layer.originalSize ? { ...layer.originalSize } : undefined,
-  };
 }
 
 // Main export - wraps with all providers
@@ -121,43 +101,21 @@ function ImageEditorContent() {
   const { isPanelOpen, openFloatingWindow, closeFloatingWindow, removePanel, layoutState } = useEditorLayout();
   const isLayersOpen = isPanelOpen("layers");
 
-  const handleToggleLayers = useCallback(() => {
-    if (isLayersOpen) {
-      const win = layoutState.floatingWindows.find(w => w.panelId === "layers");
-      if (win) {
-        closeFloatingWindow(win.id);
-      } else {
-        // Find and remove docked panel from layout tree
-        const findNodeId = (node: SplitNode | PanelNode): string | null => {
-          if (!isSplitNode(node)) return node.panelId === "layers" ? node.id : null;
-          for (const child of node.children) {
-            const found = findNodeId(child as SplitNode | PanelNode);
-            if (found) return found;
-          }
-          return null;
-        };
-        const nodeId = findNodeId(layoutState.root);
-        if (nodeId) removePanel(nodeId);
-      }
-    } else {
-      openFloatingWindow("layers");
-    }
-  }, [isLayersOpen, layoutState, closeFloatingWindow, openFloatingWindow, removePanel]);
+  const { handleToggleLayers } = useLayersPanelToggle({
+    isLayersOpen,
+    floatingWindows: layoutState.floatingWindows,
+    root: layoutState.root,
+    closeFloatingWindow,
+    removePanel,
+    openFloatingWindow,
+  });
 
   // Storage provider based on auth state
   const storageProvider = useMemo(() => getStorageProvider(user), [user]);
 
-  // Rotate menu state (for mobile)
-  const [showRotateMenu, setShowRotateMenu] = useState(false);
-
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportMode, setExportMode] = useState<"single" | "layers">("single");
-
-  // Transform discard confirmation state
-  const [showTransformDiscardConfirm, setShowTransformDiscardConfirm] = useState(false);
-  const pendingToolModeRef = useRef<EditorToolMode | null>(null);
-  const previousToolModeRef = useRef<EditorToolMode | null>(null);
 
   // Get state and setters from context
   const {
@@ -235,25 +193,14 @@ function ImageEditorContent() {
     },
   });
 
-  // Track last synced values to prevent infinite sync loops
-  const lastViewportSyncRef = useRef({ zoom: 1, pan: { x: 0, y: 0 } });
-
-  // Forward sync: viewport (wheel/pinch) → context
-  useEffect(() => {
-    return viewport.onViewportChange((state) => {
-      lastViewportSyncRef.current = { zoom: state.zoom, pan: { ...state.pan } };
-      setZoom(state.zoom);
-      setPan(state.pan);
-    });
-  }, [viewport, setZoom, setPan]);
-
-  // Reverse sync: context (external changes like usePanZoomHandler, fitToScreen) → viewport
-  useEffect(() => {
-    const last = lastViewportSyncRef.current;
-    if (zoom === last.zoom && pan.x === last.pan.x && pan.y === last.pan.y) return;
-    lastViewportSyncRef.current = { zoom, pan: { ...pan } };
-    viewport.updateTransform({ zoom, pan });
-  }, [zoom, pan, viewport]);
+  const { canvasRefCallback } = useViewportBridge({
+    viewport,
+    canvasRef,
+    zoom,
+    pan,
+    setZoom,
+    setPan,
+  });
 
   // Crop tool - using extracted hook
   const {
@@ -325,145 +272,54 @@ function ImageEditorContent() {
     },
   });
 
-  const captureEditorHistorySnapshot = useCallback((): EditorHistorySnapshot => {
-    const canvases: LayerCanvasHistoryState[] = [];
+  const { historyAdapter } = useEditorHistoryAdapter({
+    layers,
+    activeLayerId,
+    selectedLayerIds,
+    layerCanvasesRef,
+    canvasSize,
+    editCanvasRef,
+    setLayers,
+    setActiveLayerId,
+    setSelectedLayerIds,
+  });
 
-    for (const layer of layers) {
-      const canvas = layerCanvasesRef.current.get(layer.id);
-      const ctx = canvas?.getContext("2d");
-      if (!canvas || !ctx) continue;
-
-      canvases.push({
-        layerId: layer.id,
-        width: canvas.width,
-        height: canvas.height,
-        imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
-      });
-    }
-
-    return {
-      layers: layers.map(cloneLayerForHistory),
-      activeLayerId,
-      selectedLayerIds: [...selectedLayerIds],
-      canvases,
-    };
-  }, [layers, activeLayerId, selectedLayerIds, layerCanvasesRef]);
-
-  const applyEditorHistorySnapshot = useCallback(
-    (snapshot: EditorHistorySnapshot) => {
-      const canvasMap = layerCanvasesRef.current;
-      canvasMap.clear();
-
-      snapshot.canvases.forEach((canvasState) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = canvasState.width;
-        canvas.height = canvasState.height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.putImageData(canvasState.imageData, 0, 0);
-        }
-        canvasMap.set(canvasState.layerId, canvas);
-      });
-
-      snapshot.layers.forEach((layer) => {
-        if (canvasMap.has(layer.id)) return;
-
-        const fallbackCanvas = document.createElement("canvas");
-        fallbackCanvas.width = Math.max(1, layer.originalSize?.width || canvasSize.width || 1);
-        fallbackCanvas.height = Math.max(1, layer.originalSize?.height || canvasSize.height || 1);
-        canvasMap.set(layer.id, fallbackCanvas);
-      });
-
-      const restoredLayers = snapshot.layers.map(cloneLayerForHistory);
-      const restoredLayerIds = new Set(restoredLayers.map((layer) => layer.id));
-      const nextActiveLayerId =
-        snapshot.activeLayerId && restoredLayerIds.has(snapshot.activeLayerId)
-          ? snapshot.activeLayerId
-          : restoredLayers[0]?.id || null;
-
-      setLayers(restoredLayers);
-      setActiveLayerId(nextActiveLayerId);
-      setSelectedLayerIds(snapshot.selectedLayerIds.filter((layerId) => restoredLayerIds.has(layerId)));
-      editCanvasRef.current = nextActiveLayerId ? canvasMap.get(nextActiveLayerId) || null : null;
-    },
-    [layerCanvasesRef, canvasSize.width, canvasSize.height, setLayers, setActiveLayerId, setSelectedLayerIds, editCanvasRef]
-  );
-
-  // Create layer context value for EditorLayersProvider
-  const layerContextValue = useMemo(
-    () => ({
-      layers,
-      setLayers,
-      activeLayerId,
-      setActiveLayerId,
-      selectedLayerIds,
-      setSelectedLayerIds,
-      draggedLayerId,
-      setDraggedLayerId,
-      dragOverLayerId,
-      setDragOverLayerId,
-      layerCanvasesRef,
-      editCanvasRef,
-      addPaintLayer,
-      addImageLayer,
-      deleteLayer,
-      selectLayer,
-      toggleLayerVisibility,
-      updateLayer,
-      updateLayerOpacity,
-      updateLayerPosition,
-      updateMultipleLayerPositions,
-      renameLayer,
-      toggleLayerLock,
-      moveLayer,
-      reorderLayers,
-      mergeLayerDown,
-      duplicateLayer,
-      rotateAllLayerCanvases,
-      selectLayerWithModifier,
-      clearLayerSelection,
-      alignLayers,
-      distributeLayers,
-      initLayers,
-      addLayer,
-    }),
-    [
-      layers,
-      setLayers,
-      activeLayerId,
-      setActiveLayerId,
-      selectedLayerIds,
-      setSelectedLayerIds,
-      draggedLayerId,
-      setDraggedLayerId,
-      dragOverLayerId,
-      setDragOverLayerId,
-      layerCanvasesRef,
-      editCanvasRef,
-      addPaintLayer,
-      addImageLayer,
-      deleteLayer,
-      selectLayer,
-      toggleLayerVisibility,
-      updateLayer,
-      updateLayerOpacity,
-      updateLayerPosition,
-      updateMultipleLayerPositions,
-      renameLayer,
-      toggleLayerLock,
-      moveLayer,
-      reorderLayers,
-      mergeLayerDown,
-      duplicateLayer,
-      rotateAllLayerCanvases,
-      selectLayerWithModifier,
-      clearLayerSelection,
-      alignLayers,
-      distributeLayers,
-      initLayers,
-      addLayer,
-    ]
-  );
+  const layerContextValue = useEditorLayerContextValue({
+    layers,
+    setLayers,
+    activeLayerId,
+    setActiveLayerId,
+    selectedLayerIds,
+    setSelectedLayerIds,
+    draggedLayerId,
+    setDraggedLayerId,
+    dragOverLayerId,
+    setDragOverLayerId,
+    layerCanvasesRef,
+    editCanvasRef,
+    addPaintLayer,
+    addImageLayer,
+    deleteLayer,
+    selectLayer,
+    toggleLayerVisibility,
+    updateLayer,
+    updateLayerOpacity,
+    updateLayerPosition,
+    updateMultipleLayerPositions,
+    renameLayer,
+    toggleLayerLock,
+    moveLayer,
+    reorderLayers,
+    mergeLayerDown,
+    duplicateLayer,
+    rotateAllLayerCanvases,
+    selectLayerWithModifier,
+    clearLayerSelection,
+    alignLayers,
+    distributeLayers,
+    initLayers,
+    addLayer,
+  });
 
   // Brush tool - using extracted hook
   const {
@@ -564,86 +420,31 @@ function ImageEditorContent() {
     selectedLayerIds,
   });
 
-  // Wrapper to intercept tool mode changes when transform is active
-  const handleToolModeChange = useCallback((mode: EditorToolMode) => {
-    // If transform is active and trying to switch to another tool, show confirmation
-    if (transformState.isActive && mode !== "transform") {
-      pendingToolModeRef.current = mode;
-      setShowTransformDiscardConfirm(true);
-      return;
-    }
-    // Save current tool before entering transform mode
-    if (mode === "transform" && toolMode !== "transform") {
-      previousToolModeRef.current = toolMode;
-    }
-    setToolMode(mode);
-  }, [transformState.isActive, toolMode, setToolMode]);
+  const {
+    showTransformDiscardConfirm,
+    handleToolModeChange,
+    handleTransformDiscardConfirm,
+    handleTransformApplyAndSwitch,
+    handleTransformDiscardCancel,
+    previousToolModeRef,
+  } = useToolModeGuard({
+    toolMode,
+    setToolMode,
+    isTransformActive: transformState.isActive,
+    cancelTransform,
+    applyTransform,
+  });
 
-  // Handle transform discard confirmation actions
-  const handleTransformDiscardConfirm = useCallback(() => {
-    cancelTransform();
-    if (pendingToolModeRef.current) {
-      setToolMode(pendingToolModeRef.current);
-      pendingToolModeRef.current = null;
-    }
-    previousToolModeRef.current = null;
-    setShowTransformDiscardConfirm(false);
-  }, [cancelTransform, setToolMode]);
-
-  const handleTransformApplyAndSwitch = useCallback(() => {
-    applyTransform();
-    if (pendingToolModeRef.current) {
-      setToolMode(pendingToolModeRef.current);
-      pendingToolModeRef.current = null;
-    }
-    previousToolModeRef.current = null;
-    setShowTransformDiscardConfirm(false);
-  }, [applyTransform, setToolMode]);
-
-  const handleTransformDiscardCancel = useCallback(() => {
-    pendingToolModeRef.current = null;
-    setShowTransformDiscardConfirm(false);
-  }, []);
-
-  // ============================================
-  // Fill Function
-  // ============================================
-
-  // Fill selection or entire canvas with color
-  const fillWithColor = useCallback(() => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
-
-    saveToHistory();
-
-    ctx.fillStyle = brushColor;
-
-    if (selection) {
-      // Fill selection area
-      ctx.fillRect(
-        Math.round(selection.x),
-        Math.round(selection.y),
-        Math.round(selection.width),
-        Math.round(selection.height),
-      );
-    } else {
-      // Fill entire canvas
-      ctx.fillRect(0, 0, editCanvas.width, editCanvas.height);
-    }
-  }, [brushColor, selection, saveToHistory]);
-
-  // Check if in active tool mode (considering space key for temporary hand tool)
-  const getActiveToolMode = useCallback(() => {
-    if (isSpacePressed) return "hand";
-    return toolMode;
-  }, [isSpacePressed, toolMode]);
-
-  // Get active layer's position for coordinate conversion (brush drawing)
-  const activeLayerPosition = useMemo(() => {
-    const activeLayer = layers.find(l => l.id === activeLayerId);
-    return activeLayer?.position || null;
-  }, [layers, activeLayerId]);
+  const { fillWithColor, getActiveToolMode, activeLayerPosition } = useEditorToolRuntime({
+    isSpacePressed,
+    toolMode,
+    layers,
+    activeLayerId,
+    editCanvasRef,
+    brushColor,
+    selection,
+    saveToHistory,
+  });
 
   // Mouse handlers - using extracted hook (gets zoom, pan, rotation, canvasSize, refs from context)
   const {
@@ -701,16 +502,7 @@ function ImageEditorContent() {
     selectedLayerIds,
   });
 
-  // Guide drag preview state for showing preview line on main canvas
-  const [guideDragPreview, setGuideDragPreview] = useState<{ orientation: GuideOrientation; position: number } | null>(null);
-
-  // Handler for guide drag state changes from Ruler
-  const handleGuideDragStateChange = useCallback(
-    (dragState: { orientation: GuideOrientation; position: number } | null) => {
-      setGuideDragPreview(dragState);
-    },
-    []
-  );
+  const { guideDragPreview, handleGuideDragStateChange } = useGuideDragPreview();
 
   // Canvas rendering - using extracted hook (gets zoom, pan, rotation, canvasSize, toolMode, refs from context)
   const { requestRender } = useCanvasRendering({
@@ -726,7 +518,6 @@ function ImageEditorContent() {
     selection,
     isDuplicating,
     isMovingSelection,
-    activeLayerId,
     transformBounds: transformState.bounds,
     isTransformActive: transformState.isActive,
     transformLayerId: transformState.layerId,
@@ -750,10 +541,7 @@ function ImageEditorContent() {
     requestRender();
   }, [redo, requestRender]);
 
-  historyAdapterRef.current = {
-    captureState: captureEditorHistorySnapshot,
-    applyState: applyEditorHistorySnapshot,
-  };
+  historyAdapterRef.current = historyAdapter;
 
   // Keyboard shortcuts - using extracted hook (gets state, setters, and refs from context)
   useKeyboardShortcuts({
@@ -772,14 +560,10 @@ function ImageEditorContent() {
     onToolModeChange: handleToolModeChange,
   });
 
-  // Re-render canvas when showRulers changes (container size changes due to ruler visibility)
-  useEffect(() => {
-    // Use setTimeout to ensure DOM has updated after ruler container change
-    const timeoutId = setTimeout(() => {
-      requestRender();
-    }, 0);
-    return () => clearTimeout(timeoutId);
-  }, [showRulers, requestRender]);
+  useRulerRenderSync({
+    showRulers,
+    requestRender,
+  });
 
   // Background removal - using extracted hook
   const {
@@ -798,321 +582,75 @@ function ImageEditorContent() {
     },
   });
 
-  // Transform tool keyboard shortcuts and mode handling
-  useEffect(() => {
-    // Start transform when entering transform mode
-    if (toolMode === "transform" && !transformState.isActive && activeLayerId) {
-      startTransform();
-    }
-  }, [toolMode, transformState.isActive, activeLayerId, startTransform]);
+  useTransformShortcuts({
+    toolMode,
+    setToolMode,
+    activeLayerId,
+    layersCount: layers.length,
+    isTransformActive: transformState.isActive,
+    startTransform,
+    applyTransform,
+    cancelTransform,
+    previousToolModeRef,
+  });
 
-  // Transform keyboard shortcuts (Enter to apply, Escape to cancel, Cmd+T to enter)
-  useEffect(() => {
-    const handleTransformKeys = (e: KeyboardEvent) => {
-      // Skip if focus is on input elements
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA"
-      ) {
-        return;
-      }
+  const {
+    loadImageFile,
+    handleFileSelect,
+    handleDrop,
+    handleDragOver,
+  } = useImageImport({
+    layersCount: layers.length,
+    addImageLayer,
+    layerCanvasesRef,
+    editCanvasRef,
+    imageRef,
+    setLayers,
+    setActiveLayerId,
+    setCanvasSize,
+    setRotation,
+    setCropArea,
+    setZoom,
+    setPan,
+    setStampSource,
+  });
 
-      // Cmd+T to enter transform mode - prevent browser new tab first!
-      if (e.code === "KeyT" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (activeLayerId && layers.length > 0) {
-          // Save current tool before entering transform mode
-          if (toolMode !== "transform") {
-            previousToolModeRef.current = toolMode;
-          }
-          setToolMode("transform");
-        }
-        return;
-      }
+  useEditorPanelRegistration();
 
-      // Only handle Enter/Escape when transform is active
-      if (!transformState.isActive) return;
+  const {
+    rotate,
+    fitToScreen,
+    handleApplyCrop,
+  } = useEditorCanvasActions({
+    layers,
+    activeLayerId,
+    layerCanvasesRef,
+    editCanvasRef,
+    containerRef,
+    cropArea,
+    rotation,
+    canvasSize,
+    getDisplayDimensions,
+    rotateAllLayerCanvases,
+    saveToHistory,
+    setLayers,
+    setCanvasSize,
+    setRotation,
+    setCropArea,
+    setCanvasExpandMode,
+    setZoom,
+    setPan,
+  });
 
-      if (e.code === "Enter") {
-        e.preventDefault();
-        applyTransform();
-        // Return to previous tool after applying transform
-        if (previousToolModeRef.current) {
-          setToolMode(previousToolModeRef.current);
-          previousToolModeRef.current = null;
-        }
-      }
-
-      if (e.code === "Escape") {
-        e.preventDefault();
-        cancelTransform();
-        // Return to previous tool after canceling transform
-        if (previousToolModeRef.current) {
-          setToolMode(previousToolModeRef.current);
-          previousToolModeRef.current = null;
-        } else {
-          setToolMode("move"); // Default to move tool
-        }
-      }
-    };
-
-    // Use capture phase to intercept before browser handles Cmd+T
-    window.addEventListener("keydown", handleTransformKeys, { capture: true });
-    return () => window.removeEventListener("keydown", handleTransformKeys, { capture: true });
-  }, [transformState.isActive, activeLayerId, layers.length, toolMode, applyTransform, cancelTransform, setToolMode]);
-
-  // Load image from file
-  const loadImageFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith("image/")) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const src = event.target?.result as string;
-        const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-
-        // If no canvas exists, create new canvas with this image
-        if (layers.length === 0) {
-          setRotation(0);
-          setCropArea(null);
-          setZoom(1);
-          setPan({ x: 0, y: 0 });
-          setStampSource(null);
-
-          const img = new Image();
-          img.onload = () => {
-            imageRef.current = img;
-            setCanvasSize({ width: img.width, height: img.height });
-
-            // Create a single paint layer with the image drawn on it
-            const imageLayer = createPaintLayer(fileName, 0);
-            imageLayer.originalSize = { width: img.width, height: img.height };
-
-            // Create canvas and draw image
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              ctx.drawImage(img, 0, 0);
-            }
-            layerCanvasesRef.current.set(imageLayer.id, canvas);
-            editCanvasRef.current = canvas;
-
-            // Set layers and active layer
-            setLayers([imageLayer]);
-            setActiveLayerId(imageLayer.id);
-          };
-          img.src = src;
-        } else {
-          // Add as image layer to existing project
-          addImageLayer(src, fileName);
-        }
-      };
-      reader.readAsDataURL(file);
-    },
-    [addImageLayer, layers.length, t.layer],
-  );
-
-  // Handle file input
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) loadImageFile(file);
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    },
-    [loadImageFile],
-  );
-
-  // Handle drag and drop
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) loadImageFile(file);
-    },
-    [loadImageFile],
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
-
-  // Close rotate menu on outside click
-  useEffect(() => {
-    if (!showRotateMenu) return;
-    const handleClickOutside = () => setShowRotateMenu(false);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showRotateMenu]);
-
-  // Register panel components for the docking system
-  useEffect(() => {
-    // Register canvas panel - uses CanvasPanelContent which gets state from EditorCanvasContext
-    registerEditorPanelComponent("canvas", () => <CanvasPanelContent />);
-
-    // Register layers panel - uses LayersPanelContent which gets state from EditorLayersContext
-    registerEditorPanelComponent("layers", () => <LayersPanelContent />);
-
-    return () => {
-      clearEditorPanelComponents();
-    };
-  }, []);
-
-  // Canvas rendering - moved to useCanvasRendering hook
-  // screenToImage and getMousePos are now provided by useCanvasInput hook
-  // isInHandle, getActiveToolMode, useMouseHandlers moved above canvas rendering useEffect
-  // Keyboard shortcuts - moved to useKeyboardShortcuts hook
-
-  // Canvas ref callback - attaches shared viewport wheel/pinch handlers
-  const canvasRefCallback = useCallback((canvas: HTMLCanvasElement | null) => {
-    canvasRef.current = canvas;
-    viewport.wheelRef(canvas);
-    viewport.pinchRef(canvas);
-  }, [canvasRef, viewport]);
-
-  // Update crop area when aspect ratio changes - moved to useCropTool hook
-
-  // Actions
-  const rotate = (deg: number) => {
-    const newRotation = (rotation + deg + 360) % 360;
-    setRotation(newRotation);
-    setCropArea(null);
-    // Rotate all layer canvases to preserve drawn content
-    rotateAllLayerCanvases(deg);
-  };
+  const {
+    showRotateMenu,
+    toggleRotateMenu,
+    handleRotateLeft,
+    handleRotateRight,
+  } = useRotateMenu({ rotate });
 
   // Background removal handler - moved to useBackgroundRemoval hook
   // selectAllCrop and clearCrop - moved to useCropTool hook
-
-  const clearEdits = () => {
-    if (confirm(t.clearEditConfirm)) {
-      const { width, height } = getDisplayDimensions();
-      initLayers(width, height);
-    }
-  };
-
-  const fitToScreen = () => {
-    if (!containerRef.current || !canvasSize.width) return;
-    const container = containerRef.current;
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const padding = 40;
-    const maxWidth = container.clientWidth - padding;
-    const maxHeight = container.clientHeight - padding;
-    const newZoom = Math.min(maxWidth / displayWidth, maxHeight / displayHeight, 1);
-    setZoom(newZoom);
-    setPan({ x: 0, y: 0 });
-  };
-
-  // Apply crop/canvas resize to actually change canvas size and continue editing
-  const handleApplyCrop = useCallback(() => {
-    if (!cropArea) return;
-
-    // New canvas dimensions from crop area
-    const newWidth = Math.round(cropArea.width);
-    const newHeight = Math.round(cropArea.height);
-    const offsetX = Math.round(cropArea.x);
-    const offsetY = Math.round(cropArea.y);
-
-    // Update each layer's canvas
-    // Use setLayers to update layer positions after crop
-    const updatedLayers = layers.map((layer) => {
-      const oldCanvas = layerCanvasesRef.current.get(layer.id);
-      if (!oldCanvas) return layer;
-
-      // Get layer position (where layer is placed in image coordinates)
-      const layerPosX = layer.position?.x || 0;
-      const layerPosY = layer.position?.y || 0;
-
-      // Create new canvas with new dimensions
-      const newCanvas = document.createElement("canvas");
-      newCanvas.width = newWidth;
-      newCanvas.height = newHeight;
-      const ctx = newCanvas.getContext("2d");
-      if (!ctx) return layer;
-
-      // Calculate crop area relative to layer's local coordinate system
-      // Crop area (offsetX, offsetY) is in image coordinates
-      // Layer canvas starts at (layerPosX, layerPosY) in image coordinates
-      // So the crop area in layer-local coords is (offsetX - layerPosX, offsetY - layerPosY)
-      const cropInLayerX = offsetX - layerPosX;
-      const cropInLayerY = offsetY - layerPosY;
-
-      // Calculate source region from layer canvas (in layer-local coordinates)
-      const srcX = Math.max(0, cropInLayerX);
-      const srcY = Math.max(0, cropInLayerY);
-      const srcRight = Math.min(oldCanvas.width, cropInLayerX + newWidth);
-      const srcBottom = Math.min(oldCanvas.height, cropInLayerY + newHeight);
-      const srcWidth = Math.max(0, srcRight - srcX);
-      const srcHeight = Math.max(0, srcBottom - srcY);
-
-      // Destination: where to draw in new canvas
-      // destX/Y accounts for when crop extends beyond the layer's bounds
-      const destX = srcX - cropInLayerX;
-      const destY = srcY - cropInLayerY;
-
-      // Draw the portion of old canvas that intersects with crop area
-      if (srcWidth > 0 && srcHeight > 0) {
-        ctx.drawImage(
-          oldCanvas,
-          srcX, srcY, srcWidth, srcHeight,
-          destX, destY, srcWidth, srcHeight
-        );
-      }
-
-      // Replace the canvas in the ref
-      layerCanvasesRef.current.set(layer.id, newCanvas);
-
-      // Update editCanvasRef if this is the active layer
-      if (layer.id === activeLayerId) {
-        editCanvasRef.current = newCanvas;
-      }
-
-      // After crop, reset layer position to (0, 0)
-      // because the new canvas is already positioned correctly within the new image bounds
-      return {
-        ...layer,
-        position: { x: 0, y: 0 },
-      };
-    });
-
-    // Update layers with new positions
-    setLayers(updatedLayers);
-
-    // Update canvas size in state
-    setCanvasSize({ width: newWidth, height: newHeight });
-
-    // Reset rotation to 0 since we're applying the crop at current rotation
-    if (rotation !== 0) {
-      setRotation(0);
-    }
-
-    // Clear crop area
-    setCropArea(null);
-    setCanvasExpandMode(false);
-
-    // Save to history
-    saveToHistory();
-
-    // Fit to screen with new dimensions
-    setTimeout(() => {
-      const container = containerRef.current;
-      if (container) {
-        const padding = 40;
-        const maxWidth = container.clientWidth - padding;
-        const maxHeight = container.clientHeight - padding;
-        const fitZoom = Math.min(maxWidth / newWidth, maxHeight / newHeight, 1);
-        setZoom(fitZoom);
-        setPan({ x: 0, y: 0 });
-      }
-    }, 0);
-  }, [cropArea, layers, activeLayerId, rotation, setLayers, setCanvasSize, setRotation, saveToHistory, setZoom, setPan]);
 
   const { handleExportFromModal } = useImageExport({
     layers,
@@ -1123,78 +661,37 @@ function ImageEditorContent() {
     getDisplayDimensions,
   });
 
-  // Get cursor based on tool mode
-  const getCursor = () => {
-    // Guide hover cursor (when guides visible and not locked)
-    if (hoveredGuide && showGuides && !lockGuides) {
-      return hoveredGuide.orientation === "horizontal" ? "ns-resize" : "ew-resize";
-    }
-
-    const activeMode = getActiveToolMode();
-    if (activeMode === "hand") return isDragging ? "grabbing" : "grab";
-    if (activeMode === "zoom") return "zoom-in";
-    if (activeMode === "eyedropper") return "crosshair";
-    if (activeMode === "fill") return "crosshair";
-    // Only hide cursor when mouse is over the image (where brush preview is shown)
-    if (activeMode === "brush" || activeMode === "eraser" || activeMode === "stamp") {
-      return mousePos ? "none" : "crosshair";
-    }
-    if (activeMode === "marquee") {
-      if (isDragging && isMovingSelection) {
-        return isDuplicating ? "copy" : "move";
-      }
-      // Show copy cursor when hovering over selection with Alt pressed
-      if (selection && isAltPressed && mousePos) {
-        if (
-          mousePos.x >= selection.x &&
-          mousePos.x <= selection.x + selection.width &&
-          mousePos.y >= selection.y &&
-          mousePos.y <= selection.y + selection.height
-        ) {
-          return "copy";
-        }
-      }
-      return "crosshair";
-    }
-    return "crosshair";
-  };
+  const { getCursor } = useEditorCursor({
+    hoveredGuide,
+    showGuides,
+    lockGuides,
+    getActiveToolMode,
+    isDragging,
+    isMovingSelection,
+    isDuplicating,
+    selection,
+    isAltPressed,
+    mousePos,
+  });
 
   const displaySize = getDisplayDimensions();
 
-  // Create canvas context value for EditorCanvasProvider
-  const canvasContextValue = useMemo(
-    () => ({
-      containerRef,
-      canvasRefCallback,
-      layers,
-      handleDrop,
-      handleDragOver,
-      handleMouseDown,
-      handleMouseMove,
-      handleMouseUp,
-      handleMouseLeave,
-      getCursor,
-      loadImageFile,
-      displaySize,
-      onGuideCreate: addGuide,
-      onGuideDragStateChange: handleGuideDragStateChange,
-    }),
-    [
-      containerRef,
-      canvasRefCallback,
-      layers,
-      handleDrop,
-      handleDragOver,
-      handleMouseDown,
-      handleMouseMove,
-      handleMouseUp,
-      handleMouseLeave,
-      loadImageFile,
-      displaySize,
-      addGuide,
-      handleGuideDragStateChange,
-    ]
-  );
+  const canvasContextValue = useEditorCanvasContextValue({
+    containerRef,
+    canvasRefCallback,
+    layers,
+    handleDrop,
+    handleDragOver,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    handleMouseLeave,
+    getCursor,
+    loadImageFile,
+    displaySize,
+    onGuideCreate: addGuide,
+    onGuideDragStateChange: handleGuideDragStateChange,
+  });
 
   const {
     isLoading,
@@ -1369,157 +866,31 @@ function ImageEditorContent() {
 
       {/* Row 2: Tools (only when layers exist) */}
       {layers.length > 0 && (
-        <Scrollbar
-          className="bg-surface-primary border-b border-border-default shrink-0"
-          overflow={{ x: "scroll", y: "hidden" }}
-        >
-          <div className="flex items-center gap-1 px-3.5 py-1 whitespace-nowrap">
-          {/* Tool buttons */}
-          <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
-            {toolButtons.map((tool) => (
-              <Tooltip
-                key={tool.mode}
-                content={
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium">{tool.name}</span>
-                    <span className="text-text-tertiary text-[11px]">{tool.description}</span>
-                    {tool.keys && tool.keys.length > 0 && (
-                      <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default">
-                        {tool.keys.map((key, i) => (
-                          <span key={i} className="text-[10px] text-text-tertiary font-mono">
-                            {key}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                }
-                shortcut={tool.shortcut}
-              >
-                <button
-                  onClick={() => handleToolModeChange(tool.mode)}
-                  className={`p-1.5 rounded transition-colors ${
-                    toolMode === tool.mode
-                      ? "bg-accent-primary text-white"
-                      : "hover:bg-interactive-hover"
-                  }`}
-                >
-                  {tool.icon}
-                </button>
-              </Tooltip>
-            ))}
-
-            {/* Divider */}
-            <div className="w-px bg-border-default mx-0.5" />
-
-            {/* AI Background Removal */}
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.removeBackground}</span>
-                  <span className="text-text-tertiary text-[11px]">
-                    AI 모델을 사용해 이미지 배경을 제거합니다
-                  </span>
-                  <span className="text-[10px] text-text-tertiary">
-                    첫 실행 시 모델 다운로드 (~30MB)
-                  </span>
-                </div>
-              }
-            >
-              <button
-                onClick={() => setShowBgRemovalConfirm(true)}
-                disabled={isRemovingBackground}
-                className={`p-1.5 rounded transition-colors ${
-                  isRemovingBackground
-                    ? "bg-accent-primary text-white cursor-wait"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <BackgroundRemovalIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-0.5">
-            <Tooltip content={`${t.undo} (Ctrl+Z)`}>
-              <button
-                onClick={handleUndo}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors"
-              >
-                <UndoIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
-              <button
-                onClick={handleRedo}
-                className="p-1 hover:bg-interactive-hover rounded transition-colors"
-              >
-                <RedoIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Rotation dropdown */}
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <Tooltip content={t.rotate}>
-              <button
-                onClick={() => setShowRotateMenu(!showRotateMenu)}
-                className={`p-1 hover:bg-interactive-hover rounded transition-colors ${showRotateMenu ? 'bg-interactive-hover' : ''}`}
-              >
-                <RotateIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            {showRotateMenu && (
-              <div className="absolute top-full left-0 mt-1 bg-surface-primary border border-border-default rounded-lg shadow-lg z-50 p-1 min-w-max">
-                <button
-                  onClick={() => { rotate(-90); setShowRotateMenu(false); }}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
-                >
-                  <UndoIcon className="w-4 h-4" />
-                  {t.rotateLeft} 90°
-                </button>
-                <button
-                  onClick={() => { rotate(90); setShowRotateMenu(false); }}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
-                >
-                  <RedoIcon className="w-4 h-4" />
-                  {t.rotateRight} 90°
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Zoom controls */}
-          <div className="flex items-center gap-1">
-            <NumberScrubber
-              value={zoom}
-              onChange={setZoom}
-              min={0.1}
-              max={10}
-              step={{ multiply: 1.25 }}
-              format={(v) => `${Math.round(v * 100)}%`}
-              size="sm"
-              variant="zoom"
-            />
-            <button
-              onClick={fitToScreen}
-              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-              title={t.fitToScreen}
-            >
-              Fit
-            </button>
-          </div>
-
-          <div className="flex-1 min-w-0" />
-          </div>
-        </Scrollbar>
+        <EditorActionToolbar
+          toolButtons={toolButtons}
+          toolMode={toolMode}
+          onToolModeChange={handleToolModeChange}
+          onOpenBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
+          isRemovingBackground={isRemovingBackground}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          showRotateMenu={showRotateMenu}
+          onToggleRotateMenu={toggleRotateMenu}
+          onRotateLeft={handleRotateLeft}
+          onRotateRight={handleRotateRight}
+          zoom={zoom}
+          setZoom={setZoom}
+          onFitToScreen={fitToScreen}
+          translations={{
+            removeBackground: t.removeBackground,
+            undo: t.undo,
+            redo: t.redo,
+            rotate: t.rotate,
+            rotateLeft: t.rotateLeft,
+            rotateRight: t.rotateRight,
+            fitToScreen: t.fitToScreen,
+          }}
+        />
       )}
 
       {/* Top Toolbar - Row 3: Tool-specific controls */}

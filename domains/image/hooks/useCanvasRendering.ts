@@ -5,6 +5,7 @@ import { UnifiedLayer, Point, CropArea, Guide, SnapSource } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
+import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 
 // ============================================
@@ -42,7 +43,6 @@ interface UseCanvasRenderingOptions {
   selection: { x: number; y: number; width: number; height: number } | null;
   isDuplicating: boolean;
   isMovingSelection: boolean;
-  activeLayerId: string | null;
 
   // Transform state (optional)
   transformBounds?: TransformBounds | null;
@@ -77,7 +77,7 @@ export function useCanvasRendering(
 ): UseCanvasRenderingReturn {
   // Get state from EditorStateContext
   const {
-    state: { zoom, pan, rotation, canvasSize, toolMode },
+    state: { zoom, pan, toolMode },
   } = useEditorState();
 
   // Get refs from EditorRefsContext
@@ -97,7 +97,6 @@ export function useCanvasRendering(
     selection,
     isDuplicating,
     isMovingSelection,
-    activeLayerId,
     transformBounds,
     isTransformActive,
     transformLayerId,
@@ -173,6 +172,12 @@ export function useCanvasRendering(
     };
   }, [requestRender]);
 
+  useEffect(() => {
+    return () => {
+      canvasCache.cleanup();
+    };
+  }, []);
+
   // Canvas render function - extracted so it can be called from ResizeObserver
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -226,14 +231,15 @@ export function useCanvasRendering(
     const endX = offsetX + scaledWidth;
     const endY = offsetY + scaledHeight;
 
-    for (let y = startY; y < endY; y += checkerSize) {
-      for (let x = startX; x < endX; x += checkerSize) {
-        const isLight =
-          (Math.floor((x - startX) / checkerSize) + Math.floor((y - startY) / checkerSize)) % 2 ===
-          0;
-        ctx.fillStyle = isLight ? lightColor : darkColor;
-        ctx.fillRect(x, y, checkerSize, checkerSize);
-      }
+    const checkerPattern = canvasCache.getCheckerboardPattern(
+      ctx,
+      checkerSize,
+      lightColor,
+      darkColor
+    );
+    if (checkerPattern) {
+      ctx.fillStyle = checkerPattern;
+      ctx.fillRect(startX, startY, endX - startX, endY - startY);
     }
     ctx.restore();
 
@@ -283,20 +289,13 @@ export function useCanvasRendering(
 
       // In canvas expand mode, draw checkerboard pattern for extended areas
       if (canvasExpandMode) {
-        // Create checkerboard pattern for areas outside canvas
         const checkerSize = CHECKERBOARD.SIZE_EXPAND;
-        const patternCanvas = document.createElement("canvas");
-        patternCanvas.width = checkerSize * 2;
-        patternCanvas.height = checkerSize * 2;
-        const patternCtx = patternCanvas.getContext("2d");
-        if (patternCtx) {
-          patternCtx.fillStyle = colors.checkerboardLight;
-          patternCtx.fillRect(0, 0, checkerSize * 2, checkerSize * 2);
-          patternCtx.fillStyle = colors.checkerboardDark;
-          patternCtx.fillRect(0, 0, checkerSize, checkerSize);
-          patternCtx.fillRect(checkerSize, checkerSize, checkerSize, checkerSize);
-        }
-        const checkerPattern = ctx.createPattern(patternCanvas, "repeat");
+        const checkerPattern = canvasCache.getCheckerboardPattern(
+          ctx,
+          checkerSize,
+          colors.checkerboardLight,
+          colors.checkerboardDark
+        );
 
         // Draw extended areas with checkerboard
         if (checkerPattern) {
@@ -556,28 +555,27 @@ export function useCanvasRendering(
       }
 
       // Draw the floating image being moved
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = floating.imageData.width;
-      tempCanvas.height = floating.imageData.height;
-      const tempCtx = tempCanvas.getContext("2d");
-      if (tempCtx) {
-        tempCtx.putImageData(floating.imageData, 0, 0);
+      const { canvas: floatingCanvas, ctx: floatingCtx } = canvasCache.getTemporary(
+        floating.imageData.width,
+        floating.imageData.height,
+        "floating-layer"
+      );
+      floatingCtx.putImageData(floating.imageData, 0, 0);
 
-        ctx.save();
-        ctx.globalAlpha = isDuplicating ? 0.8 : 1.0;
-        const floatX = offsetX + floating.x * zoom;
-        const floatY = offsetY + floating.y * zoom;
-        ctx.drawImage(tempCanvas, floatX, floatY, origW, origH);
-        ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = isDuplicating ? 0.8 : 1.0;
+      const floatX = offsetX + floating.x * zoom;
+      const floatY = offsetY + floating.y * zoom;
+      ctx.drawImage(floatingCanvas, floatX, floatY, origW, origH);
+      ctx.restore();
 
-        // Draw selection border around floating layer
-        ctx.save();
-        ctx.strokeStyle = isDuplicating ? colors.stateDuplicate : colors.stateMove;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(floatX, floatY, origW, origH);
-        ctx.restore();
-      }
+      // Draw selection border around floating layer
+      ctx.save();
+      ctx.strokeStyle = isDuplicating ? colors.stateDuplicate : colors.stateMove;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(floatX, floatY, origW, origH);
+      ctx.restore();
     }
 
     // Draw eyedropper preview
@@ -624,16 +622,15 @@ export function useCanvasRendering(
 
       // Draw the transformed image from originalImageData
       if (transformOriginalImageData) {
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = transformOriginalImageData.width;
-        tempCanvas.height = transformOriginalImageData.height;
-        const tempCtx = tempCanvas.getContext("2d");
-        if (tempCtx) {
-          tempCtx.putImageData(transformOriginalImageData, 0, 0);
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
-          ctx.drawImage(tempCanvas, transformX, transformY, transformW, transformH);
-        }
+        const { canvas: transformCanvas, ctx: transformCtx } = canvasCache.getTemporary(
+          transformOriginalImageData.width,
+          transformOriginalImageData.height,
+          "transform-preview"
+        );
+        transformCtx.putImageData(transformOriginalImageData, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(transformCanvas, transformX, transformY, transformW, transformH);
       }
 
       // Reset alpha for handles and border
@@ -678,8 +675,6 @@ export function useCanvasRendering(
     editCanvasRef,
     floatingLayerRef,
     layers,
-    canvasSize,
-    rotation,
     cropArea,
     canvasExpandMode,
     zoom,
@@ -693,7 +688,6 @@ export function useCanvasRendering(
     selection,
     isDuplicating,
     isMovingSelection,
-    activeLayerId,
     transformBounds,
     isTransformActive,
     transformLayerId,

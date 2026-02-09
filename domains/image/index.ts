@@ -7,8 +7,8 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions } from "./hooks";
-export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn } from "./hooks";
+export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions, useEditorCanvasActions, useEditorCursor, useTransformShortcuts, useImageImport, useLayersPanelToggle, useEditorHistoryAdapter, useToolModeGuard, useEditorToolRuntime, useViewportBridge, useGuideDragPreview, useRotateMenu, useEditorPanelRegistration, useRulerRenderSync, useEditorLayerContextValue, useEditorCanvasContextValue } from "./hooks";
+export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn, EditorHistorySnapshot } from "./hooks";
 export type {
   CanvasInputEvent,
   InputModifiers,
@@ -26,6 +26,7 @@ export { TransformDiscardConfirmModal } from "./components";
 export { EditorMenuBar } from "./components";
 export { LayersPanelContent } from "./components";
 export { CanvasPanelContent } from "./components";
+export { EditorActionToolbar } from "./components";
 export { BrushPresetSelector } from "./components/toolbars/BrushPresetSelector";
 export { PanModeToggle } from "./components/toolbars/PanModeToggle";
 
