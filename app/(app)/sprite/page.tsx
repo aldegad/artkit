@@ -18,7 +18,9 @@ import {
   SplitView,
   SpriteSheetImportModal,
   SpriteFrame,
+  SpriteTopToolbar,
   useFrameBackgroundRemoval,
+  useSpriteKeyboardShortcuts,
   FrameBackgroundRemovalModals,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
@@ -30,16 +32,7 @@ import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectLis
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
-import { Tooltip, Scrollbar } from "@/shared/components";
 import { SyncDialog } from "@/shared/components/app/auth";
-import {
-  BrushIcon,
-  CursorIcon,
-  HandIcon,
-  BackgroundRemovalIcon,
-  UndoIcon,
-  RedoIcon,
-} from "@/shared/components/icons";
 import {
   migrateFromLocalStorage,
 } from "@/shared/utils/storage";
@@ -569,94 +562,18 @@ function SpriteEditorMain() {
     [storageProvider, setSavedSpriteProjects, t],
   );
 
-  // Spacebar handler for temporary hand mode + Undo/Redo
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Spacebar - prevent button re-trigger and enable panning
-      if (e.code === "Space" && !e.repeat) {
-        // Skip if focus is on interactive elements (input, select, textarea, etc.)
-        const target = e.target as HTMLElement;
-        const isInteractiveElement =
-          target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable;
-
-        if (isInteractiveElement) {
-          return; // Let the element handle the spacebar normally
-        }
-
-        e.preventDefault();
-        // Blur focused button to prevent spacebar from triggering it
-        if (document.activeElement instanceof HTMLButtonElement) {
-          document.activeElement.blur();
-        }
-        setIsSpacePressed(true);
-      }
-
-      // Tool shortcuts (skip if modifier keys are pressed)
-      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.key === "p") setSpriteToolMode("pen");
-        if (e.key === "v") setSpriteToolMode("select");
-        if (e.key === "h") setSpriteToolMode("hand");
-      }
-
-      // Ctrl+Z / Cmd+Z = Undo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-        e.preventDefault();
-        if (canUndo) undo();
-      }
-
-      // Ctrl+Shift+Z / Cmd+Shift+Z = Redo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && e.shiftKey) {
-        e.preventDefault();
-        if (canRedo) redo();
-      }
-
-      // Ctrl+Y / Cmd+Y = Redo (alternative)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        if (canRedo) redo();
-      }
-
-      // Ctrl+C / Cmd+C = Copy frame
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && !e.shiftKey) {
-        e.preventDefault();
-        copyFrame();
-      }
-
-      // Ctrl+V / Cmd+V = Paste frame
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v" && !e.shiftKey) {
-        e.preventDefault();
-        pasteFrame();
-      }
-
-      // Ctrl+S / Cmd+S = Save
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          saveProjectAs();
-        } else {
-          saveProject();
-        }
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsSpacePressed(false);
-      }
-    };
-
-    // Use capture phase to intercept before button default behavior
-    window.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("keyup", handleKeyUp, true);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("keyup", handleKeyUp, true);
-    };
-  }, [setIsSpacePressed, undo, redo, canUndo, canRedo, copyFrame, pasteFrame, saveProject, saveProjectAs]);
+  useSpriteKeyboardShortcuts({
+    setIsSpacePressed,
+    setSpriteToolMode,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    copyFrame,
+    pasteFrame,
+    saveProject,
+    saveProjectAs,
+  });
 
   // Handle new project with confirmation
   const handleNew = useCallback(() => {
@@ -755,185 +672,24 @@ function SpriteEditorMain() {
         }}
       />
 
-      {/* Top Toolbar */}
-      {/* Top Toolbar */}
-      <Scrollbar
-        className="bg-surface-primary border-b border-border-default shrink-0"
-        overflow={{ x: "scroll", y: "hidden" }}
-      >
-        <div className="flex items-center gap-1 px-3.5 py-1 whitespace-nowrap">
-          {/* Tool buttons */}
-          <div className="flex gap-0.5 bg-surface-secondary rounded p-0.5">
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.pen}</span>
-                  <span className="text-text-tertiary text-[11px]">{t.penToolTip}</span>
-                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                    <span>{t.clickToAddPoint}</span>
-                    <span>{t.firstPointToComplete}</span>
-                  </div>
-                </div>
-              }
-              shortcut="P"
-            >
-              <button
-                onClick={() => setSpriteToolMode("pen")}
-                className={`p-1.5 rounded transition-colors ${
-                  toolMode === "pen"
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <BrushIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.select}</span>
-                  <span className="text-text-tertiary text-[11px]">{t.selectToolTip}</span>
-                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                    <span>{t.clickToSelect}</span>
-                    <span>{t.dragToMove}</span>
-                  </div>
-                </div>
-              }
-              shortcut="V"
-            >
-              <button
-                onClick={() => setSpriteToolMode("select")}
-                className={`p-1.5 rounded transition-colors ${
-                  toolMode === "select"
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <CursorIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.hand}</span>
-                  <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
-                  <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
-                    <span>{t.dragToPan}</span>
-                    <span>{t.spaceAltToPan}</span>
-                    <span>{t.wheelToZoom}</span>
-                  </div>
-                </div>
-              }
-              shortcut="H"
-            >
-              <button
-                onClick={() => setSpriteToolMode("hand")}
-                className={`p-1.5 rounded transition-colors ${
-                  toolMode === "hand"
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <HandIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-
-            {/* Divider */}
-            <div className="w-px bg-border-default mx-0.5" />
-
-            {/* AI Background Removal */}
-            <Tooltip
-              content={
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{t.removeBackground}</span>
-                  <span className="text-text-tertiary text-[11px]">
-                    AI 모델을 사용해 프레임 배경을 제거합니다
-                  </span>
-                  <span className="text-[10px] text-text-tertiary">
-                    첫 실행 시 모델 다운로드 (~30MB)
-                  </span>
-                </div>
-              }
-            >
-              <button
-                onClick={() => setShowBgRemovalConfirm(true)}
-                disabled={isRemovingBackground || frames.filter((f) => f.imageData).length === 0}
-                className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                  isRemovingBackground
-                    ? "bg-accent-primary text-white cursor-wait"
-                    : "hover:bg-interactive-hover"
-                }`}
-              >
-                <BackgroundRemovalIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-0.5">
-            <Tooltip content={`${t.undo} (Ctrl+Z)`}>
-              <button
-                onClick={undo}
-                disabled={!canUndo}
-                className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-              >
-                <UndoIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip content={`${t.redo} (Ctrl+Shift+Z)`}>
-              <button
-                onClick={redo}
-                disabled={!canRedo}
-                className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-              >
-                <RedoIcon className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          <div className="h-4 w-px bg-border-default mx-1" />
-
-          {/* Context-specific controls */}
-          {toolMode === "pen" && currentPoints.length > 0 && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={undoLastPoint}
-                className="px-2 py-1 bg-accent-warning hover:bg-accent-warning-hover text-white rounded text-xs transition-colors"
-              >
-                {t.undo}
-              </button>
-              <button
-                onClick={cancelCurrentPolygon}
-                className="px-2 py-1 bg-accent-danger hover:bg-accent-danger-hover text-white rounded text-xs transition-colors"
-              >
-                {t.cancel}
-              </button>
-              {currentPoints.length >= 3 && (
-                <button
-                  onClick={completeFrame}
-                  className="px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-xs transition-colors"
-                >
-                  {t.complete}
-                </button>
-              )}
-              <span className="text-text-secondary text-xs">
-                {t.points}: {currentPoints.length}
-              </span>
-            </div>
-          )}
-
-          {toolMode === "select" && selectedFrameId !== null && (
-            <span className="text-accent-primary text-xs">
-              {t.frame} {frames.findIndex((f) => f.id === selectedFrameId) + 1} {t.selected}
-              {selectedPointIndex !== null && ` (${t.point} ${selectedPointIndex + 1})`}
-            </span>
-          )}
-
-          <div className="flex-1 min-w-0" />
-        </div>
-      </Scrollbar>
+      <SpriteTopToolbar
+        toolMode={toolMode}
+        setSpriteToolMode={setSpriteToolMode}
+        currentPoints={currentPoints}
+        selectedFrameId={selectedFrameId}
+        selectedPointIndex={selectedPointIndex}
+        frames={frames}
+        isRemovingBackground={isRemovingBackground}
+        hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        onUndoLastPoint={undoLastPoint}
+        onCancelCurrentPolygon={cancelCurrentPolygon}
+        onCompleteFrame={completeFrame}
+        onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
+      />
 
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">

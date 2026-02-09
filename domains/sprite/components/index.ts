@@ -8,6 +8,7 @@ export { default as FramePreview } from "./FramePreview";
 export { default as FrameStrip } from "./FrameStrip";
 export { default as SpriteSheetImportModal } from "./SpriteSheetImportModal";
 export { default as SpriteMenuBar } from "./SpriteMenuBar";
+export { default as SpriteTopToolbar } from "./SpriteTopToolbar";
 export { default as VideoImportModal } from "./VideoImportModal";
 export { FrameBackgroundRemovalModals } from "./FrameBackgroundRemovalModals";
 

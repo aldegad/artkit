@@ -6,7 +6,7 @@ import { useEditorHistory, useEditorRefs } from "../contexts/SpriteEditorContext
 import { Scrollbar, NumberScrubber, Popover } from "@/shared/components";
 import { SpriteTrack } from "../types";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
-import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon } from "@/shared/components/icons";
+import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon, DuplicateIcon, RotateIcon } from "@/shared/components/icons";
 
 // ============================================
 // Multi-Track Timeline
@@ -26,7 +26,9 @@ export default function TimelineContent() {
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
   const setActiveTrackId = useSpriteTrackStore((s) => s.setActiveTrackId);
   const addTrack = useSpriteTrackStore((s) => s.addTrack);
+  const duplicateTrack = useSpriteTrackStore((s) => s.duplicateTrack);
   const removeTrack = useSpriteTrackStore((s) => s.removeTrack);
+  const reverseTrackFrames = useSpriteTrackStore((s) => s.reverseTrackFrames);
   const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
   const currentFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
@@ -220,6 +222,22 @@ export default function TimelineContent() {
     [tracks.length, pushHistory, removeTrack],
   );
 
+  const handleDuplicateTrack = useCallback(
+    (trackId: string) => {
+      pushHistory();
+      duplicateTrack(trackId);
+    },
+    [pushHistory, duplicateTrack],
+  );
+
+  const handleReverseTrackFrames = useCallback(
+    (trackId: string) => {
+      pushHistory();
+      reverseTrackFrames(trackId);
+    },
+    [pushHistory, reverseTrackFrames],
+  );
+
   // Start editing track name
   const startEditingName = useCallback((track: SpriteTrack) => {
     setEditingTrackId(track.id);
@@ -235,7 +253,7 @@ export default function TimelineContent() {
     setEditingTrackId(null);
   }, [editingTrackId, editingName, updateTrack]);
 
-  // Per-track enabled (non-disabled) frame indices — disabled frames are "trimmed" from timeline
+  // Per-track enabled (non-disabled) frame indices — disabled frames are hidden from timeline
   const trackEnabledIndicesMap = useMemo(() => {
     const map = new Map<string, number[]>();
     for (const track of tracks) {
@@ -277,10 +295,12 @@ export default function TimelineContent() {
 
   // ---- Scrubbing (drag-to-navigate) ----
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const scrubTrackIdRef = useRef<string | null>(null);
 
   const getFrameFromClientX = useCallback((clientX: number, overrideTrackId?: string) => {
     const el = rulerRef.current;
     if (!el) return -1;
+    if (maxEnabledCount <= 0) return -1;
     const rect = el.getBoundingClientRect();
     const x = clientX - rect.left + el.scrollLeft;
     const visualIdx = Math.max(0, Math.min(maxEnabledCount - 1, Math.floor(x / CELL_WIDTH)));
@@ -293,26 +313,33 @@ export default function TimelineContent() {
   const getFrameFnRef = useRef(getFrameFromClientX);
   getFrameFnRef.current = getFrameFromClientX;
 
-  const handleScrubStart = useCallback((e: React.MouseEvent, trackId?: string) => {
+  const handleScrubStart = useCallback((e: React.MouseEvent, trackId?: string, jumpOnStart = true) => {
     if (e.button !== 0) return;
     e.preventDefault();
     setIsScrubbing(true);
     setIsPlaying(false);
+    scrubTrackIdRef.current = trackId ?? activeTrackId ?? null;
     if (trackId) setActiveTrackId(trackId);
-    const idx = getFrameFromClientX(e.clientX, trackId);
-    if (idx >= 0) setCurrentFrameIndex(idx);
-  }, [getFrameFromClientX, setIsPlaying, setCurrentFrameIndex, setActiveTrackId]);
+
+    if (jumpOnStart) {
+      const idx = getFrameFromClientX(e.clientX, scrubTrackIdRef.current ?? undefined);
+      if (idx >= 0) setCurrentFrameIndex(idx);
+    }
+  }, [getFrameFromClientX, setIsPlaying, setCurrentFrameIndex, setActiveTrackId, activeTrackId]);
 
   useEffect(() => {
     if (!isScrubbing) return;
 
     const handleMove = (e: MouseEvent) => {
       e.preventDefault();
-      const idx = getFrameFnRef.current(e.clientX);
+      const idx = getFrameFnRef.current(e.clientX, scrubTrackIdRef.current ?? undefined);
       if (idx >= 0) setCurrentFrameIndex(idx);
     };
 
-    const handleUp = () => setIsScrubbing(false);
+    const handleUp = () => {
+      setIsScrubbing(false);
+      scrubTrackIdRef.current = null;
+    };
 
     document.addEventListener("mousemove", handleMove);
     document.addEventListener("mouseup", handleUp);
@@ -334,7 +361,7 @@ export default function TimelineContent() {
               track.id === activeTrackId ? "bg-accent-primary/5" : ""
             } ${!track.visible ? "opacity-40" : ""}`}
             style={{ height: TRACK_HEIGHT }}
-            onMouseDown={(e) => handleScrubStart(e, track.id)}
+            onMouseDown={(e) => handleScrubStart(e, track.id, false)}
           >
             {Array.from({ length: maxEnabledCount }).map((_, visualIdx) => {
               const absIdx = enabledIndices[visualIdx];
@@ -452,7 +479,7 @@ export default function TimelineContent() {
         <div
           ref={rulerRef}
           className="flex-1 overflow-hidden h-6 cursor-ew-resize"
-          onMouseDown={(e) => handleScrubStart(e)}
+          onMouseDown={(e) => handleScrubStart(e, undefined, true)}
         >
           <div className="relative h-full bg-surface-secondary" style={{ width: maxEnabledCount * CELL_WIDTH }}>
             <div className="flex items-end h-full">
@@ -541,6 +568,28 @@ export default function TimelineContent() {
                     )}
                   </div>
 
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDuplicateTrack(track.id);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-surface-tertiary transition-colors"
+                    title="Duplicate track"
+                  >
+                    <DuplicateIcon className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleReverseTrackFrames(track.id);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-surface-tertiary transition-colors"
+                    title="Reverse frames"
+                  >
+                    <RotateIcon className="w-3.5 h-3.5" />
+                  </button>
+
                   {/* Delete track */}
                   {tracks.length > 1 && (
                     <button
@@ -578,6 +627,27 @@ export default function TimelineContent() {
                     >
                       {track.name}
                     </span>
+                    <div className="h-px bg-border-default mx-1" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDuplicateTrack(track.id);
+                      }}
+                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                    >
+                      <DuplicateIcon className="w-3 h-3" />
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReverseTrackFrames(track.id);
+                      }}
+                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                    >
+                      <RotateIcon className="w-3 h-3" />
+                      Reverse Frames
+                    </button>
                     <div className="h-px bg-border-default mx-1" />
                     <button
                       onClick={(e) => {
