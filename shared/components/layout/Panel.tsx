@@ -200,7 +200,7 @@ export default function Panel({ node }: PanelProps) {
     >
       {showHeader && (
         <div className="panel-header shrink-0">
-          <span className="text-sm font-semibold text-text-primary">{title}</span>
+          <span className="text-sm font-semibold text-text-primary truncate min-w-0">{title}</span>
           <div className="flex items-center gap-1">
             {/* Undock button */}
             <button
