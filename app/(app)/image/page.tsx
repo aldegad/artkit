@@ -3,13 +3,11 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
-import { ExportModal } from "@/domains/image/components/ExportModal";
+import { SaveToast, LoadingOverlay } from "@/shared/components";
 import {
   EditorToolMode,
   HistoryAdapter,
   EditorHistorySnapshot,
-  ProjectListModal,
   useHistory,
   useLayerManagement,
   useBrushTool,
@@ -42,19 +40,16 @@ import {
   useRulerRenderSync,
   useEditorLayerContextValue,
   useEditorCanvasContextValue,
-  BackgroundRemovalModals,
-  TransformDiscardConfirmModal,
+  EditorHeader,
+  EditorOverlays,
   EditorActionToolbar,
   EditorToolOptions,
-  EditorStatusBar,
   PanModeToggle,
-  EditorMenuBar,
   EditorLayersProvider,
   EditorCanvasProvider,
 } from "@/domains/image";
 // IndexedDB storage functions are now used through storageProvider
 import { getStorageProvider } from "@/domains/image/services/projectStorage";
-import { SyncDialog } from "@/shared/components/app/auth";
 import {
   EditorLayoutProvider,
   useEditorLayout,
@@ -803,65 +798,58 @@ function ImageEditorContent() {
         savedLabel={t.saved || "Saved"}
       />
 
-      {/* Header Slot Content */}
-      <HeaderContent
+      <EditorHeader
         title={t.imageEditor}
-        menuBar={
-          <EditorMenuBar
-            onNew={handleNewCanvas}
-            onLoad={() => setIsProjectListOpen(true)}
-            onSave={handleSaveProjectAction}
-            onSaveAs={handleSaveAsProjectAction}
-            onImportImage={() => fileInputRef.current?.click()}
-            onExport={() => { setExportMode("single"); setShowExportModal(true); }}
-            onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
-            onToggleLayers={handleToggleLayers}
-            isLayersOpen={isLayersOpen}
-            canSave={layers.length > 0}
-            hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
-            isLoading={isLoading || isSaving}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            canUndo={canUndo()}
-            canRedo={canRedo()}
-            showRulers={showRulers}
-            showGuides={showGuides}
-            lockGuides={lockGuides}
-            snapToGuides={snapToGuides}
-            onToggleRulers={() => setShowRulers(!showRulers)}
-            onToggleGuides={() => setShowGuides(!showGuides)}
-            onToggleLockGuides={() => setLockGuides(!lockGuides)}
-            onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
-            onClearGuides={clearAllGuides}
-            translations={{
-              file: t.file,
-              edit: t.edit,
-              view: t.view,
-              window: t.window,
-              new: t.new,
-              load: t.load,
-              save: t.save,
-              saveAs: t.saveAs,
-              importImage: t.importImage,
-              export: t.export,
-              exportLayers: t.exportLayers,
-              undo: t.undo,
-              redo: t.redo,
-              layers: t.layers,
-              showRulers: t.showRulers,
-              showGuides: t.showGuides,
-              lockGuides: t.lockGuides,
-              snapToGuides: t.snapToGuides,
-              clearGuides: t.clearGuides,
-            }}
-          />
-        }
-        projectName={layers.length > 0 ? {
-          value: projectName,
-          onChange: setProjectName,
-          placeholder: t.projectName,
-        } : undefined}
-        extra={layers.length > 0 ? <div className="flex-1" /> : undefined}
+        layersCount={layers.length}
+        projectName={projectName}
+        onProjectNameChange={setProjectName}
+        projectNamePlaceholder={t.projectName}
+        onNew={handleNewCanvas}
+        onLoad={() => setIsProjectListOpen(true)}
+        onSave={handleSaveProjectAction}
+        onSaveAs={handleSaveAsProjectAction}
+        onImportImage={() => fileInputRef.current?.click()}
+        onExport={() => { setExportMode("single"); setShowExportModal(true); }}
+        onExportLayers={() => { setExportMode("layers"); setShowExportModal(true); }}
+        onToggleLayers={handleToggleLayers}
+        isLayersOpen={isLayersOpen}
+        canSave={layers.length > 0}
+        hasSelectedLayers={selectedLayerIds.length > 0 || activeLayerId !== null}
+        isLoading={isLoading || isSaving}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo()}
+        canRedo={canRedo()}
+        showRulers={showRulers}
+        showGuides={showGuides}
+        lockGuides={lockGuides}
+        snapToGuides={snapToGuides}
+        onToggleRulers={() => setShowRulers(!showRulers)}
+        onToggleGuides={() => setShowGuides(!showGuides)}
+        onToggleLockGuides={() => setLockGuides(!lockGuides)}
+        onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+        onClearGuides={clearAllGuides}
+        translations={{
+          file: t.file,
+          edit: t.edit,
+          view: t.view,
+          window: t.window,
+          new: t.new,
+          load: t.load,
+          save: t.save,
+          saveAs: t.saveAs,
+          importImage: t.importImage,
+          export: t.export,
+          exportLayers: t.exportLayers,
+          undo: t.undo,
+          redo: t.redo,
+          layers: t.layers,
+          showRulers: t.showRulers,
+          showGuides: t.showGuides,
+          lockGuides: t.lockGuides,
+          snapToGuides: t.snapToGuides,
+          clearGuides: t.clearGuides,
+        }}
       />
 
       {/* Row 2: Tools (only when layers exist) */}
@@ -952,16 +940,13 @@ function ImageEditorContent() {
         {layers.length > 0 && <PanModeToggle />}
       </div>
 
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        onExport={(fileName, fmt, q, backgroundColor) =>
-          handleExportFromModal(fileName, fmt, q, backgroundColor, exportMode)
-        }
-        defaultFileName={projectName || "Untitled"}
-        mode={exportMode}
-        translations={{
+      <EditorOverlays
+        showExportModal={showExportModal}
+        setShowExportModal={setShowExportModal}
+        handleExportFromModal={handleExportFromModal}
+        exportMode={exportMode}
+        projectName={projectName}
+        exportTranslations={{
           export: t.export,
           cancel: t.cancel,
           fileName: t.projectName,
@@ -970,89 +955,57 @@ function ImageEditorContent() {
           backgroundColor: t.background,
           transparent: t.transparent,
         }}
-      />
-
-      {/* Background Removal Modals */}
-      <BackgroundRemovalModals
-        showConfirm={showBgRemovalConfirm}
-        onCloseConfirm={() => setShowBgRemovalConfirm(false)}
-        onConfirm={() => {
-          setShowBgRemovalConfirm(false);
-          handleRemoveBackground();
-        }}
+        showBgRemovalConfirm={showBgRemovalConfirm}
+        setShowBgRemovalConfirm={setShowBgRemovalConfirm}
+        handleRemoveBackground={handleRemoveBackground}
         hasSelection={!!selection}
-        isRemoving={isRemovingBackground}
-        progress={bgRemovalProgress}
-        status={bgRemovalStatus}
-        translations={{
+        isRemovingBackground={isRemovingBackground}
+        bgRemovalProgress={bgRemovalProgress}
+        bgRemovalStatus={bgRemovalStatus}
+        backgroundRemovalTranslations={{
           removeBackground: t.removeBackground,
           cancel: t.cancel,
           confirm: t.confirm,
         }}
-      />
-
-      {/* Transform Discard Confirmation Modal */}
-      <TransformDiscardConfirmModal
-        show={showTransformDiscardConfirm}
-        onClose={handleTransformDiscardCancel}
-        onDiscard={handleTransformDiscardConfirm}
-        onApply={handleTransformApplyAndSwitch}
-        translations={{
+        showTransformDiscardConfirm={showTransformDiscardConfirm}
+        handleTransformDiscardCancel={handleTransformDiscardCancel}
+        handleTransformDiscardConfirm={handleTransformDiscardConfirm}
+        handleTransformApplyAndSwitch={handleTransformApplyAndSwitch}
+        transformDiscardTranslations={{
           title: "변환 취소",
           message: "적용하지 않은 변환이 있습니다. 변환을 취소하면 원래 상태로 되돌아갑니다.",
           discard: "취소하고 전환",
           apply: "적용하고 전환",
           cancel: "돌아가기",
         }}
-      />
-
-      {/* Bottom status bar */}
-      {layers.length > 0 && (
-        <EditorStatusBar
-          canvasSize={canvasSize}
-          rotation={rotation}
-          zoom={zoom}
-          cropArea={cropArea}
-          selection={selection}
-        />
-      )}
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-
-
-      {/* Project List Modal */}
-      <ProjectListModal
-        isOpen={isProjectListOpen}
-        onClose={() => setIsProjectListOpen(false)}
-        projects={savedProjects}
+        showStatusBar={layers.length > 0}
+        canvasSize={canvasSize}
+        rotation={rotation}
+        zoom={zoom}
+        cropArea={cropArea}
+        selection={selection}
+        fileInputRef={fileInputRef}
+        handleFileSelect={handleFileSelect}
+        isProjectListOpen={isProjectListOpen}
+        setIsProjectListOpen={setIsProjectListOpen}
+        savedProjects={savedProjects}
         currentProjectId={currentProjectId}
-        onLoadProject={handleLoadProject}
-        onDeleteProject={handleDeleteProject}
+        handleLoadProject={handleLoadProject}
+        handleDeleteProject={handleDeleteProject}
         storageInfo={storageInfo}
         isLoading={isLoading}
-        translations={{
+        projectListTranslations={{
           savedProjects: t.savedProjects || "저장된 프로젝트",
           noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
           delete: t.delete,
           loading: t.loading,
         }}
-      />
-
-      {/* Sync Dialog */}
-      <SyncDialog
-        isOpen={showSyncDialog}
-        localCount={localProjectCount}
-        cloudCount={cloudProjectCount}
-        onKeepCloud={handleKeepCloud}
-        onKeepLocal={handleKeepLocal}
-        onCancel={handleCancelSync}
+        showSyncDialog={showSyncDialog}
+        localProjectCount={localProjectCount}
+        cloudProjectCount={cloudProjectCount}
+        handleKeepCloud={handleKeepCloud}
+        handleKeepLocal={handleKeepLocal}
+        handleCancelSync={handleCancelSync}
       />
     </div>
     </EditorCanvasProvider>
