@@ -29,6 +29,9 @@ interface EditorTranslationSource {
   fitToScreen: string;
   size: string;
   hardness: string;
+  presets: string;
+  pressure: string;
+  builtIn: string;
   color: string;
   source: string;
   altClickToSetSource: string;
@@ -156,9 +159,9 @@ export function useEditorTranslationBundles(
         color: source.color,
         source: source.source,
         altClickToSetSource: source.altClickToSetSource,
-        presets: "Presets",
-        pressure: "Pressure",
-        builtIn: "Built-in",
+        presets: source.presets,
+        pressure: source.pressure,
+        builtIn: source.builtIn,
       },
       exportModal: {
         export: source.export,

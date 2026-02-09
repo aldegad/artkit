@@ -132,6 +132,9 @@ interface Translations {
   openLayerPanel: string;
   size: string;
   hardness: string;
+  presets: string;
+  pressure: string;
+  builtIn: string;
   color: string;
   source: string;
   altClickToSetSource: string;
@@ -458,6 +461,9 @@ const translations: Record<Language, Translations> = {
     openLayerPanel: "레이어 패널 열기",
     size: "크기",
     hardness: "경도",
+    presets: "프리셋",
+    pressure: "압력",
+    builtIn: "기본",
     color: "색상",
     source: "소스",
     altClickToSetSource: "Alt+클릭으로 소스 지정",
@@ -782,6 +788,9 @@ const translations: Record<Language, Translations> = {
     openLayerPanel: "Open Layer Panel",
     size: "Size",
     hardness: "Hardness",
+    presets: "Presets",
+    pressure: "Pressure",
+    builtIn: "Built-in",
     color: "Color",
     source: "Source",
     altClickToSetSource: "Alt+click to set source",

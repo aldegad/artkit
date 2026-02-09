@@ -9,6 +9,8 @@ export { default as FrameStrip } from "./FrameStrip";
 export { default as SpriteSheetImportModal } from "./SpriteSheetImportModal";
 export { default as SpriteMenuBar } from "./SpriteMenuBar";
 export { default as SpriteTopToolbar } from "./SpriteTopToolbar";
+export { default as SpritePanModeToggle } from "./SpritePanModeToggle";
+export { default as SpriteToolOptionsBar } from "./SpriteToolOptionsBar";
 export { default as VideoImportModal } from "./VideoImportModal";
 export { FrameBackgroundRemovalModals } from "./FrameBackgroundRemovalModals";
 export { FrameInterpolationModals } from "./FrameInterpolationModals";
