@@ -63,6 +63,8 @@ interface VideoStateContextValue extends VideoState {
   stepBackward: () => void;
   setPlaybackRate: (rate: number) => void;
   toggleLoop: () => void;
+  setLoopRange: (start: number, end: number, enableLoop?: boolean) => void;
+  clearLoopRange: () => void;
 
   // Tool actions
   setToolMode: (mode: VideoToolMode) => void;
@@ -133,11 +135,13 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const playbackRateRef = useRef(state.playback.playbackRate);
   const loopRef = useRef(state.playback.loop);
   const loopStartRef = useRef(state.playback.loopStart);
+  const loopEndRef = useRef(state.playback.loopEnd);
   const projectDurationRef = useRef(state.project.duration || 10);
 
   useEffect(() => { playbackRateRef.current = state.playback.playbackRate; }, [state.playback.playbackRate]);
   useEffect(() => { loopRef.current = state.playback.loop; }, [state.playback.loop]);
   useEffect(() => { loopStartRef.current = state.playback.loopStart; }, [state.playback.loopStart]);
+  useEffect(() => { loopEndRef.current = state.playback.loopEnd; }, [state.playback.loopEnd]);
   useEffect(() => { projectDurationRef.current = state.project.duration || 10; }, [state.project.duration]);
 
   // Playback animation loop — emits tick events instead of setState every frame
@@ -151,12 +155,23 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     const deltaSeconds = (deltaMs / 1000) * playbackRateRef.current;
     const newTime = currentTimeRef.current + deltaSeconds;
 
-    // Check for end of project
     const duration = projectDurationRef.current;
-    if (newTime >= duration) {
-      if (loopRef.current) {
-        currentTimeRef.current = loopStartRef.current;
+    const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
+    const hasRange = loopEndRef.current > rangeStart + 0.001;
+    const rangeEnd = hasRange
+      ? Math.max(rangeStart + 0.001, Math.min(loopEndRef.current, duration))
+      : duration;
+
+    if (loopRef.current) {
+      if (newTime >= rangeEnd) {
+        currentTimeRef.current = rangeStart;
+      } else if (newTime < rangeStart) {
+        currentTimeRef.current = rangeStart;
       } else {
+        currentTimeRef.current = newTime;
+      }
+    } else {
+      if (newTime >= duration) {
         currentTimeRef.current = duration;
         isPlayingRef.current = false;
         // Sync final time to React state when playback ends
@@ -171,7 +186,6 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         playbackTick.emit(duration);
         return;
       }
-    } else {
       currentTimeRef.current = newTime;
     }
 
@@ -222,8 +236,20 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const play = useCallback(() => {
     if (isPlayingRef.current) return;
 
-    // If at the end, restart from beginning
-    if (currentTimeRef.current >= projectDurationRef.current) {
+    const duration = projectDurationRef.current;
+    const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
+    const hasRange = loopEndRef.current > rangeStart + 0.001;
+    const rangeEnd = hasRange
+      ? Math.max(rangeStart + 0.001, Math.min(loopEndRef.current, duration))
+      : duration;
+
+    // If loop is enabled, keep playback time inside loop range.
+    if (loopRef.current) {
+      if (currentTimeRef.current < rangeStart || currentTimeRef.current >= rangeEnd) {
+        currentTimeRef.current = rangeStart;
+      }
+    } else if (currentTimeRef.current >= duration) {
+      // If at the end, restart from beginning
       currentTimeRef.current = 0;
     }
 
@@ -255,7 +281,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
 
   const stop = useCallback(() => {
     isPlayingRef.current = false;
-    currentTimeRef.current = 0;
+    const duration = projectDurationRef.current;
+    const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
+    currentTimeRef.current = loopRef.current ? rangeStart : 0;
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -264,7 +292,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
 
     setState((prev) => ({
       ...prev,
-      playback: { ...prev.playback, isPlaying: false, currentTime: 0 },
+      playback: { ...prev.playback, isPlaying: false, currentTime: currentTimeRef.current },
     }));
   }, []);
 
@@ -277,7 +305,18 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, [play, pause]);
 
   const seek = useCallback((time: number) => {
-    const clampedTime = Math.max(0, Math.min(time, projectDurationRef.current));
+    const duration = projectDurationRef.current;
+    let clampedTime = Math.max(0, Math.min(time, duration));
+
+    if (loopRef.current) {
+      const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
+      const hasRange = loopEndRef.current > rangeStart + 0.001;
+      const rangeEnd = hasRange
+        ? Math.max(rangeStart + 0.001, Math.min(loopEndRef.current, duration))
+        : duration;
+      clampedTime = Math.max(rangeStart, Math.min(clampedTime, rangeEnd));
+    }
+
     currentTimeRef.current = clampedTime;
 
     setState((prev) => ({
@@ -308,6 +347,46 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       ...prev,
       playback: { ...prev.playback, loop: !prev.playback.loop },
     }));
+  }, []);
+
+  const setLoopRange = useCallback((start: number, end: number, enableLoop: boolean = true) => {
+    const duration = projectDurationRef.current;
+    const clampedStart = Math.max(0, Math.min(start, duration));
+    const clampedEnd = Math.max(0, Math.min(end, duration));
+    const normalizedStart = Math.min(clampedStart, clampedEnd);
+    const normalizedEnd = Math.max(normalizedStart + 0.001, clampedEnd);
+    const current = Math.max(normalizedStart, Math.min(currentTimeRef.current, normalizedEnd));
+    currentTimeRef.current = current;
+
+    setState((prev) => ({
+      ...prev,
+      playback: {
+        ...prev.playback,
+        loopStart: normalizedStart,
+        loopEnd: normalizedEnd,
+        loop: enableLoop ? true : prev.playback.loop,
+        currentTime: current,
+      },
+    }));
+    playbackTick.emit(current);
+  }, []);
+
+  const clearLoopRange = useCallback(() => {
+    const duration = projectDurationRef.current;
+    const current = Math.max(0, Math.min(currentTimeRef.current, duration));
+    currentTimeRef.current = current;
+
+    setState((prev) => ({
+      ...prev,
+      playback: {
+        ...prev.playback,
+        loop: false,
+        loopStart: 0,
+        loopEnd: duration,
+        currentTime: current,
+      },
+    }));
+    playbackTick.emit(current);
   }, []);
 
   // Tool actions
@@ -392,6 +471,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     stepBackward,
     setPlaybackRate,
     toggleLoop,
+    setLoopRange,
+    clearLoopRange,
     setToolMode,
     selectClip,
     selectClips,
