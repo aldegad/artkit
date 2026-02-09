@@ -165,6 +165,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     projectSize: project.canvasSize,
     projectDuration: project.duration || 1,
     isPlaying: playback.isPlaying,
+    // While a mask is active, preview must own media seeking/rendering.
+    // Otherwise pre-render and preview can fight over shared video elements.
+    suspendPreRender: Boolean(isEditingMask || activeMaskId),
     currentTime: playback.currentTime,
     currentTimeRef,
   });
