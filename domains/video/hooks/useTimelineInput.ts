@@ -106,7 +106,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const {
     stateRef: timelineViewportRef,
     panByPixels,
-    setZoomAtPixel,
+    setZoomFromWheelAtPixel,
     ensureTimeVisibleOnLeft,
     setScrollFromGestureAnchor,
   } = useTimelineViewport();
@@ -394,16 +394,13 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     if (!target) return;
 
     const handleWheel = (e: WheelEvent) => {
-      const { zoom } = timelineViewportRef.current;
-
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         const rect = tracksContainerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
         const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-        setZoomAtPixel(Math.max(0.001, zoom * zoomFactor), x);
+        setZoomFromWheelAtPixel(e.deltaY, x);
       } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault();
         const delta = e.shiftKey ? e.deltaY : e.deltaX;
@@ -413,7 +410,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
     target.addEventListener("wheel", handleWheel, { passive: false });
     return () => target.removeEventListener("wheel", handleWheel);
-  }, [containerRef, tracksContainerRef, timelineViewportRef, setZoomAtPixel, panByPixels]);
+  }, [containerRef, tracksContainerRef, timelineViewportRef, setZoomFromWheelAtPixel, panByPixels]);
 
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(

@@ -7,6 +7,7 @@ import {
   normalizeTimelineZoom,
   panTimelineScrollXByPixels,
   timelineScrollXFromGestureAnchor,
+  timelineZoomFromWheelDelta,
   zoomTimelineAtPixel,
 } from "../utils/timelineViewportMath";
 
@@ -79,6 +80,16 @@ export function useTimelineViewport() {
     [setZoom, setScrollX]
   );
 
+  const setZoomFromWheelAtPixel = useCallback(
+    (deltaY: number, anchorPixel: number, options?: ZoomAtPixelOptions) => {
+      const { zoom } = stateRef.current;
+      const wheelZoomFactor = TIMELINE.WHEEL_ZOOM_FACTOR;
+      const nextZoom = timelineZoomFromWheelDelta(zoom, deltaY, wheelZoomFactor);
+      setZoomAtPixel(nextZoom, anchorPixel, options);
+    },
+    [setZoomAtPixel]
+  );
+
   const setScrollFromGestureAnchor = useCallback(
     (
       gestureStartScrollX: number,
@@ -104,6 +115,7 @@ export function useTimelineViewport() {
     panByPixels,
     ensureTimeVisibleOnLeft,
     setZoomAtPixel,
+    setZoomFromWheelAtPixel,
     setScrollFromGestureAnchor,
   };
 }

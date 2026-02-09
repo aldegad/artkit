@@ -7,6 +7,7 @@ export const TIMELINE = {
   MIN_ZOOM: 10, // pixels per second
   MAX_ZOOM: 500,
   DEFAULT_ZOOM: 100,
+  WHEEL_ZOOM_FACTOR: 0.1, // 10% per wheel tick
   TRACK_MIN_HEIGHT: 40,
   TRACK_DEFAULT_HEIGHT: 60,
   TRACK_MAX_HEIGHT: 120,
