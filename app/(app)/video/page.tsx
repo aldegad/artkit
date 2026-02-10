@@ -51,7 +51,6 @@ import {
   VideoPanModeToggle,
   type Clip,
   type SavedVideoProject,
-  type TimelineViewState,
   type VideoToolMode,
 } from "@/domains/video";
 import { useVideoKeyboardShortcuts } from "@/domains/video/hooks";
@@ -61,7 +60,7 @@ import {
 } from "@/domains/video/services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
-import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
+import { ASPECT_RATIOS, type AspectRatio } from "@/shared/types/aspectRatio";
 import {
   interpolateFramesWithAI,
   type RifeInterpolationQuality,
@@ -383,9 +382,7 @@ function VideoEditorContent() {
     selectMasksForTimeline,
     deselectAll,
     togglePlay,
-    play,
     pause,
-    stop,
     seek,
     setLoopRange,
     toggleLoop,
@@ -1359,8 +1356,7 @@ function VideoEditorContent() {
     setScrollX(0);
   }, [project.duration, setZoom, setScrollX]);
 
-  // Preview zoom (synced from PreviewCanvas viewport)
-  const [previewZoom, setPreviewZoom] = useState(1);
+  // Preview transform state (synced from PreviewCanvas viewport)
   const [previewTransformState, setPreviewTransformState] = useState<{
     isActive: boolean;
     clipId: string | null;
@@ -1381,25 +1377,6 @@ function VideoEditorContent() {
         rafId = requestAnimationFrame(attach);
         return;
       }
-      unsubscribe = api.onZoomChange((z) => setPreviewZoom(z));
-    };
-
-    attach();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      unsubscribe?.();
-    };
-  }, [previewViewportRef]);
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let rafId: number | null = null;
-
-    const attach = () => {
-      const api = previewViewportRef.current;
-      if (!api) {
-        rafId = requestAnimationFrame(attach);
-        return;
-      }
       unsubscribe = api.onTransformChange((next) => setPreviewTransformState(next));
     };
 
@@ -1408,18 +1385,6 @@ function VideoEditorContent() {
       if (rafId !== null) cancelAnimationFrame(rafId);
       unsubscribe?.();
     };
-  }, [previewViewportRef]);
-
-  const handlePreviewZoomIn = useCallback(() => {
-    previewViewportRef.current?.zoomIn();
-  }, [previewViewportRef]);
-
-  const handlePreviewZoomOut = useCallback(() => {
-    previewViewportRef.current?.zoomOut();
-  }, [previewViewportRef]);
-
-  const handlePreviewFit = useCallback(() => {
-    previewViewportRef.current?.fitToContainer();
   }, [previewViewportRef]);
   // Canvas size adjustment
   const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
