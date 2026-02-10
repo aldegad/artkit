@@ -390,7 +390,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
+        if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.AUDIO_SEEK_DRIFT_THRESHOLD) {
           audio.currentTime = sourceTime;
         }
 
