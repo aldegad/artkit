@@ -22,6 +22,7 @@ interface SpriteUIStore {
 
   // Clipboard
   clipboardFrame: SpriteFrame | null;
+  clipboardFrames: SpriteFrame[] | null;
   clipboardTrack: SpriteTrack | null;
 
   // Video import
@@ -45,6 +46,8 @@ interface SpriteUIStore {
   // Actions - Clipboard
   copyFrame: (frame: SpriteFrame) => void;
   getClipboardFrame: () => SpriteFrame | null;
+  copyFrames: (frames: SpriteFrame[]) => void;
+  getClipboardFrames: () => SpriteFrame[];
   copyTrack: (track: SpriteTrack) => void;
   getClipboardTrack: () => SpriteTrack | null;
 
@@ -73,6 +76,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   savedProjects: [],
   currentProjectId: null,
   clipboardFrame: null,
+  clipboardFrames: null,
   clipboardTrack: null,
   pendingVideoFile: null,
   isAutosaveLoading: true,
@@ -99,10 +103,35 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   setIsAutosaveLoading: (loading) => set({ isAutosaveLoading: loading }),
 
   // Clipboard Actions
-  copyFrame: (frame) => set({ clipboardFrame: deepCopyFrame(frame) }),
+  copyFrame: (frame) => {
+    const copied = deepCopyFrame(frame);
+    set({
+      clipboardFrame: copied,
+      clipboardFrames: [copied],
+    });
+  },
   getClipboardFrame: () => {
     const { clipboardFrame } = get();
     return clipboardFrame ? deepCopyFrame(clipboardFrame) : null;
+  },
+  copyFrames: (frames) => {
+    if (frames.length === 0) {
+      set({
+        clipboardFrame: null,
+        clipboardFrames: null,
+      });
+      return;
+    }
+
+    const copiedFrames = deepCopyFrames(frames);
+    set({
+      clipboardFrame: deepCopyFrame(copiedFrames[0]),
+      clipboardFrames: copiedFrames,
+    });
+  },
+  getClipboardFrames: () => {
+    const { clipboardFrames } = get();
+    return clipboardFrames ? deepCopyFrames(clipboardFrames) : [];
   },
   copyTrack: (track) =>
     set({
@@ -133,6 +162,6 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
       projectName: "",
       currentProjectId: null,
       pendingVideoFile: null,
-      // Note: savedProjects and clipboardFrame are not reset
+      // Note: savedProjects and clipboard data are not reset
     }),
 }));
