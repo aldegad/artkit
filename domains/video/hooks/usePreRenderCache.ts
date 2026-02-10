@@ -145,7 +145,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   const clipFingerprint = useMemo(() => {
     return clips.map(c =>
-      `${c.id}:${c.trackId}:${c.startTime}:${c.duration}:${c.trimIn}:${c.trimOut}:${c.sourceUrl}:${c.position.x}:${c.position.y}:${c.scale}:${c.opacity}:${c.visible}`
+      `${c.id}:${c.trackId}:${c.startTime}:${c.duration}:${c.trimIn}:${c.trimOut}:${c.sourceUrl}:${c.position.x}:${c.position.y}:${c.scale}:${c.scaleX ?? 1}:${c.scaleY ?? 1}:${c.opacity}:${c.visible}`
     ).join("|");
   }, [clips]);
 

@@ -2,7 +2,15 @@
 
 import { useCallback, useRef, useState } from "react";
 import { downloadBlob } from "@/shared/utils";
-import type { Clip, MaskData, PlaybackState, VideoProject, VideoTrack } from "../types";
+import {
+  getClipScaleX,
+  getClipScaleY,
+  type Clip,
+  type MaskData,
+  type PlaybackState,
+  type VideoProject,
+  type VideoTrack,
+} from "../types";
 
 export type VideoExportFormat = "mp4" | "mov";
 
@@ -435,6 +443,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
             if (img && img.complete && img.naturalWidth > 0) sourceEl = img;
           }
           if (!sourceEl) continue;
+          const clipScaleX = getClipScaleX(clip);
+          const clipScaleY = getClipScaleY(clip);
 
           const maskData = getMaskForExport(clip.trackId, frameTime);
           if (maskData && exportMaskTmpCtx) {
@@ -447,8 +457,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
                 sourceEl,
                 clip.position.x,
                 clip.position.y,
-                clip.sourceSize.width * clip.scale,
-                clip.sourceSize.height * clip.scale
+                clip.sourceSize.width * clipScaleX,
+                clip.sourceSize.height * clipScaleY
               );
               exportMaskTmpCtx.globalCompositeOperation = "destination-in";
               exportMaskTmpCtx.drawImage(maskImg, 0, 0, exportCanvas.width, exportCanvas.height);
@@ -464,8 +474,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
               sourceEl,
               clip.position.x,
               clip.position.y,
-              clip.sourceSize.width * clip.scale,
-              clip.sourceSize.height * clip.scale
+              clip.sourceSize.width * clipScaleX,
+              clip.sourceSize.height * clipScaleY
             );
             exportCtx.globalAlpha = 1;
           }

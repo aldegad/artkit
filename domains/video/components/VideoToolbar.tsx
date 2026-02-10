@@ -2,7 +2,8 @@
 
 import Tooltip from "../../../shared/components/Tooltip";
 import {
-  CursorIcon,
+  MoveIcon,
+  TransformIcon,
   HandIcon,
   ZoomSearchIcon,
   CropIcon,
@@ -34,6 +35,8 @@ interface VideoToolbarProps {
   translations: {
     select: string;
     selectDesc: string;
+    transform: string;
+    transformDesc: string;
     hand: string;
     handDesc: string;
     zoomInOut: string;
@@ -69,7 +72,15 @@ export default function VideoToolbar({
       description: t.selectDesc,
       shortcut: "V",
       keys: ["Drag: Move clip", "Alt+Drag: Duplicate"],
-      icon: <CursorIcon />,
+      icon: <MoveIcon />,
+    },
+    {
+      mode: "transform",
+      name: t.transform,
+      description: t.transformDesc,
+      shortcut: "T",
+      keys: ["⌘T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
+      icon: <TransformIcon />,
     },
     {
       mode: "hand",
@@ -99,7 +110,7 @@ export default function VideoToolbar({
       mode: "trim",
       name: t.trim,
       description: t.trimDesc,
-      shortcut: "T",
+      shortcut: "Y",
       keys: ["Drag edges: Adjust in/out points"],
       icon: <TrimToolIcon />,
     },

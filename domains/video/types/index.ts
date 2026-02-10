@@ -13,6 +13,8 @@ export {
   createImageClip,
   getSourceTime,
   isTimeInClip,
+  getClipScaleX,
+  getClipScaleY,
 } from "./clip";
 
 // Track types
