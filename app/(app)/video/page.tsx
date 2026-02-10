@@ -28,6 +28,7 @@ import {
   VideoMenuBar,
   VideoToolbar,
   VideoExportModal,
+  VideoInterpolationModal,
   MaskControls,
   VideoSplitContainer,
   VideoFloatingWindows,
@@ -427,6 +428,8 @@ function VideoEditorContent() {
   const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality,
   );
+  const [showInterpolationModal, setShowInterpolationModal] = useState(false);
+  const [interpolationSteps, setInterpolationSteps] = useState(1);
   const [isInterpolatingGap, setIsInterpolatingGap] = useState(false);
   const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
   const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
@@ -1031,7 +1034,7 @@ function VideoEditorContent() {
     if (duplicatedMaskIds.length > 0) selectMasksForTimeline(duplicatedMaskIds);
   }, [selectedClipIds, selectedMaskIds, clips, saveToHistory, addClips, selectClips, selectMasksForTimeline, duplicateMask, masksMap, updateMaskTime]);
 
-  const handleInterpolateClipGap = useCallback(async () => {
+  const handleInterpolateClipGap = useCallback(() => {
     if (isInterpolatingGap) return;
 
     if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) {
@@ -1052,7 +1055,16 @@ function VideoEditorContent() {
       return;
     }
 
-    const { firstClip, secondClip, gapDuration, suggestedSteps } = gapInterpolationAnalysis;
+    setInterpolationSteps(gapInterpolationAnalysis.suggestedSteps);
+    setShowInterpolationModal(true);
+  }, [isInterpolatingGap, gapInterpolationAnalysis]);
+
+  const handleConfirmInterpolation = useCallback(async () => {
+    if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) return;
+
+    const { firstClip, secondClip, gapDuration } = gapInterpolationAnalysis;
+    setShowInterpolationModal(false);
+
     if (playback.isPlaying) {
       pause();
     }
@@ -1075,7 +1087,7 @@ function VideoEditorContent() {
       const generatedFrames = await interpolateFramesWithAI({
         fromImageData: fromFrame.dataUrl,
         toImageData: toFrame.dataUrl,
-        steps: suggestedSteps,
+        steps: interpolationSteps,
         quality: videoInterpolationQuality,
         onProgress: (progress, status) => {
           setGapInterpolationProgress(Math.max(0, Math.min(90, progress)));
@@ -1142,15 +1154,15 @@ function VideoEditorContent() {
       }, 1500);
     }
   }, [
-    isInterpolatingGap,
     gapInterpolationAnalysis,
     playback.isPlaying,
     pause,
+    interpolationSteps,
+    videoInterpolationQuality,
     t.interpolationProgress,
     t.saving,
     t.interpolationFailed,
     project.frameRate,
-    videoInterpolationQuality,
     saveToHistory,
     addClips,
     selectClips,
@@ -1353,6 +1365,7 @@ function VideoEditorContent() {
     updateAISettings({ frameInterpolationQuality: quality });
   }, []);
 
+
   // Auto-pause when app/window loses foreground to prevent lingering audio playback.
   useEffect(() => {
     const pausePlaybackIfNeeded = () => {
@@ -1468,9 +1481,6 @@ function VideoEditorContent() {
     timeline: t.timeline,
     previewVideoCache: t.previewVideoCache,
     resetLayout: t.resetLayout,
-    frameInterpolation: t.frameInterpolation,
-    interpolationQualityFast: t.interpolationQualityFast,
-    interpolationQualityHigh: t.interpolationQualityHigh,
   };
 
   const toolbarTranslations = {
@@ -1543,8 +1553,6 @@ function VideoEditorContent() {
             onResetLayout={resetLayout}
             onTogglePreviewCache={togglePreviewPreRender}
             previewCacheEnabled={previewPreRenderEnabled}
-            interpolationQuality={videoInterpolationQuality}
-            onSetInterpolationQuality={handleVideoInterpolationQualityChange}
             translations={menuTranslations}
           />
         }
@@ -1847,24 +1855,34 @@ function VideoEditorContent() {
         }}
       />
 
-      {isInterpolatingGap && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm">
-          <div className="bg-surface-primary border border-border-default rounded-lg shadow-lg p-5 min-w-[280px] max-w-[360px]">
-            <div className="flex items-center gap-2 text-sm text-text-secondary mb-2">
-              <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
-              <span>{t.frameInterpolation}</span>
-            </div>
-            <div className="text-xs text-text-tertiary mb-2">{gapInterpolationStatus}</div>
-            <div className="w-full h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent-primary rounded-full transition-all"
-                style={{ width: `${Math.max(0, Math.min(100, gapInterpolationProgress))}%` }}
-              />
-            </div>
-            <div className="text-xs text-text-tertiary mt-2 text-right">{Math.round(gapInterpolationProgress)}%</div>
-          </div>
-        </div>
-      )}
+      <VideoInterpolationModal
+        open={showInterpolationModal}
+        onClose={() => setShowInterpolationModal(false)}
+        onConfirm={handleConfirmInterpolation}
+        gapDuration={gapInterpolationAnalysis.gapDuration}
+        suggestedSteps={gapInterpolationAnalysis.suggestedSteps}
+        steps={interpolationSteps}
+        quality={videoInterpolationQuality}
+        onStepsChange={setInterpolationSteps}
+        onQualityChange={handleVideoInterpolationQualityChange}
+        isInterpolating={isInterpolatingGap}
+        progress={gapInterpolationProgress}
+        status={gapInterpolationStatus}
+        translations={{
+          frameInterpolation: t.frameInterpolation,
+          frameInterpolationDescription: t.frameInterpolationDescription,
+          interpolationSteps: t.interpolationSteps,
+          interpolationQuality: t.interpolationQuality,
+          qualityFast: t.interpolationQualityFast,
+          qualityHigh: t.interpolationQualityHigh,
+          qualityFastHint: t.interpolationQualityFastHint,
+          qualityHighHint: t.interpolationQualityHighHint,
+          estimatedFrames: t.interpolationEstimatedFrames,
+          firstRunDownload: t.firstRunDownload,
+          cancel: t.cancel,
+          generate: t.confirm,
+        }}
+      />
 
       {/* Save progress indicator */}
       {isSaving && saveProgress && (
