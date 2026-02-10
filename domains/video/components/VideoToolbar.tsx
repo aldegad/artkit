@@ -1,7 +1,16 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
-import { CursorIcon, CropIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon, DeleteIcon } from "@/shared/components/icons";
+import {
+  CursorIcon,
+  HandIcon,
+  ZoomSearchIcon,
+  CropIcon,
+  TrimToolIcon,
+  RazorToolIcon,
+  MaskToolIcon,
+  DeleteIcon,
+} from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
 
 interface ToolButton {
@@ -21,6 +30,10 @@ interface VideoToolbarProps {
   translations: {
     select: string;
     selectDesc: string;
+    hand: string;
+    handDesc: string;
+    zoomInOut: string;
+    zoomToolTip: string;
     crop: string;
     cropDesc: string;
     trim: string;
@@ -47,6 +60,22 @@ export default function VideoToolbar({
       shortcut: "V",
       keys: ["Drag: Move clip", "Alt+Drag: Duplicate"],
       icon: <CursorIcon />,
+    },
+    {
+      mode: "hand",
+      name: t.hand,
+      description: t.handDesc,
+      shortcut: "H",
+      keys: ["Drag: Pan preview"],
+      icon: <HandIcon />,
+    },
+    {
+      mode: "zoom",
+      name: t.zoomInOut,
+      description: t.zoomToolTip,
+      shortcut: "Z",
+      keys: ["Click: Zoom in", "Alt+Click: Zoom out"],
+      icon: <ZoomSearchIcon />,
     },
     {
       mode: "crop",

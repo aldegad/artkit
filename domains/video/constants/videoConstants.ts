@@ -21,8 +21,10 @@ export const TIMELINE = {
 // Preview constants
 export const PREVIEW = {
   MIN_ZOOM: 0.1,
-  MAX_ZOOM: 4,
+  MAX_ZOOM: 10,
   DEFAULT_ZOOM: 1,
+  ZOOM_STEP_IN: 1.25,
+  ZOOM_STEP_OUT: 0.8,
   CHECKERBOARD_SIZE: 10,
 } as const;
 
