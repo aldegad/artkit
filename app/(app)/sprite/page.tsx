@@ -36,7 +36,6 @@ import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import SpriteExportModal, {
   type SpriteExportOptions,
-  type SpriteExportType,
 } from "@/domains/sprite/components/SpriteExportModal";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
@@ -129,7 +128,6 @@ function SpriteEditorMain() {
   const [detectedOriginalFrameSize, setDetectedOriginalFrameSize] =
     useState<SpriteExportFrameSize | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [pendingExportType, setPendingExportType] = useState<SpriteExportType>("zip-png");
 
   // File input ref for menu-triggered image import
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -360,23 +358,10 @@ function SpriteEditorMain() {
     };
   }, [firstFrameImage, imageSize.height, imageSize.width]);
 
-  const openExportModal = useCallback((type: SpriteExportType) => {
+  const openExportModal = useCallback(() => {
     if (!hasRenderableFrames) return;
-    setPendingExportType(type);
     setIsExportModalOpen(true);
   }, [hasRenderableFrames]);
-
-  const exportZip = useCallback(() => {
-    openExportModal("zip-png");
-  }, [openExportModal]);
-
-  const exportSpriteSheet = useCallback(() => {
-    openExportModal("sheet-png");
-  }, [openExportModal]);
-
-  const exportSpriteSheetWebp = useCallback(() => {
-    openExportModal("sheet-webp");
-  }, [openExportModal]);
 
   const handleExportConfirm = useCallback(async (options: SpriteExportOptions) => {
     if (!hasRenderableFrames) {
@@ -386,14 +371,14 @@ function SpriteEditorMain() {
     const baseName = options.fileName.trim() || projectName.trim() || "sprite-project";
 
     try {
-      if (pendingExportType === "zip-png") {
+      if (options.exportType === "zip-png") {
         await downloadCompositedFramesAsZip(tracks, baseName, {
           frameSize: options.frameSize ?? undefined,
           appendFrameCount: options.appendFrameCount,
         });
       } else {
         await downloadCompositedSpriteSheet(tracks, baseName, {
-          format: pendingExportType === "sheet-webp" ? "webp" : "png",
+          format: options.exportType === "sheet-webp" ? "webp" : "png",
           frameSize: options.frameSize ?? undefined,
           appendFrameCount: options.appendFrameCount,
         });
@@ -406,7 +391,6 @@ function SpriteEditorMain() {
     }
   }, [
     hasRenderableFrames,
-    pendingExportType,
     projectName,
     tracks,
     t.noFramesToSave,
@@ -703,9 +687,7 @@ function SpriteEditorMain() {
             onLoad={() => setIsProjectListOpen(true)}
             onSave={saveProject}
             onSaveAs={saveProjectAs}
-            onExportZip={exportZip}
-            onExportSpriteSheet={exportSpriteSheet}
-            onExportSpriteSheetWebp={exportSpriteSheetWebp}
+            onExport={openExportModal}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -887,7 +869,6 @@ function SpriteEditorMain() {
 
       <SpriteExportModal
         isOpen={isExportModalOpen}
-        exportType={pendingExportType}
         defaultFileName={projectName.trim() || "sprite-project"}
         defaultFrameSize={exportFrameSize}
         originalFrameSize={detectedOriginalFrameSize}

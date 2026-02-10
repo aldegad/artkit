@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Modal } from "@/shared/components";
+import { ExportModal } from "@/shared/components";
 import type { SpriteExportFrameSize } from "../utils/export";
 
 export type SpriteExportType = "zip-png" | "sheet-png" | "sheet-webp";
@@ -10,11 +10,11 @@ export interface SpriteExportOptions {
   fileName: string;
   appendFrameCount: boolean;
   frameSize: SpriteExportFrameSize | null;
+  exportType: SpriteExportType;
 }
 
 interface SpriteExportModalProps {
   isOpen: boolean;
-  exportType: SpriteExportType;
   defaultFileName: string;
   defaultFrameSize: SpriteExportFrameSize | null;
   originalFrameSize?: SpriteExportFrameSize | null;
@@ -26,12 +26,6 @@ interface SpriteExportModalProps {
 
 const DEFAULT_MAX_FRAME_SIZE = 16384;
 
-function getExportLabel(type: SpriteExportType): string {
-  if (type === "zip-png") return "PNG ZIP";
-  if (type === "sheet-webp") return "Sprite Sheet (WebP)";
-  return "Sprite Sheet (PNG)";
-}
-
 function getExportExtension(type: SpriteExportType): string {
   if (type === "zip-png") return "zip";
   if (type === "sheet-webp") return "webp";
@@ -40,7 +34,6 @@ function getExportExtension(type: SpriteExportType): string {
 
 export default function SpriteExportModal({
   isOpen,
-  exportType,
   defaultFileName,
   defaultFrameSize,
   originalFrameSize = null,
@@ -50,6 +43,7 @@ export default function SpriteExportModal({
   maxFrameSize = DEFAULT_MAX_FRAME_SIZE,
 }: SpriteExportModalProps) {
   const [fileName, setFileName] = useState("");
+  const [exportType, setExportType] = useState<SpriteExportType>("zip-png");
   const [appendFrameCount, setAppendFrameCount] = useState(true);
   const [useOriginalFrameSize, setUseOriginalFrameSize] = useState(true);
   const [keepOriginalAspectRatio, setKeepOriginalAspectRatio] = useState(true);
@@ -98,6 +92,7 @@ export default function SpriteExportModal({
   useEffect(() => {
     if (!isOpen) return;
     setFileName(safeDefaultFileName);
+    setExportType("zip-png");
     setAppendFrameCount(true);
     setKeepOriginalAspectRatio(true);
     const hasCustomFrameSize = Boolean(normalizedDefaultFrameSize);
@@ -106,7 +101,7 @@ export default function SpriteExportModal({
     setHeightInput(hasCustomFrameSize ? String(normalizedDefaultFrameSize?.height ?? "") : "");
     setErrorMessage("");
     setIsSubmitting(false);
-  }, [isOpen, safeDefaultFileName, normalizedDefaultFrameSize, exportType]);
+  }, [isOpen, safeDefaultFileName, normalizedDefaultFrameSize]);
 
   const clampDimension = useCallback(
     (value: number): number => {
@@ -234,6 +229,7 @@ export default function SpriteExportModal({
         fileName: fileName.trim() || safeDefaultFileName,
         appendFrameCount,
         frameSize,
+        exportType,
       });
       onClose();
     } catch (error) {
@@ -247,6 +243,7 @@ export default function SpriteExportModal({
     }
   }, [
     appendFrameCount,
+    exportType,
     fileName,
     heightInput,
     isSubmitting,
@@ -258,44 +255,31 @@ export default function SpriteExportModal({
     widthInput,
   ]);
 
-  const footer = (
-    <div className="flex items-center justify-end gap-2">
-      <button
-        onClick={onClose}
-        disabled={isSubmitting}
-        className="px-4 py-2 bg-surface-secondary hover:bg-surface-tertiary text-text-primary rounded-lg text-sm transition-colors disabled:opacity-50"
-      >
-        Cancel
-      </button>
-      <button
-        onClick={handleConfirm}
-        disabled={isSubmitting}
-        className="px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-      >
-        {isSubmitting ? "Exporting..." : "Export"}
-      </button>
-    </div>
-  );
+  const fileSuffix = `.${getExportExtension(exportType)}`;
 
   return (
-    <Modal
+    <ExportModal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Export ${getExportLabel(exportType)}`}
-      width="480px"
-      footer={footer}
-      contentClassName="flex flex-col gap-4 p-4"
+      onExport={handleConfirm}
+      title="Export"
+      fileName={fileName}
+      onFileNameChange={setFileName}
+      fileSuffix={fileSuffix}
+      fileNameLabel="File Name"
+      formatLabel="Format"
+      formatOptions={[
+        { value: "zip-png", label: "PNG ZIP" },
+        { value: "sheet-png", label: "Sprite Sheet (PNG)" },
+        { value: "sheet-webp", label: "Sprite Sheet (WebP)" },
+      ]}
+      formatValue={exportType}
+      onFormatChange={(v) => setExportType(v as SpriteExportType)}
+      isExporting={isSubmitting}
+      cancelLabel="Cancel"
+      exportLabel="Export"
     >
-      <div className="flex flex-col gap-1">
-        <label className="text-xs text-text-secondary">File Name</label>
-        <input
-          value={fileName}
-          onChange={(e) => setFileName(e.target.value)}
-          disabled={isSubmitting}
-          className="w-full px-3 py-2 rounded-lg bg-surface-secondary border border-border-default text-sm text-text-primary focus:outline-none focus:border-accent-primary"
-        />
-      </div>
-
+      {/* Append frame count */}
       <label className="flex items-center gap-2 text-sm text-text-primary">
         <input
           type="checkbox"
@@ -307,6 +291,7 @@ export default function SpriteExportModal({
         파일명 뒤에 총 프레임수 붙이기
       </label>
 
+      {/* Per-frame Size */}
       <div className="flex flex-col gap-2 rounded-lg border border-border-default p-3 bg-surface-secondary/40">
         <div className="text-sm font-medium text-text-primary">Per-frame Size</div>
         <label className="flex items-center gap-2 text-sm text-text-primary">
@@ -358,13 +343,15 @@ export default function SpriteExportModal({
         )}
       </div>
 
+      {/* Output preview */}
       <div className="text-xs text-text-tertiary">
         Output: <span className="text-text-secondary">{previewFileName}</span>
       </div>
 
+      {/* Error message */}
       {errorMessage && (
         <div className="text-xs text-red-400">{errorMessage}</div>
       )}
-    </Modal>
+    </ExportModal>
   );
 }
