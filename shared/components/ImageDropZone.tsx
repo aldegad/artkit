@@ -67,6 +67,7 @@ export default function ImageDropZone({
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const acceptParts = accept.split(",").map((a) => a.trim());
       const files = Array.from(e.dataTransfer.files).filter((f) =>
         acceptParts.some((a) => {
@@ -84,6 +85,7 @@ export default function ImageDropZone({
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
   }, []);
 
   const handleClick = useCallback(() => {
