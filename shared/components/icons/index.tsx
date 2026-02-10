@@ -58,6 +58,7 @@ export {
   OffsetIcon,
   FrameSkipToggleIcon,
   NthFrameSkipIcon,
+  FlipIcon,
 } from "./editorTools";
 
 // Layers & Alignment

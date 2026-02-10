@@ -1,10 +1,10 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
-import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, MenuIcon, PlusIcon } from "../../../shared/components/icons";
+import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, PlusIcon, FlipIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
 import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
@@ -130,7 +130,7 @@ const FrameCard = memo(function FrameCard({
 export default function FrameStrip() {
   const {
     frames, setFrames, nextFrameId, setNextFrameId,
-    selectedFrameId, setSelectedFrameId,
+    setSelectedFrameId,
     selectedFrameIds, setSelectedFrameIds,
     toggleSelectedFrameId, selectFrameRange,
   } = useEditorFramesMeta();
@@ -153,27 +153,7 @@ export default function FrameStrip() {
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
   const { t } = useLanguage();
 
-  // Compact mode
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [isToolbarCompact, setIsToolbarCompact] = useState(false);
-  const [showCompactNth, setShowCompactNth] = useState(false);
-
   const getCurrentFrameIndex = useCallback(() => useSpriteTrackStore.getState().currentFrameIndex, []);
-
-  const TOOLBAR_COMPACT_BREAKPOINT = 320;
-
-  // Toolbar compact mode detection
-  useEffect(() => {
-    const el = toolbarRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setIsToolbarCompact(entry.contentRect.width < TOOLBAR_COMPACT_BREAKPOINT);
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   // Throttle visual frame indicator updates while playing to reduce timeline grid re-renders.
   useEffect(() => {
@@ -301,21 +281,52 @@ export default function FrameStrip() {
     setEditingOffsetFrameId(null);
   }, [setEditingOffsetFrameId]);
 
-  // Delete active frame
+  // Delete selected frames (if any) or active frame
   const deleteActiveFrame = useCallback(() => {
     const currentFrameIndex = getCurrentFrameIndex();
     if (frames.length === 0) return;
-    const frame = frames[currentFrameIndex];
-    if (!frame) return;
+    const currentFrame = frames[currentFrameIndex];
+    if (!currentFrame) return;
+
+    const selectedIdSet = new Set(selectedFrameIds);
+    const selectedExistingIds = frames
+      .filter((frame: SpriteFrame) => selectedIdSet.has(frame.id))
+      .map((frame: SpriteFrame) => frame.id);
+
+    const frameIdsToDelete =
+      selectedExistingIds.length > 0 ? selectedExistingIds : [currentFrame.id];
+    const deleteSet = new Set(frameIdsToDelete);
+
+    const newFrames = frames.filter((frame: SpriteFrame) => !deleteSet.has(frame.id));
+    if (newFrames.length === frames.length) return;
+
+    const removedBeforeCurrent = frames.reduce(
+      (count: number, frame: SpriteFrame, idx: number) =>
+        idx < currentFrameIndex && deleteSet.has(frame.id) ? count + 1 : count,
+      0,
+    );
+    const shiftedIndex = currentFrameIndex - removedBeforeCurrent;
+    const nextFrameIndex =
+      newFrames.length === 0
+        ? 0
+        : Math.max(0, Math.min(shiftedIndex, newFrames.length - 1));
+    const nextFrameId = newFrames[nextFrameIndex]?.id ?? null;
+
     pushHistory();
-    setFrames((prev: SpriteFrame[]) => prev.filter((f: SpriteFrame) => f.id !== frame.id));
-    if (selectedFrameId === frame.id) {
-      setSelectedFrameId(null);
-    }
-    if (currentFrameIndex >= frames.length - 1 && currentFrameIndex > 0) {
-      setCurrentFrameIndex(currentFrameIndex - 1);
-    }
-  }, [frames, getCurrentFrameIndex, setFrames, selectedFrameId, setSelectedFrameId, pushHistory, setCurrentFrameIndex]);
+    setFrames(newFrames);
+    setCurrentFrameIndex(nextFrameIndex);
+    setSelectedFrameId(nextFrameId);
+    setSelectedFrameIds(nextFrameId !== null ? [nextFrameId] : []);
+  }, [
+    frames,
+    getCurrentFrameIndex,
+    selectedFrameIds,
+    pushHistory,
+    setFrames,
+    setCurrentFrameIndex,
+    setSelectedFrameId,
+    setSelectedFrameIds,
+  ]);
 
   const addEmptyFrame = useCallback(() => {
     if (!activeTrackId) return;
@@ -619,149 +630,190 @@ export default function FrameStrip() {
       onMouseLeave={handleOffsetMouseUp}
     >
       {/* Mini toolbar */}
-      <div ref={toolbarRef} className="border-b border-border-default shrink-0 bg-surface-secondary/50">
-        {isToolbarCompact ? (
-          /* Compact mode */
-          <div className="flex items-center gap-1.5 px-2 py-1.5">
-            {/* Frame indicator - always visible */}
-            <span className="text-xs text-text-secondary font-mono tabular-nums whitespace-nowrap">
-              {frames.length > 0 ? `${displayCurrentFrameIndex + 1}/${frames.length}` : "0"}
+      <div className="border-b border-border-default shrink-0 bg-surface-secondary/50">
+        <Scrollbar overflow={{ x: "scroll", y: "hidden" }}>
+          <div className="flex items-center gap-1.5 px-2 py-1.5 whitespace-nowrap">
+            {/* Frame indicator */}
+            <span className="text-xs text-text-secondary font-mono tabular-nums">
+              {frames.length > 0 ? `${displayCurrentFrameIndex + 1} / ${frames.length}` : "0"}
+              {selectedFrameIds.length > 1 && (
+                <span className="text-accent-primary ml-1">({selectedFrameIds.length} sel)</span>
+              )}
+              {disabledCount > 0 && (
+                <span className="text-text-tertiary ml-1">({disabledCount} skip)</span>
+              )}
             </span>
 
             <div className="flex-1" />
 
-            {/* Compact menu */}
-            <Popover
-              trigger={
-                <button className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors" title="Frame tools">
-                  <MenuIcon className="w-3.5 h-3.5" />
-                </button>
-              }
-              align="end"
-              side="bottom"
-              closeOnScroll={false}
-            >
-              <div className="flex flex-col gap-0.5 p-1.5 min-w-[200px]">
-                {/* Skip selected */}
-                {selectedFrameIds.length > 1 && (
+            {/* Toggle disabled on selected frames */}
+            {selectedFrameIds.length > 1 && (
+              <button
+                onClick={toggleSelectedFramesDisabled}
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-warning transition-colors"
+                title="선택된 프레임 건너뛰기 토글"
+              >
+                Skip
+              </button>
+            )}
+
+            {/* Flip tool (combined H/V) */}
+            {selectedFrameIds.length > 0 && (
+              <Popover
+                trigger={
                   <button
-                    onClick={toggleSelectedFramesDisabled}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                    disabled={isFlippingFrames}
+                    className="p-1 rounded text-text-tertiary hover:text-accent-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="선택된 프레임 반전"
                   >
-                    <FrameSkipToggleIcon className="w-3.5 h-3.5" />
-                    Skip selected ({selectedFrameIds.length})
+                    <FlipIcon className="w-3.5 h-3.5" />
                   </button>
-                )}
-                {selectedFrameIds.length > 0 && (
-                  <>
-                    <button
-                      onClick={() => void flipSelectedFrames("horizontal")}
-                      disabled={isFlippingFrames}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isFlippingFrames ? "Flipping..." : `Flip selected H (${selectedFrameIds.length})`}
-                    </button>
-                    <button
-                      onClick={() => void flipSelectedFrames("vertical")}
-                      disabled={isFlippingFrames}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Flip selected V ({selectedFrameIds.length})
-                    </button>
-                  </>
-                )}
-                {/* Reset all skips */}
-                {disabledCount > 0 && (
-                  <>
-                    <button
-                      onClick={clearAllDisabled}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-accent-warning hover:bg-interactive-hover transition-colors"
-                    >
-                      Reset all skips ({disabledCount})
-                    </button>
-                    <button
-                      onClick={deleteDisabledFrames}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-accent-danger hover:bg-accent-danger/10 transition-colors"
-                    >
-                      <DeleteIcon className="w-3.5 h-3.5" />
-                      Delete skipped ({disabledCount})
-                    </button>
-                  </>
-                )}
-                {(selectedFrameIds.length > 0 || disabledCount > 0) && (
-                  <div className="h-px bg-border-default mx-1" />
-                )}
-                {/* Show active only */}
+                }
+                align="end"
+                side="bottom"
+                closeOnScroll={false}
+              >
+                <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
+                  <button
+                    onClick={() => void flipSelectedFrames("horizontal")}
+                    disabled={isFlippingFrames}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isFlippingFrames ? "Flipping..." : `Flip H (${selectedFrameIds.length})`}
+                  </button>
+                  <button
+                    onClick={() => void flipSelectedFrames("vertical")}
+                    disabled={isFlippingFrames}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isFlippingFrames ? "Flipping..." : `Flip V (${selectedFrameIds.length})`}
+                  </button>
+                </div>
+              </Popover>
+            )}
+
+            {/* Clear all disabled */}
+            {disabledCount > 0 && (
+              <>
                 <button
-                  onClick={() => setShowActiveOnly(!showActiveOnly)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                  onClick={clearAllDisabled}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
+                  title="모든 건너뛰기 해제"
                 >
-                  {showActiveOnly ? <EyeClosedIcon className="w-3.5 h-3.5" /> : <EyeOpenIcon className="w-3.5 h-3.5" />}
-                  {showActiveOnly ? "Show all frames" : "Show active only"}
-                  {showActiveOnly && <span className="ml-auto text-[10px] text-accent-primary">ON</span>}
+                  Reset
                 </button>
-                {/* Skip toggle mode */}
+                <Tooltip content={`스킵된 프레임 일괄 삭제 (${disabledCount})`}>
+                  <button
+                    onClick={deleteDisabledFrames}
+                    className="p-1 rounded text-text-tertiary hover:text-accent-danger transition-colors"
+                    aria-label="Delete skipped frames"
+                  >
+                    <DeleteIcon className="w-3.5 h-3.5" />
+                  </button>
+                </Tooltip>
+              </>
+            )}
+
+            {/* Show active only toggle */}
+            <Tooltip content={showActiveOnly ? "모든 프레임 보기" : "활성 프레임만 보기"}>
+              <button
+                onClick={() => setShowActiveOnly(!showActiveOnly)}
+                className={`p-1 rounded transition-colors ${
+                  showActiveOnly
+                    ? "bg-accent-primary/15 text-accent-primary"
+                    : "text-text-tertiary hover:text-text-secondary"
+                }`}
+                aria-label={showActiveOnly ? "Show all frames" : "Show only active frames"}
+              >
+                {showActiveOnly ? (
+                  <EyeClosedIcon className="w-3.5 h-3.5" />
+                ) : (
+                  <EyeOpenIcon className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </Tooltip>
+
+            <Tooltip content={isSkipToggleMode ? "프레임 스킵 토글 모드 해제" : "프레임 스킵 토글 모드 (클릭으로 프레임 스킵/표시 전환)"}>
+              <button
+                onClick={() => setIsSkipToggleMode(!isSkipToggleMode)}
+                className={`p-1 rounded transition-colors ${
+                  isSkipToggleMode
+                    ? "bg-accent-warning/20 text-accent-warning"
+                    : "text-text-tertiary hover:text-text-secondary"
+                }`}
+                aria-label="Toggle frame skip mode"
+              >
+                <FrameSkipToggleIcon className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
+
+            {/* Nth skip */}
+            <div className="relative">
+              <Tooltip content="N번째 프레임만 유지하고 나머지 스킵">
                 <button
-                  onClick={() => setIsSkipToggleMode(!isSkipToggleMode)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
-                >
-                  <FrameSkipToggleIcon className="w-3.5 h-3.5" />
-                  Frame skip toggle
-                  {isSkipToggleMode && <span className="ml-auto text-[10px] text-accent-warning">ON</span>}
-                </button>
-                {/* Nth skip */}
-                <button
-                  onClick={() => setShowCompactNth(!showCompactNth)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                  onClick={() => setShowNthPopover(!showNthPopover)}
+                  className={`p-1 rounded transition-colors ${
+                    showNthPopover
+                      ? "bg-accent-primary/15 text-accent-primary"
+                      : "text-text-tertiary hover:text-text-secondary"
+                  }`}
+                  aria-label="Nth frame skip settings"
                 >
                   <NthFrameSkipIcon className="w-3.5 h-3.5" />
-                  Nth frame skip
                 </button>
-                {showCompactNth && (
-                  <div className="px-2 py-1.5">
-                    <div className="text-[10px] text-text-tertiary mb-1">현재 프레임부터 매 N번째 외 건너뛰기</div>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min={2}
-                        max={frames.length}
-                        value={nthValue}
-                        onChange={(e) => setNthValue(Math.max(2, Number(e.target.value)))}
-                        className="w-12 px-1.5 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
-                      />
-                      <button
-                        onClick={applyNthSkip}
-                        className="flex-1 px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-[10px] transition-colors"
-                      >
-                        적용
-                      </button>
-                    </div>
+              </Tooltip>
+              {showNthPopover && (
+                <div className="absolute right-0 top-full mt-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg p-2 z-20 min-w-[160px]">
+                  <div className="text-[10px] text-text-secondary mb-1.5">
+                    현재 프레임부터 매 N번째 외 건너뛰기
                   </div>
-                )}
-                <div className="h-px bg-border-default mx-1" />
-                <button
-                  onClick={addEmptyFrame}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
-                >
-                  <PlusIcon className="w-3.5 h-3.5" />
-                  Add empty frame
-                </button>
-                {/* Delete */}
-                <button
-                  onClick={deleteActiveFrame}
-                  disabled={frames.length === 0}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-accent-danger hover:bg-accent-danger/10 disabled:opacity-30 transition-colors"
-                >
-                  <DeleteIcon className="w-3.5 h-3.5" />
-                  {t.deleteFrame}
-                </button>
-              </div>
-            </Popover>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={2}
+                      max={frames.length}
+                      value={nthValue}
+                      onChange={(e) => setNthValue(Math.max(2, Number(e.target.value)))}
+                      className="w-12 px-1.5 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
+                    />
+                    <button
+                      onClick={applyNthSkip}
+                      className="flex-1 px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-[10px] transition-colors"
+                    >
+                      적용
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Add empty frame */}
+            <Tooltip content="빈 프레임 추가">
+              <button
+                onClick={addEmptyFrame}
+                className="p-1 rounded text-text-tertiary hover:text-text-primary transition-colors"
+                aria-label="Add empty frame"
+              >
+                <PlusIcon className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
+
+            {/* Delete active frame */}
+            <Tooltip content={t.deleteFrame}>
+              <button
+                onClick={deleteActiveFrame}
+                disabled={frames.length === 0}
+                className="p-1 rounded text-text-tertiary hover:text-accent-danger disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                aria-label={t.deleteFrame}
+              >
+                <DeleteIcon className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
 
             {/* Separator */}
             <div className="w-px h-4 bg-border-default" />
 
-            {/* Mode toggle - always visible */}
+            {/* Mode toggle (icon-based) */}
             <div className="flex gap-0.5 bg-surface-tertiary rounded p-0.5">
               <Tooltip content="프레임 순서 변경">
                 <button
@@ -791,208 +843,7 @@ export default function FrameStrip() {
               </Tooltip>
             </div>
           </div>
-        ) : (
-          /* Normal mode */
-          <Scrollbar overflow={{ x: "scroll", y: "hidden" }}>
-            <div className="flex items-center gap-1.5 px-2 py-1.5 whitespace-nowrap">
-              {/* Frame indicator */}
-              <span className="text-xs text-text-secondary font-mono tabular-nums">
-                {frames.length > 0 ? `${displayCurrentFrameIndex + 1} / ${frames.length}` : "0"}
-                {selectedFrameIds.length > 1 && (
-                  <span className="text-accent-primary ml-1">({selectedFrameIds.length} sel)</span>
-                )}
-                {disabledCount > 0 && (
-                  <span className="text-text-tertiary ml-1">({disabledCount} skip)</span>
-                )}
-              </span>
-
-              <div className="flex-1" />
-
-              {/* Toggle disabled on selected frames */}
-              {selectedFrameIds.length > 1 && (
-                <button
-                  onClick={toggleSelectedFramesDisabled}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-warning transition-colors"
-                  title="선택된 프레임 건너뛰기 토글"
-                >
-                  Skip
-                </button>
-              )}
-
-              {selectedFrameIds.length > 0 && (
-                <>
-                  <button
-                    onClick={() => void flipSelectedFrames("horizontal")}
-                    disabled={isFlippingFrames}
-                    className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    title="선택된 프레임 이미지 좌우 반전"
-                  >
-                    {isFlippingFrames ? "Flipping" : "Flip H"}
-                  </button>
-                  <button
-                    onClick={() => void flipSelectedFrames("vertical")}
-                    disabled={isFlippingFrames}
-                    className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    title="선택된 프레임 이미지 상하 반전"
-                  >
-                    Flip V
-                  </button>
-                </>
-              )}
-
-              {/* Clear all disabled */}
-              {disabledCount > 0 && (
-                <>
-                  <button
-                    onClick={clearAllDisabled}
-                    className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
-                    title="모든 건너뛰기 해제"
-                  >
-                    Reset
-                  </button>
-                  <Tooltip content={`스킵된 프레임 일괄 삭제 (${disabledCount})`}>
-                    <button
-                      onClick={deleteDisabledFrames}
-                      className="p-1 rounded text-text-tertiary hover:text-accent-danger transition-colors"
-                      aria-label="Delete skipped frames"
-                    >
-                      <DeleteIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </Tooltip>
-                </>
-              )}
-
-              {/* Show active only toggle */}
-              <Tooltip content={showActiveOnly ? "모든 프레임 보기" : "활성 프레임만 보기"}>
-                <button
-                  onClick={() => setShowActiveOnly(!showActiveOnly)}
-                  className={`p-1 rounded transition-colors ${
-                    showActiveOnly
-                      ? "bg-accent-primary/15 text-accent-primary"
-                      : "text-text-tertiary hover:text-text-secondary"
-                  }`}
-                  aria-label={showActiveOnly ? "Show all frames" : "Show only active frames"}
-                >
-                  {showActiveOnly ? (
-                    <EyeClosedIcon className="w-3.5 h-3.5" />
-                  ) : (
-                    <EyeOpenIcon className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </Tooltip>
-
-              <Tooltip content={isSkipToggleMode ? "프레임 스킵 토글 모드 해제" : "프레임 스킵 토글 모드 (클릭으로 프레임 스킵/표시 전환)"}>
-                <button
-                  onClick={() => setIsSkipToggleMode(!isSkipToggleMode)}
-                  className={`p-1 rounded transition-colors ${
-                    isSkipToggleMode
-                      ? "bg-accent-warning/20 text-accent-warning"
-                      : "text-text-tertiary hover:text-text-secondary"
-                  }`}
-                  aria-label="Toggle frame skip mode"
-                >
-                  <FrameSkipToggleIcon className="w-3.5 h-3.5" />
-                </button>
-              </Tooltip>
-
-              {/* Nth skip */}
-              <div className="relative">
-                <Tooltip content="N번째 프레임만 유지하고 나머지 스킵">
-                  <button
-                    onClick={() => setShowNthPopover(!showNthPopover)}
-                    className={`p-1 rounded transition-colors ${
-                      showNthPopover
-                        ? "bg-accent-primary/15 text-accent-primary"
-                        : "text-text-tertiary hover:text-text-secondary"
-                    }`}
-                    aria-label="Nth frame skip settings"
-                  >
-                    <NthFrameSkipIcon className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
-                {showNthPopover && (
-                  <div className="absolute right-0 top-full mt-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg p-2 z-20 min-w-[160px]">
-                    <div className="text-[10px] text-text-secondary mb-1.5">
-                      현재 프레임부터 매 N번째 외 건너뛰기
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        min={2}
-                        max={frames.length}
-                        value={nthValue}
-                        onChange={(e) => setNthValue(Math.max(2, Number(e.target.value)))}
-                        className="w-12 px-1.5 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
-                      />
-                      <button
-                        onClick={applyNthSkip}
-                        className="flex-1 px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-[10px] transition-colors"
-                      >
-                        적용
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Add empty frame */}
-              <Tooltip content="빈 프레임 추가">
-                <button
-                  onClick={addEmptyFrame}
-                  className="p-1 rounded text-text-tertiary hover:text-text-primary transition-colors"
-                  aria-label="Add empty frame"
-                >
-                  <PlusIcon className="w-3.5 h-3.5" />
-                </button>
-              </Tooltip>
-
-              {/* Delete active frame */}
-              <Tooltip content={t.deleteFrame}>
-                <button
-                  onClick={deleteActiveFrame}
-                  disabled={frames.length === 0}
-                  className="p-1 rounded text-text-tertiary hover:text-accent-danger disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  aria-label={t.deleteFrame}
-                >
-                  <DeleteIcon className="w-3.5 h-3.5" />
-                </button>
-              </Tooltip>
-
-              {/* Separator */}
-              <div className="w-px h-4 bg-border-default" />
-
-              {/* Mode toggle (icon-based) */}
-              <div className="flex gap-0.5 bg-surface-tertiary rounded p-0.5">
-                <Tooltip content="프레임 순서 변경">
-                  <button
-                    onClick={() => setTimelineMode("reorder")}
-                    className={`p-1 rounded transition-colors ${
-                      timelineMode === "reorder"
-                        ? "bg-accent-primary text-white"
-                        : "text-text-secondary hover:text-text-primary"
-                    }`}
-                    aria-label="Reorder mode"
-                  >
-                    <ReorderIcon className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="프레임 오프셋 이동">
-                  <button
-                    onClick={() => setTimelineMode("offset")}
-                    className={`p-1 rounded transition-colors ${
-                      timelineMode === "offset"
-                        ? "bg-accent-primary text-white"
-                        : "text-text-secondary hover:text-text-primary"
-                    }`}
-                    aria-label="Offset mode"
-                  >
-                    <OffsetIcon className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
-              </div>
-            </div>
-          </Scrollbar>
-        )}
+        </Scrollbar>
       </div>
 
       {/* Frame strip */}
@@ -1034,10 +885,10 @@ export default function FrameStrip() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onDragEnd={handleDragEnd}
-                onOffsetMouseDown={handleOffsetMouseDown}
-                onFrameClick={handleFrameClick}
-                onToggleDisabled={toggleFrameDisabled}
-              />
+                  onOffsetMouseDown={handleOffsetMouseDown}
+                  onFrameClick={handleFrameClick}
+                  onToggleDisabled={toggleFrameDisabled}
+                />
               ))
             )}
           </div>
