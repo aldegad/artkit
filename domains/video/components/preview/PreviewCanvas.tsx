@@ -52,6 +52,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
@@ -82,6 +83,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { startDraw, continueDraw, endDraw } = useMaskTool();
   const isHandTool = toolMode === "hand";
   const isZoomTool = toolMode === "zoom";
+  const isHandMode = isHandTool || isSpacePanning;
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
   const viewport = useCanvasViewport({
@@ -143,6 +145,46 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
     },
   });
+
+  const stopPanDrag = useCallback(() => {
+    if (!isPanningRef.current) return;
+    vpEndPanDrag();
+    isPanningRef.current = false;
+  }, [vpEndPanDrag]);
+
+  const handlePreviewKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.code !== "Space" || e.repeat) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    const target = e.target as HTMLElement;
+    const isInteractiveElement =
+      target.tagName === "INPUT" ||
+      target.tagName === "SELECT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable;
+    if (isInteractiveElement) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSpacePanning(true);
+  }, []);
+
+  const handlePreviewKeyUp = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.code !== "Space") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSpacePanning(false);
+    if (!isHandTool) {
+      stopPanDrag();
+    }
+  }, [isHandTool, stopPanDrag]);
+
+  const handlePreviewBlur = useCallback(() => {
+    setIsSpacePanning(false);
+    if (!isHandTool) {
+      stopPanDrag();
+    }
+  }, [isHandTool, stopPanDrag]);
 
   const dragStateRef = useRef<{
     clipId: string | null;
@@ -906,7 +948,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
-    if (isHandTool && e.button === 0) {
+    if (isHandMode && e.button === 0) {
       e.preventDefault();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
       vpStartPanDrag({ x: e.clientX, y: e.clientY });
@@ -1013,7 +1055,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     vpStartPanDrag,
     isZoomTool,
     zoomAtClientPoint,
-    isHandTool,
+    isHandMode,
     isEditingMask,
     activeTrackId,
     screenToMaskCoords,
@@ -1189,10 +1231,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
-    if (isPanningRef.current) {
-      vpEndPanDrag();
-      isPanningRef.current = false;
-    }
+    stopPanDrag();
 
     if (isMaskDrawingRef.current) {
       endDraw();
@@ -1233,7 +1272,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea]);
+  }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
@@ -1347,7 +1386,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   return (
     <div
       ref={containerRefCallback}
-      className={cn("relative w-full h-full overflow-hidden", className)}
+      className={cn("relative w-full h-full overflow-hidden focus:outline-none", className)}
+      tabIndex={0}
+      onPointerDownCapture={(e) => {
+        e.currentTarget.focus();
+      }}
+      onKeyDown={handlePreviewKeyDown}
+      onKeyUp={handlePreviewKeyUp}
+      onBlur={handlePreviewBlur}
     >
       <canvas
         ref={previewCanvasRef}
@@ -1355,11 +1401,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         style={{
           cursor: isPanningRef.current
             ? "grabbing"
-            : isEditingMask
+            : isHandMode
+              ? "grab"
+              : isEditingMask
               ? "none"
-              : isHandTool
-                ? "grab"
-                : isZoomTool
+              : isZoomTool
                   ? "zoom-in"
               : toolMode === "crop"
                 ? (isDraggingCrop ? (cropDragRef.current.mode === "move" ? "grabbing" : cropCursor) : cropCursor)

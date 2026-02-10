@@ -111,8 +111,12 @@ export function Timeline({ className }: TimelineProps) {
       <div
         ref={containerRef}
         data-video-timeline-root=""
-        className="flex-1 overflow-hidden"
-        onPointerDown={handleContainerPointerDown}
+        className="flex-1 overflow-hidden focus:outline-none"
+        tabIndex={0}
+        onPointerDown={(e) => {
+          e.currentTarget.focus();
+          handleContainerPointerDown(e);
+        }}
       >
         {/* Track headers + ruler row */}
         <div className="flex border-b border-border-default">
