@@ -3,15 +3,18 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import {
   Clip,
+  INITIAL_TIMELINE_VIEW,
   MaskData,
   SavedVideoProject,
   TimelineViewState,
   VideoProject,
   VideoTrack,
+  VideoToolMode,
 } from "../types";
 import { VideoStorageInfo, VideoStorageProvider } from "../services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { loadMediaBlob } from "../utils/mediaStorage";
+import { saveVideoAutosave } from "../utils/videoAutosave";
 
 interface UseVideoProjectLibraryOptions {
   storageProvider: VideoStorageProvider;
@@ -25,6 +28,7 @@ interface UseVideoProjectLibraryOptions {
   seek: (time: number) => void;
   setLoopRange: (start: number, end: number, enableLoop?: boolean) => void;
   toggleLoop: () => void;
+  toolMode: VideoToolMode;
   selectClips: (clipIds: string[]) => void;
   clearHistory: () => void;
   clearMaskHistory: () => void;
@@ -104,6 +108,7 @@ export function useVideoProjectLibrary(
     seek,
     setLoopRange,
     toggleLoop,
+    toolMode,
     selectClips,
     clearHistory,
     clearMaskHistory,
@@ -210,6 +215,38 @@ export function useVideoProjectLibrary(
         }
       }, 0);
 
+      const shouldPersistPlaybackRange =
+        targetLoop || targetStart > 0.001 || targetEnd < duration - 0.001;
+      const normalizedPlaybackRange = shouldPersistPlaybackRange
+        ? {
+            loop: targetLoop,
+            loopStart: targetStart,
+            loopEnd: targetEnd,
+          }
+        : undefined;
+
+      void saveVideoAutosave({
+        project: {
+          ...loadedProject,
+          name: loaded.name,
+          tracks: loadedProject.tracks,
+          clips: restoredClips,
+          duration: loadedDuration,
+        },
+        projectName: loaded.name,
+        tracks: loadedProject.tracks,
+        clips: restoredClips,
+        masks: loadedProject.masks || [],
+        timelineView: loaded.timelineView || INITIAL_TIMELINE_VIEW,
+        currentTime: restoredTime,
+        playbackRange: normalizedPlaybackRange,
+        toolMode,
+        selectedClipIds: [],
+        selectedMaskIds: [],
+      }).catch((error) => {
+        console.error("Failed to persist autosave after project load:", error);
+      });
+
       setCurrentProjectId(loaded.id);
       selectClips([]);
       clearHistory();
@@ -237,6 +274,7 @@ export function useVideoProjectLibrary(
     setProjectName,
     setViewState,
     storageProvider,
+    toolMode,
     toggleLoop,
   ]);
 
