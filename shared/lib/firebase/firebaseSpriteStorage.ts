@@ -79,6 +79,17 @@ function removeUndefined<T>(obj: T): T {
   return result as T;
 }
 
+function readTimestampMillis(value: Timestamp | number | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const maybeTimestamp = value as { toMillis?: () => number } | undefined;
+  if (maybeTimestamp && typeof maybeTimestamp.toMillis === "function") {
+    return maybeTimestamp.toMillis();
+  }
+  return Date.now();
+}
+
 async function uploadDataUrl(path: string, dataUrl: string): Promise<string> {
   const storageRef = ref(storage, path);
   await uploadString(storageRef, dataUrl, "data_url");
@@ -538,7 +549,7 @@ export async function getSpriteProjectFromFirebase(
     nextFrameId: data.nextFrameId,
     fps: data.fps,
     viewState: data.viewState,
-    savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
+    savedAt: readTimestampMillis(data.updatedAt),
     thumbnailUrl: data.thumbnailUrl,
   };
 }
@@ -578,7 +589,7 @@ export async function getAllSpriteProjectsFromFirebase(
       nextFrameId: data.nextFrameId,
       fps: data.fps,
       viewState: data.viewState,
-      savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
+      savedAt: readTimestampMillis(data.updatedAt),
       thumbnailUrl: data.thumbnailUrl,
     });
   }

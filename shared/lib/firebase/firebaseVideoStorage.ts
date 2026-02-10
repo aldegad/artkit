@@ -111,6 +111,17 @@ function removeUndefined<T>(obj: T): T {
   return result as T;
 }
 
+function readTimestampMillis(value: Timestamp | number | undefined): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const maybeTimestamp = value as { toMillis?: () => number } | undefined;
+  if (maybeTimestamp && typeof maybeTimestamp.toMillis === "function") {
+    return maybeTimestamp.toMillis();
+  }
+  return Date.now();
+}
+
 // ============================================
 // Progress Callback Type
 // ============================================
@@ -578,7 +589,7 @@ export async function getVideoProjectFromFirebase(
     timelineView: data.timelineView,
     currentTime: data.currentTime,
     playbackRange: data.playbackRange,
-    savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
+    savedAt: readTimestampMillis(data.updatedAt),
     thumbnailUrl: data.thumbnailUrl,
   };
 }
@@ -615,7 +626,7 @@ export async function getAllVideoProjectsFromFirebase(
       timelineView: data.timelineView,
       currentTime: data.currentTime,
       playbackRange: data.playbackRange,
-      savedAt: data.updatedAt?.toMillis?.() ?? Date.now(),
+      savedAt: readTimestampMillis(data.updatedAt),
       thumbnailUrl: data.thumbnailUrl,
     });
   }

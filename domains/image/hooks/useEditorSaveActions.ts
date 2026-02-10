@@ -34,6 +34,7 @@ export function useEditorSaveActions(
   useEffect(() => {
     const handleSaveShortcut = async (e: KeyboardEvent) => {
       if (e.code !== "KeyS" || (!e.metaKey && !e.ctrlKey)) return;
+      if (e.repeat) return;
 
       e.preventDefault();
       try {
