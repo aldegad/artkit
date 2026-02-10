@@ -1,5 +1,5 @@
 import { SpriteFrame, SpriteTrack } from "../types";
-import { compositeAllFrames } from "./compositor";
+import { compositeAllFrames, type CompositedFrame } from "./compositor";
 
 // ============================================
 // Single Frame Export
@@ -449,4 +449,524 @@ export async function downloadCompositedFramesAsZip(
   link.href = URL.createObjectURL(blob);
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+// ============================================
+// Optimized Sprite Export (Static/Dynamic Split)
+// ============================================
+
+export type OptimizedTargetFramework = "canvas" | "phaser" | "pixi" | "custom";
+
+export interface OptimizedExportOptions {
+  threshold: number;
+  target: OptimizedTargetFramework;
+  includeGuide: boolean;
+  fps: number;
+}
+
+export interface OptimizedExportProgress {
+  stage: string;
+  percent: number;
+  detail?: string;
+}
+
+interface DynamicRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface OptimizedSpriteMetadata {
+  meta: {
+    format: "artkit-optimized-sprite";
+    version: "1.0";
+    fps: number;
+    sourceSize: { w: number; h: number };
+    frameCount: number;
+    target: string;
+  };
+  base: {
+    file: "base.png";
+    size: { w: number; h: number };
+  };
+  delta: {
+    file: "delta-spritesheet.png";
+    frameSize: { w: number; h: number };
+    columns: number;
+    region: { x: number; y: number; w: number; h: number };
+  } | null;
+  frames: Array<{
+    index: number;
+    frame: { x: number; y: number; w: number; h: number };
+  }>;
+}
+
+/**
+ * Compare all frames pixel-by-pixel and build a static mask.
+ * staticMask[i] = 1 means pixel i is identical across all frames.
+ */
+function analyzeStaticRegions(
+  frames: CompositedFrame[],
+  threshold: number,
+): { staticMask: Uint8Array; width: number; height: number } {
+  const { width, height } = frames[0];
+  const totalPixels = width * height;
+  const staticMask = new Uint8Array(totalPixels);
+  staticMask.fill(1);
+
+  if (frames.length <= 1) {
+    return { staticMask, width, height };
+  }
+
+  const frameDatas: ImageData[] = frames.map((f) => {
+    const ctx = f.canvas.getContext("2d");
+    return ctx!.getImageData(0, 0, width, height);
+  });
+
+  const ref = frameDatas[0].data;
+
+  for (let i = 0; i < totalPixels; i++) {
+    const idx = i * 4;
+    const r0 = ref[idx];
+    const g0 = ref[idx + 1];
+    const b0 = ref[idx + 2];
+    const a0 = ref[idx + 3];
+
+    for (let f = 1; f < frameDatas.length; f++) {
+      const d = frameDatas[f].data;
+      const diff =
+        Math.abs(d[idx] - r0) +
+        Math.abs(d[idx + 1] - g0) +
+        Math.abs(d[idx + 2] - b0) +
+        Math.abs(d[idx + 3] - a0);
+      if (diff > threshold) {
+        staticMask[i] = 0;
+        break;
+      }
+    }
+  }
+
+  return { staticMask, width, height };
+}
+
+/**
+ * Find the bounding box of all dynamic (non-static) pixels.
+ * Returns null if there are no dynamic pixels.
+ */
+function findDynamicBoundingBox(
+  staticMask: Uint8Array,
+  width: number,
+  height: number,
+): DynamicRegion | null {
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (staticMask[y * width + x] === 0) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+/**
+ * Generate base image: keep only static pixels, make dynamic pixels transparent.
+ */
+function generateBaseImage(
+  referenceFrame: CompositedFrame,
+  staticMask: Uint8Array,
+): HTMLCanvasElement {
+  const { width, height } = referenceFrame;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(referenceFrame.canvas, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  for (let i = 0; i < staticMask.length; i++) {
+    if (staticMask[i] === 0) {
+      const idx = i * 4;
+      data[idx] = 0;
+      data[idx + 1] = 0;
+      data[idx + 2] = 0;
+      data[idx + 3] = 0;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+/**
+ * Generate a sprite sheet containing only the dynamic region from each frame.
+ */
+function generateDeltaSpriteSheet(
+  frames: CompositedFrame[],
+  region: DynamicRegion,
+): { canvas: HTMLCanvasElement; columns: number } {
+  const columns = Math.ceil(Math.sqrt(frames.length));
+  const rows = Math.ceil(frames.length / columns);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = columns * region.w;
+  canvas.height = rows * region.h;
+  const ctx = canvas.getContext("2d")!;
+
+  frames.forEach((frame, index) => {
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    ctx.drawImage(
+      frame.canvas,
+      region.x,
+      region.y,
+      region.w,
+      region.h,
+      col * region.w,
+      row * region.h,
+      region.w,
+      region.h,
+    );
+  });
+
+  return { canvas, columns };
+}
+
+/**
+ * Generate a usage guide markdown for the optimized sprite sheet.
+ */
+function generateGuideMarkdown(
+  metadata: OptimizedSpriteMetadata,
+  target: OptimizedTargetFramework,
+): string {
+  const { meta, delta } = metadata;
+  const src = meta.sourceSize;
+
+  let codeExample = "";
+
+  if (!delta) {
+    codeExample = `// This sprite has no animation - all frames are identical.
+// Simply draw base.png directly.
+const img = new Image();
+img.src = 'base.png';
+img.onload = () => ctx.drawImage(img, 0, 0);`;
+  } else if (target === "canvas") {
+    codeExample = `const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const baseImg = new Image();
+const deltaImg = new Image();
+
+async function load() {
+  const meta = await fetch('metadata.json').then(r => r.json());
+  baseImg.src = 'base.png';
+  deltaImg.src = 'delta-spritesheet.png';
+  await Promise.all([
+    new Promise(r => { baseImg.onload = r; }),
+    new Promise(r => { deltaImg.onload = r; }),
+  ]);
+  return meta;
+}
+
+function startAnimation(meta) {
+  const { region, frameSize, columns } = meta.delta;
+  let frameIndex = 0;
+
+  setInterval(() => {
+    ctx.clearRect(0, 0, ${src.w}, ${src.h});
+    // 1. Draw static background
+    ctx.drawImage(baseImg, 0, 0);
+    // 2. Draw delta frame at offset
+    const col = frameIndex % columns;
+    const row = Math.floor(frameIndex / columns);
+    ctx.drawImage(
+      deltaImg,
+      col * frameSize.w, row * frameSize.h, frameSize.w, frameSize.h,
+      region.x, region.y, region.w, region.h
+    );
+    frameIndex = (frameIndex + 1) % meta.meta.frameCount;
+  }, 1000 / meta.meta.fps);
+}
+
+load().then(startAnimation);`;
+  } else if (target === "phaser") {
+    codeExample = `// Phaser 3 Example
+class GameScene extends Phaser.Scene {
+  preload() {
+    this.load.json('spriteMeta', 'metadata.json');
+    this.load.image('base', 'base.png');
+  }
+
+  create() {
+    const meta = this.cache.json.get('spriteMeta');
+    const { region, frameSize } = meta.delta;
+
+    // Load delta as spritesheet with frame dimensions
+    this.load.spritesheet('delta', 'delta-spritesheet.png', {
+      frameWidth: frameSize.w,
+      frameHeight: frameSize.h,
+    });
+    this.load.once('complete', () => {
+      // Static background
+      this.add.image(0, 0, 'base').setOrigin(0);
+
+      // Animated delta sprite
+      this.anims.create({
+        key: 'play',
+        frames: this.anims.generateFrameNumbers('delta', {
+          start: 0,
+          end: meta.meta.frameCount - 1,
+        }),
+        frameRate: meta.meta.fps,
+        repeat: -1,
+      });
+
+      const sprite = this.add.sprite(region.x, region.y, 'delta').setOrigin(0);
+      sprite.play('play');
+    });
+    this.load.start();
+  }
+}`;
+  } else if (target === "pixi") {
+    codeExample = `// PixiJS Example
+import * as PIXI from 'pixi.js';
+
+async function init() {
+  const app = new PIXI.Application();
+  await app.init({ width: ${src.w}, height: ${src.h} });
+  document.body.appendChild(app.canvas);
+
+  const meta = await fetch('metadata.json').then(r => r.json());
+  const { region, frameSize, columns } = meta.delta;
+
+  // Static background
+  const baseTex = await PIXI.Assets.load('base.png');
+  const base = new PIXI.Sprite(baseTex);
+  app.stage.addChild(base);
+
+  // Build delta frames
+  const sheetTex = await PIXI.Assets.load('delta-spritesheet.png');
+  const frames = [];
+  for (let i = 0; i < meta.meta.frameCount; i++) {
+    const col = i % columns;
+    const row = Math.floor(i / columns);
+    const rect = new PIXI.Rectangle(
+      col * frameSize.w, row * frameSize.h,
+      frameSize.w, frameSize.h
+    );
+    frames.push(new PIXI.Texture({ source: sheetTex.source, frame: rect }));
+  }
+
+  const anim = new PIXI.AnimatedSprite(frames);
+  anim.x = region.x;
+  anim.y = region.y;
+  anim.animationSpeed = meta.meta.fps / 60;
+  anim.play();
+  app.stage.addChild(anim);
+}
+
+init();`;
+  } else {
+    codeExample = `// Generic pseudocode
+// 1. Load base.png as the static background layer
+// 2. Load delta-spritesheet.png as the animation texture
+// 3. Read metadata.json for frame layout info
+//
+// Each animation tick:
+//   a) Draw base.png at (0, 0)
+//   b) Calculate source rect from delta sheet:
+//      srcX = (frameIndex % columns) * frameSize.w
+//      srcY = Math.floor(frameIndex / columns) * frameSize.h
+//   c) Draw delta region at (region.x, region.y) on canvas
+//   d) Advance frameIndex: (frameIndex + 1) % frameCount`;
+  }
+
+  const deltaInfo = delta
+    ? `- **delta-spritesheet.png**: Sprite sheet containing only the changing region (${delta.frameSize.w}x${delta.frameSize.h} per frame, ${delta.columns} columns)
+- Delta region in source: x=${delta.region.x}, y=${delta.region.y}, ${delta.region.w}x${delta.region.h}`
+    : `- No delta sprite sheet (all frames are identical)`;
+
+  return `# Optimized Sprite Sheet Guide
+
+## Files
+- **base.png**: Static background — pixels that never change across frames (${src.w}x${src.h})
+${deltaInfo}
+- **metadata.json**: Frame offsets, sizes, and animation configuration
+
+## How It Works
+1. Draw \`base.png\` as the background layer (once, or each frame)
+2. For each animation frame, draw the corresponding delta frame on top of the base at the specified offset position
+
+## Animation Config
+- **Frame count**: ${meta.frameCount}
+- **FPS**: ${meta.fps}
+- **Source size**: ${src.w} x ${src.h}
+${delta ? `- **Delta region**: x=${delta.region.x}, y=${delta.region.y}, ${delta.region.w} x ${delta.region.h}\n- **Delta sprite columns**: ${delta.columns}` : "- No dynamic region detected"}
+
+## Code Example (${target === "canvas" ? "Canvas API" : target === "phaser" ? "Phaser 3" : target === "pixi" ? "PixiJS" : "Generic"})
+
+\`\`\`javascript
+${codeExample}
+\`\`\`
+
+## Metadata Schema
+
+\`\`\`json
+{
+  "meta": {
+    "format": "artkit-optimized-sprite",
+    "version": "1.0",
+    "fps": <number>,
+    "sourceSize": { "w": <number>, "h": <number> },
+    "frameCount": <number>,
+    "target": "<framework>"
+  },
+  "base": {
+    "file": "base.png",
+    "size": { "w": <number>, "h": <number> }
+  },
+  "delta": {
+    "file": "delta-spritesheet.png",
+    "frameSize": { "w": <number>, "h": <number> },
+    "columns": <number>,
+    "region": { "x": <number>, "y": <number>, "w": <number>, "h": <number> }
+  } | null,
+  "frames": [
+    { "index": 0, "frame": { "x": 0, "y": 0, "w": <frameW>, "h": <frameH> } },
+    ...
+  ]
+}
+\`\`\`
+
+---
+*Generated by Artkit Sprite Editor*
+`;
+}
+
+/**
+ * Export optimized sprite sheet as ZIP: base.png + delta-spritesheet.png + metadata.json + GUIDE.md
+ */
+export async function downloadOptimizedSpriteZip(
+  tracks: SpriteTrack[],
+  projectName: string,
+  options: OptimizedExportOptions,
+  onProgress?: (progress: OptimizedExportProgress) => void,
+): Promise<void> {
+  const { threshold, target, includeGuide, fps } = options;
+
+  const report = (stage: string, percent: number, detail?: string) => {
+    onProgress?.({ stage, percent, detail });
+  };
+
+  // 1. Composite all frames
+  report("Compositing frames", 5, "Merging tracks...");
+  const compositedFrames = await compositeAllFrames(tracks);
+  if (compositedFrames.length === 0) return;
+
+  const { width, height } = compositedFrames[0];
+
+  // 2. Analyze static/dynamic regions
+  report("Analyzing frames", 20, `Comparing ${compositedFrames.length} frames...`);
+  const { staticMask } = analyzeStaticRegions(compositedFrames, threshold);
+
+  // 3. Find dynamic bounding box
+  const dynamicRegion = findDynamicBoundingBox(staticMask, width, height);
+  report("Generating images", 40);
+
+  // 4. Generate base image
+  const baseCanvas = generateBaseImage(compositedFrames[0], staticMask);
+  report("Generating images", 50, "Base image ready");
+
+  // 5. Generate delta sprite sheet (if there's a dynamic region)
+  let deltaCanvas: HTMLCanvasElement | null = null;
+  let deltaColumns = 0;
+  if (dynamicRegion) {
+    const result = generateDeltaSpriteSheet(compositedFrames, dynamicRegion);
+    deltaCanvas = result.canvas;
+    deltaColumns = result.columns;
+    report("Generating images", 65, "Delta sprite sheet ready");
+  }
+
+  // 6. Build metadata
+  report("Building metadata", 70);
+  const metadata: OptimizedSpriteMetadata = {
+    meta: {
+      format: "artkit-optimized-sprite",
+      version: "1.0",
+      fps,
+      sourceSize: { w: width, h: height },
+      frameCount: compositedFrames.length,
+      target,
+    },
+    base: {
+      file: "base.png",
+      size: { w: width, h: height },
+    },
+    delta: dynamicRegion
+      ? {
+          file: "delta-spritesheet.png",
+          frameSize: { w: dynamicRegion.w, h: dynamicRegion.h },
+          columns: deltaColumns,
+          region: {
+            x: dynamicRegion.x,
+            y: dynamicRegion.y,
+            w: dynamicRegion.w,
+            h: dynamicRegion.h,
+          },
+        }
+      : null,
+    frames: compositedFrames.map((_, i) => ({
+      index: i,
+      frame: dynamicRegion
+        ? {
+            x: (i % deltaColumns) * dynamicRegion.w,
+            y: Math.floor(i / deltaColumns) * dynamicRegion.h,
+            w: dynamicRegion.w,
+            h: dynamicRegion.h,
+          }
+        : { x: 0, y: 0, w: 0, h: 0 },
+    })),
+  };
+
+  // 7. Build ZIP
+  report("Packaging ZIP", 80);
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+
+  const basePng = baseCanvas.toDataURL("image/png").split(",")[1];
+  zip.file("base.png", basePng, { base64: true });
+
+  if (deltaCanvas) {
+    const deltaPng = deltaCanvas.toDataURL("image/png").split(",")[1];
+    zip.file("delta-spritesheet.png", deltaPng, { base64: true });
+  }
+
+  zip.file("metadata.json", JSON.stringify(metadata, null, 2));
+
+  if (includeGuide) {
+    const guide = generateGuideMarkdown(metadata, target);
+    zip.file("GUIDE.md", guide);
+  }
+
+  report("Packaging ZIP", 90, "Compressing...");
+  const blob = await zip.generateAsync({ type: "blob" });
+
+  const link = document.createElement("a");
+  link.download = `${projectName}-optimized.zip`;
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+
+  report("Done", 100);
 }

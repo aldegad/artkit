@@ -32,6 +32,8 @@ interface UseSpriteExportReturn {
     fileName: string,
     options: SpriteMp4ExportOptions,
   ) => Promise<void>;
+  startProgress: (stage: string, percent: number, detail?: string) => void;
+  endProgress: () => void;
 }
 
 // ============================================
@@ -370,9 +372,24 @@ export function useSpriteExport(): UseSpriteExportReturn {
     [isExporting, getFFmpeg],
   );
 
+  const startProgress = useCallback(
+    (stage: string, percent: number, detail?: string) => {
+      setIsExporting(true);
+      setExportProgress({ stage, percent, detail });
+    },
+    [],
+  );
+
+  const endProgress = useCallback(() => {
+    setIsExporting(false);
+    setExportProgress(null);
+  }, []);
+
   return {
     isExporting,
     exportProgress,
     exportMp4,
+    startProgress,
+    endProgress,
   };
 }

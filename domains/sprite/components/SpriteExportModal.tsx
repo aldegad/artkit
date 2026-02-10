@@ -8,7 +8,8 @@ import type { SpriteExportProgressState } from "../hooks/useSpriteExport";
 // Types
 // ============================================
 
-export type SpriteExportType = "zip" | "sprite-png" | "sprite-webp" | "mp4";
+export type SpriteExportType = "zip" | "sprite-png" | "sprite-webp" | "mp4" | "optimized-zip";
+export type OptimizedTargetFramework = "canvas" | "phaser" | "pixi" | "custom";
 
 export interface SpriteExportSettings {
   exportType: SpriteExportType;
@@ -23,6 +24,10 @@ export interface SpriteExportSettings {
   mp4Compression: "high" | "balanced" | "small";
   mp4BackgroundColor: string;
   mp4LoopCount: number;
+  // Optimized ZIP
+  optimizedTarget: OptimizedTargetFramework;
+  optimizedThreshold: number;
+  optimizedIncludeGuide: boolean;
 }
 
 // Settings saved to localStorage (excludes fileName)
@@ -36,6 +41,9 @@ interface SavedExportSettings {
   mp4Compression: "high" | "balanced" | "small";
   mp4BackgroundColor: string;
   mp4LoopCount: number;
+  optimizedTarget: OptimizedTargetFramework;
+  optimizedThreshold: number;
+  optimizedIncludeGuide: boolean;
 }
 
 const STORAGE_KEY = "sprite-export-settings";
@@ -50,6 +58,9 @@ const DEFAULT_SAVED: SavedExportSettings = {
   mp4Compression: "balanced",
   mp4BackgroundColor: "#000000",
   mp4LoopCount: 1,
+  optimizedTarget: "canvas" as OptimizedTargetFramework,
+  optimizedThreshold: 0,
+  optimizedIncludeGuide: true,
 };
 
 function loadSavedSettings(): SavedExportSettings {
@@ -81,6 +92,8 @@ function getExtension(type: SpriteExportType): string {
       return ".webp";
     case "mp4":
       return ".mp4";
+    case "optimized-zip":
+      return ".zip";
   }
 }
 
@@ -115,6 +128,10 @@ interface SpriteExportModalProps {
     compressionSmallFile: string;
     exportLoopCount: string;
     exporting: string;
+    exportTypeOptimizedZip: string;
+    exportOptimizedTarget: string;
+    exportOptimizedThreshold: string;
+    exportOptimizedIncludeGuide: string;
   };
 }
 
@@ -144,6 +161,9 @@ export default function SpriteExportModal({
   >("balanced");
   const [mp4BackgroundColor, setMp4BackgroundColor] = useState("#000000");
   const [mp4LoopCount, setMp4LoopCount] = useState(1);
+  const [optimizedTarget, setOptimizedTarget] = useState<OptimizedTargetFramework>("canvas");
+  const [optimizedThreshold, setOptimizedThreshold] = useState(0);
+  const [optimizedIncludeGuide, setOptimizedIncludeGuide] = useState(true);
 
   // Load settings from localStorage when modal opens
   useEffect(() => {
@@ -159,6 +179,9 @@ export default function SpriteExportModal({
       setMp4Compression(saved.mp4Compression);
       setMp4BackgroundColor(saved.mp4BackgroundColor);
       setMp4LoopCount(saved.mp4LoopCount);
+      setOptimizedTarget(saved.optimizedTarget);
+      setOptimizedThreshold(saved.optimizedThreshold);
+      setOptimizedIncludeGuide(saved.optimizedIncludeGuide);
     }
   }, [isOpen, defaultFileName, currentFps]);
 
@@ -176,6 +199,9 @@ export default function SpriteExportModal({
       mp4Compression,
       mp4BackgroundColor,
       mp4LoopCount,
+      optimizedTarget,
+      optimizedThreshold,
+      optimizedIncludeGuide,
     });
 
     onExport({
@@ -189,6 +215,9 @@ export default function SpriteExportModal({
       mp4Compression,
       mp4BackgroundColor,
       mp4LoopCount,
+      optimizedTarget,
+      optimizedThreshold,
+      optimizedIncludeGuide,
     });
   }, [
     fileName,
@@ -201,6 +230,9 @@ export default function SpriteExportModal({
     mp4Compression,
     mp4BackgroundColor,
     mp4LoopCount,
+    optimizedTarget,
+    optimizedThreshold,
+    optimizedIncludeGuide,
     isExporting,
     onExport,
   ]);
@@ -224,6 +256,7 @@ export default function SpriteExportModal({
         { value: "sprite-png", label: t.exportTypeSpriteSheetPng },
         { value: "sprite-webp", label: t.exportTypeSpriteSheetWebp },
         { value: "mp4", label: t.exportTypeMp4 },
+        { value: "optimized-zip", label: t.exportTypeOptimizedZip },
       ]}
       formatValue={exportType}
       onFormatChange={(value) => setExportType(value as SpriteExportType)}
@@ -382,6 +415,60 @@ export default function SpriteExportModal({
               className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
             />
           </div>
+        </>
+      )}
+
+      {/* Optimized ZIP Options */}
+      {exportType === "optimized-zip" && (
+        <>
+          {/* Target Framework */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.exportOptimizedTarget}
+            </label>
+            <Select
+              value={optimizedTarget}
+              onChange={(value) =>
+                setOptimizedTarget(value as OptimizedTargetFramework)
+              }
+              options={[
+                { value: "canvas", label: "Canvas API" },
+                { value: "phaser", label: "Phaser 3" },
+                { value: "pixi", label: "PixiJS" },
+                { value: "custom", label: "Custom / Other" },
+              ]}
+              size="sm"
+              disabled={isExporting}
+            />
+          </div>
+
+          {/* Threshold */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.exportOptimizedThreshold} ({optimizedThreshold})
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              value={optimizedThreshold}
+              onChange={(e) => setOptimizedThreshold(Number(e.target.value))}
+              disabled={isExporting}
+              className="w-full accent-accent-primary"
+            />
+          </div>
+
+          {/* Include Guide */}
+          <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optimizedIncludeGuide}
+              onChange={(e) => setOptimizedIncludeGuide(e.target.checked)}
+              disabled={isExporting}
+              className="accent-accent-primary"
+            />
+            {t.exportOptimizedIncludeGuide}
+          </label>
         </>
       )}
     </ExportModal>

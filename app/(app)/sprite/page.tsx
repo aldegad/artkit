@@ -50,7 +50,7 @@ import {
   clearLocalProjects,
   clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
-import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet } from "@/domains/sprite/utils/export";
+import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet, downloadOptimizedSpriteZip } from "@/domains/sprite/utils/export";
 
 // ============================================
 // Main Editor Component
@@ -100,7 +100,7 @@ function SpriteEditorMain() {
 
   // Export
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const { isExporting, exportProgress, exportMp4 } = useSpriteExport();
+  const { isExporting, exportProgress, exportMp4, startProgress, endProgress } = useSpriteExport();
 
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
@@ -337,13 +337,28 @@ function SpriteEditorMain() {
             loopCount: settings.mp4LoopCount,
           });
           break;
+        case "optimized-zip":
+          try {
+            startProgress("Preparing...", 0);
+            await downloadOptimizedSpriteZip(tracks, name, {
+              threshold: settings.optimizedThreshold,
+              target: settings.optimizedTarget,
+              includeGuide: settings.optimizedIncludeGuide,
+              fps,
+            }, (p) => {
+              startProgress(p.stage, p.percent, p.detail);
+            });
+          } finally {
+            endProgress();
+          }
+          break;
       }
       setIsExportModalOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
       alert(`${t.exportFailed}: ${(error as Error).message}`);
     }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed, exportMp4]);
+  }, [hasRenderableFrames, tracks, projectName, fps, t.exportFailed, exportMp4, startProgress, endProgress]);
 
   // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
@@ -797,6 +812,10 @@ function SpriteEditorMain() {
           compressionSmallFile: t.compressionSmallFile,
           exportLoopCount: t.exportLoopCount,
           exporting: t.exporting,
+          exportTypeOptimizedZip: t.exportTypeOptimizedZip,
+          exportOptimizedTarget: t.exportOptimizedTarget,
+          exportOptimizedThreshold: t.exportOptimizedThreshold,
+          exportOptimizedIncludeGuide: t.exportOptimizedIncludeGuide,
         }}
       />
 
