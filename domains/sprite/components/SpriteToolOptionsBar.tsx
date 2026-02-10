@@ -29,12 +29,14 @@ interface SpriteToolOptionsBarProps {
     brush: string;
     eraser: string;
     eyedropper: string;
+    zoomInOut: string;
     frame: string;
     selected: string;
     point: string;
     presets: string;
     pressure: string;
     builtIn: string;
+    zoomToolTip: string;
   };
 }
 
@@ -58,6 +60,7 @@ export default function SpriteToolOptionsBar({
   labels,
 }: SpriteToolOptionsBarProps) {
   const isBrushTool = frameEditToolMode === "brush" || frameEditToolMode === "eraser";
+  const isZoomTool = frameEditToolMode === "zoom";
 
   const selectedFrameIndex = selectedFrameId !== null ? frames.findIndex((f) => f.id === selectedFrameId) : -1;
 
@@ -79,7 +82,7 @@ export default function SpriteToolOptionsBar({
 
         {!isBrushTool && (
           <span className="text-xs text-text-secondary min-w-[72px]">
-            {labels.eyedropper}
+            {isZoomTool ? labels.zoomInOut : labels.eyedropper}
           </span>
         )}
 
@@ -135,7 +138,7 @@ export default function SpriteToolOptionsBar({
             />
           </>
         ) : (
-          <span className="text-xs text-text-tertiary">{labels.colorPickerTip}</span>
+          <span className="text-xs text-text-tertiary">{isZoomTool ? labels.zoomToolTip : labels.colorPickerTip}</span>
         )}
 
         <div className="flex-1 min-w-0" />

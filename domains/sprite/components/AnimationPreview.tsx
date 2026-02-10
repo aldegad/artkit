@@ -27,7 +27,12 @@ import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from ".
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
-import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import {
+  clampZoom,
+  safeReleasePointerCapture,
+  safeSetPointerCapture,
+  zoomAtPoint,
+} from "@/shared/utils";
 
 // ============================================
 // Frame Indicator (editable)
@@ -182,6 +187,7 @@ export default function AnimationPreviewContent() {
 
   const hasContent = tracks.some((track) => track.frames.length > 0);
   const isEditMode = frameEditToolMode === "brush" || frameEditToolMode === "eraser";
+  const isZoomTool = frameEditToolMode === "zoom";
 
   // ---- Viewport (ref-based zoom/pan, no React re-renders for viewport changes) ----
   const viewport = useCanvasViewport({
@@ -208,6 +214,7 @@ export default function AnimationPreviewContent() {
     setZoom: setAnimVpZoom,
     setPan: setAnimVpPan,
     getZoom: getAnimVpZoom,
+    getPan: getAnimVpPan,
     startPanDrag: animStartPanDrag,
     updatePanDrag: animUpdatePanDrag,
     endPanDrag: animEndPanDrag,
@@ -649,6 +656,41 @@ export default function AnimationPreviewContent() {
     [getAnimVpZoom, setBrushColor],
   );
 
+  const zoomAtCursor = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const zoomFactor = e.altKey
+        ? SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_OUT
+        : SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_IN;
+      const currentZoom = getAnimVpZoom();
+      const newZoom = clampZoom(
+        currentZoom * zoomFactor,
+        SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
+        SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
+      );
+      if (newZoom === currentZoom) return;
+
+      const currentPan = getAnimVpPan();
+      const result = zoomAtPoint(
+        { x: e.clientX - rect.left, y: e.clientY - rect.top },
+        { zoom: currentZoom, pan: currentPan, baseScale: 1 },
+        newZoom,
+        "center",
+        { width: canvas.width, height: canvas.height },
+      );
+
+      setAnimVpPan(result.pan);
+      setAnimVpZoom(result.zoom);
+      requestRender();
+    },
+    [getAnimVpPan, getAnimVpZoom, requestRender, setAnimVpPan, setAnimVpZoom],
+  );
+
   // Spacebar pan mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -756,6 +798,11 @@ export default function AnimationPreviewContent() {
         return;
       }
 
+      if (isZoomTool) {
+        zoomAtCursor(e);
+        return;
+      }
+
       if (frameEditToolMode === "eyedropper") {
         pickColorFromComposited(e.clientX, e.clientY);
         return;
@@ -791,6 +838,8 @@ export default function AnimationPreviewContent() {
     [
       isPanLocked,
       isHandMode,
+      isZoomTool,
+      zoomAtCursor,
       frameEditToolMode,
       pickColorFromComposited,
       isEditMode,
@@ -888,6 +937,9 @@ export default function AnimationPreviewContent() {
   const getCursor = () => {
     if (isHandMode) {
       return animIsPanDragging() ? "grabbing" : "grab";
+    }
+    if (isZoomTool) {
+      return "zoom-in";
     }
     if (frameEditToolMode === "eyedropper") {
       return "crosshair";
