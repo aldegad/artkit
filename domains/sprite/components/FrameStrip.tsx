@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
@@ -26,7 +26,6 @@ interface FrameCardProps {
   onDragEnd: () => void;
   onOffsetMouseDown: (e: React.MouseEvent, frameId: number) => void;
   onFrameClick: (e: React.MouseEvent, idx: number, frame: SpriteFrame) => void;
-  onToggleDisabled: (frameId: number) => void;
 }
 
 const FrameCard = memo(function FrameCard({
@@ -46,7 +45,6 @@ const FrameCard = memo(function FrameCard({
   onDragEnd,
   onOffsetMouseDown,
   onFrameClick,
-  onToggleDisabled,
 }: FrameCardProps) {
   return (
     <div
@@ -74,26 +72,6 @@ const FrameCard = memo(function FrameCard({
           {idx + 1}
         </div>
       )}
-
-      {/* Skip toggle button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleDisabled(frame.id);
-        }}
-        className={`absolute top-0.5 right-0.5 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors ${
-          frame.disabled
-            ? "bg-accent-warning/90 text-white"
-            : "bg-surface-tertiary/60 text-text-tertiary opacity-0 group-hover:opacity-100 hover:opacity-100!"
-        }`}
-        title={frame.disabled ? "건너뛰기 해제" : "건너뛰기"}
-      >
-        {frame.disabled ? (
-          <EyeClosedIcon className="w-2.5 h-2.5" />
-        ) : (
-          <EyeOpenIcon className="w-2.5 h-2.5" />
-        )}
-      </button>
 
       {/* SKIP badge */}
       {frame.disabled && (
@@ -151,6 +129,7 @@ export default function FrameStrip() {
   const [nthValue, setNthValue] = useState(2);
   const [isFlippingFrames, setIsFlippingFrames] = useState(false);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
+  const isOffsetKeyboardNudgeActiveRef = useRef(false);
   const { t } = useLanguage();
 
   const getCurrentFrameIndex = useCallback(() => useSpriteTrackStore.getState().currentFrameIndex, []);
@@ -198,6 +177,115 @@ export default function FrameStrip() {
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [isPlaying]);
+
+  useEffect(() => {
+    const isInteractiveElement = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+    };
+
+    const isArrowKey = (key: string) =>
+      key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isArrowKey(e.key)) return;
+      if (isInteractiveElement(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (frames.length === 0) return;
+
+      if (timelineMode === "reorder") {
+        e.preventDefault();
+        setIsPlaying(false);
+
+        const currentFrameIndex = getCurrentFrameIndex();
+        let nextFrameIndex = currentFrameIndex;
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          nextFrameIndex = Math.max(0, currentFrameIndex - 1);
+        } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          nextFrameIndex = Math.min(frames.length - 1, currentFrameIndex + 1);
+        }
+
+        if (nextFrameIndex === currentFrameIndex) return;
+        const nextFrameId = frames[nextFrameIndex]?.id ?? null;
+        setCurrentFrameIndex(nextFrameIndex);
+        setSelectedFrameId(nextFrameId);
+        setSelectedFrameIds(nextFrameId !== null ? [nextFrameId] : []);
+        return;
+      }
+
+      if (timelineMode !== "offset") return;
+
+      let dx = 0;
+      let dy = 0;
+      if (e.key === "ArrowLeft") dx = -1;
+      if (e.key === "ArrowRight") dx = 1;
+      if (e.key === "ArrowUp") dy = -1;
+      if (e.key === "ArrowDown") dy = 1;
+      if (dx === 0 && dy === 0) return;
+
+      const step = e.shiftKey ? 10 : 1;
+      const selectedSet = new Set(selectedFrameIds);
+      const selectedExistingIds = frames
+        .filter((frame: SpriteFrame) => selectedSet.has(frame.id))
+        .map((frame: SpriteFrame) => frame.id);
+      const fallbackFrameId = frames[Math.max(0, Math.min(getCurrentFrameIndex(), frames.length - 1))]?.id ?? null;
+      const targetFrameIds =
+        selectedExistingIds.length > 0
+          ? selectedExistingIds
+          : fallbackFrameId !== null
+            ? [fallbackFrameId]
+            : [];
+      if (targetFrameIds.length === 0) return;
+
+      e.preventDefault();
+      setIsPlaying(false);
+
+      if (!isOffsetKeyboardNudgeActiveRef.current) {
+        pushHistory();
+        isOffsetKeyboardNudgeActiveRef.current = true;
+      }
+
+      const targetIdSet = new Set(targetFrameIds);
+      setFrames((prev: SpriteFrame[]) =>
+        prev.map((frame: SpriteFrame) =>
+          targetIdSet.has(frame.id)
+            ? { ...frame, offset: { x: frame.offset.x + (dx * step), y: frame.offset.y + (dy * step) } }
+            : frame,
+        ),
+      );
+      setSelectedFrameId(targetFrameIds[0] ?? null);
+      setSelectedFrameIds(targetFrameIds);
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!isArrowKey(e.key)) return;
+      isOffsetKeyboardNudgeActiveRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+    };
+  }, [
+    frames,
+    getCurrentFrameIndex,
+    pushHistory,
+    selectedFrameIds,
+    setCurrentFrameIndex,
+    setFrames,
+    setIsPlaying,
+    setSelectedFrameId,
+    setSelectedFrameIds,
+    timelineMode,
+  ]);
 
   // Timeline drag handlers (reorder)
   const handleDragStart = useCallback(
@@ -361,6 +449,31 @@ export default function FrameStrip() {
     setSelectedFrameId,
     setSelectedFrameIds,
   ]);
+
+  useEffect(() => {
+    const isInteractiveElement = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isInteractiveElement(e.target)) return;
+      if (frames.length === 0) return;
+
+      e.preventDefault();
+      deleteActiveFrame();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [deleteActiveFrame, frames.length]);
 
   const addEmptyFrame = useCallback(() => {
     if (!activeTrackId) return;
@@ -968,7 +1081,6 @@ export default function FrameStrip() {
                   onDragEnd={handleDragEnd}
                   onOffsetMouseDown={handleOffsetMouseDown}
                   onFrameClick={handleFrameClick}
-                  onToggleDisabled={toggleFrameDisabled}
                 />
               ))
             )}
