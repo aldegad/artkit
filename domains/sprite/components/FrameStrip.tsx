@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useEditorFramesMeta, useEditorAnimation, useEditorTools, useEditorHistory, useEditorTracks, useEditorDrag } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
-import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, PlusIcon, FlipIcon } from "../../../shared/components/icons";
+import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, PlusIcon, FlipIcon, RotateIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
 import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
@@ -225,7 +225,26 @@ export default function FrameStrip() {
       if (draggedFrameId === null) return;
 
       const dragIndex = frames.findIndex((f: SpriteFrame) => f.id === draggedFrameId);
-      if (dragIndex === -1 || dragIndex === dropIndex) {
+      if (dragIndex === -1) {
+        setDraggedFrameId(null);
+        setDragOverIndex(null);
+        return;
+      }
+
+      const currentFrameIndex = getCurrentFrameIndex();
+      const currentFrameId = frames[currentFrameIndex]?.id ?? null;
+      const cardElement = e.currentTarget as HTMLDivElement;
+      const rect = cardElement.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const placeAfter = localX > rect.width / 2;
+
+      const rawInsertIndex = dropIndex + (placeAfter ? 1 : 0);
+      let insertIndex = rawInsertIndex;
+      if (dragIndex < insertIndex) {
+        insertIndex -= 1;
+      }
+
+      if (insertIndex === dragIndex) {
         setDraggedFrameId(null);
         setDragOverIndex(null);
         return;
@@ -233,14 +252,29 @@ export default function FrameStrip() {
 
       const newFrames = [...frames];
       const [draggedFrame] = newFrames.splice(dragIndex, 1);
-      newFrames.splice(dropIndex, 0, draggedFrame);
+      newFrames.splice(insertIndex, 0, draggedFrame);
 
       pushHistory();
       setFrames(newFrames);
+      if (currentFrameId !== null) {
+        const nextCurrentFrameIndex = newFrames.findIndex((frame: SpriteFrame) => frame.id === currentFrameId);
+        if (nextCurrentFrameIndex >= 0) {
+          setCurrentFrameIndex(nextCurrentFrameIndex);
+        }
+      }
       setDraggedFrameId(null);
       setDragOverIndex(null);
     },
-    [draggedFrameId, frames, pushHistory, setFrames, setDraggedFrameId, setDragOverIndex],
+    [
+      draggedFrameId,
+      frames,
+      getCurrentFrameIndex,
+      pushHistory,
+      setFrames,
+      setCurrentFrameIndex,
+      setDraggedFrameId,
+      setDragOverIndex,
+    ],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -452,6 +486,41 @@ export default function FrameStrip() {
     [frames, isFlippingFrames, pushHistory, selectedFrameIds, setFrames, setIsPlaying],
   );
 
+  const reverseSelectedFrames = useCallback(() => {
+    if (selectedFrameIds.length < 2) return;
+
+    const selectedSet = new Set(selectedFrameIds);
+    const selectedFrames = frames.filter((frame: SpriteFrame) => selectedSet.has(frame.id));
+    if (selectedFrames.length < 2) return;
+
+    const currentFrameIndex = getCurrentFrameIndex();
+    const currentFrameId = frames[currentFrameIndex]?.id ?? null;
+    const reversedSelectedFrames = [...selectedFrames].reverse();
+    let reverseIdx = 0;
+
+    pushHistory();
+    setIsPlaying(false);
+    const newFrames = frames.map((frame: SpriteFrame) =>
+      selectedSet.has(frame.id) ? reversedSelectedFrames[reverseIdx++] : frame,
+    );
+    setFrames(newFrames);
+
+    if (currentFrameId !== null) {
+      const nextCurrentFrameIndex = newFrames.findIndex((frame: SpriteFrame) => frame.id === currentFrameId);
+      if (nextCurrentFrameIndex >= 0) {
+        setCurrentFrameIndex(nextCurrentFrameIndex);
+      }
+    }
+  }, [
+    selectedFrameIds,
+    frames,
+    getCurrentFrameIndex,
+    pushHistory,
+    setIsPlaying,
+    setFrames,
+    setCurrentFrameIndex,
+  ]);
+
   // Nth skip: mark every non-nth frame as disabled (instead of deleting)
   const applyNthSkip = useCallback(() => {
     const currentFrameIndex = getCurrentFrameIndex();
@@ -655,6 +724,18 @@ export default function FrameStrip() {
               >
                 Skip
               </button>
+            )}
+
+            {selectedFrameIds.length > 1 && (
+              <Tooltip content={`선택 프레임 순서 역전 (${selectedFrameIds.length})`}>
+                <button
+                  onClick={reverseSelectedFrames}
+                  className="p-1 rounded text-text-tertiary hover:text-accent-primary transition-colors"
+                  aria-label="Reverse selected frames"
+                >
+                  <RotateIcon className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
             )}
 
             {/* Flip tool (combined H/V) */}
