@@ -53,9 +53,23 @@ export function useSpriteKeyboardShortcuts({
 
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === "v") setSpriteToolMode("select");
-        if (e.key === "b") setFrameEditToolMode("brush");
-        if (e.key === "e") setFrameEditToolMode("eraser");
-        if (e.key === "i") setFrameEditToolMode("eyedropper");
+        if (e.key === "h") setSpriteToolMode("hand");
+        if (e.key === "b") {
+          setSpriteToolMode("select");
+          setFrameEditToolMode("brush");
+        }
+        if (e.key === "e") {
+          setSpriteToolMode("select");
+          setFrameEditToolMode("eraser");
+        }
+        if (e.key === "i") {
+          setSpriteToolMode("select");
+          setFrameEditToolMode("eyedropper");
+        }
+        if (e.key === "z") {
+          setSpriteToolMode("select");
+          setFrameEditToolMode("zoom");
+        }
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {

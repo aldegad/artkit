@@ -7,6 +7,8 @@ import {
   EraserIcon,
   EyedropperIcon,
   CursorIcon,
+  HandIcon,
+  ZoomSearchIcon,
   BackgroundRemovalIcon,
   MagicWandIcon,
   UndoIcon,
@@ -79,6 +81,25 @@ export default function SpriteTopToolbar({
             </button>
           </Tooltip>
 
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.hand}</span>
+                <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
+              </div>
+            }
+            shortcut="H"
+          >
+            <button
+              onClick={() => setSpriteToolMode("hand")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "hand" ? "bg-accent-primary text-white" : "hover:bg-interactive-hover"
+              }`}
+            >
+              <HandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
           <div className="w-px bg-border-default mx-0.5" />
 
           <Tooltip
@@ -91,9 +112,14 @@ export default function SpriteTopToolbar({
             shortcut="B"
           >
             <button
-              onClick={() => setFrameEditToolMode("brush")}
+              onClick={() => {
+                setSpriteToolMode("select");
+                setFrameEditToolMode("brush");
+              }}
               className={`p-1.5 rounded transition-colors ${
-                frameEditToolMode === "brush" ? "bg-accent-primary text-white" : "hover:bg-interactive-hover"
+                toolMode !== "hand" && frameEditToolMode === "brush"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
               }`}
             >
               <BrushIcon className="w-4 h-4" />
@@ -110,9 +136,14 @@ export default function SpriteTopToolbar({
             shortcut="E"
           >
             <button
-              onClick={() => setFrameEditToolMode("eraser")}
+              onClick={() => {
+                setSpriteToolMode("select");
+                setFrameEditToolMode("eraser");
+              }}
               className={`p-1.5 rounded transition-colors ${
-                frameEditToolMode === "eraser" ? "bg-accent-primary text-white" : "hover:bg-interactive-hover"
+                toolMode !== "hand" && frameEditToolMode === "eraser"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
               }`}
             >
               <EraserIcon className="w-4 h-4" />
@@ -129,14 +160,41 @@ export default function SpriteTopToolbar({
             shortcut="I"
           >
             <button
-              onClick={() => setFrameEditToolMode("eyedropper")}
+              onClick={() => {
+                setSpriteToolMode("select");
+                setFrameEditToolMode("eyedropper");
+              }}
               className={`p-1.5 rounded transition-colors ${
-                frameEditToolMode === "eyedropper"
+                toolMode !== "hand" && frameEditToolMode === "eyedropper"
                   ? "bg-accent-primary text-white"
                   : "hover:bg-interactive-hover"
               }`}
             >
               <EyedropperIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.zoomInOut}</span>
+                <span className="text-text-tertiary text-[11px]">{t.zoomToolTip}</span>
+              </div>
+            }
+            shortcut="Z"
+          >
+            <button
+              onClick={() => {
+                setSpriteToolMode("select");
+                setFrameEditToolMode("zoom");
+              }}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode !== "hand" && frameEditToolMode === "zoom"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <ZoomSearchIcon className="w-4 h-4" />
             </button>
           </Tooltip>
 
