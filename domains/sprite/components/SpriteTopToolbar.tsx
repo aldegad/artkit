@@ -96,8 +96,6 @@ export default function SpriteTopToolbar({
             </button>
           </Tooltip>
 
-          <div className="w-px bg-border-default mx-0.5" />
-
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
