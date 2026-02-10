@@ -69,12 +69,12 @@ export function usePreviewRendering() {
 
       if (clip.type === "video") {
         const videoClip = clip as VideoClip;
-        const video = getVideoElement(videoClip.sourceUrl);
+        const video = getVideoElement(videoClip.id);
         if (!video) return null;
 
         // Seek if needed
         if (Math.abs(video.currentTime - sourceTime) > 0.05) {
-          await seekVideo(videoClip.sourceUrl, sourceTime);
+          await seekVideo(videoClip.id, sourceTime);
         }
 
         if (video.readyState >= 2) {
