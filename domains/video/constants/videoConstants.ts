@@ -49,7 +49,8 @@ export const PLAYBACK = {
   DEFAULT_RATE: 1,
   FRAME_STEP: 1 / 30, // 30fps
   SYNC_INTERVAL_MS: 100, // media sync interval during playback
-  SEEK_DRIFT_THRESHOLD: 0.15, // seconds: re-seek when drift exceeds this
+  SEEK_DRIFT_THRESHOLD: 0.15, // seconds: visual media re-seek threshold
+  AUDIO_SEEK_DRIFT_THRESHOLD: 0.35, // seconds: fallback HTMLAudio seek threshold
   TIME_DISPLAY_THROTTLE_MS: 100, // throttle for time display updates
 } as const;
 
@@ -115,6 +116,9 @@ export const PRE_RENDER = {
 export const WEB_AUDIO = {
   SCHEDULER_INTERVAL_MS: 50, // clip boundary check interval during playback
   SEEK_JUMP_THRESHOLD: 0.3, // seconds: time jump larger than this = seek event
+  SEEK_DRIFT_TOLERANCE: 0.18, // seconds: expected-vs-actual timeline drift treated as seek
+  BACKWARD_JUMP_EPSILON: 0.05, // seconds: any notable backward jump indicates seek/loop wrap
+  RESCHEDULE_MIN_INTERVAL_MS: 120, // debounce reschedule to avoid stop/start crackle bursts
 } as const;
 
 // Frame rate presets
