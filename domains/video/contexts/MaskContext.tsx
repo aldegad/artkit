@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useRef,
+  useMemo,
   ReactNode,
 } from "react";
 import {
@@ -61,6 +62,40 @@ interface MaskContextValue {
 
 const MaskContext = createContext<MaskContextValue | null>(null);
 
+function isTimeInsideMask(mask: MaskData, time: number): boolean {
+  return time >= mask.startTime && time < mask.startTime + mask.duration;
+}
+
+function findMaskAtTime(trackMasks: MaskData[], time: number): MaskData | null {
+  if (trackMasks.length === 0) return null;
+
+  let lo = 0;
+  let hi = trackMasks.length - 1;
+  let candidate = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (trackMasks[mid].startTime <= time) {
+      candidate = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (candidate < 0) return null;
+
+  const primary = trackMasks[candidate];
+  if (isTimeInsideMask(primary, time)) return primary;
+
+  for (let i = candidate - 1; i >= 0; i -= 1) {
+    const mask = trackMasks[i];
+    if (mask.startTime + mask.duration <= time) break;
+    if (isTimeInsideMask(mask, time)) return mask;
+  }
+
+  return null;
+}
+
 export function MaskProvider({ children }: { children: ReactNode }) {
   const [masks, setMasks] = useState<Map<string, MaskData>>(new Map());
   const [activeMaskId, setActiveMaskId] = useState<string | null>(null);
@@ -72,6 +107,22 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [pressureEnabled, setPressureEnabledState] = useState(true);
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const masksByTrack = useMemo(() => {
+    const index = new Map<string, MaskData[]>();
+    for (const mask of masks.values()) {
+      const list = index.get(mask.trackId);
+      if (list) {
+        list.push(mask);
+      } else {
+        index.set(mask.trackId, [mask]);
+      }
+    }
+    for (const list of index.values()) {
+      list.sort((a, b) => a.startTime - b.startTime);
+    }
+    return index;
+  }, [masks]);
 
   // Brush settings
   const setBrushSettings = useCallback((settings: Partial<MaskBrushSettings>) => {
@@ -200,15 +251,10 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   // Get all masks for a track
   const getMasksForTrack = useCallback(
     (trackId: string): MaskData[] => {
-      const result: MaskData[] = [];
-      for (const mask of masks.values()) {
-        if (mask.trackId === trackId) {
-          result.push(mask);
-        }
-      }
-      return result.sort((a, b) => a.startTime - b.startTime);
+      const trackMasks = masksByTrack.get(trackId);
+      return trackMasks ? [...trackMasks] : [];
     },
-    [masks]
+    [masksByTrack]
   );
 
   // Helper: load mask image data onto canvas (handles async image loading)
@@ -369,21 +415,21 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   // Get mask data for a track at an absolute timeline time
   const getMaskAtTimeForTrack = useCallback(
     (trackId: string, time: number): string | null => {
-      for (const mask of masks.values()) {
-        if (mask.trackId !== trackId) continue;
-        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
+      const trackMasks = masksByTrack.get(trackId);
+      if (!trackMasks) return null;
 
-        // Currently editing this mask within its time range - use live canvas
-        if (isEditingMask && activeMaskId === mask.id && maskCanvasRef.current) {
-          return "__live_canvas__";
-        }
+      const mask = findMaskAtTime(trackMasks, time);
+      if (!mask) return null;
 
-        // Return saved mask data
-        return mask.maskData;
+      // Currently editing this mask within its time range - use live canvas
+      if (isEditingMask && activeMaskId === mask.id && maskCanvasRef.current) {
+        return "__live_canvas__";
       }
-      return null;
+
+      // Return saved mask data
+      return mask.maskData;
     },
-    [masks, isEditingMask, activeMaskId]
+    [masksByTrack, isEditingMask, activeMaskId]
   );
 
   const value: MaskContextValue = {

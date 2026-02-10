@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   ReactNode,
 } from "react";
 import {
@@ -251,6 +252,42 @@ function sanitizeTimelineViewState(viewState: TimelineViewState): TimelineViewSt
   };
 }
 
+function isTimeInsideClip(clip: Clip, time: number): boolean {
+  return time >= clip.startTime && time < clip.startTime + clip.duration;
+}
+
+function findClipAtTime(trackClips: Clip[], time: number): Clip | null {
+  if (trackClips.length === 0) return null;
+
+  // Find the right-most clip whose startTime <= time.
+  let lo = 0;
+  let hi = trackClips.length - 1;
+  let candidate = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (trackClips[mid].startTime <= time) {
+      candidate = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (candidate < 0) return null;
+
+  const primary = trackClips[candidate];
+  if (isTimeInsideClip(primary, time)) return primary;
+
+  // Fallback for unexpected overlap/out-of-order legacy data.
+  for (let i = candidate - 1; i >= 0; i -= 1) {
+    const clip = trackClips[i];
+    if (clip.startTime + clip.duration <= time) break;
+    if (isTimeInsideClip(clip, time)) return clip;
+  }
+
+  return null;
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
     updateProjectDuration,
@@ -309,6 +346,22 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
+
+  const clipsByTrack = useMemo(() => {
+    const index = new Map<string, Clip[]>();
+    for (const clip of clips) {
+      const list = index.get(clip.trackId);
+      if (list) {
+        list.push(clip);
+      } else {
+        index.set(clip.trackId, [clip]);
+      }
+    }
+    for (const list of index.values()) {
+      list.sort((a, b) => a.startTime - b.startTime);
+    }
+    return index;
+  }, [clips]);
 
   const syncHistoryFlags = useCallback(() => {
     setCanUndo(historyPastRef.current.length > 0);
@@ -904,25 +957,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   // Queries
   const getClipAtTime = useCallback(
     (trackId: string, time: number): Clip | null => {
-      return (
-        clips.find(
-          (c) =>
-            c.trackId === trackId &&
-            time >= c.startTime &&
-            time < c.startTime + c.duration
-        ) || null
-      );
+      const trackClips = clipsByTrack.get(trackId);
+      if (!trackClips) return null;
+      return findClipAtTime(trackClips, time);
     },
-    [clips]
+    [clipsByTrack]
   );
 
   const getClipsInTrack = useCallback(
     (trackId: string): Clip[] => {
-      return clips
-        .filter((c) => c.trackId === trackId)
-        .sort((a, b) => a.startTime - b.startTime);
+      const trackClips = clipsByTrack.get(trackId);
+      return trackClips ? [...trackClips] : [];
     },
-    [clips]
+    [clipsByTrack]
   );
 
   const getTrackById = useCallback(
