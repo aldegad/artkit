@@ -7,8 +7,6 @@ import {
   type MenuItem,
 } from "../../../shared/components";
 import { shortcutToDisplayString, bindingToDisplayString, COMMON_SHORTCUTS } from "@/shared/utils/keyboard";
-import type { RifeInterpolationQuality } from "@/shared/ai/frameInterpolation";
-
 interface VideoMenuBarProps {
   // File menu
   onNew: () => void;
@@ -40,8 +38,6 @@ interface VideoMenuBarProps {
   onResetLayout: () => void;
   onTogglePreviewCache: () => void;
   previewCacheEnabled: boolean;
-  interpolationQuality: RifeInterpolationQuality;
-  onSetInterpolationQuality: (quality: RifeInterpolationQuality) => void;
   translations: {
     file: string;
     edit: string;
@@ -66,9 +62,6 @@ interface VideoMenuBarProps {
     timeline: string;
     previewVideoCache: string;
     resetLayout: string;
-    frameInterpolation: string;
-    interpolationQualityFast: string;
-    interpolationQualityHigh: string;
   };
 }
 
@@ -100,8 +93,6 @@ export default function VideoMenuBar({
   onResetLayout,
   onTogglePreviewCache,
   previewCacheEnabled,
-  interpolationQuality,
-  onSetInterpolationQuality,
   translations: t,
 }: VideoMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | "settings" | null>(null);
@@ -143,17 +134,6 @@ export default function VideoMenuBar({
 
   const settingsMenuItems: MenuItem[] = [
     { label: t.previewVideoCache, onClick: onTogglePreviewCache, checked: previewCacheEnabled },
-    { divider: true },
-    {
-      label: `${t.frameInterpolation} (${t.interpolationQualityFast})`,
-      onClick: () => onSetInterpolationQuality("fast"),
-      checked: interpolationQuality === "fast",
-    },
-    {
-      label: `${t.frameInterpolation} (${t.interpolationQualityHigh})`,
-      onClick: () => onSetInterpolationQuality("high"),
-      checked: interpolationQuality === "high",
-    },
   ];
 
   return (
