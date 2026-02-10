@@ -46,6 +46,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     lockCropAspect,
     previewPreRenderEnabled,
     isPanLocked,
+    isSpacePanning,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -60,7 +61,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
-  const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
@@ -161,39 +161,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isPanningRef.current = false;
   }, [vpEndPanDrag]);
 
-  const handlePreviewKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.code !== "Space" || e.repeat) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-    const target = e.target as HTMLElement;
-    const isInteractiveElement =
-      target.tagName === "INPUT" ||
-      target.tagName === "SELECT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable;
-    if (isInteractiveElement) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-    setIsSpacePanning(true);
-  }, []);
-
-  const handlePreviewKeyUp = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.code !== "Space") return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsSpacePanning(false);
-    if (!isHandTool) {
-      stopPanDrag();
-    }
-  }, [isHandTool, stopPanDrag]);
-
-  const handlePreviewBlur = useCallback(() => {
-    setIsSpacePanning(false);
-    if (!isHandTool) {
-      stopPanDrag();
-    }
-  }, [isHandTool, stopPanDrag]);
   const dragStateRef = useRef<{
     clipId: string | null;
     pointerStart: { x: number; y: number };
@@ -1076,6 +1043,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   ]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.currentTarget.focus();
+
     // Middle mouse button drag for pan
     if (e.button === 1) {
       e.preventDefault();
@@ -1574,18 +1543,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   return (
     <div
       ref={containerRefCallback}
+      data-video-preview-root=""
       className={cn("relative w-full h-full overflow-hidden focus:outline-none", className)}
       tabIndex={0}
       onPointerDownCapture={(e) => {
         e.currentTarget.focus();
       }}
-      onKeyDown={handlePreviewKeyDown}
-      onKeyUp={handlePreviewKeyUp}
-      onBlur={handlePreviewBlur}
     >
       <canvas
         ref={previewCanvasRef}
         className="absolute inset-0"
+        tabIndex={0}
         style={{
           cursor: isPanningRef.current
             ? "grabbing"
