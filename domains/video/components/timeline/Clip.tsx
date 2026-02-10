@@ -134,7 +134,7 @@ export function Clip({ clip, isLifted }: ClipProps) {
   return (
     <div
       className={cn(
-        "absolute top-1 bottom-1 rounded cursor-pointer transition-[transform,box-shadow] duration-150",
+        "absolute top-[9px] bottom-[9px] rounded cursor-pointer transition-[transform,box-shadow] duration-150",
         clipColor,
         isSelected && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent",
         !clip.visible && "opacity-50",
