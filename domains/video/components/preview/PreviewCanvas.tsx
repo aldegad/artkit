@@ -388,7 +388,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
 
       for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.sourceUrl);
+        const video = videoElementsRef.current?.get(clip.id);
         const track = trackById.get(clip.trackId);
         if (!video || !track || video.readyState < 2) continue;
 
@@ -422,7 +422,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
 
       for (const clip of audioClips) {
-        const audio = audioElementsRef.current?.get(clip.sourceUrl);
+        const audio = audioElementsRef.current?.get(clip.id);
         const track = trackById.get(clip.trackId);
         if (!audio || !track) continue;
 
@@ -509,7 +509,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     };
 
     for (const clip of videoClips) {
-      const video = videoElementsRef.current?.get(clip.sourceUrl);
+      const video = videoElementsRef.current?.get(clip.id);
       if (video) {
         video.addEventListener("canplay", scheduleRender);
         video.addEventListener("seeked", scheduleRender);
@@ -667,7 +667,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         if (!clip || !clip.visible) continue;
 
         // Get the video/image element for this clip
-        const videoElement = videoElementsRef.current.get(clip.sourceUrl);
+        const videoElement = videoElementsRef.current.get(clip.id);
 
         // Determine source element
         let sourceEl: CanvasImageSource | null = null;

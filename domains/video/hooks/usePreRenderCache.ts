@@ -258,7 +258,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         const clip = getClipAtTimeRef.current(track.id, time);
         if (!clip || !clip.visible || clip.type !== "video") continue;
 
-        const videoEl = videoElementsRef.current.get(clip.sourceUrl);
+        const videoEl = videoElementsRef.current.get(clip.id);
         if (!videoEl || videoEl.readyState < 1) continue;
 
         const sourceTime = clip.trimIn + (time - clip.startTime);
