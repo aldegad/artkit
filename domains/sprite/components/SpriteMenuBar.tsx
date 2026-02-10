@@ -23,10 +23,8 @@ interface SpriteMenuBarProps {
   onImportSheet: () => void;
   onImportVideo: () => void;
   onTogglePreview: () => void;
-  onToggleFrameEdit: () => void;
   onResetLayout: () => void;
   isPreviewOpen: boolean;
-  isFrameEditOpen: boolean;
   canSave: boolean;
   canExport: boolean;
   isLoading?: boolean;
@@ -50,7 +48,6 @@ interface SpriteMenuBarProps {
     undo: string;
     redo: string;
     preview: string;
-    frameEdit: string;
     resetLayout: string;
   };
 }
@@ -70,10 +67,8 @@ export default function SpriteMenuBar({
   onImportSheet,
   onImportVideo,
   onTogglePreview,
-  onToggleFrameEdit,
   onResetLayout,
   isPreviewOpen,
-  isFrameEditOpen,
   canSave,
   canExport,
   isLoading,
@@ -109,7 +104,6 @@ export default function SpriteMenuBar({
 
   const windowMenuItems: MenuItem[] = [
     { label: t.preview, onClick: onTogglePreview, checked: isPreviewOpen },
-    { label: t.frameEdit, onClick: onToggleFrameEdit, checked: isFrameEditOpen },
     { divider: true },
     { label: t.resetLayout, onClick: onResetLayout },
   ];

@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useEditorTools, useEditorBrush, useEditorHistory, useEditorWindows } from "../contexts/SpriteEditorContext";
+import {
+  useEditorTools,
+  useEditorBrush,
+  useEditorHistory,
+  useEditorWindows,
+  useEditorFramesMeta,
+} from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { ImageDropZone, Popover } from "../../../shared/components";
 import {
@@ -19,6 +25,9 @@ import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasVie
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
+import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
+import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
+import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 
 // ============================================
 // Frame Indicator (editable)
@@ -92,8 +101,16 @@ export default function AnimationPreviewContent() {
   const storeFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
   const setStoreFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
+  const { frames: activeTrackFrames } = useEditorFramesMeta();
   const { toolMode, frameEditToolMode, isPanLocked } = useEditorTools();
-  const { setBrushColor } = useEditorBrush();
+  const {
+    brushColor,
+    setBrushColor,
+    brushSize,
+    brushHardness,
+    activePreset,
+    pressureEnabled,
+  } = useEditorBrush();
   const { pushHistory } = useEditorHistory();
   const { setPendingVideoFile, setIsVideoImportOpen } = useEditorWindows();
   const { t } = useLanguage();
@@ -104,15 +121,32 @@ export default function AnimationPreviewContent() {
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [hasCompositedFrame, setHasCompositedFrame] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [isOverCanvas, setIsOverCanvas] = useState(false);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
+  const drawingPointerIdRef = useRef<number | null>(null);
+  const lastMousePosRef = useRef({ x: 0, y: 0 });
 
   // Keep the latest composited frame as a canvas to avoid image re-decoding per frame.
   const compositedCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Editable frame buffer used when brush/eraser is active.
+  const editFrameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const editFrameCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const currentEditTrackIdRef = useRef<string | null>(null);
+  const currentEditFrameIdRef = useRef<number | null>(null);
+  const isEditFrameDirtyRef = useRef(false);
+
   const currentFrameIndex = storeFrameIndex;
+  const activeFrame = activeTrackFrames[currentFrameIndex];
+  const editableFrame = activeFrame && !activeFrame.disabled && activeFrame.imageData ? activeFrame : null;
+
   const trackEnabledIndicesMap = useMemo(() => {
     const map = new Map<string, number[]>();
     for (const track of tracks) {
@@ -125,6 +159,7 @@ export default function AnimationPreviewContent() {
     }
     return map;
   }, [tracks]);
+
   const maxEnabledCount = useMemo(() => {
     let max = 0;
     for (const indices of trackEnabledIndicesMap.values()) {
@@ -132,8 +167,10 @@ export default function AnimationPreviewContent() {
     }
     return max;
   }, [trackEnabledIndicesMap]);
+
   const activeEnabledIndices = trackEnabledIndicesMap.get(activeTrackId ?? "") ?? [];
   const currentVisualIndex = activeEnabledIndices.indexOf(currentFrameIndex);
+
   const enabledTracks = useMemo(
     () =>
       tracks.map((track) => ({
@@ -142,7 +179,9 @@ export default function AnimationPreviewContent() {
       })),
     [tracks],
   );
+
   const hasContent = tracks.some((track) => track.frames.length > 0);
+  const isEditMode = frameEditToolMode === "brush" || frameEditToolMode === "eraser";
 
   // ---- Viewport (ref-based zoom/pan, no React re-renders for viewport changes) ----
   const viewport = useCanvasViewport({
@@ -199,11 +238,30 @@ export default function AnimationPreviewContent() {
   // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
 
+  const commitFrameEdits = useCallback(() => {
+    const trackId = currentEditTrackIdRef.current;
+    const frameId = currentEditFrameIdRef.current;
+    const frameCanvas = editFrameCanvasRef.current;
+    if (!trackId || frameId === null || !frameCanvas || !isEditFrameDirtyRef.current) return;
+
+    const newImageData = frameCanvas.toDataURL("image/png");
+    const trackStore = useSpriteTrackStore.getState();
+    const targetTrack = trackStore.tracks.find((track) => track.id === trackId);
+    if (!targetTrack) return;
+
+    trackStore.updateTrack(trackId, {
+      frames: targetTrack.frames.map((frame) =>
+        frame.id === frameId ? { ...frame, imageData: newImageData } : frame,
+      ),
+    });
+    isEditFrameDirtyRef.current = false;
+  }, []);
+
   // Register render function
   useEffect(() => {
     setRenderFn(() => {
       const canvas = canvasRef.current;
-      const sourceCanvas = compositedCanvasRef.current;
+      const sourceCanvas = isEditMode ? editFrameCanvasRef.current : compositedCanvasRef.current;
       if (!canvas || !sourceCanvas) return;
 
       const zoom = getAnimVpZoom();
@@ -224,9 +282,9 @@ export default function AnimationPreviewContent() {
     // Ensure first paint after autosave restore even if a render was requested
     // before the scheduler render function was registered.
     requestRender();
-  }, [setRenderFn, getAnimVpZoom, requestRender]);
+  }, [setRenderFn, getAnimVpZoom, requestRender, isEditMode]);
 
-  // Subscribe viewport changes → render
+  // Subscribe viewport changes -> render
   useEffect(() => {
     return onAnimViewportChange(() => {
       requestRender();
@@ -287,7 +345,7 @@ export default function AnimationPreviewContent() {
       return;
     }
 
-    // Handle image files → create new track
+    // Handle image files -> create new track
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
     if (imageFiles.length > 0) {
       pushHistory();
@@ -366,6 +424,7 @@ export default function AnimationPreviewContent() {
     if (maxEnabledCount === 0) {
       compositedCanvasRef.current = null;
       setHasCompositedFrame(false);
+      requestRender();
       return;
     }
 
@@ -392,42 +451,207 @@ export default function AnimationPreviewContent() {
       }
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isAutosaveLoading, enabledTracks, currentVisualIndex, maxEnabledCount, requestRender]);
+
+  // Keep editable frame canvas in sync with active frame.
+  useEffect(() => {
+    const nextFrameId = editableFrame?.id ?? null;
+    const nextTrackId = editableFrame ? activeTrackId : null;
+
+    if (
+      currentEditFrameIdRef.current !== null &&
+      (currentEditFrameIdRef.current !== nextFrameId || currentEditTrackIdRef.current !== nextTrackId)
+    ) {
+      commitFrameEdits();
+    }
+
+    setHasDrawn(false);
+
+    if (!editableFrame?.imageData) {
+      editFrameCanvasRef.current = null;
+      editFrameCtxRef.current = null;
+      currentEditTrackIdRef.current = null;
+      currentEditFrameIdRef.current = null;
+      isEditFrameDirtyRef.current = false;
+      requestRender();
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const offscreen = document.createElement("canvas");
+      offscreen.width = img.width;
+      offscreen.height = img.height;
+      const offscreenCtx = offscreen.getContext("2d");
+      if (!offscreenCtx) return;
+
+      offscreenCtx.clearRect(0, 0, offscreen.width, offscreen.height);
+      offscreenCtx.drawImage(img, 0, 0);
+
+      editFrameCanvasRef.current = offscreen;
+      editFrameCtxRef.current = offscreenCtx;
+      currentEditTrackIdRef.current = activeTrackId;
+      currentEditFrameIdRef.current = editableFrame.id;
+      isEditFrameDirtyRef.current = false;
+      requestRender();
+    };
+    img.src = editableFrame.imageData;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editableFrame?.id, editableFrame?.imageData, activeTrackId, commitFrameEdits, requestRender]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      commitFrameEdits();
+      drawingPointerIdRef.current = null;
+      setIsDrawing(false);
+      setCursorPos(null);
+      setIsOverCanvas(false);
+      requestRender();
+    }
+  }, [isEditMode, commitFrameEdits, requestRender]);
+
+  // Flush frame edits on unmount.
+  useEffect(() => {
+    return () => {
+      commitFrameEdits();
+    };
+  }, [commitFrameEdits]);
 
   // Autosave restore can toggle hasCompositedFrame after initial scheduler tick.
   // Trigger another paint once the canvas is visibly mounted.
   useEffect(() => {
-    if (!hasCompositedFrame) return;
+    if (!hasCompositedFrame && !isEditMode) return;
     requestAnimationFrame(() => {
       requestRender();
     });
-  }, [hasCompositedFrame, requestRender]);
+  }, [hasCompositedFrame, isEditMode, requestRender]);
 
   const handlePrev = useCallback(() => {
     if (activeEnabledIndices.length === 0) return;
+    commitFrameEdits();
     setStoreFrameIndex((prev: number) => {
       const current = activeEnabledIndices.indexOf(prev);
       const base = current >= 0 ? current : 0;
       const next = (base - 1 + activeEnabledIndices.length) % activeEnabledIndices.length;
       return activeEnabledIndices[next] ?? prev;
     });
-  }, [activeEnabledIndices, setStoreFrameIndex]);
+  }, [activeEnabledIndices, commitFrameEdits, setStoreFrameIndex]);
 
   const handleNext = useCallback(() => {
     if (activeEnabledIndices.length === 0) return;
+    commitFrameEdits();
     setStoreFrameIndex((prev: number) => {
       const current = activeEnabledIndices.indexOf(prev);
       const base = current >= 0 ? current : 0;
       const next = (base + 1) % activeEnabledIndices.length;
       return activeEnabledIndices[next] ?? prev;
     });
-  }, [activeEnabledIndices, setStoreFrameIndex]);
+  }, [activeEnabledIndices, commitFrameEdits, setStoreFrameIndex]);
 
-  // 스페이스바 패닝 기능
+  const getPixelCoordinates = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+
+      const rect = canvas.getBoundingClientRect();
+      const style = getComputedStyle(canvas);
+      const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+      const borderTop = parseFloat(style.borderTopWidth) || 0;
+      const borderRight = parseFloat(style.borderRightWidth) || 0;
+      const borderBottom = parseFloat(style.borderBottomWidth) || 0;
+
+      const contentWidth = rect.width - borderLeft - borderRight;
+      const contentHeight = rect.height - borderTop - borderBottom;
+
+      if (contentWidth <= 0 || contentHeight <= 0) return null;
+
+      const scaleX = canvas.width / contentWidth;
+      const scaleY = canvas.height / contentHeight;
+      const zoom = getAnimVpZoom();
+
+      const x = Math.floor(((clientX - rect.left - borderLeft) * scaleX) / zoom);
+      const y = Math.floor(((clientY - rect.top - borderTop) * scaleY) / zoom);
+
+      return { x, y };
+    },
+    [getAnimVpZoom],
+  );
+
+  const drawPixel = useCallback(
+    (x: number, y: number, color: string, isEraser = false, pressure = 1) => {
+      const frameCtx = editFrameCtxRef.current;
+      const frameCanvas = editFrameCanvasRef.current;
+      if (!frameCtx || !frameCanvas) return false;
+
+      const params = calculateDrawingParameters(
+        Number.isFinite(pressure) ? Math.max(0.01, Math.min(1, pressure)) : 1,
+        activePreset,
+        brushSize,
+        pressureEnabled,
+      );
+
+      frameCtx.save();
+      if (isEraser) {
+        frameCtx.globalCompositeOperation = "destination-out";
+      }
+
+      sharedDrawDab(frameCtx, {
+        x,
+        y,
+        radius: params.size / 2,
+        hardness: brushHardness / 100,
+        color,
+        alpha: params.opacity * params.flow,
+        isEraser,
+      });
+
+      frameCtx.restore();
+      isEditFrameDirtyRef.current = true;
+      return true;
+    },
+    [activePreset, brushHardness, brushSize, pressureEnabled],
+  );
+
+  const pickColorFromComposited = useCallback(
+    (clientX: number, clientY: number) => {
+      const sourceCanvas = compositedCanvasRef.current;
+      const displayCanvas = canvasRef.current;
+      if (!sourceCanvas || !displayCanvas) return;
+
+      const rect = displayCanvas.getBoundingClientRect();
+      const zoom = getAnimVpZoom();
+      if (zoom <= 0) return;
+
+      const srcX = Math.floor((clientX - rect.left) / zoom);
+      const srcY = Math.floor((clientY - rect.top) / zoom);
+      if (srcX < 0 || srcY < 0 || srcX >= sourceCanvas.width || srcY >= sourceCanvas.height) {
+        return;
+      }
+
+      const sourceCtx = sourceCanvas.getContext("2d");
+      if (!sourceCtx) return;
+      const pixel = sourceCtx.getImageData(srcX, srcY, 1, 1).data;
+      if (pixel[3] === 0) return;
+
+      const hex = `#${pixel[0].toString(16).padStart(2, "0")}${pixel[1]
+        .toString(16)
+        .padStart(2, "0")}${pixel[2].toString(16).padStart(2, "0")}`;
+      setBrushColor(hex);
+    },
+    [getAnimVpZoom, setBrushColor],
+  );
+
+  // Spacebar pan mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 버튼, input 등에 포커스가 있으면 스페이스바 패닝 무시
       const target = e.target as HTMLElement;
       const isInteractiveElement =
         target.tagName === "BUTTON" ||
@@ -458,7 +682,7 @@ export default function AnimationPreviewContent() {
     };
   }, [animEndPanDrag]);
 
-  // 손 툴 또는 스페이스바로 패닝 활성화
+  // Hand tool or spacebar pan
   const isHandMode = toolMode === "hand" || isPanning;
 
   const handlePointerDown = useCallback(
@@ -507,45 +731,160 @@ export default function AnimationPreviewContent() {
       if (activeTouchPointerIdsRef.current.size <= 1) {
         animEndPanDrag();
       }
+      if (drawingPointerIdRef.current === e.pointerId) {
+        drawingPointerIdRef.current = null;
+        setIsDrawing(false);
+        commitFrameEdits();
+      }
     },
-    [animEndPanDrag],
+    [animEndPanDrag, commitFrameEdits],
   );
 
   const handlePreviewCanvasPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointerIdsRef.current.add(e.pointerId);
+      }
+
+      if (activeTouchPointerIdsRef.current.size > 1) {
+        setIsDrawing(false);
+        return;
+      }
+
       const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
-      if (isTouchPanOnlyInput || isHandMode || frameEditToolMode !== "eyedropper") {
+      if (isTouchPanOnlyInput || isHandMode) {
         return;
       }
 
-      const sourceCanvas = compositedCanvasRef.current;
-      const displayCanvas = canvasRef.current;
-      if (!sourceCanvas || !displayCanvas) return;
-
-      const rect = displayCanvas.getBoundingClientRect();
-      const zoom = getAnimVpZoom();
-      if (zoom <= 0) return;
-
-      const srcX = Math.floor((e.clientX - rect.left) / zoom);
-      const srcY = Math.floor((e.clientY - rect.top) / zoom);
-      if (srcX < 0 || srcY < 0 || srcX >= sourceCanvas.width || srcY >= sourceCanvas.height) {
+      if (frameEditToolMode === "eyedropper") {
+        pickColorFromComposited(e.clientX, e.clientY);
         return;
       }
 
-      const sourceCtx = sourceCanvas.getContext("2d");
-      if (!sourceCtx) return;
-      const pixel = sourceCtx.getImageData(srcX, srcY, 1, 1).data;
-      if (pixel[3] === 0) return;
+      if (!isEditMode || !editableFrame) {
+        return;
+      }
 
-      const hex = `#${pixel[0].toString(16).padStart(2, "0")}${pixel[1]
-        .toString(16)
-        .padStart(2, "0")}${pixel[2].toString(16).padStart(2, "0")}`;
-      setBrushColor(hex);
+      const coords = getPixelCoordinates(e.clientX, e.clientY);
+      if (!coords) return;
+
+      if (!hasDrawn) {
+        pushHistory();
+        setHasDrawn(true);
+      }
+
+      if (isPlaying) {
+        setIsPlaying(false);
+      }
+
+      drawingPointerIdRef.current = e.pointerId;
+      setIsDrawing(true);
+      const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+
+      if (drawPixel(coords.x, coords.y, brushColor, frameEditToolMode === "eraser", pressure)) {
+        requestRender();
+      }
+      lastMousePosRef.current = { x: coords.x, y: coords.y };
+
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
     },
-    [frameEditToolMode, getAnimVpZoom, isHandMode, isPanLocked, setBrushColor],
+    [
+      isPanLocked,
+      isHandMode,
+      frameEditToolMode,
+      pickColorFromComposited,
+      isEditMode,
+      editableFrame,
+      getPixelCoordinates,
+      hasDrawn,
+      pushHistory,
+      isPlaying,
+      setIsPlaying,
+      drawPixel,
+      brushColor,
+      requestRender,
+    ],
   );
 
-  // 커서 결정
+  const handlePreviewCanvasPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      }
+
+      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
+        return;
+      }
+
+      if (!isEditMode || !isDrawing || drawingPointerIdRef.current !== e.pointerId || !editableFrame) {
+        return;
+      }
+
+      const coords = getPixelCoordinates(e.clientX, e.clientY);
+      if (!coords) return;
+
+      const lineDx = coords.x - lastMousePosRef.current.x;
+      const lineDy = coords.y - lastMousePosRef.current.y;
+      const steps = Math.max(Math.abs(lineDx), Math.abs(lineDy));
+
+      if (steps > 0) {
+        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        for (let i = 1; i <= steps; i++) {
+          const x = Math.round(lastMousePosRef.current.x + (lineDx * i) / steps);
+          const y = Math.round(lastMousePosRef.current.y + (lineDy * i) / steps);
+          drawPixel(x, y, brushColor, frameEditToolMode === "eraser", pressure);
+        }
+        requestRender();
+      }
+
+      lastMousePosRef.current = { x: coords.x, y: coords.y };
+    },
+    [isEditMode, isDrawing, editableFrame, getPixelCoordinates, drawPixel, brushColor, frameEditToolMode, requestRender],
+  );
+
+  const handlePreviewCanvasPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointerIdsRef.current.delete(e.pointerId);
+      }
+
+      safeReleasePointerCapture(e.currentTarget, e.pointerId);
+
+      if (drawingPointerIdRef.current === e.pointerId) {
+        drawingPointerIdRef.current = null;
+        setIsDrawing(false);
+        commitFrameEdits();
+      }
+    },
+    [commitFrameEdits],
+  );
+
+  const handlePreviewCanvasPointerEnter = useCallback(() => {
+    setIsOverCanvas(true);
+  }, []);
+
+  const handlePreviewCanvasPointerLeave = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointerIdsRef.current.delete(e.pointerId);
+      }
+      setIsOverCanvas(false);
+      setCursorPos(null);
+
+      if (drawingPointerIdRef.current === e.pointerId) {
+        drawingPointerIdRef.current = null;
+        setIsDrawing(false);
+        commitFrameEdits();
+      }
+    },
+    [commitFrameEdits],
+  );
+
+  const hasVisibleCanvas = isEditMode ? Boolean(editFrameCanvasRef.current) : hasCompositedFrame;
+
+  // Cursor selection
   const getCursor = () => {
     if (isHandMode) {
       return animIsPanDragging() ? "grabbing" : "grab";
@@ -586,7 +925,7 @@ export default function AnimationPreviewContent() {
             onPointerCancel={handlePointerUp}
             style={{ cursor: getCursor(), touchAction: "none" }}
           >
-            {hasCompositedFrame ? (
+            {hasVisibleCanvas ? (
               <div
                 className={`absolute border border-border-default overflow-hidden ${bgType === "checkerboard" ? "checkerboard" : ""}`}
                 style={{
@@ -606,15 +945,44 @@ export default function AnimationPreviewContent() {
                 <canvas
                   ref={canvasRef}
                   onPointerDown={handlePreviewCanvasPointerDown}
+                  onPointerMove={handlePreviewCanvasPointerMove}
+                  onPointerUp={handlePreviewCanvasPointerUp}
+                  onPointerCancel={handlePreviewCanvasPointerUp}
+                  onPointerEnter={handlePreviewCanvasPointerEnter}
+                  onPointerLeave={handlePreviewCanvasPointerLeave}
                   className="block relative"
                   style={{
-                    cursor: getCursor(),
+                    cursor: isEditMode ? "none" : getCursor(),
                     pointerEvents: isHandMode ? "none" : "auto",
                     touchAction: "none",
                   }}
                 />
+                {isOverCanvas &&
+                  cursorPos &&
+                  !isHandMode &&
+                  isEditMode &&
+                  (frameEditToolMode === "brush" || frameEditToolMode === "eraser") && (
+                    <div
+                      className="pointer-events-none absolute"
+                      style={{
+                        left: cursorPos.x,
+                        top: cursorPos.y,
+                        width: brushSize * viewportSync.zoom,
+                        height: brushSize * viewportSync.zoom,
+                        transform: "translate(-50%, -50%)",
+                        border:
+                          frameEditToolMode === "eraser" ? "2px solid #f87171" : `2px solid ${brushColor}`,
+                        borderRadius: "2px",
+                        boxShadow: "0 0 0 1px rgba(0,0,0,0.5)",
+                      }}
+                    />
+                  )}
               </div>
-            ) : null}
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-sm">
+                {t.selectFrame}
+              </div>
+            )}
           </div>
 
           {/* Drop overlay */}
@@ -638,12 +1006,13 @@ export default function AnimationPreviewContent() {
                     currentIndex={currentVisualIndex >= 0 ? currentVisualIndex : 0}
                     maxCount={maxEnabledCount}
                     onChange={(visualIndex) => {
+                      commitFrameEdits();
                       const target = activeEnabledIndices[visualIndex];
                       if (target !== undefined) setStoreFrameIndex(target);
                     }}
                   />
                 ) : (
-                  <span className="text-xs text-text-secondary cursor-default select-none tabular-nums">—/—</span>
+                  <span className="text-xs text-text-secondary cursor-default select-none tabular-nums">-/-</span>
                 )}
                 <input
                   ref={fileInputRef}
@@ -741,7 +1110,10 @@ export default function AnimationPreviewContent() {
                   <StepBackwardIcon />
                 </button>
                 <button
-                  onClick={() => setIsPlaying(!isPlaying)}
+                  onClick={() => {
+                    commitFrameEdits();
+                    setIsPlaying(!isPlaying);
+                  }}
                   className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
                 >
                   {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
@@ -761,8 +1133,8 @@ export default function AnimationPreviewContent() {
                     setAnimVpZoom(
                       Math.max(
                         SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
-                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_OUT
-                      )
+                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_OUT,
+                      ),
                     )
                   }
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
@@ -775,8 +1147,8 @@ export default function AnimationPreviewContent() {
                     setAnimVpZoom(
                       Math.min(
                         SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
-                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_IN
-                      )
+                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_IN,
+                      ),
                     )
                   }
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
