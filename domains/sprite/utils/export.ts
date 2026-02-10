@@ -47,7 +47,7 @@ export async function downloadFramesAsZip(
 
   const blob = await zip.generateAsync({ type: "blob" });
   const link = document.createElement("a");
-  link.download = `${projectName}-sprites.zip`;
+  link.download = `${projectName}-${validFrames.length}f.zip`;
   link.href = URL.createObjectURL(blob);
   link.click();
   URL.revokeObjectURL(link.href);
@@ -155,9 +155,10 @@ export async function downloadSpriteSheet(
   const dataUrl = await generateSpriteSheet(frames, options);
   if (!dataUrl) return;
 
+  const validCount = frames.filter((f) => f.imageData && !f.disabled).length;
   const ext = options.format === "webp" ? "webp" : "png";
   const link = document.createElement("a");
-  link.download = `${projectName}-spritesheet.${ext}`;
+  link.download = `${projectName}-${validCount}f-spritesheet.${ext}`;
   link.href = dataUrl;
   link.click();
 }
@@ -358,9 +359,10 @@ export async function downloadCompositedSpriteSheet(
   const dataUrl = await generateCompositedSpriteSheet(tracks, options);
   if (!dataUrl) return;
 
+  const maxFrameCount = Math.max(...tracks.filter((t) => t.visible).map((t) => t.frames.filter((f) => !f.disabled).length), 0);
   const ext = options.format === "webp" ? "webp" : "png";
   const link = document.createElement("a");
-  link.download = `${projectName}-spritesheet.${ext}`;
+  link.download = `${projectName}-${maxFrameCount}f-spritesheet.${ext}`;
   link.href = dataUrl;
   link.click();
 }
@@ -386,7 +388,7 @@ export async function downloadCompositedFramesAsZip(
 
   const blob = await zip.generateAsync({ type: "blob" });
   const link = document.createElement("a");
-  link.download = `${projectName}-composited.zip`;
+  link.download = `${projectName}-${compositedFrames.length}f.zip`;
   link.href = URL.createObjectURL(blob);
   link.click();
   URL.revokeObjectURL(link.href);
