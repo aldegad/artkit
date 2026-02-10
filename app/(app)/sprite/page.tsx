@@ -126,6 +126,8 @@ function SpriteEditorMain() {
     () => readAISettings().frameInterpolationQuality
   );
   const [exportFrameSize, setExportFrameSize] = useState<SpriteExportFrameSize | null>(null);
+  const [detectedOriginalFrameSize, setDetectedOriginalFrameSize] =
+    useState<SpriteExportFrameSize | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [pendingExportType, setPendingExportType] = useState<SpriteExportType>("zip-png");
 
@@ -312,13 +314,6 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
-  const originalExportFrameSize = useMemo<SpriteExportFrameSize | null>(() => {
-    if (imageSize.width <= 0 || imageSize.height <= 0) return null;
-    return {
-      width: Math.floor(imageSize.width),
-      height: Math.floor(imageSize.height),
-    };
-  }, [imageSize.height, imageSize.width]);
   const estimatedExportFrameCount = useMemo(() => {
     const visibleTracks = tracks.filter((track) => track.visible);
     if (visibleTracks.length === 0) return 0;
@@ -327,6 +322,43 @@ function SpriteEditorMain() {
       0,
     );
   }, [tracks]);
+
+  useEffect(() => {
+    if (imageSize.width > 0 && imageSize.height > 0) {
+      setDetectedOriginalFrameSize({
+        width: Math.floor(imageSize.width),
+        height: Math.floor(imageSize.height),
+      });
+      return;
+    }
+
+    if (!firstFrameImage) {
+      setDetectedOriginalFrameSize(null);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      if (img.width <= 0 || img.height <= 0) {
+        setDetectedOriginalFrameSize(null);
+        return;
+      }
+      setDetectedOriginalFrameSize({
+        width: Math.floor(img.width),
+        height: Math.floor(img.height),
+      });
+    };
+    img.onerror = () => {
+      if (!cancelled) setDetectedOriginalFrameSize(null);
+    };
+    img.src = firstFrameImage;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firstFrameImage, imageSize.height, imageSize.width]);
 
   const openExportModal = useCallback((type: SpriteExportType) => {
     if (!hasRenderableFrames) return;
@@ -858,7 +890,7 @@ function SpriteEditorMain() {
         exportType={pendingExportType}
         defaultFileName={projectName.trim() || "sprite-project"}
         defaultFrameSize={exportFrameSize}
-        originalFrameSize={originalExportFrameSize}
+        originalFrameSize={detectedOriginalFrameSize}
         estimatedFrameCount={estimatedExportFrameCount}
         maxFrameSize={MAX_EXPORT_FRAME_SIZE}
         onClose={() => setIsExportModalOpen(false)}
