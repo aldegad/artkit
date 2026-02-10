@@ -8,7 +8,7 @@ import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture } from "@/shared/utils";
 import { SpriteTrack } from "../types";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
-import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon, DuplicateIcon, RotateIcon } from "@/shared/components/icons";
+import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon, DuplicateIcon, RotateIcon, DeleteIcon } from "@/shared/components/icons";
 
 // ============================================
 // Multi-Track Timeline
@@ -602,10 +602,10 @@ export default function TimelineContent() {
                         e.stopPropagation();
                         handleDeleteTrack(track.id);
                       }}
-                      className="w-4 h-4 flex items-center justify-center rounded text-[9px] text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                      className="w-5 h-5 flex items-center justify-center rounded text-text-tertiary hover:text-accent-danger hover:bg-accent-danger/10 transition-colors"
                       title="Delete track"
                     >
-                      ×
+                      <DeleteIcon className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </>
@@ -684,7 +684,8 @@ export default function TimelineContent() {
                           }}
                           className="flex items-center gap-2 px-2 py-1 rounded text-xs text-accent-danger hover:bg-accent-danger/10 transition-colors"
                         >
-                          × Delete
+                          <DeleteIcon className="w-3 h-3" />
+                          Delete
                         </button>
                       </>
                     )}
