@@ -253,6 +253,7 @@ function VideoEditorContent() {
   } = useVideoLayout();
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
+  const editorRootRef = useRef<HTMLDivElement>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const audioHistorySavedRef = useRef(false);
 
@@ -1314,6 +1315,46 @@ function VideoEditorContent() {
     setIsSpacePanning,
   });
 
+  // Prevent browser history swipe gestures while preserving editor-local horizontal scroll.
+  useEffect(() => {
+    const root = editorRootRef.current;
+    if (!root) return;
+
+    const isHorizontallyScrollable = (el: HTMLElement): boolean => {
+      if (el.scrollWidth <= el.clientWidth + 1) return false;
+      const overflowX = window.getComputedStyle(el).overflowX;
+      return overflowX === "auto" || overflowX === "scroll" || overflowX === "overlay";
+    };
+
+    const findHorizontalScrollContainer = (start: HTMLElement): HTMLElement | null => {
+      let node: HTMLElement | null = start;
+      while (node && node !== root) {
+        if (isHorizontallyScrollable(node)) return node;
+        node = node.parentElement;
+      }
+      return isHorizontallyScrollable(root) ? root : null;
+    };
+
+    const handleWheelCapture = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) return;
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !root.contains(target)) return;
+
+      const scrollContainer = findHorizontalScrollContainer(target);
+      if (scrollContainer) {
+        scrollContainer.scrollLeft += event.deltaX;
+      }
+
+      event.preventDefault();
+    };
+
+    document.addEventListener("wheel", handleWheelCapture, { passive: false, capture: true });
+    return () => {
+      document.removeEventListener("wheel", handleWheelCapture, { capture: true });
+    };
+  }, []);
+
   const menuTranslations = {
     file: t.file,
     edit: t.edit,
@@ -1357,7 +1398,9 @@ function VideoEditorContent() {
 
   return (
     <div
-      className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative"
+      ref={editorRootRef}
+      data-video-editor-root=""
+      className="h-full bg-background text-text-primary flex flex-col overflow-hidden overscroll-x-none relative"
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* Loading overlay during autosave restore */}
