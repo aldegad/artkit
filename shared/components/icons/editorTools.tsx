@@ -108,6 +108,13 @@ export const FrameSkipToggleIcon: React.FC<IconProps> = ({ className = "w-4 h-4"
   </svg>
 );
 
+export const FlipIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4l-5 6h5M17 16V4l5 6h-5" />
+    <line x1="12" y1="2" x2="12" y2="22" strokeWidth={1.5} strokeDasharray="2 2" />
+  </svg>
+);
+
 export const NthFrameSkipIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <rect x="2" y="4" width="4" height="16" rx="1" strokeWidth={2} />
