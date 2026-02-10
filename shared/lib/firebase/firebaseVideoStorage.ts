@@ -122,6 +122,33 @@ function readTimestampMillis(value: Timestamp | number | undefined): number {
   return Date.now();
 }
 
+const VIDEO_LIST_PREFIX_CONCURRENCY = 4;
+const VIDEO_LOAD_CLIP_CONCURRENCY = 4;
+const VIDEO_LOAD_MASK_CONCURRENCY = 8;
+const VIDEO_DELETE_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      results[idx] = await mapper(items[idx], idx);
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return results;
+}
+
 // ============================================
 // Progress Callback Type
 // ============================================
@@ -234,7 +261,11 @@ async function listProjectMediaItems(
 
   const collect = async (folder: StorageReference): Promise<StorageReference[]> => {
     const listResult = await listAll(folder);
-    const nested = await Promise.all(listResult.prefixes.map((prefix) => collect(prefix)));
+    const nested = await mapWithConcurrency(
+      listResult.prefixes,
+      VIDEO_LIST_PREFIX_CONCURRENCY,
+      async (prefix) => collect(prefix)
+    );
     return [...listResult.items, ...nested.flat()];
   };
 
@@ -349,13 +380,17 @@ export async function saveVideoProjectToFirebase(
 ): Promise<void> {
   const docRef = doc(db, "users", userId, "videoProjects", project.id);
   const existingSnap = await getDoc(docRef);
-  const existingCreatedAt = existingSnap.exists()
-    ? (existingSnap.data() as { createdAt?: Timestamp }).createdAt
-    : undefined;
+  const existingProject = existingSnap.exists()
+    ? (existingSnap.data() as FirestoreVideoProject)
+    : null;
+  const existingCreatedAt = existingProject?.createdAt;
   const createdAt =
     existingCreatedAt && typeof existingCreatedAt.toMillis === "function"
       ? existingCreatedAt
       : Timestamp.fromMillis(project.savedAt || Date.now());
+  const existingClipMap = new Map(
+    (existingProject?.clips || []).map((clipMeta) => [clipMeta.id, clipMeta] as const)
+  );
 
   const clips = project.project.clips;
   const masks = project.project.masks;
@@ -382,6 +417,7 @@ export async function saveVideoProjectToFirebase(
 
     let storageRefPath = "";
     let mediaBlob: Blob | null = null;
+    let reusedMediaType = "";
 
     // Imported media is stored by clip.id in IndexedDB while clip.sourceUrl
     // stays as blob: URL for runtime playback.
@@ -413,12 +449,22 @@ export async function saveVideoProjectToFirebase(
         mediaBlob,
         mediaBlob.type || "application/octet-stream"
       );
+    } else {
+      const existingClipMeta = existingClipMap.get(clip.id);
+      if (
+        existingClipMeta?.storageRef &&
+        existingClipMeta.sourceId === clip.sourceId
+      ) {
+        // If local blob is temporarily unavailable, keep existing uploaded media.
+        storageRefPath = existingClipMeta.storageRef;
+        reusedMediaType = existingClipMeta.mediaType || "";
+      }
     }
-    // If no media blob is available, keep empty storageRef.
+    // If no media blob and no reusable reference are available, keep empty storageRef.
     // This preserves backward compatibility for non-uploadable clips.
 
     const meta = clipToMeta(clip, storageRefPath);
-    meta.mediaType = mediaBlob?.type || "";
+    meta.mediaType = mediaBlob?.type || reusedMediaType;
     clipMetas.push(meta);
   }
 
@@ -456,7 +502,7 @@ export async function saveVideoProjectToFirebase(
   }
 
   // 3. Upload thumbnail
-  let thumbnailUrl: string | undefined;
+  let thumbnailUrl: string | undefined = existingProject?.thumbnailUrl;
   if (thumbnailDataUrl) {
     try {
       thumbnailUrl = await uploadVideoThumbnail(userId, project.id, thumbnailDataUrl);
@@ -511,8 +557,10 @@ export async function getVideoProjectFromFirebase(
   const totalSteps = data.clips.length + (data.masks.some((m) => m.maskDataRef) ? 1 : 0);
   let currentStep = 0;
 
-  const clips: Clip[] = await Promise.all(
-    data.clips.map(async (clipMeta) => {
+  const clips: Clip[] = await mapWithConcurrency(
+    data.clips,
+    VIDEO_LOAD_CLIP_CONCURRENCY,
+    async (clipMeta) => {
       onProgress?.({
         current: ++currentStep,
         total: totalSteps,
@@ -537,12 +585,14 @@ export async function getVideoProjectFromFirebase(
       }
 
       return metaToClip(clipMeta, sourceUrl);
-    })
+    }
   );
 
   // Download mask data
-  const masks: MaskData[] = await Promise.all(
-    data.masks.map(async (maskMeta) => {
+  const masks: MaskData[] = await mapWithConcurrency(
+    data.masks,
+    VIDEO_LOAD_MASK_CONCURRENCY,
+    async (maskMeta) => {
       let maskData: string | null = null;
 
       if (maskMeta.maskDataRef) {
@@ -567,7 +617,7 @@ export async function getVideoProjectFromFirebase(
         size: maskMeta.size,
         maskData,
       };
-    })
+    }
   );
 
   const projectData: VideoProject = {
@@ -646,14 +696,14 @@ export async function deleteVideoProjectFromFirebase(
   const totalSteps = mediaItems.length + 1; // media files + firestore metadata
   let currentStep = 0;
 
-  for (const itemRef of mediaItems) {
+  await mapWithConcurrency(mediaItems, VIDEO_DELETE_CONCURRENCY, async (itemRef) => {
     onProgress?.({
       current: ++currentStep,
       total: totalSteps,
       clipName: itemRef.name || "Media",
     });
     await deleteObject(itemRef);
-  }
+  });
 
   onProgress?.({
     current: ++currentStep,

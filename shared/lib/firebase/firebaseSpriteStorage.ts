@@ -67,6 +67,10 @@ export interface SpriteSaveLoadProgress {
   itemName: string;
 }
 
+const SPRITE_LOAD_TRACK_CONCURRENCY = 3;
+const SPRITE_LOAD_FRAME_CONCURRENCY = 8;
+const SPRITE_DELETE_CONCURRENCY = 8;
+
 function removeUndefined<T>(obj: T): T {
   if (obj === null || obj === undefined || typeof obj !== "object") return obj;
   if (Array.isArray(obj)) return obj.map(removeUndefined) as T;
@@ -212,8 +216,12 @@ async function uploadSpriteThumbnail(
 
 async function deleteFolderRecursive(folderRef: StorageReference): Promise<void> {
   const listResult = await listAll(folderRef);
-  await Promise.all(listResult.items.map((itemRef) => deleteObject(itemRef)));
-  await Promise.all(listResult.prefixes.map((prefixRef) => deleteFolderRecursive(prefixRef)));
+  await mapWithConcurrency(listResult.items, SPRITE_DELETE_CONCURRENCY, async (itemRef) => {
+    await deleteObject(itemRef);
+  });
+  await mapWithConcurrency(listResult.prefixes, SPRITE_DELETE_CONCURRENCY, async (prefixRef) => {
+    await deleteFolderRecursive(prefixRef);
+  });
 }
 
 async function deleteProjectMedia(userId: string, projectId: string): Promise<void> {
@@ -497,10 +505,14 @@ export async function getSpriteProjectFromFirebase(
     }
   }
 
-  const tracks: SpriteTrack[] = await Promise.all(
-    data.tracks.map(async (trackMeta) => {
-      const frames: SpriteFrame[] = await Promise.all(
-        trackMeta.frames.map(async (frameMeta) => {
+  const tracks: SpriteTrack[] = await mapWithConcurrency(
+    data.tracks,
+    SPRITE_LOAD_TRACK_CONCURRENCY,
+    async (trackMeta) => {
+      const frames: SpriteFrame[] = await mapWithConcurrency(
+        trackMeta.frames,
+        SPRITE_LOAD_FRAME_CONCURRENCY,
+        async (frameMeta) => {
           let imageData = frameMeta.imageData;
           if (frameMeta.imageRef) {
             try {
@@ -524,7 +536,7 @@ export async function getSpriteProjectFromFirebase(
             disabled: frameMeta.disabled,
             imageData,
           };
-        }),
+        },
       );
 
       return {
@@ -537,7 +549,7 @@ export async function getSpriteProjectFromFirebase(
         zIndex: trackMeta.zIndex,
         loop: trackMeta.loop,
       };
-    }),
+    },
   );
 
   return {
