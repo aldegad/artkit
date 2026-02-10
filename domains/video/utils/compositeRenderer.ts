@@ -1,5 +1,6 @@
 import { VideoTrack, Clip, getClipScaleX, getClipScaleY } from "../types";
 import { Size } from "@/shared/types";
+import { resolveClipPositionAtTimelineTime } from "./clipTransformKeyframes";
 
 export interface CompositeRenderParams {
   time: number;
@@ -94,10 +95,11 @@ export function renderCompositeFrame(
 
     if (!sourceEl) continue;
 
+    const clipPosition = resolveClipPositionAtTimelineTime(clip, time);
     const clipScaleX = getClipScaleX(clip);
     const clipScaleY = getClipScaleY(clip);
-    const drawX = offsetX + clip.position.x * scale;
-    const drawY = offsetY + clip.position.y * scale;
+    const drawX = offsetX + clipPosition.x * scale;
+    const drawY = offsetY + clipPosition.y * scale;
     const drawW = clip.sourceSize.width * scale * clipScaleX;
     const drawH = clip.sourceSize.height * scale * clipScaleY;
 
@@ -140,8 +142,8 @@ export function renderCompositeFrame(
         tmpCtx.globalAlpha = 1;
         tmpCtx.drawImage(
           sourceEl,
-          clip.position.x,
-          clip.position.y,
+          clipPosition.x,
+          clipPosition.y,
           clip.sourceSize.width * clipScaleX,
           clip.sourceSize.height * clipScaleY,
         );

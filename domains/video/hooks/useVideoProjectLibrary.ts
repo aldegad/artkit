@@ -15,6 +15,7 @@ import { VideoStorageInfo, VideoStorageProvider } from "../services/videoProject
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { loadMediaBlob } from "../utils/mediaStorage";
 import { saveVideoAutosave } from "../utils/videoAutosave";
+import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 
 interface UseVideoProjectLibraryOptions {
   storageProvider: VideoStorageProvider;
@@ -29,6 +30,7 @@ interface UseVideoProjectLibraryOptions {
   setLoopRange: (start: number, end: number, enableLoop?: boolean) => void;
   toggleLoop: () => void;
   toolMode: VideoToolMode;
+  autoKeyframeEnabled: boolean;
   selectClips: (clipIds: string[]) => void;
   clearHistory: () => void;
   clearMaskHistory: () => void;
@@ -60,6 +62,7 @@ function normalizeLoadedClip(clip: Clip): Clip {
   const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
   const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
   const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+  const transformKeyframes = normalizeClipTransformKeyframes(clip);
 
   if (clip.type === "video") {
     return {
@@ -67,6 +70,7 @@ function normalizeLoadedClip(clip: Clip): Clip {
       scale: baseScale,
       scaleX,
       scaleY,
+      transformKeyframes,
       hasAudio: clip.hasAudio ?? true,
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -79,6 +83,7 @@ function normalizeLoadedClip(clip: Clip): Clip {
       scale: baseScale,
       scaleX,
       scaleY,
+      transformKeyframes,
       sourceSize: clip.sourceSize || { width: 0, height: 0 },
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -90,6 +95,7 @@ function normalizeLoadedClip(clip: Clip): Clip {
     scale: baseScale,
     scaleX,
     scaleY,
+    transformKeyframes,
   };
 }
 
@@ -109,6 +115,7 @@ export function useVideoProjectLibrary(
     setLoopRange,
     toggleLoop,
     toolMode,
+    autoKeyframeEnabled,
     selectClips,
     clearHistory,
     clearMaskHistory,
@@ -245,6 +252,7 @@ export function useVideoProjectLibrary(
             currentTime: persistedCurrentTime,
             playbackRange: normalizedPlaybackRange,
             toolMode,
+            autoKeyframeEnabled,
             selectedClipIds: [],
             selectedMaskIds: [],
           })
@@ -283,6 +291,7 @@ export function useVideoProjectLibrary(
     setViewState,
     storageProvider,
     toolMode,
+    autoKeyframeEnabled,
     toggleLoop,
   ]);
 

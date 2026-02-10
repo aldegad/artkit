@@ -11,6 +11,7 @@ import {
   type VideoProject,
   type VideoTrack,
 } from "../types";
+import { resolveClipPositionAtTimelineTime } from "../utils/clipTransformKeyframes";
 
 export type VideoExportFormat = "mp4" | "mov";
 export type VideoExportCompression = "high" | "balanced" | "small";
@@ -486,6 +487,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
           if (!sourceEl) continue;
           const clipScaleX = getClipScaleX(clip);
           const clipScaleY = getClipScaleY(clip);
+          const clipPosition = resolveClipPositionAtTimelineTime(clip, frameTime);
 
           const maskData = getMaskForExport(clip.trackId, frameTime);
           if (maskData && exportMaskTmpCtx) {
@@ -496,8 +498,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
               exportMaskTmpCtx.globalAlpha = 1;
               exportMaskTmpCtx.drawImage(
                 sourceEl,
-                clip.position.x,
-                clip.position.y,
+                clipPosition.x,
+                clipPosition.y,
                 clip.sourceSize.width * clipScaleX,
                 clip.sourceSize.height * clipScaleY
               );
@@ -513,8 +515,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
             exportCtx.globalAlpha = clip.opacity / 100;
             exportCtx.drawImage(
               sourceEl,
-              clip.position.x,
-              clip.position.y,
+              clipPosition.x,
+              clipPosition.y,
               clip.sourceSize.width * clipScaleX,
               clip.sourceSize.height * clipScaleY
             );

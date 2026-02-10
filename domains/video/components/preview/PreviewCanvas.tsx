@@ -28,6 +28,10 @@ import {
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
 import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
+import {
+  offsetClipPositionValues,
+  resolveClipPositionAtTimelineTime,
+} from "../../utils/clipTransformKeyframes";
 import { usePreviewFrameCapture } from "./usePreviewFrameCapture";
 import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
 
@@ -79,6 +83,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     previewPreRenderEnabled,
     isPanLocked,
     isSpacePanning,
+    autoKeyframeEnabled,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -286,10 +291,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     clipId: string | null;
     pointerStart: { x: number; y: number };
     clipStart: { x: number; y: number };
+    clipSnapshot: Clip | null;
   }>({
     clipId: null,
     pointerStart: { x: 0, y: 0 },
     clipStart: { x: 0, y: 0 },
+    clipSnapshot: null,
   });
   const cropDragRef = useRef<{
     mode: "none" | "create" | "move" | "resize";
@@ -820,7 +827,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         if (sourceEl) {
-          const drawPoint = vpContentToScreen(clip.position);
+          const clipPosition = resolveClipPositionAtTimelineTime(clip, renderTime);
+          const drawPoint = vpContentToScreen(clipPosition);
           const drawX = drawPoint.x;
           const drawY = drawPoint.y;
           const drawW = clip.sourceSize.width * scale * getClipScaleX(clip);
@@ -870,8 +878,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               // Draw clip at its position within the project canvas
               tmpCtx.drawImage(
                 sourceEl,
-                clip.position.x,
-                clip.position.y,
+                clipPosition.x,
+                clipPosition.y,
                 clip.sourceSize.width * getClipScaleX(clip),
                 clip.sourceSize.height * getClipScaleY(clip)
               );
@@ -923,7 +931,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           && clip.type !== "audio"
           && !(toolMode === "transform" && transformTool.state.isActive)
         ) {
-          const boxPoint = vpContentToScreen(clip.position);
+          const clipPosition = resolveClipPositionAtTimelineTime(clip, renderTime);
+          const boxPoint = vpContentToScreen(clipPosition);
           const boxX = boxPoint.x;
           const boxY = boxPoint.y;
           const boxW = clip.sourceSize.width * scale * getClipScaleX(clip);
@@ -1122,10 +1131,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const clip = getClipAtTime(track.id, currentTimeRef.current);
       if (!clip || !clip.visible || clip.type === "audio") continue;
 
+      const position = resolveClipPositionAtTimelineTime(clip, currentTimeRef.current);
       const width = clip.sourceSize.width * getClipScaleX(clip);
       const height = clip.sourceSize.height * getClipScaleY(clip);
-      const centerX = clip.position.x + width / 2;
-      const centerY = clip.position.y + height / 2;
+      const centerX = position.x + width / 2;
+      const centerY = position.y + height / 2;
       const angle = ((clip.rotation || 0) * Math.PI) / 180;
 
       const dx = point.x - centerX;
@@ -1157,6 +1167,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     selectClip,
     updateClip,
     saveToHistory,
+    getCurrentTimelineTime: () => currentTimeRef.current,
+    autoKeyframeEnabled,
     screenToProject,
     hitTestClipAtPoint,
   });
@@ -1336,6 +1348,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipId: hitClip.id,
       pointerStart: point,
       clipStart: { ...hitClip.position },
+      clipSnapshot: hitClip,
     };
     setIsDraggingClip(true);
   }, [
@@ -1531,12 +1544,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (!clipId) return;
     const dx = point.x - dragState.pointerStart.x;
     const dy = point.y - dragState.pointerStart.y;
-    updateClip(clipId, {
-      position: {
-        x: dragState.clipStart.x + dx,
-        y: dragState.clipStart.y + dy,
-      },
-    });
+    const clipSnapshot = dragState.clipSnapshot;
+    if (!clipSnapshot) return;
+    updateClip(clipId, offsetClipPositionValues(clipSnapshot, dx, dy));
   }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1586,6 +1596,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipId: null,
       pointerStart: { x: 0, y: 0 },
       clipStart: { x: 0, y: 0 },
+      clipSnapshot: null,
     };
     setIsDraggingClip(false);
     originalCropAreaRef.current = null;

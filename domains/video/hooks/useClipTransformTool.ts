@@ -8,6 +8,12 @@ import {
   type RectHandle,
 } from "@/shared/utils/rectTransform";
 import { Clip, VideoToolMode, getClipScaleX, getClipScaleY } from "../types";
+import {
+  getClipPositionKeyframes,
+  normalizeClipTransformKeyframes,
+  resolveClipPositionAtTimelineTime,
+  upsertClipPositionKeyframeAtTimelineTime,
+} from "../utils/clipTransformKeyframes";
 
 type TransformHandle = RectHandle | "move" | null;
 
@@ -24,6 +30,7 @@ interface TransformSnapshot {
   scale: number;
   scaleX: number;
   scaleY: number;
+  transformKeyframes?: Clip["transformKeyframes"];
 }
 
 interface UseClipTransformToolOptions {
@@ -33,6 +40,8 @@ interface UseClipTransformToolOptions {
   selectClip: (clipId: string, addToSelection?: boolean) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
   saveToHistory: () => void;
+  getCurrentTimelineTime: () => number;
+  autoKeyframeEnabled: boolean;
   screenToProject: (clientX: number, clientY: number, allowOutside?: boolean) => { x: number; y: number } | null;
   hitTestClipAtPoint: (point: { x: number; y: number }) => Clip | null;
 }
@@ -78,10 +87,11 @@ function cursorForHandle(handle: TransformHandle, dragging: boolean): string {
   return cursorMap[handle];
 }
 
-function getClipRect(clip: Clip): Rect {
+function getClipRect(clip: Clip, timelineTime: number): Rect {
+  const position = resolveClipPositionAtTimelineTime(clip, timelineTime);
   return {
-    x: clip.position.x,
-    y: clip.position.y,
+    x: position.x,
+    y: position.y,
     width: clip.sourceSize.width * getClipScaleX(clip),
     height: clip.sourceSize.height * getClipScaleY(clip),
   };
@@ -95,6 +105,8 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
     selectClip,
     updateClip,
     saveToHistory,
+    getCurrentTimelineTime,
+    autoKeyframeEnabled,
     screenToProject,
     hitTestClipAtPoint,
   } = options;
@@ -164,26 +176,43 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
     const baseScale = Math.max(EPSILON, typeof clip.scale === "number" ? clip.scale : 1);
     const nextScaleX = (bounds.width / sourceW) / baseScale;
     const nextScaleY = (bounds.height / sourceH) / baseScale;
+    const currentTimelineTime = getCurrentTimelineTime();
+    const hasPositionAnimation = getClipPositionKeyframes(clip).length > 0;
+    const shouldUsePositionKeyframes = autoKeyframeEnabled || hasPositionAnimation;
 
-    updateClip(clipId, {
-      position: { x: bounds.x, y: bounds.y },
-      scaleX: Math.max(0.01, nextScaleX),
-      scaleY: Math.max(0.01, nextScaleY),
-    });
+    if (shouldUsePositionKeyframes) {
+      updateClip(clipId, {
+        ...upsertClipPositionKeyframeAtTimelineTime(
+          clip,
+          currentTimelineTime,
+          { x: bounds.x, y: bounds.y },
+          { ensureInitialKeyframe: true }
+        ),
+        scaleX: Math.max(0.01, nextScaleX),
+        scaleY: Math.max(0.01, nextScaleY),
+      });
+    } else {
+      updateClip(clipId, {
+        position: { x: bounds.x, y: bounds.y },
+        scaleX: Math.max(0.01, nextScaleX),
+        scaleY: Math.max(0.01, nextScaleY),
+      });
+    }
     setBounds(bounds);
-  }, [setBounds, updateClip]);
+  }, [autoKeyframeEnabled, getCurrentTimelineTime, setBounds, updateClip]);
 
   const startTransformForClip = useCallback((clipId: string): boolean => {
     const clip = clipsRef.current.find((candidate) => candidate.id === clipId);
     if (!clip || clip.type === "audio") return false;
 
-    const rect = getClipRect(clip);
+    const rect = getClipRect(clip, getCurrentTimelineTime());
     snapshotRef.current = {
       clipId: clip.id,
       position: { ...clip.position },
       scale: typeof clip.scale === "number" ? clip.scale : 1,
       scaleX: typeof clip.scaleX === "number" ? clip.scaleX : 1,
       scaleY: typeof clip.scaleY === "number" ? clip.scaleY : 1,
+      transformKeyframes: normalizeClipTransformKeyframes(clip),
     };
     historySavedRef.current = false;
     activeHandleRef.current = null;
@@ -198,7 +227,7 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
     }));
     boundsRef.current = rect;
     return true;
-  }, []);
+  }, [getCurrentTimelineTime]);
 
   const startTransformForSelection = useCallback((): boolean => {
     const selectedVisualClipId = selectedClipIds.find((clipId) => {
@@ -223,6 +252,7 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
         scale: snapshot.scale,
         scaleX: snapshot.scaleX,
         scaleY: snapshot.scaleY,
+        transformKeyframes: snapshot.transformKeyframes,
       });
     }
     finishSession(currentAspectRatio);
@@ -423,9 +453,9 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
       finishSession(state.aspectRatio);
       return;
     }
-    const rect = getClipRect(clip);
+    const rect = getClipRect(clip, getCurrentTimelineTime());
     setBounds(rect);
-  }, [clips, finishSession, setBounds, state.aspectRatio, state.clipId, state.isActive]);
+  }, [clips, finishSession, getCurrentTimelineTime, setBounds, state.aspectRatio, state.clipId, state.isActive]);
 
   return {
     state,
