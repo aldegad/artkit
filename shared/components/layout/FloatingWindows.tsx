@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useLayout, useLayoutConfig } from "./LayoutConfigContext";
 import { FloatingWindow, SnapEdge } from "@/shared/types/layout";
+import { CloseIcon, MinusIcon, ExpandPanelIcon } from "@/shared/components/icons";
 
 // ============================================
 // Component
@@ -431,14 +432,7 @@ function FloatingWindowComponent({
               className="p-1 hover:bg-interactive-hover rounded text-text-secondary hover:text-text-primary transition-colors"
               title="Restore"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 8h16M4 16h16"
-                />
-              </svg>
+              <ExpandPanelIcon />
             </button>
             {/* Close button */}
             <button
@@ -450,14 +444,7 @@ function FloatingWindowComponent({
               onTouchStart={(e) => e.stopPropagation()}
               className="p-1 hover:bg-accent-danger rounded text-text-secondary hover:text-white transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <CloseIcon />
             </button>
           </div>
         </div>
@@ -505,9 +492,7 @@ function FloatingWindowComponent({
             className="p-1 hover:bg-interactive-hover rounded text-text-secondary hover:text-text-primary transition-colors"
             title="Minimize"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-            </svg>
+            <MinusIcon />
           </button>
           {/* Close button */}
           <button
@@ -519,14 +504,7 @@ function FloatingWindowComponent({
             onTouchStart={(e) => e.stopPropagation()}
             className="p-1 hover:bg-accent-danger rounded text-text-secondary hover:text-white transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <CloseIcon />
           </button>
         </div>
       </div>

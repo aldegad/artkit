@@ -14,8 +14,11 @@ export {
   ChevronDownIcon,
   MenuIcon,
   CogIcon,
+  CloudIcon,
   PlusIcon,
   MinusIcon,
+  ExpandPanelIcon,
+  UndockIcon,
   ZoomInIcon,
   ZoomOutIcon,
   CheckIcon,
@@ -37,6 +40,8 @@ export {
   LoopOffIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
+  MusicNoteIcon,
+  VideoCameraIcon,
 } from "./media";
 
 // Editor Tools
@@ -59,6 +64,7 @@ export {
   FrameSkipToggleIcon,
   NthFrameSkipIcon,
   FlipIcon,
+  BackgroundPatternIcon,
 } from "./editorTools";
 
 // Layers & Alignment
@@ -147,3 +153,9 @@ export {
   LandingVideoIcon,
   LandingSpriteIcon,
 } from "./landing";
+
+// Brand Logos
+export {
+  GoogleIcon,
+  GithubIcon,
+} from "./brand";

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, ReactNode, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { CloseIcon } from "./icons";
 
 interface TooltipProps {
   children: ReactNode;
@@ -246,9 +247,7 @@ export default function Tooltip({
                   onClick={hideTooltip}
                   className="absolute top-2 right-2 w-6 h-6 bg-surface-secondary border border-border-default rounded-full flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-surface-tertiary transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <CloseIcon />
                 </button>
               </div>
             </div>

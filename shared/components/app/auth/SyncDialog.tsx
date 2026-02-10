@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "@/shared/contexts";
+import { SystemIcon, CloudIcon } from "@/shared/components/icons";
 
 interface SyncDialogProps {
   isOpen: boolean;
@@ -59,19 +60,7 @@ export function SyncDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 border border-border rounded-md">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
+                <SystemIcon />
                 {t.localData}
               </div>
               <p className="text-2xl font-bold mt-2">
@@ -84,19 +73,7 @@ export function SyncDialog({
 
             <div className="p-3 border border-border rounded-md">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
-                  />
-                </svg>
+                <CloudIcon />
                 {t.cloudData}
               </div>
               <p className="text-2xl font-bold mt-2">

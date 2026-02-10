@@ -4,23 +4,21 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useEditorTools, useEditorBrush, useEditorHistory, useEditorWindows } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
 import { ImageDropZone, Popover } from "../../../shared/components";
-import { StepBackwardIcon, StepForwardIcon, PlayIcon, PauseIcon } from "../../../shared/components/icons";
+import {
+  StepBackwardIcon,
+  StepForwardIcon,
+  PlayIcon,
+  PauseIcon,
+  PlusIcon,
+  MinusIcon,
+  BackgroundPatternIcon,
+} from "../../../shared/components/icons";
 import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
-
-// Background icon for popover trigger
-const BackgroundPatternIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
-    <rect x="1" y="1" width="6" height="6" opacity="0.8" />
-    <rect x="9" y="1" width="6" height="6" opacity="0.3" />
-    <rect x="1" y="9" width="6" height="6" opacity="0.3" />
-    <rect x="9" y="9" width="6" height="6" opacity="0.8" />
-  </svg>
-);
 
 // ============================================
 // Frame Indicator (editable)
@@ -769,7 +767,7 @@ export default function AnimationPreviewContent() {
                   }
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+                  <MinusIcon className="w-3.5 h-3.5" />
                 </button>
                 <span className="text-xs w-10 text-center text-text-primary">{Math.round(viewportSync.zoom * 100)}%</span>
                 <button
@@ -783,7 +781,7 @@ export default function AnimationPreviewContent() {
                   }
                   className="p-1 hover:bg-interactive-hover rounded transition-colors"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+                  <PlusIcon className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
