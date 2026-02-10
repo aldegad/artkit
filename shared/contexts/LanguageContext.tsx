@@ -96,6 +96,10 @@ interface Translations {
   exportLoopCount: string;
   exporting: string;
   exportFileName: string;
+  exportTypeOptimizedZip: string;
+  exportOptimizedTarget: string;
+  exportOptimizedThreshold: string;
+  exportOptimizedIncludeGuide: string;
   enterProjectName: string;
   importOverwriteConfirm: string;
   noFrames: string;
@@ -444,6 +448,10 @@ const translations: Record<Language, Translations> = {
     exportLoopCount: "반복 횟수",
     exporting: "내보내는 중...",
     exportFileName: "파일 이름",
+    exportTypeOptimizedZip: "최적화 스프라이트 (ZIP)",
+    exportOptimizedTarget: "대상 프레임워크",
+    exportOptimizedThreshold: "픽셀 허용치",
+    exportOptimizedIncludeGuide: "사용 가이드 (GUIDE.md) 포함",
     enterProjectName: "프로젝트 이름을 입력하세요:",
     importOverwriteConfirm: "기존 프로젝트를 모두 삭제하고 가져오시겠습니까?",
     noFrames: "프레임 없음",
@@ -790,6 +798,10 @@ const translations: Record<Language, Translations> = {
     exportLoopCount: "Loop Count",
     exporting: "Exporting...",
     exportFileName: "File Name",
+    exportTypeOptimizedZip: "Optimized Sprite (ZIP)",
+    exportOptimizedTarget: "Target Framework",
+    exportOptimizedThreshold: "Pixel Threshold",
+    exportOptimizedIncludeGuide: "Include Guide (GUIDE.md)",
     enterProjectName: "Enter project name:",
     importOverwriteConfirm: "Delete all existing projects and import?",
     noFrames: "No frames",
