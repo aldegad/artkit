@@ -120,7 +120,7 @@ export function useVideoKeyboardShortcuts(
       if (e.code === PLAYBACK_SHORTCUTS.togglePlay && isPreviewScopeKeyEvent(e)) {
         e.preventDefault();
         if (!e.repeat) {
-          setIsSpacePanning(true);
+          setIsSpacePanning?.(true);
         }
         return;
       }
@@ -286,11 +286,11 @@ export function useVideoKeyboardShortcuts(
       if (e.code !== PLAYBACK_SHORTCUTS.togglePlay) return;
       if (!isSpacePanning) return;
       e.preventDefault();
-      setIsSpacePanning(false);
+      setIsSpacePanning?.(false);
     };
 
     const handleBlur = () => {
-      setIsSpacePanning(false);
+      setIsSpacePanning?.(false);
     };
 
     document.addEventListener("keydown", handleKeyDown, true);
