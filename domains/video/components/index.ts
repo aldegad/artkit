@@ -17,3 +17,6 @@ export { default as VideoProjectListModal } from "./VideoProjectListModal";
 
 // Export modal
 export { VideoExportModal } from "./VideoExportModal";
+
+// Interpolation modal
+export { VideoInterpolationModal } from "./VideoInterpolationModal";

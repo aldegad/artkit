@@ -83,6 +83,7 @@ export {
   VideoPreviewPanelContent,
   VideoTimelinePanelContent,
   VideoProjectListModal,
+  VideoInterpolationModal,
 } from "./components";
 
 // Utils
