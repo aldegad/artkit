@@ -3,6 +3,7 @@
 // ============================================
 
 import { Point, Size } from "../../../shared/types";
+import type { AspectRatio } from "@/shared/types/aspectRatio";
 
 // Re-export shared types for convenience
 export type { Point, Size, UnifiedLayer, BoundingBox } from "../../../shared/types";
@@ -34,8 +35,16 @@ export interface SpriteTrack {
   loop: boolean; // loop when shorter than longest track
 }
 
-export type SpriteToolMode = "pen" | "select" | "hand" | "brush" | "eraser" | "eyedropper" | "zoom";
-export type FrameEditToolMode = "brush" | "eraser" | "eyedropper" | "zoom";
+export interface SpriteCropArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type SpriteToolMode = "pen" | "select" | "hand" | "brush" | "eraser" | "eyedropper" | "zoom" | "crop";
+export type FrameEditToolMode = "brush" | "eraser" | "eyedropper" | "zoom" | "crop";
+export type SpriteCropAspectRatio = AspectRatio;
 
 export type TimelineMode = "reorder" | "offset";
 

@@ -297,6 +297,14 @@ export function useEditorTools() {
   const setSpriteToolMode = useSpriteToolStore((s) => s.setSpriteToolMode);
   const frameEditToolMode = useSpriteToolStore((s) => s.frameEditToolMode);
   const setFrameEditToolMode = useSpriteToolStore((s) => s.setFrameEditToolMode);
+  const cropArea = useSpriteToolStore((s) => s.cropArea);
+  const setCropArea = useSpriteToolStore((s) => s.setCropArea);
+  const cropAspectRatio = useSpriteToolStore((s) => s.cropAspectRatio);
+  const setCropAspectRatio = useSpriteToolStore((s) => s.setCropAspectRatio);
+  const lockCropAspect = useSpriteToolStore((s) => s.lockCropAspect);
+  const setLockCropAspect = useSpriteToolStore((s) => s.setLockCropAspect);
+  const canvasExpandMode = useSpriteToolStore((s) => s.canvasExpandMode);
+  const setCanvasExpandMode = useSpriteToolStore((s) => s.setCanvasExpandMode);
   const currentPoints = useSpriteTrackStore((s) => s.currentPoints);
   const setCurrentPoints = useSpriteTrackStore((s) => s.setCurrentPoints);
   const isSpacePressed = useSpriteToolStore((s) => s.isSpacePressed);
@@ -310,6 +318,14 @@ export function useEditorTools() {
     setSpriteToolMode,
     frameEditToolMode,
     setFrameEditToolMode,
+    cropArea,
+    setCropArea,
+    cropAspectRatio,
+    setCropAspectRatio,
+    lockCropAspect,
+    setLockCropAspect,
+    canvasExpandMode,
+    setCanvasExpandMode,
     currentPoints,
     setCurrentPoints,
     isSpacePressed,
@@ -431,6 +447,8 @@ export function useEditorWindows() {
   const setIsVideoImportOpen = useSpriteUIStore((s) => s.setIsVideoImportOpen);
   const pendingVideoFile = useSpriteUIStore((s) => s.pendingVideoFile);
   const setPendingVideoFile = useSpriteUIStore((s) => s.setPendingVideoFile);
+  const exportFrameSize = useSpriteUIStore((s) => s.exportFrameSize);
+  const setExportFrameSize = useSpriteUIStore((s) => s.setExportFrameSize);
 
   return {
     isPreviewWindowOpen,
@@ -445,6 +463,8 @@ export function useEditorWindows() {
     setIsVideoImportOpen,
     pendingVideoFile,
     setPendingVideoFile,
+    exportFrameSize,
+    setExportFrameSize,
   };
 }
 
