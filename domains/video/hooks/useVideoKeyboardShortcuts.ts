@@ -85,6 +85,7 @@ export function useVideoKeyboardShortcuts(
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreKeyEvent(e)) return;
+      if (e.defaultPrevented) return;
 
       // --- Modifier shortcuts (Cmd/Ctrl) ---
       if (hasCmdOrCtrl(e)) {
