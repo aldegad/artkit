@@ -571,7 +571,9 @@ export function useEditorProject() {
 
 export function useEditorClipboard() {
   const copyFrameToClipboard = useSpriteUIStore((s) => s.copyFrame);
+  const copyFramesToClipboard = useSpriteUIStore((s) => s.copyFrames);
   const getClipboardFrame = useSpriteUIStore((s) => s.getClipboardFrame);
+  const getClipboardFrames = useSpriteUIStore((s) => s.getClipboardFrames);
   const copyTrackToClipboard = useSpriteUIStore((s) => s.copyTrack);
   const getClipboardTrack = useSpriteUIStore((s) => s.getClipboardTrack);
   const clipboardFrame = useSpriteUIStore((s) => s.clipboardFrame);
@@ -580,40 +582,81 @@ export function useEditorClipboard() {
   const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
   const setNextFrameId = useSpriteTrackStore((s) => s.setNextFrameId);
   const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
+  const setSelectedFrameId = useSpriteTrackStore((s) => s.setSelectedFrameId);
+  const setSelectedFrameIds = useSpriteTrackStore((s) => s.setSelectedFrameIds);
   const addTrack = useSpriteTrackStore((s) => s.addTrack);
 
   const copyFrame = useCallback(() => {
     const state = useSpriteTrackStore.getState();
     const frames = state.getActiveTrackFrames();
     if (frames.length === 0) return;
-    const frameToCopy = frames[state.currentFrameIndex];
-    if (frameToCopy) {
-      copyFrameToClipboard(frameToCopy);
+    let framesToCopy: SpriteFrame[] = [];
+
+    if (state.selectedFrameIds.length > 0) {
+      const selectedIdSet = new Set(state.selectedFrameIds);
+      framesToCopy = frames.filter((frame) => selectedIdSet.has(frame.id));
     }
-  }, [copyFrameToClipboard]);
+
+    if (framesToCopy.length === 0) {
+      const frameToCopy = frames[state.currentFrameIndex];
+      if (frameToCopy) {
+        framesToCopy = [frameToCopy];
+      }
+    }
+
+    if (framesToCopy.length === 0) return;
+    if (framesToCopy.length === 1) {
+      copyFrameToClipboard(framesToCopy[0]);
+      return;
+    }
+    copyFramesToClipboard(framesToCopy);
+  }, [copyFrameToClipboard, copyFramesToClipboard]);
 
   const pasteFrame = useCallback(() => {
-    const copiedFrame = getClipboardFrame();
-    if (!copiedFrame) return;
+    const copiedFrames = getClipboardFrames();
+    if (copiedFrames.length === 0) {
+      const singleFrame = getClipboardFrame();
+      if (!singleFrame) return;
+      copiedFrames.push(singleFrame);
+    }
     const state = useSpriteTrackStore.getState();
     const { activeTrackId, tracks } = state;
     if (!activeTrackId) return;
     const activeTrack = tracks.find((t) => t.id === activeTrackId);
     if (!activeTrack) return;
 
-    const newFrame: SpriteFrame = {
+    const selectedFrameIndex = state.selectedFrameId !== null
+      ? activeTrack.frames.findIndex((frame) => frame.id === state.selectedFrameId)
+      : -1;
+
+    const boundedCurrentFrameIndex = Math.max(0, Math.min(state.currentFrameIndex, activeTrack.frames.length));
+    const insertIndex = selectedFrameIndex >= 0 ? selectedFrameIndex : boundedCurrentFrameIndex;
+
+    const insertedFrames = copiedFrames.map((copiedFrame, idx) => ({
       ...deepCopyFrame(copiedFrame),
-      id: state.nextFrameId,
-    };
+      id: state.nextFrameId + idx,
+    }));
+    if (insertedFrames.length === 0) return;
+    const insertedFrameIds = insertedFrames.map((frame) => frame.id);
 
     pushHistory();
-    const insertIndex = state.currentFrameIndex + 1;
     const newFrames = [...activeTrack.frames];
-    newFrames.splice(insertIndex, 0, newFrame);
+    newFrames.splice(insertIndex, 0, ...insertedFrames);
     updateTrack(activeTrackId, { frames: newFrames });
-    setNextFrameId((prev: number) => prev + 1);
+    setNextFrameId((prev: number) => prev + insertedFrames.length);
     setCurrentFrameIndex(insertIndex);
-  }, [getClipboardFrame, pushHistory, updateTrack, setNextFrameId, setCurrentFrameIndex]);
+    setSelectedFrameIds(insertedFrameIds);
+    setSelectedFrameId(insertedFrameIds[0] ?? null);
+  }, [
+    getClipboardFrames,
+    getClipboardFrame,
+    pushHistory,
+    updateTrack,
+    setNextFrameId,
+    setCurrentFrameIndex,
+    setSelectedFrameIds,
+    setSelectedFrameId,
+  ]);
 
   const copyTrack = useCallback(() => {
     const activeTrack = useSpriteTrackStore.getState().getActiveTrack();
