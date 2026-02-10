@@ -11,8 +11,8 @@ type ModeSetting = "auto" | "draft" | "full";
 
 const MODE_QUERY_KEY = "vp_mode";
 const MODE_STORAGE_KEY = "video.preview.mode";
-const PRE_RENDER_QUERY_KEY = "vp_prerender";
-const PRE_RENDER_STORAGE_KEY = "video.preview.prerender";
+export const PRE_RENDER_QUERY_KEY = "vp_prerender";
+export const PRE_RENDER_STORAGE_KEY = "video.preview.prerender";
 const DEBUG_QUERY_KEY = "vp_debug";
 const DEBUG_STORAGE_KEY = "video.preview.debug";
 const FPS_CAP_QUERY_KEY = "vp_fps";
@@ -70,6 +70,19 @@ function detectMobileLikeDevice(): boolean {
   const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
   const narrowViewport = window.innerWidth > 0 && window.innerWidth <= 1024;
   return mobileUA || (coarsePointer && narrowViewport);
+}
+
+export function resolvePreRenderEnabledSetting(): boolean {
+  return resolvePreviewPerformanceConfig().preRenderEnabled;
+}
+
+export function setPreRenderEnabledSetting(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PRE_RENDER_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // Ignore storage failures (private mode / quota)
+  }
 }
 
 export function resolvePreviewPerformanceConfig(): PreviewPerformanceConfig {

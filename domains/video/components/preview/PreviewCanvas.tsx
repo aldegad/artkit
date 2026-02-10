@@ -6,7 +6,7 @@ import { useVideoElements, usePlaybackTick, usePreRenderCache, useAudioBufferCac
 import { cn } from "@/shared/utils/cn";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { PREVIEW, PLAYBACK } from "../../constants";
+import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
@@ -37,6 +37,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     canvasExpandMode,
     cropAspectRatio,
     lockCropAspect,
+    previewPreRenderEnabled,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -54,6 +55,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
+  previewPerf.preRenderEnabled = previewPreRenderEnabled;
   const playbackPerfRef = useRef({
     windowStartMs: 0,
     lastTickMs: 0,
@@ -388,7 +390,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
 
         const sourceTime = clip.trimIn + clipTime;
-        if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
+        if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.AUDIO_SEEK_DRIFT_THRESHOLD) {
           audio.currentTime = sourceTime;
         }
 
@@ -480,6 +482,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.fillRect(0, 0, width, height);
   }, []);
 
+  const getPlaybackSampleTime = useCallback((time: number) => {
+    const frameIdx = Math.max(0, Math.floor(time * PRE_RENDER.FRAME_RATE + 1e-6));
+    return frameIdx / PRE_RENDER.FRAME_RATE;
+  }, []);
+
   // Render the composited frame - assigned to ref to avoid stale closures
   renderRef.current = () => {
     const canvas = previewCanvasRef.current;
@@ -491,6 +498,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     // Read current time from ref (source of truth during playback)
     const ct = currentTimeRef.current;
+    const renderTime = (playback.isPlaying && previewPerf.preRenderEnabled)
+      ? getPlaybackSampleTime(ct)
+      : ct;
 
     const deviceDpr = window.devicePixelRatio || 1;
     const dpr = Math.max(1, Math.min(deviceDpr, previewPerf.maxCanvasDpr));
@@ -548,7 +558,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Skip cache during mask editing — cached frames don't include live mask
     // overlay or edits, so they would hide the mask completely.
     // Skip cache when mask is active (editing or selected) — overlay needs live rendering
-    const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(ct);
+    const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(renderTime);
 
     if (cachedBitmap) {
       if (playback.isPlaying) {
@@ -573,7 +583,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       for (const track of sortedTracks) {
         if (!track.visible) continue;
 
-        const clip = getClipAtTime(track.id, ct);
+        const clip = getClipAtTime(track.id, renderTime);
         if (!clip || !clip.visible) continue;
 
         // Get the video/image element for this clip
@@ -587,7 +597,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             continue;
           }
           if (!playback.isPlaying) {
-            const clipTime = ct - clip.startTime;
+            const clipTime = renderTime - clip.startTime;
             const sourceTime = clip.trimIn + clipTime;
             if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
               videoElement.currentTime = sourceTime;
@@ -616,7 +626,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           const drawH = clip.sourceSize.height * scale * clip.scale;
 
           // Check for mask on this track at current time
-          const maskResult = getMaskAtTimeForTrack(clip.trackId, ct);
+          const maskResult = getMaskAtTimeForTrack(clip.trackId, renderTime);
           let clipMaskSource: CanvasImageSource | null = null;
 
           if (maskResult === "__live_canvas__" && maskContextCanvasRef.current) {

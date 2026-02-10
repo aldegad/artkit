@@ -47,6 +47,8 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   const activeNodesRef = useRef<Map<string, ActiveAudioNode>>(new Map());
   const schedulerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTickTimeRef = useRef<number>(0);
+  const lastTickWallTimeRef = useRef<number>(0);
+  const lastRescheduleAtRef = useRef<number>(0);
   const debugLogsRef = useRef(debugLogs);
   const debugStatsRef = useRef<AudioDebugStats>({
     startedNodes: 0,
@@ -100,6 +102,10 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     stats.rescheduleCount = 0;
     stats.lastReportAt = now;
   }, []);
+
+  const nowMs = useCallback(() => (
+    typeof performance !== "undefined" ? performance.now() : Date.now()
+  ), []);
 
   // Stop all active audio source nodes
   const stopAllNodes = useCallback(() => {
@@ -263,19 +269,44 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     maybeReportDebugStats();
   }, [stopAllNodes, scheduleAudio, maybeReportDebugStats]);
 
-  // Detect seek via playbackTick time jumps
+  // Detect seek/loop wrap via timeline jump relative to wall-time progression.
+  // This avoids false seek detection when rendering is slow (large but expected deltas).
   useEffect(() => {
     lastTickTimeRef.current = currentTimeRef.current;
+    lastTickWallTimeRef.current = nowMs();
 
     return playbackTick.subscribe((time) => {
-      const jump = Math.abs(time - lastTickTimeRef.current);
-      if (jump > WEB_AUDIO.SEEK_JUMP_THRESHOLD && isPlayingRef.current) {
-        // Large time jump = seek — reschedule all audio
-        rescheduleAudio();
+      const now = nowMs();
+      const prevTime = lastTickTimeRef.current;
+      const prevWall = lastTickWallTimeRef.current || now;
+
+      if (isPlayingRef.current) {
+        const actualDelta = time - prevTime;
+        const elapsedSec = Math.max(0, (now - prevWall) / 1000);
+        const expectedDelta = elapsedSec * Math.max(0.01, playbackRateRef.current);
+
+        const jumpMagnitude = Math.abs(actualDelta);
+        const driftFromExpected = Math.abs(actualDelta - expectedDelta);
+        const isBackwardJump = actualDelta < -WEB_AUDIO.BACKWARD_JUMP_EPSILON;
+        const isLargeUnexpectedJump =
+          jumpMagnitude > WEB_AUDIO.SEEK_JUMP_THRESHOLD
+          && driftFromExpected > WEB_AUDIO.SEEK_DRIFT_TOLERANCE;
+
+        if (isBackwardJump || isLargeUnexpectedJump) {
+          const cooldownElapsed =
+            now - lastRescheduleAtRef.current >= WEB_AUDIO.RESCHEDULE_MIN_INTERVAL_MS;
+          if (cooldownElapsed) {
+            // Reschedule only on true timeline discontinuity (seek / loop wrap).
+            rescheduleAudio();
+            lastRescheduleAtRef.current = now;
+          }
+        }
       }
+
       lastTickTimeRef.current = time;
+      lastTickWallTimeRef.current = now;
     });
-  }, [rescheduleAudio, currentTimeRef]);
+  }, [rescheduleAudio, currentTimeRef, nowMs]);
 
   // Start/stop audio on play state change
   useEffect(() => {
@@ -284,6 +315,10 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       if (ctx.state === "suspended") {
         ctx.resume();
       }
+
+      const now = nowMs();
+      lastTickTimeRef.current = currentTimeRef.current;
+      lastTickWallTimeRef.current = now;
 
       // Initial schedule
       scheduleAudio();
@@ -300,6 +335,10 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
         clearInterval(schedulerTimerRef.current);
         schedulerTimerRef.current = null;
       }
+
+      const now = nowMs();
+      lastTickTimeRef.current = currentTimeRef.current;
+      lastTickWallTimeRef.current = now;
     }
 
     return () => {
@@ -308,7 +347,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
         schedulerTimerRef.current = null;
       }
     };
-  }, [isPlaying, scheduleAudio, stopAllNodes]);
+  }, [isPlaying, scheduleAudio, stopAllNodes, currentTimeRef, nowMs]);
 
   // Update playbackRate on all active source nodes
   useEffect(() => {
