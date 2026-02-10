@@ -9,6 +9,7 @@ import {
   getSharedAudioContext,
 } from "./useAudioBufferCache";
 import { playbackTick } from "../utils/playbackTick";
+import { subscribeImmediatePlaybackStop } from "../utils/playbackStopSignal";
 
 // --- Types ---
 
@@ -122,6 +123,17 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     }
     activeNodesRef.current.clear();
   }, []);
+
+  const forceStopImmediately = useCallback(() => {
+    // Block any pending scheduler callback from re-creating nodes
+    // before React state propagation catches up.
+    isPlayingRef.current = false;
+    stopAllNodes();
+    if (schedulerTimerRef.current !== null) {
+      clearInterval(schedulerTimerRef.current);
+      schedulerTimerRef.current = null;
+    }
+  }, [stopAllNodes]);
 
   // Schedule audio nodes for all audible clips at current time
   const scheduleAudio = useCallback(() => {
@@ -269,6 +281,11 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     }
     maybeReportDebugStats();
   }, [stopAllNodes, scheduleAudio, maybeReportDebugStats]);
+
+  // Hard-stop on external pause/navigation signal.
+  useEffect(() => {
+    return subscribeImmediatePlaybackStop(forceStopImmediately);
+  }, [forceStopImmediately]);
 
   // Force-stop audio when app loses foreground.
   useEffect(() => {

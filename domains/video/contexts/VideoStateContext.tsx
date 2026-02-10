@@ -19,6 +19,7 @@ import {
 } from "../types";
 import { PLAYBACK } from "../constants";
 import { playbackTick } from "../utils/playbackTick";
+import { emitImmediatePlaybackStop } from "../utils/playbackStopSignal";
 import { resolvePreRenderEnabledSetting, setPreRenderEnabledSetting } from "../utils/previewPerformance";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 
@@ -190,6 +191,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       if (newTime >= duration) {
         currentTimeRef.current = duration;
         isPlayingRef.current = false;
+        emitImmediatePlaybackStop();
         // Sync final time to React state when playback ends
         setState((prev) => ({
           ...prev,
@@ -281,6 +283,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, [updatePlayback]);
 
   const pause = useCallback(() => {
+    emitImmediatePlaybackStop();
     isPlayingRef.current = false;
 
     if (animationFrameRef.current) {
@@ -296,6 +299,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stop = useCallback(() => {
+    emitImmediatePlaybackStop();
     isPlayingRef.current = false;
     const duration = projectDurationRef.current;
     const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
