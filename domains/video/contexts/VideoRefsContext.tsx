@@ -28,6 +28,7 @@ export interface PreviewViewportAPI {
   cancelTransform: () => void;
   setTransformAspectRatio: (ratio: AspectRatio) => void;
   nudgeTransform: (dx: number, dy: number) => boolean;
+  captureCompositeFrame: (time?: number) => Promise<Blob | null>;
   getTransformState: () => PreviewTransformState;
   onTransformChange: (cb: (state: PreviewTransformState) => void) => () => void;
 }
