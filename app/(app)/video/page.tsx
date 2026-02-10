@@ -11,6 +11,8 @@ import {
   CanvasExpandIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
+  UndoIcon,
+  RedoIcon,
 } from "@/shared/components/icons";
 import {
   VideoStateProvider,
@@ -46,8 +48,7 @@ import {
   SUPPORTED_AUDIO_FORMATS,
   createImageClip,
   TIMELINE,
-  getClipScaleX,
-  getClipScaleY,
+  VideoPanModeToggle,
   type Clip,
   type SavedVideoProject,
   type TimelineViewState,
@@ -430,7 +431,24 @@ function VideoEditorContent() {
     canRedo,
     isAutosaveInitialized,
   } = useTimeline();
-  const { startMaskEdit, isEditingMask, endMaskEdit, activeMaskId, deleteMask, duplicateMask, deselectMask, selectMask, restoreMasks, masks: masksMap, saveMaskData, updateMaskTime } = useMask();
+  const {
+    startMaskEdit,
+    isEditingMask,
+    endMaskEdit,
+    activeMaskId,
+    deleteMask,
+    duplicateMask,
+    deselectMask,
+    selectMask,
+    restoreMasks,
+    masks: masksMap,
+    updateMaskTime,
+    canUndoMask,
+    canRedoMask,
+    undoMask,
+    redoMask,
+    clearMaskHistory,
+  } = useMask();
   const {
     layoutState,
     isPanelOpen,
@@ -452,7 +470,6 @@ function VideoEditorContent() {
   const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
   const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
   const audioHistorySavedRef = useRef(false);
-  const visualHistorySavedRef = useRef(false);
 
   // Save system state
   const [savedProjects, setSavedProjects] = useState<SavedVideoProject[]>([]);
@@ -577,10 +594,9 @@ function VideoEditorContent() {
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
     [clips, selectedClipIds, project.frameRate],
   );
-  const selectedVisualScalePercent = selectedVisualClip
-    ? Math.round(((getClipScaleX(selectedVisualClip) + getClipScaleY(selectedVisualClip)) / 2) * 100)
-    : 100;
   const isTimelineVisible = isPanelOpen("timeline");
+  const canUndoAny = canUndo || canUndoMask;
+  const canRedoAny = canRedo || canRedoMask;
 
   // buildSavedProject is now inside useVideoSave hook
 
@@ -875,6 +891,7 @@ function VideoEditorContent() {
       setCurrentProjectId(loaded.id);
       selectClips([]);
       clearHistory();
+      clearMaskHistory();
       setIsProjectListOpen(false);
     } catch (error) {
       console.error("Failed to load project:", error);
@@ -884,7 +901,7 @@ function VideoEditorContent() {
       setLoadProgress(null);
       setProjectListOperation(null);
     }
-  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, setLoopRange, toggleLoop, selectClips, clearHistory]);
+  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, setLoopRange, toggleLoop, selectClips, clearHistory, clearMaskHistory]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
     if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;
@@ -911,14 +928,34 @@ function VideoEditorContent() {
 
   // Edit menu handlers
   const handleUndo = useCallback(() => {
+    const shouldUndoMask = canUndoMask && (
+      toolMode === "mask" ||
+      isEditingMask ||
+      activeMaskId !== null ||
+      selectedMaskIds.length > 0
+    );
+    if (shouldUndoMask) {
+      undoMask();
+      return;
+    }
     undo();
     deselectAll();
-  }, [undo, deselectAll]);
+  }, [canUndoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, undoMask, undo, deselectAll]);
 
   const handleRedo = useCallback(() => {
+    const shouldRedoMask = canRedoMask && (
+      toolMode === "mask" ||
+      isEditingMask ||
+      activeMaskId !== null ||
+      selectedMaskIds.length > 0
+    );
+    if (shouldRedoMask) {
+      redoMask();
+      return;
+    }
     redo();
     deselectAll();
-  }, [redo, deselectAll]);
+  }, [canRedoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, redoMask, redo, deselectAll]);
 
   const handleCopy = useCallback(() => {
     if (selectedClipIds.length === 0) return;
@@ -1199,16 +1236,6 @@ function VideoEditorContent() {
     audioHistorySavedRef.current = false;
   }, []);
 
-  const beginVisualAdjustment = useCallback(() => {
-    if (visualHistorySavedRef.current) return;
-    saveToHistory();
-    visualHistorySavedRef.current = true;
-  }, [saveToHistory]);
-
-  const endVisualAdjustment = useCallback(() => {
-    visualHistorySavedRef.current = false;
-  }, []);
-
   const handleToggleSelectedClipMute = useCallback(() => {
     if (!selectedAudioClip) return;
     saveToHistory();
@@ -1226,26 +1253,6 @@ function VideoEditorContent() {
     },
     [selectedAudioClip, updateClip]
   );
-
-  const handleSelectedVisualScaleChange = useCallback((scalePercent: number) => {
-    if (!selectedVisualClip) return;
-    const currentScaleX = getClipScaleX(selectedVisualClip);
-    const currentScaleY = getClipScaleY(selectedVisualClip);
-    const currentAverage = (currentScaleX + currentScaleY) / 2;
-    const targetAverage = Math.max(0.05, Math.min(8, scalePercent / 100));
-    const scaleFactor = currentAverage > 0 ? targetAverage / currentAverage : 1;
-    const currentBaseScale = typeof selectedVisualClip.scale === "number" ? selectedVisualClip.scale : 1;
-    updateClip(selectedVisualClip.id, {
-      scale: Math.max(0.05, Math.min(8, currentBaseScale * scaleFactor)),
-    });
-  }, [selectedVisualClip, updateClip]);
-
-  const handleSelectedVisualRotationChange = useCallback((rotationDeg: number) => {
-    if (!selectedVisualClip) return;
-    updateClip(selectedVisualClip.id, {
-      rotation: Math.max(-360, Math.min(360, rotationDeg)),
-    });
-  }, [selectedVisualClip, updateClip]);
 
   const handleSelectAllCrop = useCallback(() => {
     setCropArea({
@@ -1669,8 +1676,8 @@ function VideoEditorContent() {
             isLoading={isExporting}
             onUndo={handleUndo}
             onRedo={handleRedo}
-            canUndo={canUndo}
-            canRedo={canRedo}
+            canUndo={canUndoAny}
+            canRedo={canRedoAny}
             onCut={handleCut}
             onCopy={handleCopy}
             onPaste={handlePaste}
@@ -1712,6 +1719,25 @@ function VideoEditorContent() {
           hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId}
           translations={toolbarTranslations}
         />
+
+        <div className="md:hidden flex items-center gap-0.5 bg-surface-secondary rounded p-0.5">
+          <button
+            onClick={handleUndo}
+            disabled={!canUndoAny}
+            className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+            title={`${t.undo} (Ctrl+Z)`}
+          >
+            <UndoIcon className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={!canRedoAny}
+            className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+            title={`${t.redo} (Ctrl+Shift+Z)`}
+          >
+            <RedoIcon className="w-4 h-4" />
+          </button>
+        </div>
 
         {toolMode === "crop" && (
           <div className="flex items-center gap-2">
@@ -1867,42 +1893,6 @@ function VideoEditorContent() {
           </div>
         )}
 
-        {selectedVisualClip && toolMode !== "crop" && toolMode !== "transform" && (
-          <>
-            <div className="h-4 w-px bg-border-default mx-1" />
-            <div className="flex items-center gap-2 min-w-[250px]">
-              <span className="text-xs text-text-secondary">Scale</span>
-              <input
-                type="range"
-                min={5}
-                max={400}
-                value={selectedVisualScalePercent}
-                onMouseDown={beginVisualAdjustment}
-                onTouchStart={beginVisualAdjustment}
-                onMouseUp={endVisualAdjustment}
-                onTouchEnd={endVisualAdjustment}
-                onChange={(e) => handleSelectedVisualScaleChange(Number(e.target.value))}
-                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="text-xs text-text-secondary w-10 text-right">
-                {selectedVisualScalePercent}%
-              </span>
-            </div>
-            <div className="flex items-center gap-1 min-w-[132px]">
-              <span className="text-xs text-text-secondary">Rotate</span>
-              <input
-                type="number"
-                value={Math.round(selectedVisualClip.rotation || 0)}
-                onFocus={beginVisualAdjustment}
-                onBlur={endVisualAdjustment}
-                onChange={(e) => handleSelectedVisualRotationChange(Number(e.target.value))}
-                className="w-16 px-2 py-1 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary focus:outline-none focus:border-accent-primary"
-              />
-              <span className="text-xs text-text-tertiary">deg</span>
-            </div>
-          </>
-        )}
-
         {selectedAudioClip && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
@@ -2000,6 +1990,7 @@ function VideoEditorContent() {
       {/* Main Content (shared docking/split system) */}
       <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
         <VideoDockableArea />
+        <VideoPanModeToggle />
       </div>
 
       {/* Hidden file input for media import */}

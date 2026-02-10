@@ -355,17 +355,45 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
   }, [stopDragging]);
 
   useEffect(() => {
-    if (toolMode === "transform") {
-      if (!state.isActive) {
-        startTransformForSelection();
+    if (toolMode !== "transform" && state.isActive) {
+      applyTransform();
+    }
+  }, [applyTransform, state.isActive, toolMode]);
+
+  useEffect(() => {
+    if (toolMode !== "transform") return;
+
+    const selectedVisualClipId = selectedClipIds.find((selectedId) => {
+      const clip = clipsRef.current.find((candidate) => candidate.id === selectedId);
+      return !!clip && clip.type !== "audio";
+    });
+
+    if (!selectedVisualClipId) {
+      if (state.isActive) {
+        finishSession(state.aspectRatio);
       }
       return;
     }
 
-    if (state.isActive) {
-      applyTransform();
+    if (!state.isActive || !state.clipId) {
+      startTransformForClip(selectedVisualClipId);
+      return;
     }
-  }, [applyTransform, startTransformForSelection, state.isActive, toolMode]);
+
+    if (state.clipId !== selectedVisualClipId) {
+      stopDragging();
+      startTransformForClip(selectedVisualClipId);
+    }
+  }, [
+    finishSession,
+    selectedClipIds,
+    startTransformForClip,
+    state.aspectRatio,
+    state.clipId,
+    state.isActive,
+    stopDragging,
+    toolMode,
+  ]);
 
   useEffect(() => {
     if (!state.isActive || !state.clipId) return;
