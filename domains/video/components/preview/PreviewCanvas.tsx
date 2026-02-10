@@ -27,6 +27,7 @@ import {
 } from "@/shared/utils/rectTransform";
 import { ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
+import { renderCompositeFrame } from "../../utils/compositeRenderer";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -1120,6 +1121,63 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     transformTool.state.aspectRatio,
   ]);
 
+  const captureCompositeFrame = useCallback(async (time?: number): Promise<Blob | null> => {
+    const width = Math.max(1, Math.round(project.canvasSize.width));
+    const height = Math.max(1, Math.round(project.canvasSize.height));
+    const captureCanvas = document.createElement("canvas");
+    captureCanvas.width = width;
+    captureCanvas.height = height;
+
+    const ctx = captureCanvas.getContext("2d");
+    if (!ctx) return null;
+
+    if (!maskTempCanvasRef.current) {
+      maskTempCanvasRef.current = document.createElement("canvas");
+    }
+    const maskTempCanvas = maskTempCanvasRef.current;
+    const captureTime = Math.max(0, typeof time === "number" ? time : currentTimeRef.current);
+    const maxAttempts = playback.isPlaying ? 1 : 8;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      ctx.clearRect(0, 0, width, height);
+      const fullyRendered = renderCompositeFrame(ctx, {
+        time: captureTime,
+        tracks,
+        getClipAtTime,
+        getMaskAtTimeForTrack,
+        videoElements: videoElementsRef.current,
+        imageCache: imageCacheRef.current,
+        maskImageCache: savedMaskImgCacheRef.current,
+        maskTempCanvas,
+        projectSize: project.canvasSize,
+        renderRect: { x: 0, y: 0, width, height },
+        liveMaskCanvas: maskContextCanvasRef.current,
+        isPlaying: playback.isPlaying,
+      });
+
+      if (fullyRendered || playback.isPlaying) {
+        break;
+      }
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    }
+
+    return new Promise<Blob | null>((resolve) => {
+      captureCanvas.toBlob((blob) => resolve(blob), "image/png");
+    });
+  }, [
+    currentTimeRef,
+    getClipAtTime,
+    getMaskAtTimeForTrack,
+    maskContextCanvasRef,
+    playback.isPlaying,
+    project.canvasSize,
+    tracks,
+    videoElementsRef,
+  ]);
+
   // Expose viewport + transform API to parent (toolbar + shortcuts)
   useEffect(() => {
     previewViewportRef.current = {
@@ -1134,6 +1192,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       cancelTransform: () => transformTool.cancelTransform(),
       setTransformAspectRatio: (ratio) => transformTool.setAspectRatio(ratio),
       nudgeTransform: (dx, dy) => transformTool.nudgeTransform(dx, dy),
+      captureCompositeFrame: (time) => captureCompositeFrame(time),
       getTransformState: () => transformPublicStateRef.current,
       onTransformChange: (cb) => {
         transformListenersRef.current.add(cb);
@@ -1151,6 +1210,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     vpFitToContainer,
     vpGetZoom,
     vpSetZoom,
+    captureCompositeFrame,
   ]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
