@@ -125,8 +125,8 @@ export default function FrameStrip() {
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [isSkipToggleMode, setIsSkipToggleMode] = useState(false);
-  const [showNthPopover, setShowNthPopover] = useState(false);
   const [nthValue, setNthValue] = useState(2);
+  const [keepCount, setKeepCount] = useState(1);
   const [isFlippingFrames, setIsFlippingFrames] = useState(false);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
   const isOffsetKeyboardNudgeActiveRef = useRef(false);
@@ -634,17 +634,18 @@ export default function FrameStrip() {
     setCurrentFrameIndex,
   ]);
 
-  // Nth skip: mark every non-nth frame as disabled (instead of deleting)
+  // Nth skip: keep M frames out of every N (e.g. keep 1/3, keep 2/4)
   const applyNthSkip = useCallback(() => {
     const currentFrameIndex = getCurrentFrameIndex();
-    if (frames.length === 0 || nthValue < 1) return;
+    if (frames.length === 0 || nthValue < 2 || keepCount < 1 || keepCount >= nthValue) return;
     pushHistory();
     const startIndex = currentFrameIndex;
     const newFrames = frames.map((f: SpriteFrame, idx: number) => {
       const relativeIdx = idx - startIndex;
       if (relativeIdx < 0) return f; // keep frames before start unchanged
-      const isNth = relativeIdx % nthValue === 0;
-      return { ...f, disabled: !isNth };
+      const posInGroup = relativeIdx % nthValue;
+      const shouldKeep = posInGroup < keepCount;
+      return { ...f, disabled: !shouldKeep };
     });
     setFrames(newFrames);
 
@@ -653,8 +654,7 @@ export default function FrameStrip() {
       const next = newFrames.findIndex((f: SpriteFrame, i: number) => i >= currentFrameIndex && !f.disabled);
       if (next >= 0) setCurrentFrameIndex(next);
     }
-    setShowNthPopover(false);
-  }, [frames, getCurrentFrameIndex, nthValue, pushHistory, setFrames, setCurrentFrameIndex]);
+  }, [frames, getCurrentFrameIndex, nthValue, keepCount, pushHistory, setFrames, setCurrentFrameIndex]);
 
   // Clear all disabled states
   const clearAllDisabled = useCallback(() => {
@@ -886,27 +886,27 @@ export default function FrameStrip() {
               </Popover>
             )}
 
-            {/* Clear all disabled */}
+            {/* Clear all disabled / Delete disabled */}
             {disabledCount > 0 && (
-              <>
-                <button
-                  onClick={clearAllDisabled}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
-                  title="모든 건너뛰기 해제"
-                >
-                  Reset
-                </button>
-                <Tooltip content={`스킵된 프레임 일괄 삭제 (${disabledCount})`}>
-                  <button
-                    onClick={deleteDisabledFrames}
-                    className="p-1 rounded text-text-tertiary hover:text-accent-danger transition-colors"
-                    aria-label="Delete skipped frames"
-                  >
-                    <DeleteIcon className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
-              </>
+              <button
+                onClick={clearAllDisabled}
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
+                title="모든 건너뛰기 해제"
+              >
+                Reset
+              </button>
             )}
+            <Tooltip content={disabledCount > 0 ? `스킵된 프레임 일괄 삭제 (${disabledCount})` : "스킵된 프레임 없음"}>
+              <button
+                onClick={deleteDisabledFrames}
+                disabled={disabledCount === 0}
+                className="relative p-1 rounded text-text-tertiary hover:text-accent-danger disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                aria-label="Delete skipped frames"
+              >
+                <EyeClosedIcon className="w-3.5 h-3.5" />
+                <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-bold leading-none">✕</span>
+              </button>
+            </Tooltip>
 
             {/* Show active only toggle */}
             <Tooltip content={showActiveOnly ? "모든 프레임 보기" : "활성 프레임만 보기"}>
@@ -942,44 +942,63 @@ export default function FrameStrip() {
             </Tooltip>
 
             {/* Nth skip */}
-            <div className="relative">
-              <Tooltip content="N번째 프레임만 유지하고 나머지 스킵">
+            <Popover
+              trigger={
                 <button
-                  onClick={() => setShowNthPopover(!showNthPopover)}
-                  className={`p-1 rounded transition-colors ${
-                    showNthPopover
-                      ? "bg-accent-primary/15 text-accent-primary"
-                      : "text-text-tertiary hover:text-text-secondary"
-                  }`}
+                  className="p-1 rounded transition-colors text-text-tertiary hover:text-text-secondary"
                   aria-label="Nth frame skip settings"
                 >
                   <NthFrameSkipIcon className="w-3.5 h-3.5" />
                 </button>
-              </Tooltip>
-              {showNthPopover && (
-                <div className="absolute right-0 top-full mt-1 bg-surface-secondary border border-border-default rounded-lg shadow-lg p-2 z-20 min-w-[160px]">
-                  <div className="text-[10px] text-text-secondary mb-1.5">
-                    현재 프레임부터 매 N번째 외 건너뛰기
+              }
+              align="end"
+              side="bottom"
+              closeOnScroll={false}
+            >
+              <div className="p-2 min-w-[180px]">
+                <div className="text-[10px] text-text-secondary mb-2">
+                  현재 프레임부터 매 N개 중 M개만 유지
+                </div>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-text-tertiary">유지</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={Math.max(1, nthValue - 1)}
+                      value={keepCount}
+                      onChange={(e) => setKeepCount(Math.max(1, Math.min(nthValue - 1, Number(e.target.value))))}
+                      className="w-10 px-1 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
+                    />
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-text-tertiary">/</span>
+                  <div className="flex items-center gap-1">
                     <input
                       type="number"
                       min={2}
                       max={frames.length}
                       value={nthValue}
-                      onChange={(e) => setNthValue(Math.max(2, Number(e.target.value)))}
-                      className="w-12 px-1.5 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
+                      onChange={(e) => {
+                        const newN = Math.max(2, Number(e.target.value));
+                        setNthValue(newN);
+                        if (keepCount >= newN) setKeepCount(newN - 1);
+                      }}
+                      className="w-10 px-1 py-0.5 bg-surface-tertiary border border-border-default rounded text-[11px] text-text-primary text-center"
                     />
-                    <button
-                      onClick={applyNthSkip}
-                      className="flex-1 px-2 py-0.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-[10px] transition-colors"
-                    >
-                      적용
-                    </button>
+                    <span className="text-[10px] text-text-tertiary">개</span>
                   </div>
                 </div>
-              )}
-            </div>
+                <div className="text-[9px] text-text-quaternary mb-1.5">
+                  {`${frames.length}프레임 → ${Math.ceil(frames.length * keepCount / nthValue)}프레임 유지 예상`}
+                </div>
+                <button
+                  onClick={applyNthSkip}
+                  className="w-full px-2 py-1 bg-accent-primary hover:bg-accent-primary-hover text-white rounded text-[10px] transition-colors"
+                >
+                  적용
+                </button>
+              </div>
+            </Popover>
 
             {/* Add empty frame */}
             <Tooltip content="빈 프레임 추가">
@@ -1088,10 +1107,6 @@ export default function FrameStrip() {
         </div>
       </Scrollbar>
 
-      {/* Click outside to close nth popover */}
-      {showNthPopover && (
-        <div className="fixed inset-0 z-10" onClick={() => setShowNthPopover(false)} />
-      )}
     </div>
   );
 }
