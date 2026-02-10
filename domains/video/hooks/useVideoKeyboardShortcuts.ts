@@ -240,7 +240,9 @@ export function useVideoKeyboardShortcuts(
 
       if (e.code === PLAYBACK_SHORTCUTS.togglePlay) {
         e.preventDefault();
-        togglePlay();
+        if (!e.repeat) {
+          togglePlay();
+        }
         return;
       }
       if (e.code === PLAYBACK_SHORTCUTS.stepBackward) {
