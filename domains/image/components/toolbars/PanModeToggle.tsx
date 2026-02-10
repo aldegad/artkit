@@ -5,7 +5,7 @@ import { useEditorState } from "../../contexts";
 import { PanIcon } from "@/shared/components/icons";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 
-const STORAGE_KEY = "artkit.editor.pan-toggle-position-v1";
+const STORAGE_KEY = "artkit.image.pan-toggle-position-v1";
 const BUTTON_SIZE = 48;
 const MARGIN = 16;
 const DRAG_THRESHOLD = 6;

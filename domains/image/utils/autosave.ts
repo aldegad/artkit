@@ -5,7 +5,7 @@
 import { createAutosave, type BaseAutosaveData } from "../../../shared/utils";
 import { UnifiedLayer, Guide } from "../types";
 
-export const EDITOR_AUTOSAVE_KEY = "editor-autosave";
+export const EDITOR_AUTOSAVE_KEY = "image-editor-autosave";
 export const EDITOR_AUTOSAVE_DEBOUNCE_MS = 1000;
 
 export interface EditorAutosaveData extends BaseAutosaveData {
@@ -32,7 +32,7 @@ export interface EditorAutosaveData extends BaseAutosaveData {
 // Create autosave storage using shared abstraction
 const editorAutosave = createAutosave<EditorAutosaveData>({
   key: EDITOR_AUTOSAVE_KEY,
-  dbName: "editor-autosave-db",
+  dbName: "image-editor-autosave-db",
   storeName: "autosave",
   dbVersion: 1,
 });

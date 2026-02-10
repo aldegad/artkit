@@ -14,8 +14,8 @@ import type {
  *
  * @example
  * const editorAutosave = createAutosave<EditorAutosaveData>({
- *   key: "editor-autosave",
- *   dbName: "editor-autosave-db",
+ *   key: "image-editor-autosave",
+ *   dbName: "image-editor-autosave-db",
  * });
  *
  * await editorAutosave.save(data);

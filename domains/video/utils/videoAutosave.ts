@@ -14,7 +14,7 @@ import {
 } from "../types";
 import { clearAllMediaBlobs } from "./mediaStorage";
 
-export const VIDEO_AUTOSAVE_KEY = "video-autosave";
+export const VIDEO_AUTOSAVE_KEY = "video-editor-autosave";
 export const VIDEO_AUTOSAVE_DEBOUNCE_MS = 1000;
 
 /**
@@ -43,7 +43,7 @@ export interface VideoAutosaveData extends BaseAutosaveData {
 
 const videoAutosave = createAutosave<VideoAutosaveData>({
   key: VIDEO_AUTOSAVE_KEY,
-  dbName: "video-autosave-db",
+  dbName: "video-editor-autosave-db",
   storeName: "autosave",
   dbVersion: 1,
 });

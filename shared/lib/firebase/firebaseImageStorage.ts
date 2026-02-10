@@ -65,7 +65,7 @@ async function uploadLayerImage(
   layerId: string,
   base64Data: string
 ): Promise<string> {
-  const path = `users/${userId}/layers/${projectId}/${layerId}.png`;
+  const path = `users/${userId}/image-media/${projectId}/${layerId}.png`;
   const storageRef = ref(storage, path);
 
   // Remove data URL prefix if present
@@ -105,7 +105,7 @@ async function uploadThumbnail(
   projectId: string,
   base64Data: string
 ): Promise<string> {
-  const path = `users/${userId}/layers/${projectId}/thumbnail.png`;
+  const path = `users/${userId}/image-media/${projectId}/thumbnail.png`;
   const storageRef = ref(storage, path);
 
   const base64Content = base64Data.includes(",")
@@ -127,7 +127,7 @@ async function deleteProjectLayers(
   userId: string,
   projectId: string
 ): Promise<void> {
-  const folderRef = ref(storage, `users/${userId}/layers/${projectId}`);
+  const folderRef = ref(storage, `users/${userId}/image-media/${projectId}`);
 
   try {
     const listResult = await listAll(folderRef);
@@ -146,7 +146,7 @@ async function deleteProjectLayers(
 /**
  * Save an image project to Firebase
  */
-export async function saveProjectToFirebase(
+export async function saveImageProjectToFirebase(
   userId: string,
   project: SavedImageProject
 ): Promise<void> {
@@ -231,7 +231,7 @@ export async function saveProjectToFirebase(
 /**
  * Get a single project from Firebase
  */
-export async function getProjectFromFirebase(
+export async function getImageProjectFromFirebase(
   userId: string,
   projectId: string
 ): Promise<SavedImageProject | null> {
@@ -288,7 +288,7 @@ export async function getProjectFromFirebase(
 /**
  * Get all projects from Firebase (metadata only for list view)
  */
-export async function getAllProjectsFromFirebase(
+export async function getAllImageProjectsFromFirebase(
   userId: string
 ): Promise<SavedImageProject[]> {
   const collectionRef = collection(db, "users", userId, "imageProjects");
@@ -333,7 +333,7 @@ export async function getAllProjectsFromFirebase(
 /**
  * Delete a project from Firebase
  */
-export async function deleteProjectFromFirebase(
+export async function deleteImageProjectFromFirebase(
   userId: string,
   projectId: string
 ): Promise<void> {
@@ -348,7 +348,7 @@ export async function deleteProjectFromFirebase(
 /**
  * Check if user has any projects in Firebase
  */
-export async function hasCloudProjects(userId: string): Promise<boolean> {
+export async function hasCloudImageProjects(userId: string): Promise<boolean> {
   const collectionRef = collection(db, "users", userId, "imageProjects");
   const querySnapshot = await getDocs(collectionRef);
   return !querySnapshot.empty;
@@ -357,13 +357,13 @@ export async function hasCloudProjects(userId: string): Promise<boolean> {
 /**
  * Delete all projects from Firebase
  */
-export async function deleteAllProjectsFromFirebase(
+export async function deleteAllImageProjectsFromFirebase(
   userId: string
 ): Promise<void> {
   const collectionRef = collection(db, "users", userId, "imageProjects");
   const querySnapshot = await getDocs(collectionRef);
 
   for (const docSnap of querySnapshot.docs) {
-    await deleteProjectFromFirebase(userId, docSnap.id);
+    await deleteImageProjectFromFirebase(userId, docSnap.id);
   }
 }
