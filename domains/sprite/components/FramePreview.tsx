@@ -11,6 +11,7 @@ import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
 export default function FramePreviewContent() {
@@ -539,19 +540,13 @@ export default function FramePreviewContent() {
               cursorPos &&
               !isHandMode &&
               (frameEditToolMode === "brush" || frameEditToolMode === "eraser") && (
-                <div
-                  className="pointer-events-none absolute"
-                  style={{
-                    left: cursorPos.x,
-                    top: cursorPos.y,
-                    width: brushSize * currentZoom,
-                    height: brushSize * currentZoom,
-                    transform: "translate(-50%, -50%)",
-                    border:
-                      frameEditToolMode === "eraser" ? "2px solid #f87171" : `2px solid ${brushColor}`,
-                    borderRadius: "2px",
-                    boxShadow: "0 0 0 1px rgba(0,0,0,0.5)",
-                  }}
+                <BrushCursorOverlay
+                  x={cursorPos.x}
+                  y={cursorPos.y}
+                  size={brushSize * currentZoom}
+                  hardness={brushHardness}
+                  color={frameEditToolMode === "eraser" ? "#f87171" : brushColor}
+                  isEraser={frameEditToolMode === "eraser"}
                 />
               )}
           </div>

@@ -7,6 +7,7 @@ import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
+import { drawBrushCursor } from "@/shared/utils/brushCursor";
 
 // ============================================
 // Types
@@ -38,6 +39,7 @@ interface UseCanvasRenderingOptions {
   canvasExpandMode: boolean;
   mousePos: Point | null;
   brushSize: number;
+  brushHardness: number;
   brushColor: string;
   stampSource: Point | null;
   selection: { x: number; y: number; width: number; height: number } | null;
@@ -92,6 +94,7 @@ export function useCanvasRendering(
     canvasExpandMode,
     mousePos,
     brushSize,
+    brushHardness,
     brushColor,
     stampSource,
     selection,
@@ -477,25 +480,14 @@ export function useCanvasRendering(
     if (mousePos && (toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp")) {
       const screenX = offsetX + mousePos.x * zoom;
       const screenY = offsetY + mousePos.y * zoom;
-      const brushRadius = (brushSize * zoom) / 2;
-
-      ctx.save();
-      ctx.strokeStyle = toolMode === "eraser" ? colors.toolErase : brushColor;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.arc(screenX, screenY, brushRadius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw crosshair
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(screenX - 5, screenY);
-      ctx.lineTo(screenX + 5, screenY);
-      ctx.moveTo(screenX, screenY - 5);
-      ctx.lineTo(screenX, screenY + 5);
-      ctx.stroke();
-      ctx.restore();
+      drawBrushCursor(ctx, {
+        x: screenX,
+        y: screenY,
+        size: brushSize * zoom,
+        hardness: brushHardness,
+        color: toolMode === "eraser" ? colors.toolErase : brushColor,
+        isEraser: toolMode === "eraser",
+      });
     }
 
     // Draw stamp source indicator
@@ -683,6 +675,7 @@ export function useCanvasRendering(
     toolMode,
     mousePos,
     brushSize,
+    brushHardness,
     brushColor,
     stampSource,
     selection,
