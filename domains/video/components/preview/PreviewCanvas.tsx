@@ -98,10 +98,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     maskDrawShape,
     saveMaskData,
     saveMaskHistoryPoint,
+    maskCanvasVersion,
+    maskRegionClearRequestId,
+    setHasMaskRegion,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
   maskRegionRef.current = maskRegion;
+
+  const updateMaskRegion = useCallback((nextRegion: { x: number; y: number; width: number; height: number } | null) => {
+    setMaskRegion(nextRegion);
+    setHasMaskRegion(Boolean(nextRegion));
+  }, [setHasMaskRegion]);
 
   const createMaskRegionFromPoints = useCallback(
     (start: { x: number; y: number }, current: { x: number; y: number }) => {
@@ -134,13 +142,30 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     maskClipActiveRef.current = false;
   }, [maskContextCanvasRef]);
 
-  useEffect(() => {
-    if (isEditingMask) return;
-    setMaskRegion(null);
+  const clearMaskRegionSelection = useCallback(() => {
+    const hadRegion = Boolean(maskRegionRef.current || maskRectDragRef.current || isMaskRegionDraggingRef.current);
+    if (!hadRegion) return false;
+
+    updateMaskRegion(null);
     maskRectDragRef.current = null;
     isMaskRegionDraggingRef.current = false;
     clearMaskRegionClip();
-  }, [isEditingMask, clearMaskRegionClip]);
+
+    cancelAnimationFrame(renderRequestRef.current);
+    renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    return true;
+  }, [clearMaskRegionClip, updateMaskRegion]);
+
+  useEffect(() => {
+    if (isEditingMask) return;
+    clearMaskRegionSelection();
+  }, [isEditingMask, clearMaskRegionSelection]);
+
+  useEffect(() => {
+    if (!isEditingMask) return;
+    if (maskRegionClearRequestId <= 0) return;
+    clearMaskRegionSelection();
+  }, [isEditingMask, maskRegionClearRequestId, clearMaskRegionSelection]);
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
   const viewport = useCanvasViewport({
@@ -1410,9 +1435,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       if (rectDrag) {
         const region = createMaskRegionFromPoints(rectDrag.start, rectDrag.current);
         if (region.width < 2 || region.height < 2) {
-          setMaskRegion(null);
+          updateMaskRegion(null);
         } else {
-          setMaskRegion(region);
+          updateMaskRegion(region);
         }
       }
 
@@ -1463,7 +1488,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip]);
+  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip, updateMaskRegion]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
@@ -1518,6 +1543,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     playback.isPlaying,
     tracks,
     clips,
+    masks,
+    maskCanvasVersion,
     selectedClipIds,
     toolMode,
     cropArea,

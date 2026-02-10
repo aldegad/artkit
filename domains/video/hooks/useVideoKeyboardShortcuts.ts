@@ -53,6 +53,8 @@ interface UseVideoKeyboardShortcutsOptions {
   deselectMask: () => void;
   isEditingMask: boolean;
   endMaskEdit: () => void;
+  hasMaskRegion: boolean;
+  clearMaskRegion: () => void;
   adjustMaskBrushSize: (delta: number) => void;
   isSpacePanning: boolean;
   setIsSpacePanning: (panning: boolean) => void;
@@ -91,6 +93,8 @@ export function useVideoKeyboardShortcuts(
     deselectMask,
     isEditingMask,
     endMaskEdit,
+    hasMaskRegion,
+    clearMaskRegion,
     adjustMaskBrushSize,
     isSpacePanning,
     setIsSpacePanning,
@@ -268,6 +272,11 @@ export function useVideoKeyboardShortcuts(
           handleCancelTransform();
           return;
         }
+        if (isEditingMask && hasMaskRegion) {
+          e.preventDefault();
+          clearMaskRegion();
+          return;
+        }
         if (activeMaskId) deselectMask();
         if (isEditingMask) endMaskEdit();
         return;
@@ -308,6 +317,8 @@ export function useVideoKeyboardShortcuts(
     deselectMask,
     isEditingMask,
     endMaskEdit,
+    hasMaskRegion,
+    clearMaskRegion,
     adjustMaskBrushSize,
     isSpacePanning,
     setIsSpacePanning,
