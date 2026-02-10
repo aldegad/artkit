@@ -58,11 +58,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isMaskDrawingRef = useRef(false);
+  const isMaskRegionDraggingRef = useRef(false);
+  const maskClipActiveRef = useRef(false);
   const maskRectDragRef = useRef<{
     start: { x: number; y: number };
     current: { x: number; y: number };
-    mode: "paint" | "erase";
   } | null>(null);
+  const [maskRegion, setMaskRegion] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const maskRegionRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
@@ -96,7 +99,48 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     saveMaskData,
     saveMaskHistoryPoint,
   } = useMask();
-  const { startDraw, continueDraw, endDraw, drawRectangle } = useMaskTool();
+  const { startDraw, continueDraw, endDraw } = useMaskTool();
+
+  maskRegionRef.current = maskRegion;
+
+  const createMaskRegionFromPoints = useCallback(
+    (start: { x: number; y: number }, current: { x: number; y: number }) => {
+      const x = Math.round(Math.min(start.x, current.x));
+      const y = Math.round(Math.min(start.y, current.y));
+      const width = Math.round(Math.max(1, Math.abs(current.x - start.x)));
+      const height = Math.round(Math.max(1, Math.abs(current.y - start.y)));
+      return { x, y, width, height };
+    },
+    []
+  );
+
+  const applyMaskRegionClip = useCallback((region: { x: number; y: number; width: number; height: number }) => {
+    if (maskClipActiveRef.current) return;
+    const ctx = maskContextCanvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(region.x, region.y, region.width, region.height);
+    ctx.clip();
+    maskClipActiveRef.current = true;
+  }, [maskContextCanvasRef]);
+
+  const clearMaskRegionClip = useCallback(() => {
+    if (!maskClipActiveRef.current) return;
+    const ctx = maskContextCanvasRef.current?.getContext("2d");
+    if (ctx) {
+      ctx.restore();
+    }
+    maskClipActiveRef.current = false;
+  }, [maskContextCanvasRef]);
+
+  useEffect(() => {
+    if (isEditingMask) return;
+    setMaskRegion(null);
+    maskRectDragRef.current = null;
+    isMaskRegionDraggingRef.current = false;
+    clearMaskRegionClip();
+  }, [isEditingMask, clearMaskRegionClip]);
   const isHandTool = toolMode === "hand";
   const isZoomTool = toolMode === "zoom";
   const isHandMode = isHandTool || isSpacePanning;
@@ -908,24 +952,30 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ctx.restore();
     }
 
-    const rectangleDrag = maskRectDragRef.current;
-    if (isEditingMask && maskDrawShape === "rectangle" && rectangleDrag) {
-      const start = vpContentToScreen(rectangleDrag.start);
-      const current = vpContentToScreen(rectangleDrag.current);
-      const rectX = Math.min(start.x, current.x);
-      const rectY = Math.min(start.y, current.y);
-      const rectW = Math.max(1, Math.abs(current.x - start.x));
-      const rectH = Math.max(1, Math.abs(current.y - start.y));
-      const isErase = rectangleDrag.mode === "erase";
+    if (isEditingMask) {
+      const rectangleDrag = maskRectDragRef.current;
+      const draggingRegion = maskDrawShape === "rectangle" && rectangleDrag
+        ? createMaskRegionFromPoints(rectangleDrag.start, rectangleDrag.current)
+        : null;
+      const visibleRegion = draggingRegion ?? maskRegionRef.current;
 
-      ctx.save();
-      ctx.fillStyle = isErase ? "rgba(255, 80, 80, 0.18)" : "rgba(168, 85, 247, 0.18)";
-      ctx.strokeStyle = isErase ? "rgba(255, 120, 120, 0.95)" : colors.selection;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([6, 4]);
-      ctx.fillRect(rectX, rectY, rectW, rectH);
-      ctx.strokeRect(rectX, rectY, rectW, rectH);
-      ctx.restore();
+      if (visibleRegion) {
+        const regionTopLeft = vpContentToScreen({ x: visibleRegion.x, y: visibleRegion.y });
+        const rectX = regionTopLeft.x;
+        const rectY = regionTopLeft.y;
+        const rectW = visibleRegion.width * scale;
+        const rectH = visibleRegion.height * scale;
+        const isDraggingRegion = Boolean(draggingRegion);
+
+        ctx.save();
+        ctx.fillStyle = isDraggingRegion ? "rgba(59, 130, 246, 0.16)" : "rgba(59, 130, 246, 0.08)";
+        ctx.strokeStyle = "rgba(147, 197, 253, 0.95)";
+        ctx.lineWidth = isDraggingRegion ? 1.75 : 1.25;
+        ctx.setLineDash(isDraggingRegion ? [8, 4] : [6, 6]);
+        ctx.fillRect(rectX, rectY, rectW, rectH);
+        ctx.strokeRect(rectX, rectY, rectW, rectH);
+        ctx.restore();
+      }
     }
 
     // Draw frame border
@@ -1112,27 +1162,28 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       e.preventDefault();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
 
-      let drawMode: "paint" | "erase" = brushSettings.mode;
-
-      // Alt key toggles erase mode temporarily
-      if (e.altKey && brushSettings.mode !== "erase") {
-        prevBrushModeRef.current = brushSettings.mode;
-        setBrushMode("erase");
-        drawMode = "erase";
-      }
-
-      saveMaskHistoryPoint();
       if (maskDrawShape === "rectangle") {
+        isMaskRegionDraggingRef.current = true;
         maskRectDragRef.current = {
           start: maskCoords,
           current: maskCoords,
-          mode: drawMode,
         };
       } else {
+        // Alt key toggles erase mode temporarily
+        if (e.altKey && brushSettings.mode !== "erase") {
+          prevBrushModeRef.current = brushSettings.mode;
+          setBrushMode("erase");
+        }
+
+        saveMaskHistoryPoint();
+        const region = maskRegionRef.current;
+        if (region) {
+          applyMaskRegionClip(region);
+        }
         const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
         startDraw(maskCoords.x, maskCoords.y, pressure);
+        isMaskDrawingRef.current = true;
       }
-      isMaskDrawingRef.current = true;
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
       return;
@@ -1246,6 +1297,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     saveMaskHistoryPoint,
     maskDrawShape,
     transformTool,
+    applyMaskRegionClip,
   ]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1264,15 +1316,21 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
     }
 
+    if (isMaskRegionDraggingRef.current) {
+      const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
+      if (maskCoords && maskRectDragRef.current) {
+        maskRectDragRef.current.current = maskCoords;
+        cancelAnimationFrame(renderRequestRef.current);
+        renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      }
+      return;
+    }
+
     if (isMaskDrawingRef.current) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords) {
-        if (maskRectDragRef.current) {
-          maskRectDragRef.current.current = maskCoords;
-        } else {
-          const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
-          continueDraw(maskCoords.x, maskCoords.y, pressure);
-        }
+        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        continueDraw(maskCoords.x, maskCoords.y, pressure);
         cancelAnimationFrame(renderRequestRef.current);
         renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
       }
@@ -1421,15 +1479,28 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     stopPanDrag();
 
-    if (isMaskDrawingRef.current) {
+    if (isMaskRegionDraggingRef.current) {
       const rectDrag = maskRectDragRef.current;
-      if (rectDrag) {
-        drawRectangle(rectDrag.start, rectDrag.current, rectDrag.mode);
-      } else {
-        endDraw();
-      }
-      isMaskDrawingRef.current = false;
+      isMaskRegionDraggingRef.current = false;
       maskRectDragRef.current = null;
+
+      if (rectDrag) {
+        const region = createMaskRegionFromPoints(rectDrag.start, rectDrag.current);
+        if (region.width < 2 || region.height < 2) {
+          setMaskRegion(null);
+        } else {
+          setMaskRegion(region);
+        }
+      }
+
+      cancelAnimationFrame(renderRequestRef.current);
+      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    }
+
+    if (isMaskDrawingRef.current) {
+      endDraw();
+      isMaskDrawingRef.current = false;
+      clearMaskRegionClip();
 
       // Auto-save mask data after each stroke
       saveMaskData();
@@ -1442,6 +1513,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    } else {
+      clearMaskRegionClip();
     }
 
     if (e) {
@@ -1467,7 +1540,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [stopPanDrag, endDraw, drawRectangle, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool]);
+  }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
