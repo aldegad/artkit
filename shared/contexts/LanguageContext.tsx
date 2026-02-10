@@ -292,6 +292,7 @@ interface Translations {
   maskDesc: string;
   paintMask: string;
   eraseMask: string;
+  rectangleMask: string;
   fillMask: string;
   clearMask: string;
   longPressToEdit: string;
@@ -622,6 +623,7 @@ const translations: Record<Language, Translations> = {
     maskDesc: "클립에 마스크 그리기",
     paintMask: "마스크 칠하기",
     eraseMask: "마스크 지우기",
+    rectangleMask: "사각형 마스크",
     fillMask: "마스크 채우기",
     clearMask: "마스크 비우기",
     longPressToEdit: "길게 눌러서 편집",
@@ -950,6 +952,7 @@ const translations: Record<Language, Translations> = {
     maskDesc: "Draw mask on clip",
     paintMask: "Paint mask",
     eraseMask: "Erase mask",
+    rectangleMask: "Rectangle mask",
     fillMask: "Fill mask",
     clearMask: "Clear mask",
     longPressToEdit: "Long-press to edit",

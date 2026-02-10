@@ -11,6 +11,7 @@ interface UseMaskToolReturn {
   startDraw: (x: number, y: number, pressure?: number) => void;
   continueDraw: (x: number, y: number, pressure?: number) => void;
   endDraw: () => void;
+  drawRectangle: (from: Point, to: Point, mode?: "paint" | "erase") => void;
 
   // Get current mask as data URL
   getMaskDataUrl: () => string | null;
@@ -138,6 +139,27 @@ export function useMaskTool(): UseMaskToolReturn {
     lastPointRef.current = null;
   }, []);
 
+  const drawRectangle = useCallback((from: Point, to: Point, mode?: "paint" | "erase") => {
+    if (!isEditingMask || !maskCanvasRef.current) return;
+    const ctx = maskCanvasRef.current.getContext("2d");
+    if (!ctx) return;
+
+    const left = Math.min(from.x, to.x);
+    const top = Math.min(from.y, to.y);
+    const width = Math.max(1, Math.abs(to.x - from.x));
+    const height = Math.max(1, Math.abs(to.y - from.y));
+    const drawMode = mode ?? brushSettings.mode;
+
+    ctx.save();
+    if (drawMode === "erase") {
+      ctx.globalCompositeOperation = "destination-out";
+    }
+    ctx.globalAlpha = Math.max(0, Math.min(1, brushSettings.opacity / 100));
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(left, top, width, height);
+    ctx.restore();
+  }, [isEditingMask, maskCanvasRef, brushSettings.mode, brushSettings.opacity]);
+
   // Get mask as data URL
   const getMaskDataUrl = useCallback((): string | null => {
     if (!maskCanvasRef.current) return null;
@@ -188,6 +210,7 @@ export function useMaskTool(): UseMaskToolReturn {
     startDraw,
     continueDraw,
     endDraw,
+    drawRectangle,
     getMaskDataUrl,
     applyMaskData,
     clearMask,

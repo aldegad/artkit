@@ -34,6 +34,7 @@ export { INITIAL_TIMELINE_VIEW, INITIAL_TIMELINE_SELECTION } from "./timeline";
 export type {
   MaskData,
   MaskBrushSettings,
+  MaskDrawShape,
 } from "./mask";
 export { createMaskData, DEFAULT_MASK_BRUSH } from "./mask";
 
