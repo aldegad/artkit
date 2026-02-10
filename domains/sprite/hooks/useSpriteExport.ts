@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { downloadBlob } from "@/shared/utils";
 import { compositeAllFrames } from "../utils/compositor";
 import type { SpriteTrack } from "../types";
+import type { SpriteExportFrameSize } from "../utils/export";
 
 // ============================================
 // Types
@@ -16,6 +17,7 @@ export interface SpriteMp4ExportOptions {
   compression: SpriteExportCompression;
   backgroundColor: string;
   loopCount: number;
+  frameSize?: SpriteExportFrameSize;
 }
 
 export interface SpriteExportProgressState {
@@ -97,6 +99,18 @@ function canvasToBlob(
   });
 }
 
+function normalizeFrameSize(
+  frameSize: SpriteExportFrameSize | undefined,
+): SpriteExportFrameSize | undefined {
+  if (!frameSize) return undefined;
+  if (!Number.isFinite(frameSize.width) || !Number.isFinite(frameSize.height)) {
+    return undefined;
+  }
+  const width = Math.max(1, Math.floor(frameSize.width));
+  const height = Math.max(1, Math.floor(frameSize.height));
+  return { width, height };
+}
+
 // ============================================
 // Hook
 // ============================================
@@ -158,11 +172,12 @@ export function useSpriteExport(): UseSpriteExportReturn {
     ) => {
       if (isExporting) return;
 
-      const { fps, compression, backgroundColor, loopCount } = options;
+      const { fps, compression, backgroundColor, loopCount, frameSize } = options;
       const bgColor = normalizeHexColor(backgroundColor);
       const compressionSettings = resolveCompression(compression);
       const frameRate = Math.max(1, fps);
       const loops = Math.max(1, loopCount);
+      const normalizedFrameSize = normalizeFrameSize(frameSize);
       const filePrefix = `export-${Date.now()}-${Math.round(Math.random() * 10000)}`;
       const outputFileName = `${filePrefix}.mp4`;
       const frameNames: string[] = [];
@@ -184,7 +199,15 @@ export function useSpriteExport(): UseSpriteExportReturn {
           detail: "Merging tracks...",
         });
 
-        const compositedFrames = await compositeAllFrames(tracks);
+        const compositedFrames = await compositeAllFrames(
+          tracks,
+          normalizedFrameSize
+            ? {
+                width: normalizedFrameSize.width,
+                height: normalizedFrameSize.height,
+              }
+            : undefined,
+        );
         if (compositedFrames.length === 0) {
           throw new Error("No frames to export");
         }

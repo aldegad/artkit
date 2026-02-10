@@ -1,5 +1,5 @@
 import { SpriteFrame, SpriteTrack } from "../types";
-import { compositeAllFrames, type CompositedFrame } from "./compositor";
+import { compositeAllFrames, compositeFrame, type CompositedFrame } from "./compositor";
 
 // ============================================
 // Single Frame Export
@@ -456,12 +456,15 @@ export async function downloadCompositedFramesAsZip(
 // ============================================
 
 export type OptimizedTargetFramework = "canvas" | "phaser" | "pixi" | "custom";
+const OPTIMIZED_THRESHOLD_MIN = 0;
+const OPTIMIZED_THRESHOLD_MAX = 20;
 
 export interface OptimizedExportOptions {
   threshold: number;
   target: OptimizedTargetFramework;
   includeGuide: boolean;
   fps: number;
+  frameSize?: SpriteExportFrameSize;
 }
 
 export interface OptimizedExportProgress {
@@ -503,51 +506,161 @@ interface OptimizedSpriteMetadata {
 }
 
 /**
- * Compare all frames pixel-by-pixel and build a static mask.
- * staticMask[i] = 1 means pixel i is identical across all frames.
+ * Collect candidate timeline indices that are potentially renderable.
+ * Uses the same disabled-frame filtering semantics as compositeAllFrames.
  */
-function analyzeStaticRegions(
-  frames: CompositedFrame[],
-  threshold: number,
-): { staticMask: Uint8Array; width: number; height: number } {
-  const { width, height } = frames[0];
-  const totalPixels = width * height;
-  const staticMask = new Uint8Array(totalPixels);
-  staticMask.fill(1);
+function getCandidateFrameIndices(tracks: SpriteTrack[]): number[] {
+  const maxFrames = Math.max(0, ...tracks.map((t) => t.frames.length));
+  if (maxFrames === 0) return [];
 
-  if (frames.length <= 1) {
-    return { staticMask, width, height };
-  }
+  const visibleTracks = tracks.filter((t) => t.visible && t.frames.length > 0);
+  const indices: number[] = [];
 
-  const frameDatas: ImageData[] = frames.map((f) => {
-    const ctx = f.canvas.getContext("2d");
-    return ctx!.getImageData(0, 0, width, height);
-  });
-
-  const ref = frameDatas[0].data;
-
-  for (let i = 0; i < totalPixels; i++) {
-    const idx = i * 4;
-    const r0 = ref[idx];
-    const g0 = ref[idx + 1];
-    const b0 = ref[idx + 2];
-    const a0 = ref[idx + 3];
-
-    for (let f = 1; f < frameDatas.length; f++) {
-      const d = frameDatas[f].data;
-      const diff =
-        Math.abs(d[idx] - r0) +
-        Math.abs(d[idx + 1] - g0) +
-        Math.abs(d[idx + 2] - b0) +
-        Math.abs(d[idx + 3] - a0);
-      if (diff > threshold) {
-        staticMask[i] = 0;
-        break;
-      }
+  for (let i = 0; i < maxFrames; i++) {
+    const allDisabled = visibleTracks.every((t) => {
+      const idx = i < t.frames.length ? i : t.loop ? i % t.frames.length : -1;
+      return idx === -1 || t.frames[idx]?.disabled;
+    });
+    if (!allDisabled) {
+      indices.push(i);
     }
   }
 
-  return { staticMask, width, height };
+  return indices;
+}
+
+function clampOptimizedThreshold(value: number): number {
+  if (!Number.isFinite(value)) return OPTIMIZED_THRESHOLD_MIN;
+  return Math.max(
+    OPTIMIZED_THRESHOLD_MIN,
+    Math.min(OPTIMIZED_THRESHOLD_MAX, Math.floor(value)),
+  );
+}
+
+async function resolveOptimizedOutputSize(
+  tracks: SpriteTrack[],
+  frameIndices: number[],
+  frameSize: SpriteExportFrameSize | undefined,
+  report: (stage: string, percent: number, detail?: string) => void,
+): Promise<{ outputSize: SpriteExportFrameSize; frameIndices: number[] } | null> {
+  const normalized = normalizeFrameSize(frameSize);
+  if (normalized) {
+    return { outputSize: normalized, frameIndices };
+  }
+
+  let maxWidth = 0;
+  let maxHeight = 0;
+  const renderableFrameIndices: number[] = [];
+  const total = Math.max(1, frameIndices.length);
+
+  for (let i = 0; i < frameIndices.length; i++) {
+    const timelineFrameIndex = frameIndices[i];
+    const composited = await compositeFrame(
+      tracks,
+      timelineFrameIndex,
+      undefined,
+      { includeDataUrl: false },
+    );
+    if (!composited) continue;
+    renderableFrameIndices.push(timelineFrameIndex);
+    if (composited.width > maxWidth) maxWidth = composited.width;
+    if (composited.height > maxHeight) maxHeight = composited.height;
+
+    if (i % 8 === 0 || i === frameIndices.length - 1) {
+      const ratio = (i + 1) / total;
+      report(
+        "Resolving canvas size",
+        5 + ratio * 10,
+        `${i + 1}/${total}`,
+      );
+    }
+  }
+
+  if (renderableFrameIndices.length === 0 || maxWidth === 0 || maxHeight === 0) {
+    return null;
+  }
+
+  return {
+    outputSize: { width: maxWidth, height: maxHeight },
+    frameIndices: renderableFrameIndices,
+  };
+}
+
+async function analyzeStaticRegionsStreaming(
+  tracks: SpriteTrack[],
+  frameIndices: number[],
+  outputSize: SpriteExportFrameSize,
+  threshold: number,
+  report: (stage: string, percent: number, detail?: string) => void,
+): Promise<{
+  staticMask: Uint8Array;
+  width: number;
+  height: number;
+  referencePixels: Uint8ClampedArray;
+  frameIndices: number[];
+} | null> {
+  const width = outputSize.width;
+  const height = outputSize.height;
+  const totalPixels = width * height;
+  const staticMask = new Uint8Array(totalPixels);
+  staticMask.fill(1);
+  const resolvedFrameIndices: number[] = [];
+  let referencePixels: Uint8ClampedArray | null = null;
+  const total = Math.max(1, frameIndices.length);
+
+  for (let i = 0; i < frameIndices.length; i++) {
+    const timelineFrameIndex = frameIndices[i];
+    const composited = await compositeFrame(
+      tracks,
+      timelineFrameIndex,
+      outputSize,
+      { includeDataUrl: false },
+    );
+    if (!composited) continue;
+
+    const ctx = composited.canvas.getContext("2d");
+    if (!ctx) continue;
+
+    const pixels = ctx.getImageData(0, 0, width, height).data;
+    resolvedFrameIndices.push(timelineFrameIndex);
+
+    if (!referencePixels) {
+      referencePixels = new Uint8ClampedArray(pixels);
+    } else {
+      for (let px = 0, idx = 0; px < totalPixels; px++, idx += 4) {
+        if (staticMask[px] === 0) continue;
+        const diff =
+          Math.abs(pixels[idx] - referencePixels[idx]) +
+          Math.abs(pixels[idx + 1] - referencePixels[idx + 1]) +
+          Math.abs(pixels[idx + 2] - referencePixels[idx + 2]) +
+          Math.abs(pixels[idx + 3] - referencePixels[idx + 3]);
+        if (diff > threshold) {
+          staticMask[px] = 0;
+        }
+      }
+    }
+
+    if (i % 4 === 0 || i === frameIndices.length - 1) {
+      const ratio = (i + 1) / total;
+      report(
+        "Analyzing frames",
+        20 + ratio * 35,
+        `${i + 1}/${total}`,
+      );
+    }
+  }
+
+  if (!referencePixels || resolvedFrameIndices.length === 0) {
+    return null;
+  }
+
+  return {
+    staticMask,
+    width,
+    height,
+    referencePixels,
+    frameIndices: resolvedFrameIndices,
+  };
 }
 
 /**
@@ -583,27 +696,24 @@ function findDynamicBoundingBox(
  * Generate base image: keep only static pixels, make dynamic pixels transparent.
  */
 function generateBaseImage(
-  referenceFrame: CompositedFrame,
+  referencePixels: Uint8ClampedArray,
+  width: number,
+  height: number,
   staticMask: Uint8Array,
 ): HTMLCanvasElement {
-  const { width, height } = referenceFrame;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(referenceFrame.canvas, 0, 0);
-
-  const imageData = ctx.getImageData(0, 0, width, height);
+  const imageData = ctx.createImageData(width, height);
   const data = imageData.data;
 
-  for (let i = 0; i < staticMask.length; i++) {
-    if (staticMask[i] === 0) {
-      const idx = i * 4;
-      data[idx] = 0;
-      data[idx + 1] = 0;
-      data[idx + 2] = 0;
-      data[idx + 3] = 0;
-    }
+  for (let px = 0, idx = 0; px < staticMask.length; px++, idx += 4) {
+    if (staticMask[px] === 0) continue;
+    data[idx] = referencePixels[idx];
+    data[idx + 1] = referencePixels[idx + 1];
+    data[idx + 2] = referencePixels[idx + 2];
+    data[idx + 3] = referencePixels[idx + 3];
   }
 
   ctx.putImageData(imageData, 0, 0);
@@ -613,19 +723,31 @@ function generateBaseImage(
 /**
  * Generate a sprite sheet containing only the dynamic region from each frame.
  */
-function generateDeltaSpriteSheet(
-  frames: CompositedFrame[],
+async function generateDeltaSpriteSheet(
+  tracks: SpriteTrack[],
+  frameIndices: number[],
+  outputSize: SpriteExportFrameSize,
   region: DynamicRegion,
-): { canvas: HTMLCanvasElement; columns: number } {
-  const columns = Math.ceil(Math.sqrt(frames.length));
-  const rows = Math.ceil(frames.length / columns);
+  report: (stage: string, percent: number, detail?: string) => void,
+): Promise<{ canvas: HTMLCanvasElement; columns: number }> {
+  const columns = Math.ceil(Math.sqrt(frameIndices.length));
+  const rows = Math.ceil(frameIndices.length / columns);
 
   const canvas = document.createElement("canvas");
   canvas.width = columns * region.w;
   canvas.height = rows * region.h;
   const ctx = canvas.getContext("2d")!;
+  const total = Math.max(1, frameIndices.length);
 
-  frames.forEach((frame, index) => {
+  for (let index = 0; index < frameIndices.length; index++) {
+    const timelineFrameIndex = frameIndices[index];
+    const frame = await compositeFrame(
+      tracks,
+      timelineFrameIndex,
+      outputSize,
+      { includeDataUrl: false },
+    );
+    if (!frame) continue;
     const col = index % columns;
     const row = Math.floor(index / columns);
     ctx.drawImage(
@@ -639,7 +761,16 @@ function generateDeltaSpriteSheet(
       region.w,
       region.h,
     );
-  });
+
+    if (index % 4 === 0 || index === frameIndices.length - 1) {
+      const ratio = (index + 1) / total;
+      report(
+        "Generating images",
+        60 + ratio * 15,
+        `${index + 1}/${total}`,
+      );
+    }
+  }
 
   return { canvas, columns };
 }
@@ -863,55 +994,77 @@ export async function downloadOptimizedSpriteZip(
   options: OptimizedExportOptions,
   onProgress?: (progress: OptimizedExportProgress) => void,
 ): Promise<void> {
-  const { threshold, target, includeGuide, fps } = options;
+  const { target, includeGuide, fps, frameSize } = options;
+  const threshold = clampOptimizedThreshold(options.threshold);
 
   const report = (stage: string, percent: number, detail?: string) => {
     onProgress?.({ stage, percent, detail });
   };
 
-  // 1. Composite all frames
-  report("Compositing frames", 5, "Merging tracks...");
-  const compositedFrames = await compositeAllFrames(tracks);
-  if (compositedFrames.length === 0) return;
+  const candidateFrameIndices = getCandidateFrameIndices(tracks);
+  if (candidateFrameIndices.length === 0) return;
 
-  const { width, height } = compositedFrames[0];
+  report("Preparing frames", 5, `${candidateFrameIndices.length} candidates`);
+  const resolved = await resolveOptimizedOutputSize(
+    tracks,
+    candidateFrameIndices,
+    frameSize,
+    report,
+  );
+  if (!resolved) return;
 
-  // 2. Analyze static/dynamic regions
-  report("Analyzing frames", 20, `Comparing ${compositedFrames.length} frames...`);
-  const { staticMask } = analyzeStaticRegions(compositedFrames, threshold);
+  const { outputSize } = resolved;
+  const analyzed = await analyzeStaticRegionsStreaming(
+    tracks,
+    resolved.frameIndices,
+    outputSize,
+    threshold,
+    report,
+  );
+  if (!analyzed) return;
 
-  // 3. Find dynamic bounding box
+  const { staticMask, referencePixels, frameIndices } = analyzed;
+  const width = outputSize.width;
+  const height = outputSize.height;
+
+  // 1. Find dynamic bounding box
+  report("Generating images", 55);
   const dynamicRegion = findDynamicBoundingBox(staticMask, width, height);
-  report("Generating images", 40);
 
-  // 4. Generate base image
-  const baseCanvas = generateBaseImage(compositedFrames[0], staticMask);
-  report("Generating images", 50, "Base image ready");
+  // 2. Generate base image
+  const baseCanvas = generateBaseImage(referencePixels, width, height, staticMask);
+  report("Generating images", 60, "Base image ready");
 
-  // 5. Generate delta sprite sheet (if there's a dynamic region)
+  // 3. Generate delta sprite sheet (if there's a dynamic region)
   let deltaCanvas: HTMLCanvasElement | null = null;
   let deltaColumns = 0;
   if (dynamicRegion) {
-    const result = generateDeltaSpriteSheet(compositedFrames, dynamicRegion);
+    const result = await generateDeltaSpriteSheet(
+      tracks,
+      frameIndices,
+      outputSize,
+      dynamicRegion,
+      report,
+    );
     deltaCanvas = result.canvas;
     deltaColumns = result.columns;
-    report("Generating images", 65, "Delta sprite sheet ready");
+    report("Generating images", 75, "Delta sprite sheet ready");
   }
 
-  // 6. Build metadata
-  report("Building metadata", 70);
+  // 4. Build metadata
+  report("Building metadata", 78);
   const metadata: OptimizedSpriteMetadata = {
     meta: {
       format: "artkit-optimized-sprite",
       version: "1.0",
       fps,
-      sourceSize: { w: width, h: height },
-      frameCount: compositedFrames.length,
+      sourceSize: { w: outputSize.width, h: outputSize.height },
+      frameCount: frameIndices.length,
       target,
     },
     base: {
       file: "base.png",
-      size: { w: width, h: height },
+      size: { w: outputSize.width, h: outputSize.height },
     },
     delta: dynamicRegion
       ? {
@@ -926,7 +1079,7 @@ export async function downloadOptimizedSpriteZip(
           },
         }
       : null,
-    frames: compositedFrames.map((_, i) => ({
+    frames: frameIndices.map((_, i) => ({
       index: i,
       frame: dynamicRegion
         ? {
@@ -939,7 +1092,7 @@ export async function downloadOptimizedSpriteZip(
     })),
   };
 
-  // 7. Build ZIP
+  // 5. Build ZIP
   report("Packaging ZIP", 80);
   const JSZip = (await import("jszip")).default;
   const zip = new JSZip();

@@ -14,6 +14,9 @@ interface UseSpriteKeyboardShortcutsOptions {
   pasteFrame: () => void;
   saveProject: () => void;
   saveProjectAs: () => void;
+  toolMode: SpriteToolMode;
+  applyCrop?: () => void;
+  clearCrop?: () => void;
 }
 
 export function useSpriteKeyboardShortcuts({
@@ -27,17 +30,20 @@ export function useSpriteKeyboardShortcuts({
   pasteFrame,
   saveProject,
   saveProjectAs,
+  toolMode,
+  applyCrop,
+  clearCrop,
 }: UseSpriteKeyboardShortcutsOptions) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat) {
-        const target = e.target as HTMLElement;
-        const isInteractiveElement =
-          target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable;
+      const target = e.target as HTMLElement;
+      const isInteractiveElement =
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
 
+      if (e.code === "Space" && !e.repeat) {
         if (isInteractiveElement) {
           return;
         }
@@ -50,12 +56,27 @@ export function useSpriteKeyboardShortcuts({
       }
 
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (isInteractiveElement) {
+          return;
+        }
+
         if (e.key === "v") setSpriteToolMode("select");
         if (e.key === "h") setSpriteToolMode("hand");
         if (e.key === "b") setSpriteToolMode("brush");
         if (e.key === "e") setSpriteToolMode("eraser");
         if (e.key === "i") setSpriteToolMode("eyedropper");
         if (e.key === "z") setSpriteToolMode("zoom");
+        if (e.key === "r") setSpriteToolMode("crop");
+      }
+
+      if (toolMode === "crop" && e.key === "Enter" && !isInteractiveElement) {
+        e.preventDefault();
+        applyCrop?.();
+      }
+
+      if (toolMode === "crop" && e.key === "Escape" && !isInteractiveElement) {
+        e.preventDefault();
+        clearCrop?.();
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -118,5 +139,8 @@ export function useSpriteKeyboardShortcuts({
     pasteFrame,
     saveProject,
     saveProjectAs,
+    toolMode,
+    applyCrop,
+    clearCrop,
   ]);
 }

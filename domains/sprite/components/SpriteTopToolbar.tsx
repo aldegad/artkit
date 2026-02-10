@@ -9,6 +9,7 @@ import {
   CursorIcon,
   HandIcon,
   ZoomSearchIcon,
+  CropIcon,
   BackgroundRemovalIcon,
   MagicWandIcon,
   UndoIcon,
@@ -177,6 +178,33 @@ export default function SpriteTopToolbar({
               }`}
             >
               <ZoomSearchIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.crop}</span>
+                <span className="text-text-tertiary text-[11px]">{t.cropToolTip}</span>
+                <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
+                  <span>Drag: Select crop area</span>
+                  <span>Handles: Resize</span>
+                  <span>Enter: Apply</span>
+                  <span>Esc: Clear</span>
+                </div>
+              </div>
+            }
+            shortcut="R"
+          >
+            <button
+              onClick={() => setSpriteToolMode("crop")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "crop"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <CropIcon className="w-4 h-4" />
             </button>
           </Tooltip>
 

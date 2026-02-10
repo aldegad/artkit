@@ -2,13 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar } from "@/shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar, CanvasCropControls } from "@/shared/components";
 import {
-  LockAspectIcon,
-  UnlockAspectIcon,
-  SquareExpandIcon,
-  SquareFitIcon,
-  CanvasExpandIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
   UndoIcon,
@@ -1346,121 +1341,22 @@ function VideoEditorContent() {
         </div>
 
         {toolMode === "crop" && (
-          <div className="flex items-center gap-2">
-            {/* Aspect ratio selector */}
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-secondary">Ratio:</span>
-              <Select
-                value={cropAspectRatio}
-                onChange={(value) => setCropAspectRatio(value as AspectRatio)}
-                options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
-                size="sm"
-              />
-            </div>
-
-            {/* Width/Height input */}
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-secondary">W:</span>
-              <input
-                type="number"
-                value={cropArea?.width ? Math.round(cropArea.width) : ""}
-                onChange={(e) => handleCropWidthChange(Math.max(10, parseInt(e.target.value) || 10))}
-                placeholder="---"
-                className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                min={10}
-              />
-              <span className="text-xs text-text-tertiary">x</span>
-              <span className="text-xs text-text-secondary">H:</span>
-              <input
-                type="number"
-                value={cropArea?.height ? Math.round(cropArea.height) : ""}
-                onChange={(e) => handleCropHeightChange(Math.max(10, parseInt(e.target.value) || 10))}
-                placeholder="---"
-                className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                min={10}
-              />
-              {/* Lock aspect ratio button */}
-              <button
-                onClick={() => setLockCropAspect(!lockCropAspect)}
-                className={`w-6 h-6 flex items-center justify-center rounded text-xs transition-colors ${
-                  lockCropAspect
-                    ? "bg-accent-primary text-white"
-                    : "hover:bg-interactive-hover text-text-secondary"
-                }`}
-                title={lockCropAspect ? "Unlock aspect ratio" : "Lock aspect ratio"}
-              >
-                {lockCropAspect ? <LockAspectIcon /> : <UnlockAspectIcon />}
-              </button>
-            </div>
-
-            {/* Divider */}
-            <div className="w-px h-4 bg-border-default" />
-
-            {/* Square buttons */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handleExpandToSquare}
-                className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
-                title="Expand to square (longer side)"
-              >
-                <SquareExpandIcon />
-                <span>Expand</span>
-              </button>
-              <button
-                onClick={handleFitToSquare}
-                className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
-                title="Fit to square (shorter side)"
-              >
-                <SquareFitIcon />
-                <span>Fit</span>
-              </button>
-            </div>
-
-            {/* Divider */}
-            <div className="w-px h-4 bg-border-default" />
-
-            {/* Canvas expand mode toggle */}
-            <button
-              onClick={() => setCanvasExpandMode(!canvasExpandMode)}
-              className={`px-1.5 py-0.5 text-xs rounded transition-colors flex items-center gap-0.5 ${
-                canvasExpandMode
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover"
-              }`}
-              title={canvasExpandMode ? "Canvas expand mode ON" : "Canvas expand mode OFF"}
-            >
-              <CanvasExpandIcon />
-              <span>Canvas</span>
-            </button>
-
-            {/* Divider */}
-            <div className="w-px h-4 bg-border-default" />
-
-            {/* All, Apply, Clear buttons */}
-            <button
-              onClick={handleSelectAllCrop}
-              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-            >
-              All
-            </button>
-            {cropArea && (
-              <>
-                <button
-                  onClick={handleApplyCrop}
-                  className="px-1.5 py-0.5 text-xs bg-accent-primary text-white hover:bg-accent-primary/90 rounded transition-colors font-medium"
-                  title="Apply crop/resize to canvas"
-                >
-                  Apply
-                </button>
-                <button
-                  onClick={handleClearCrop}
-                  className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                >
-                  Clear
-                </button>
-              </>
-            )}
-          </div>
+          <CanvasCropControls
+            cropAspectRatio={cropAspectRatio}
+            onCropAspectRatioChange={(ratio) => setCropAspectRatio(ratio)}
+            cropArea={cropArea}
+            onCropWidthChange={handleCropWidthChange}
+            onCropHeightChange={handleCropHeightChange}
+            lockCropAspect={lockCropAspect}
+            onToggleLockCropAspect={() => setLockCropAspect(!lockCropAspect)}
+            onExpandToSquare={handleExpandToSquare}
+            onFitToSquare={handleFitToSquare}
+            canvasExpandMode={canvasExpandMode}
+            onToggleCanvasExpandMode={() => setCanvasExpandMode(!canvasExpandMode)}
+            onSelectAllCrop={handleSelectAllCrop}
+            onApplyCrop={handleApplyCrop}
+            onClearCrop={handleClearCrop}
+          />
         )}
 
         {toolMode === "transform" && (

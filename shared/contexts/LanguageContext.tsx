@@ -91,6 +91,12 @@ interface Translations {
   exportTypeMp4: string;
   exportColumns: string;
   exportColumnsAuto: string;
+  exportCanvasSize: string;
+  exportUseSourceSize: string;
+  exportWidth: string;
+  exportHeight: string;
+  exportKeepAspectRatio: string;
+  exportCanvasSizeLimit: string;
   exportPadding: string;
   exportBgTransparent: string;
   exportLoopCount: string;
@@ -99,6 +105,7 @@ interface Translations {
   exportTypeOptimizedZip: string;
   exportOptimizedTarget: string;
   exportOptimizedThreshold: string;
+  exportOptimizedThresholdHint: string;
   exportOptimizedIncludeGuide: string;
   enterProjectName: string;
   importOverwriteConfirm: string;
@@ -443,6 +450,12 @@ const translations: Record<Language, Translations> = {
     exportTypeMp4: "MP4 (H.264)",
     exportColumns: "열 수",
     exportColumnsAuto: "자동",
+    exportCanvasSize: "캔버스 크기",
+    exportUseSourceSize: "원본 캔버스 크기 사용",
+    exportWidth: "W",
+    exportHeight: "H",
+    exportKeepAspectRatio: "비율 고정",
+    exportCanvasSizeLimit: "최대 {max} x {max}",
     exportPadding: "여백",
     exportBgTransparent: "투명",
     exportLoopCount: "반복 횟수",
@@ -451,7 +464,8 @@ const translations: Record<Language, Translations> = {
     exportTypeOptimizedZip: "최적화 스프라이트 (ZIP)",
     exportOptimizedTarget: "대상 프레임워크",
     exportOptimizedThreshold: "픽셀 허용치",
-    exportOptimizedIncludeGuide: "사용 가이드 (GUIDE.md) 포함",
+    exportOptimizedThresholdHint: "0은 완전 동일 픽셀만 고정 영역으로 처리합니다. 값을 높이면 미세한 떨림/노이즈를 무시합니다.",
+    exportOptimizedIncludeGuide: "AI 코딩 가이드 포함",
     enterProjectName: "프로젝트 이름을 입력하세요:",
     importOverwriteConfirm: "기존 프로젝트를 모두 삭제하고 가져오시겠습니까?",
     noFrames: "프레임 없음",
@@ -793,6 +807,12 @@ const translations: Record<Language, Translations> = {
     exportTypeMp4: "MP4 (H.264)",
     exportColumns: "Columns",
     exportColumnsAuto: "Auto",
+    exportCanvasSize: "Canvas Size",
+    exportUseSourceSize: "Use source canvas size",
+    exportWidth: "W",
+    exportHeight: "H",
+    exportKeepAspectRatio: "Keep aspect ratio",
+    exportCanvasSizeLimit: "Max {max} x {max}",
     exportPadding: "Padding",
     exportBgTransparent: "Transparent",
     exportLoopCount: "Loop Count",
@@ -801,7 +821,8 @@ const translations: Record<Language, Translations> = {
     exportTypeOptimizedZip: "Optimized Sprite (ZIP)",
     exportOptimizedTarget: "Target Framework",
     exportOptimizedThreshold: "Pixel Threshold",
-    exportOptimizedIncludeGuide: "Include Guide (GUIDE.md)",
+    exportOptimizedThresholdHint: "0 keeps only exact matches as static. Increase slightly to ignore tiny flicker/noise.",
+    exportOptimizedIncludeGuide: "Include AI Coding Guide",
     enterProjectName: "Enter project name:",
     importOverwriteConfirm: "Delete all existing projects and import?",
     noFrames: "No frames",

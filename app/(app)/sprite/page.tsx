@@ -50,7 +50,12 @@ import {
   clearLocalProjects,
   clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
-import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet, downloadOptimizedSpriteZip } from "@/domains/sprite/utils/export";
+import {
+  downloadCompositedFramesAsZip,
+  downloadCompositedSpriteSheet,
+  downloadOptimizedSpriteZip,
+  type SpriteExportFrameSize,
+} from "@/domains/sprite/utils/export";
 
 // ============================================
 // Main Editor Component
@@ -75,6 +80,14 @@ function SpriteEditorMain() {
     setSpriteToolMode,
     setCurrentPoints,
     setIsSpacePressed,
+    cropArea,
+    setCropArea,
+    cropAspectRatio,
+    setCropAspectRatio,
+    lockCropAspect,
+    setLockCropAspect,
+    canvasExpandMode,
+    setCanvasExpandMode,
   } = useEditorTools();
   const {
     brushColor,
@@ -93,13 +106,25 @@ function SpriteEditorMain() {
   const { fps } = useEditorAnimation();
   const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
   const { projectName, setProjectName, savedProjects, setSavedSpriteProjects, currentProjectId, setCurrentProjectId, newProject, isAutosaveLoading } = useEditorProject();
-  const { isProjectListOpen, setIsProjectListOpen, isSpriteSheetImportOpen, setIsSpriteSheetImportOpen, isVideoImportOpen, setIsVideoImportOpen, pendingVideoFile, setPendingVideoFile } = useEditorWindows();
+  const {
+    isProjectListOpen,
+    setIsProjectListOpen,
+    isSpriteSheetImportOpen,
+    setIsSpriteSheetImportOpen,
+    isVideoImportOpen,
+    setIsVideoImportOpen,
+    pendingVideoFile,
+    setPendingVideoFile,
+    exportFrameSize,
+    setExportFrameSize,
+  } = useEditorWindows();
   const { tracks, addTrack, restoreTracks } = useEditorTracks();
   const { copyFrame, pasteFrame } = useEditorClipboard();
   const { resetLayout } = useLayout();
 
   // Export
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [detectedSourceFrameSize, setDetectedSourceFrameSize] = useState<SpriteExportFrameSize | null>(null);
   const { isExporting, exportProgress, exportMp4, startProgress, endProgress } = useSpriteExport();
 
   // Panel visibility states
@@ -306,17 +331,177 @@ function SpriteEditorMain() {
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
 
+  useEffect(() => {
+    if (imageSize.width > 0 && imageSize.height > 0) {
+      setDetectedSourceFrameSize({
+        width: Math.floor(imageSize.width),
+        height: Math.floor(imageSize.height),
+      });
+      return;
+    }
+
+    if (!firstFrameImage) {
+      setDetectedSourceFrameSize(null);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      if (img.width <= 0 || img.height <= 0) {
+        setDetectedSourceFrameSize(null);
+        return;
+      }
+      setDetectedSourceFrameSize({
+        width: Math.floor(img.width),
+        height: Math.floor(img.height),
+      });
+    };
+    img.onerror = () => {
+      if (!cancelled) setDetectedSourceFrameSize(null);
+    };
+    img.src = firstFrameImage;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageSize.width, imageSize.height, firstFrameImage]);
+
+  const cropBaseSize = useMemo(() => {
+    if (exportFrameSize) return exportFrameSize;
+    if (detectedSourceFrameSize) return detectedSourceFrameSize;
+    if (imageSize.width > 0 && imageSize.height > 0) {
+      return {
+        width: Math.floor(imageSize.width),
+        height: Math.floor(imageSize.height),
+      };
+    }
+    return null;
+  }, [exportFrameSize, detectedSourceFrameSize, imageSize.width, imageSize.height]);
+
+  const handleSelectAllCrop = useCallback(() => {
+    if (!cropBaseSize) return;
+    setCropArea({
+      x: 0,
+      y: 0,
+      width: cropBaseSize.width,
+      height: cropBaseSize.height,
+    });
+  }, [cropBaseSize, setCropArea]);
+
+  const handleClearCrop = useCallback(() => {
+    setCropArea(null);
+    setCanvasExpandMode(false);
+  }, [setCropArea, setCanvasExpandMode]);
+
+  const handleCropWidthChange = useCallback((newWidth: number) => {
+    if (!cropArea) return;
+    const width = Math.max(10, Math.round(newWidth));
+    if (lockCropAspect && cropArea.width > 0) {
+      const ratio = cropArea.height / cropArea.width;
+      setCropArea({
+        ...cropArea,
+        width,
+        height: Math.max(10, Math.round(width * ratio)),
+      });
+      return;
+    }
+    setCropArea({ ...cropArea, width });
+  }, [cropArea, lockCropAspect, setCropArea]);
+
+  const handleCropHeightChange = useCallback((newHeight: number) => {
+    if (!cropArea) return;
+    const height = Math.max(10, Math.round(newHeight));
+    if (lockCropAspect && cropArea.height > 0) {
+      const ratio = cropArea.width / cropArea.height;
+      setCropArea({
+        ...cropArea,
+        height,
+        width: Math.max(10, Math.round(height * ratio)),
+      });
+      return;
+    }
+    setCropArea({ ...cropArea, height });
+  }, [cropArea, lockCropAspect, setCropArea]);
+
+  const handleExpandToSquare = useCallback(() => {
+    if (!cropArea) return;
+    const maxSide = Math.max(cropArea.width, cropArea.height);
+    setCropArea({
+      ...cropArea,
+      width: Math.round(maxSide),
+      height: Math.round(maxSide),
+    });
+  }, [cropArea, setCropArea]);
+
+  const handleFitToSquare = useCallback(() => {
+    if (!cropArea) return;
+    const minSide = Math.min(cropArea.width, cropArea.height);
+    setCropArea({
+      ...cropArea,
+      width: Math.round(minSide),
+      height: Math.round(minSide),
+    });
+  }, [cropArea, setCropArea]);
+
+  const handleApplyCrop = useCallback(() => {
+    if (!cropArea) return;
+    const width = Math.max(1, Math.round(cropArea.width));
+    const height = Math.max(1, Math.round(cropArea.height));
+    if (width < 2 || height < 2) return;
+
+    const offsetX = Math.round(cropArea.x);
+    const offsetY = Math.round(cropArea.y);
+
+    pushHistory();
+    useSpriteTrackStore.setState((state) => ({
+      tracks: state.tracks.map((track) => ({
+        ...track,
+        frames: track.frames.map((frame) => ({
+          ...frame,
+          offset: {
+            x: (frame.offset?.x ?? 0) - offsetX,
+            y: (frame.offset?.y ?? 0) - offsetY,
+          },
+        })),
+      })),
+      isPlaying: false,
+    }));
+
+    setExportFrameSize({ width, height });
+    setCropArea(null);
+    setCanvasExpandMode(false);
+  }, [cropArea, pushHistory, setCropArea, setCanvasExpandMode, setExportFrameSize]);
+
+  useEffect(() => {
+    if (toolMode !== "crop") return;
+    if (cropArea) return;
+    if (!cropBaseSize) return;
+
+    setCropArea({
+      x: 0,
+      y: 0,
+      width: cropBaseSize.width,
+      height: cropBaseSize.height,
+    });
+  }, [toolMode, cropArea, cropBaseSize, setCropArea]);
+
   // Unified export handler
   const handleExport = useCallback(async (settings: import("@/domains/sprite/components/SpriteExportModal").SpriteExportSettings) => {
     if (!hasRenderableFrames) return;
     const name = settings.fileName.trim() || projectName.trim() || "sprite-project";
+    const resolvedFrameSize = settings.frameSize ?? undefined;
     try {
       switch (settings.exportType) {
         case "zip":
-          await downloadCompositedFramesAsZip(tracks, name);
+          await downloadCompositedFramesAsZip(tracks, name, {
+            frameSize: resolvedFrameSize,
+          });
           break;
         case "sprite-png":
           await downloadCompositedSpriteSheet(tracks, name, {
+            frameSize: resolvedFrameSize,
             padding: settings.padding,
             backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
           });
@@ -324,6 +509,7 @@ function SpriteEditorMain() {
         case "sprite-webp":
           await downloadCompositedSpriteSheet(tracks, name, {
             format: "webp",
+            frameSize: resolvedFrameSize,
             padding: settings.padding,
             backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
             quality: settings.webpQuality,
@@ -335,6 +521,7 @@ function SpriteEditorMain() {
             compression: settings.mp4Compression,
             backgroundColor: settings.mp4BackgroundColor,
             loopCount: settings.mp4LoopCount,
+            frameSize: resolvedFrameSize,
           });
           break;
         case "optimized-zip":
@@ -345,6 +532,7 @@ function SpriteEditorMain() {
               target: settings.optimizedTarget,
               includeGuide: settings.optimizedIncludeGuide,
               fps,
+              frameSize: resolvedFrameSize,
             }, (p) => {
               startProgress(p.stage, p.percent, p.detail);
             });
@@ -353,6 +541,7 @@ function SpriteEditorMain() {
           }
           break;
       }
+      setExportFrameSize(settings.frameSize ?? null);
       setIsExportModalOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
@@ -378,6 +567,7 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
+      exportFrameSize: exportFrameSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -415,6 +605,7 @@ function SpriteEditorMain() {
     allFrames,
     firstFrameImage,
     projectName,
+    exportFrameSize,
     nextFrameId,
     fps,
     storageProvider,
@@ -445,6 +636,7 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
+      exportFrameSize: exportFrameSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -478,6 +670,7 @@ function SpriteEditorMain() {
     allFrames,
     firstFrameImage,
     projectName,
+    exportFrameSize,
     nextFrameId,
     fps,
     storageProvider,
@@ -503,6 +696,7 @@ function SpriteEditorMain() {
 
         setImageSrc(project.imageSrc);
         setImageSize(project.imageSize);
+        setExportFrameSize(project.exportFrameSize ?? null);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = project as any;
@@ -536,6 +730,7 @@ function SpriteEditorMain() {
       storageProvider,
       setImageSrc,
       setImageSize,
+      setExportFrameSize,
       restoreTracks,
       setProjectName,
       setCurrentProjectId,
@@ -582,10 +777,13 @@ function SpriteEditorMain() {
     pasteFrame,
     saveProject,
     saveProjectAs,
+    toolMode,
+    applyCrop: handleApplyCrop,
+    clearCrop: handleClearCrop,
   });
 
   useEffect(() => {
-    if (toolMode !== "select") {
+    if (toolMode === "pen") {
       setSpriteToolMode("select");
     }
   }, [toolMode, setSpriteToolMode]);
@@ -594,12 +792,14 @@ function SpriteEditorMain() {
   const handleNew = useCallback(() => {
     if (frames.length > 0 || imageSrc) {
       if (window.confirm(t.newProjectConfirm)) {
+        setExportFrameSize(null);
         newProject();
       }
     } else {
+      setExportFrameSize(null);
       newProject();
     }
-  }, [frames.length, imageSrc, t.newProjectConfirm, newProject]);
+  }, [frames.length, imageSrc, t.newProjectConfirm, newProject, setExportFrameSize]);
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
@@ -711,6 +911,20 @@ function SpriteEditorMain() {
         presets={presets}
         pressureEnabled={pressureEnabled}
         setPressureEnabled={setPressureEnabled}
+        cropAspectRatio={cropAspectRatio}
+        setCropAspectRatio={setCropAspectRatio}
+        cropArea={cropArea}
+        lockCropAspect={lockCropAspect}
+        setLockCropAspect={setLockCropAspect}
+        canvasExpandMode={canvasExpandMode}
+        setCanvasExpandMode={setCanvasExpandMode}
+        onSelectAllCrop={handleSelectAllCrop}
+        onClearCrop={handleClearCrop}
+        onCropWidthChange={handleCropWidthChange}
+        onCropHeightChange={handleCropHeightChange}
+        onExpandToSquare={handleExpandToSquare}
+        onFitToSquare={handleFitToSquare}
+        onApplyCrop={handleApplyCrop}
         selectedFrameId={selectedFrameId}
         selectedPointIndex={selectedPointIndex}
         frames={frames}
@@ -729,6 +943,7 @@ function SpriteEditorMain() {
           pressure: t.pressure,
           builtIn: t.builtIn,
           zoomToolTip: t.zoomToolTip,
+          cropToolTip: t.cropToolTip,
         }}
       />
 
@@ -791,6 +1006,8 @@ function SpriteEditorMain() {
         onExport={handleExport}
         defaultFileName={projectName.trim() || "sprite-project"}
         currentFps={fps}
+        defaultFrameSize={exportFrameSize}
+        sourceFrameSize={detectedSourceFrameSize}
         isExporting={isExporting}
         exportProgress={exportProgress}
         translations={{
@@ -802,6 +1019,12 @@ function SpriteEditorMain() {
           exportTypeSpriteSheetWebp: t.exportTypeSpriteSheetWebp,
           exportTypeMp4: t.exportTypeMp4,
           exportFileName: t.exportFileName,
+          exportCanvasSize: t.exportCanvasSize,
+          exportUseSourceSize: t.exportUseSourceSize,
+          exportWidth: t.exportWidth,
+          exportHeight: t.exportHeight,
+          exportKeepAspectRatio: t.exportKeepAspectRatio,
+          exportCanvasSizeLimit: t.exportCanvasSizeLimit,
           exportPadding: t.exportPadding,
           backgroundColor: t.backgroundColor,
           exportBgTransparent: t.exportBgTransparent,
@@ -815,6 +1038,7 @@ function SpriteEditorMain() {
           exportTypeOptimizedZip: t.exportTypeOptimizedZip,
           exportOptimizedTarget: t.exportOptimizedTarget,
           exportOptimizedThreshold: t.exportOptimizedThreshold,
+          exportOptimizedThresholdHint: t.exportOptimizedThresholdHint,
           exportOptimizedIncludeGuide: t.exportOptimizedIncludeGuide,
         }}
       />

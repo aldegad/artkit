@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { ExportModal, Select } from "@/shared/components";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ExportModal, Select, ExportCanvasSizeControls } from "@/shared/components";
 import type { SpriteExportProgressState } from "../hooks/useSpriteExport";
+import type { SpriteExportFrameSize } from "../utils/export";
 
 // ============================================
 // Types
@@ -14,6 +15,7 @@ export type OptimizedTargetFramework = "canvas" | "phaser" | "pixi" | "custom";
 export interface SpriteExportSettings {
   exportType: SpriteExportType;
   fileName: string;
+  frameSize: SpriteExportFrameSize | null;
   // Sprite Sheet
   padding: number;
   bgTransparent: boolean;
@@ -33,6 +35,10 @@ export interface SpriteExportSettings {
 // Settings saved to localStorage (excludes fileName)
 interface SavedExportSettings {
   exportType: SpriteExportType;
+  useSourceSize: boolean;
+  keepAspectRatio: boolean;
+  customFrameWidth: number;
+  customFrameHeight: number;
   padding: number;
   bgTransparent: boolean;
   backgroundColor: string;
@@ -47,9 +53,14 @@ interface SavedExportSettings {
 }
 
 const STORAGE_KEY = "sprite-export-settings";
+const DEFAULT_MAX_FRAME_SIZE = 16384;
 
 const DEFAULT_SAVED: SavedExportSettings = {
   exportType: "sprite-png",
+  useSourceSize: true,
+  keepAspectRatio: true,
+  customFrameWidth: 0,
+  customFrameHeight: 0,
   padding: 0,
   bgTransparent: true,
   backgroundColor: "#ffffff",
@@ -58,7 +69,7 @@ const DEFAULT_SAVED: SavedExportSettings = {
   mp4Compression: "balanced",
   mp4BackgroundColor: "#000000",
   mp4LoopCount: 1,
-  optimizedTarget: "canvas" as OptimizedTargetFramework,
+  optimizedTarget: "canvas",
   optimizedThreshold: 0,
   optimizedIncludeGuide: true,
 };
@@ -80,6 +91,16 @@ function saveSettings(settings: SavedExportSettings) {
   } catch {
     // ignore
   }
+}
+
+function normalizeSize(
+  size: SpriteExportFrameSize | null | undefined,
+): SpriteExportFrameSize | null {
+  if (!size) return null;
+  if (!Number.isFinite(size.width) || !Number.isFinite(size.height)) return null;
+  const width = Math.max(1, Math.floor(size.width));
+  const height = Math.max(1, Math.floor(size.height));
+  return { width, height };
 }
 
 function getExtension(type: SpriteExportType): string {
@@ -107,8 +128,11 @@ interface SpriteExportModalProps {
   onExport: (settings: SpriteExportSettings) => void;
   defaultFileName: string;
   currentFps: number;
+  defaultFrameSize: SpriteExportFrameSize | null;
+  sourceFrameSize: SpriteExportFrameSize | null;
   isExporting: boolean;
   exportProgress: SpriteExportProgressState | null;
+  maxFrameSize?: number;
   translations: {
     export: string;
     cancel: string;
@@ -118,6 +142,12 @@ interface SpriteExportModalProps {
     exportTypeSpriteSheetWebp: string;
     exportTypeMp4: string;
     exportFileName: string;
+    exportCanvasSize: string;
+    exportUseSourceSize: string;
+    exportWidth: string;
+    exportHeight: string;
+    exportKeepAspectRatio: string;
+    exportCanvasSizeLimit: string;
     exportPadding: string;
     backgroundColor: string;
     exportBgTransparent: string;
@@ -131,6 +161,7 @@ interface SpriteExportModalProps {
     exportTypeOptimizedZip: string;
     exportOptimizedTarget: string;
     exportOptimizedThreshold: string;
+    exportOptimizedThresholdHint: string;
     exportOptimizedIncludeGuide: string;
   };
 }
@@ -145,12 +176,43 @@ export default function SpriteExportModal({
   onExport,
   defaultFileName,
   currentFps,
+  defaultFrameSize,
+  sourceFrameSize,
   isExporting,
   exportProgress,
+  maxFrameSize = DEFAULT_MAX_FRAME_SIZE,
   translations: t,
 }: SpriteExportModalProps) {
+  const normalizedDefaultFrameSize = useMemo(
+    () => normalizeSize(defaultFrameSize),
+    [defaultFrameSize],
+  );
+  const normalizedSourceFrameSize = useMemo(
+    () => normalizeSize(sourceFrameSize),
+    [sourceFrameSize],
+  );
+  const fallbackCustomSize = normalizedDefaultFrameSize ?? normalizedSourceFrameSize;
+  const referenceAspectRatio = useMemo(() => {
+    const ref = normalizedSourceFrameSize ?? fallbackCustomSize;
+    if (!ref || ref.width <= 0 || ref.height <= 0) return null;
+    return ref.width / ref.height;
+  }, [normalizedSourceFrameSize, fallbackCustomSize]);
+
+  const clampDimension = useCallback(
+    (value: number): number => {
+      if (!Number.isFinite(value)) return 1;
+      return Math.min(maxFrameSize, Math.max(1, Math.round(value)));
+    },
+    [maxFrameSize],
+  );
+
   const [fileName, setFileName] = useState(defaultFileName);
   const [exportType, setExportType] = useState<SpriteExportType>("sprite-png");
+  const [useSourceSize, setUseSourceSize] = useState(true);
+  const [keepAspectRatio, setKeepAspectRatio] = useState(true);
+  const [widthInput, setWidthInput] = useState("");
+  const [heightInput, setHeightInput] = useState("");
+  const [sizeError, setSizeError] = useState("");
   const [padding, setPadding] = useState(0);
   const [bgTransparent, setBgTransparent] = useState(true);
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
@@ -165,32 +227,155 @@ export default function SpriteExportModal({
   const [optimizedThreshold, setOptimizedThreshold] = useState(0);
   const [optimizedIncludeGuide, setOptimizedIncludeGuide] = useState(true);
 
-  // Load settings from localStorage when modal opens
   useEffect(() => {
-    if (isOpen) {
-      const saved = loadSavedSettings();
-      setFileName(defaultFileName);
-      setExportType(saved.exportType);
-      setPadding(saved.padding);
-      setBgTransparent(saved.bgTransparent);
-      setBackgroundColor(saved.backgroundColor);
-      setWebpQuality(saved.webpQuality);
-      setMp4Fps(saved.mp4Fps || currentFps || 12);
-      setMp4Compression(saved.mp4Compression);
-      setMp4BackgroundColor(saved.mp4BackgroundColor);
-      setMp4LoopCount(saved.mp4LoopCount);
-      setOptimizedTarget(saved.optimizedTarget);
-      setOptimizedThreshold(saved.optimizedThreshold);
-      setOptimizedIncludeGuide(saved.optimizedIncludeGuide);
+    if (!isOpen) return;
+
+    const saved = loadSavedSettings();
+    const canUseSourceSize = Boolean(normalizedSourceFrameSize);
+    const initialUseSource = canUseSourceSize ? saved.useSourceSize : false;
+    const fallbackWidth = fallbackCustomSize?.width ?? "";
+    const fallbackHeight = fallbackCustomSize?.height ?? "";
+    const customWidth = saved.customFrameWidth > 0 ? clampDimension(saved.customFrameWidth) : fallbackWidth;
+    const customHeight = saved.customFrameHeight > 0 ? clampDimension(saved.customFrameHeight) : fallbackHeight;
+
+    setFileName(defaultFileName);
+    setExportType(saved.exportType);
+    setUseSourceSize(initialUseSource);
+    setKeepAspectRatio(saved.keepAspectRatio);
+    setWidthInput(String(customWidth));
+    setHeightInput(String(customHeight));
+    setSizeError("");
+    setPadding(saved.padding);
+    setBgTransparent(saved.bgTransparent);
+    setBackgroundColor(saved.backgroundColor);
+    setWebpQuality(saved.webpQuality);
+    setMp4Fps(saved.mp4Fps || currentFps || 12);
+    setMp4Compression(saved.mp4Compression);
+    setMp4BackgroundColor(saved.mp4BackgroundColor);
+    setMp4LoopCount(saved.mp4LoopCount);
+    setOptimizedTarget(saved.optimizedTarget);
+    setOptimizedThreshold(saved.optimizedThreshold);
+    setOptimizedIncludeGuide(saved.optimizedIncludeGuide);
+  }, [
+    isOpen,
+    defaultFileName,
+    currentFps,
+    normalizedSourceFrameSize,
+    fallbackCustomSize,
+    clampDimension,
+  ]);
+
+  const handleUseSourceSizeChange = useCallback(
+    (next: boolean) => {
+      setSizeError("");
+      if (next && !normalizedSourceFrameSize) {
+        setUseSourceSize(false);
+        return;
+      }
+      setUseSourceSize(next);
+      if (!next && (!widthInput || !heightInput) && fallbackCustomSize) {
+        setWidthInput(String(fallbackCustomSize.width));
+        setHeightInput(String(fallbackCustomSize.height));
+      }
+    },
+    [normalizedSourceFrameSize, widthInput, heightInput, fallbackCustomSize],
+  );
+
+  const handleWidthInputChange = useCallback(
+    (value: string) => {
+      setSizeError("");
+      setWidthInput(value);
+      if (!keepAspectRatio || useSourceSize || !referenceAspectRatio) return;
+
+      const width = Number.parseInt(value, 10);
+      if (!Number.isFinite(width) || width <= 0) {
+        setHeightInput("");
+        return;
+      }
+      setHeightInput(String(clampDimension(width / referenceAspectRatio)));
+    },
+    [keepAspectRatio, useSourceSize, referenceAspectRatio, clampDimension],
+  );
+
+  const handleHeightInputChange = useCallback(
+    (value: string) => {
+      setSizeError("");
+      setHeightInput(value);
+      if (!keepAspectRatio || useSourceSize || !referenceAspectRatio) return;
+
+      const height = Number.parseInt(value, 10);
+      if (!Number.isFinite(height) || height <= 0) {
+        setWidthInput("");
+        return;
+      }
+      setWidthInput(String(clampDimension(height * referenceAspectRatio)));
+    },
+    [keepAspectRatio, useSourceSize, referenceAspectRatio, clampDimension],
+  );
+
+  const handleKeepAspectRatioChange = useCallback(
+    (next: boolean) => {
+      setKeepAspectRatio(next);
+      if (!next || useSourceSize || !referenceAspectRatio) return;
+
+      const width = Number.parseInt(widthInput, 10);
+      const height = Number.parseInt(heightInput, 10);
+      if (Number.isFinite(width) && width > 0) {
+        setHeightInput(String(clampDimension(width / referenceAspectRatio)));
+        return;
+      }
+      if (Number.isFinite(height) && height > 0) {
+        setWidthInput(String(clampDimension(height * referenceAspectRatio)));
+      }
+    },
+    [
+      useSourceSize,
+      referenceAspectRatio,
+      widthInput,
+      heightInput,
+      clampDimension,
+    ],
+  );
+
+  const resolveFrameSize = useCallback((): SpriteExportFrameSize | null => {
+    if (useSourceSize && normalizedSourceFrameSize) {
+      return normalizedSourceFrameSize;
     }
-  }, [isOpen, defaultFileName, currentFps]);
+
+    const width = Number.parseInt(widthInput, 10);
+    const height = Number.parseInt(heightInput, 10);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      return fallbackCustomSize;
+    }
+
+    return {
+      width: clampDimension(width),
+      height: clampDimension(height),
+    };
+  }, [
+    useSourceSize,
+    normalizedSourceFrameSize,
+    widthInput,
+    heightInput,
+    fallbackCustomSize,
+    clampDimension,
+  ]);
 
   const handleExport = useCallback(() => {
     if (!fileName.trim() || isExporting) return;
 
-    // Save settings (excluding fileName)
+    const resolvedFrameSize = resolveFrameSize();
+    if (!resolvedFrameSize) {
+      setSizeError("Canvas size is required.");
+      return;
+    }
+
     saveSettings({
       exportType,
+      useSourceSize,
+      keepAspectRatio,
+      customFrameWidth: Number.parseInt(widthInput, 10) || resolvedFrameSize.width,
+      customFrameHeight: Number.parseInt(heightInput, 10) || resolvedFrameSize.height,
       padding,
       bgTransparent,
       backgroundColor,
@@ -207,6 +392,7 @@ export default function SpriteExportModal({
     onExport({
       exportType,
       fileName: fileName.trim(),
+      frameSize: resolvedFrameSize,
       padding,
       bgTransparent,
       backgroundColor,
@@ -221,7 +407,13 @@ export default function SpriteExportModal({
     });
   }, [
     fileName,
+    isExporting,
+    resolveFrameSize,
     exportType,
+    useSourceSize,
+    keepAspectRatio,
+    widthInput,
+    heightInput,
     padding,
     bgTransparent,
     backgroundColor,
@@ -233,7 +425,6 @@ export default function SpriteExportModal({
     optimizedTarget,
     optimizedThreshold,
     optimizedIncludeGuide,
-    isExporting,
     onExport,
   ]);
 
@@ -259,13 +450,41 @@ export default function SpriteExportModal({
         { value: "optimized-zip", label: t.exportTypeOptimizedZip },
       ]}
       formatValue={exportType}
-      onFormatChange={(value) => setExportType(value as SpriteExportType)}
+      onFormatChange={(value) => {
+        setSizeError("");
+        setExportType(value as SpriteExportType);
+      }}
       isExporting={isExporting}
       exportProgress={exportProgress}
       cancelLabel={t.cancel}
       exportLabel={t.export}
       exportingLabel={t.exporting}
     >
+      <ExportCanvasSizeControls
+        sourceSize={normalizedSourceFrameSize}
+        useSourceSize={useSourceSize}
+        onUseSourceSizeChange={handleUseSourceSizeChange}
+        widthInput={widthInput}
+        heightInput={heightInput}
+        onWidthInputChange={handleWidthInputChange}
+        onHeightInputChange={handleHeightInputChange}
+        keepAspectRatio={keepAspectRatio}
+        onKeepAspectRatioChange={handleKeepAspectRatioChange}
+        disabled={isExporting}
+        labels={{
+          canvasSize: t.exportCanvasSize,
+          useSourceSize: t.exportUseSourceSize,
+          width: t.exportWidth,
+          height: t.exportHeight,
+          keepAspectRatio: t.exportKeepAspectRatio,
+          sizeLimitHint: t.exportCanvasSizeLimit.replace("{max}", String(maxFrameSize)),
+        }}
+      />
+
+      {sizeError && (
+        <p className="text-[11px] text-red-500">{sizeError}</p>
+      )}
+
       {/* Sprite Sheet Options */}
       {isSpriteSheet && (
         <>
@@ -456,6 +675,9 @@ export default function SpriteExportModal({
               disabled={isExporting}
               className="w-full accent-accent-primary"
             />
+            <p className="text-[11px] text-text-tertiary">
+              {t.exportOptimizedThresholdHint}
+            </p>
           </div>
 
           {/* Include Guide */}

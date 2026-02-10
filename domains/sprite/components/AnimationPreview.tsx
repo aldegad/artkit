@@ -23,16 +23,24 @@ import { compositeFrame } from "../utils/compositor";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
+import { getCanvasColorsSync } from "@/shared/hooks";
 import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
+import {
+  createRectFromDrag,
+  getRectHandleAtPosition,
+  resizeRectByHandle,
+  type RectHandle,
+} from "@/shared/utils/rectTransform";
 import {
   clampZoom,
   safeReleasePointerCapture,
   safeSetPointerCapture,
   zoomAtPoint,
 } from "@/shared/utils";
+import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 
 // ============================================
@@ -108,7 +116,16 @@ export default function AnimationPreviewContent() {
   const setStoreFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
   const { frames: activeTrackFrames } = useEditorFramesMeta();
-  const { toolMode, isPanLocked } = useEditorTools();
+  const {
+    toolMode,
+    isPanLocked,
+    cropArea,
+    setCropArea,
+    cropAspectRatio,
+    lockCropAspect,
+    canvasExpandMode,
+  } = useEditorTools();
+  const exportFrameSize = useSpriteUIStore((s) => s.exportFrameSize);
   const {
     brushColor,
     setBrushColor,
@@ -131,6 +148,8 @@ export default function AnimationPreviewContent() {
   const [hasDrawn, setHasDrawn] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
+  const [cropCursor, setCropCursor] = useState<string>("crosshair");
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -138,6 +157,18 @@ export default function AnimationPreviewContent() {
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
   const drawingPointerIdRef = useRef<number | null>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
+  const cropDragRef = useRef<{
+    mode: "none" | "create" | "move" | "resize";
+    pointerStart: { x: number; y: number };
+    cropStart: { x: number; y: number; width: number; height: number } | null;
+    resizeHandle: RectHandle | null;
+  }>({
+    mode: "none",
+    pointerStart: { x: 0, y: 0 },
+    cropStart: null,
+    resizeHandle: null,
+  });
+  const originalCropAreaRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // Keep the latest composited frame as a canvas to avoid image re-decoding per frame.
   const compositedCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -287,12 +318,71 @@ export default function AnimationPreviewContent() {
       ctx.clearRect(0, 0, w, h);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(sourceCanvas, 0, 0, w, h);
+
+      if (toolMode === "crop") {
+        const activeCrop = cropArea || {
+          x: 0,
+          y: 0,
+          width: sourceCanvas.width,
+          height: sourceCanvas.height,
+        };
+        const cropX = activeCrop.x * zoom;
+        const cropY = activeCrop.y * zoom;
+        const cropW = activeCrop.width * zoom;
+        const cropH = activeCrop.height * zoom;
+        const colors = getCanvasColorsSync();
+
+        ctx.save();
+        ctx.fillStyle = colors.overlay;
+        ctx.fillRect(0, 0, w, Math.max(0, cropY));
+        ctx.fillRect(0, cropY + cropH, w, Math.max(0, h - (cropY + cropH)));
+        ctx.fillRect(0, cropY, Math.max(0, cropX), cropH);
+        ctx.fillRect(cropX + cropW, cropY, Math.max(0, w - (cropX + cropW)), cropH);
+        ctx.restore();
+
+        ctx.save();
+        ctx.strokeStyle = colors.selection;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cropX, cropY, cropW, cropH);
+
+        ctx.strokeStyle = colors.grid || "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 1;
+        for (let i = 1; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(cropX + (cropW * i) / 3, cropY);
+          ctx.lineTo(cropX + (cropW * i) / 3, cropY + cropH);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(cropX, cropY + (cropH * i) / 3);
+          ctx.lineTo(cropX + cropW, cropY + (cropH * i) / 3);
+          ctx.stroke();
+        }
+
+        const handleSize = 10;
+        const handles = [
+          { x: cropX, y: cropY },
+          { x: cropX + cropW / 2, y: cropY },
+          { x: cropX + cropW, y: cropY },
+          { x: cropX + cropW, y: cropY + cropH / 2 },
+          { x: cropX + cropW, y: cropY + cropH },
+          { x: cropX + cropW / 2, y: cropY + cropH },
+          { x: cropX, y: cropY + cropH },
+          { x: cropX, y: cropY + cropH / 2 },
+        ];
+        ctx.fillStyle = colors.selection;
+        ctx.strokeStyle = colors.textOnColor;
+        for (const handle of handles) {
+          ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+          ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+        }
+        ctx.restore();
+      }
     });
 
     // Ensure first paint after autosave restore even if a render was requested
     // before the scheduler render function was registered.
     requestRender();
-  }, [setRenderFn, getAnimVpZoom, requestRender, isEditMode]);
+  }, [setRenderFn, getAnimVpZoom, requestRender, isEditMode, toolMode, cropArea]);
 
   // Subscribe viewport changes -> render
   useEffect(() => {
@@ -439,8 +529,9 @@ export default function AnimationPreviewContent() {
     }
 
     const visualIndex = currentVisualIndex >= 0 ? currentVisualIndex : 0;
+    const outputSize = exportFrameSize ?? undefined;
     let cancelled = false;
-    compositeFrame(enabledTracks, visualIndex, undefined, { includeDataUrl: false }).then((result) => {
+    compositeFrame(enabledTracks, visualIndex, outputSize, { includeDataUrl: false }).then((result) => {
       if (!cancelled) {
         compositedCanvasRef.current = result?.canvas ?? null;
         setHasCompositedFrame(Boolean(result));
@@ -456,7 +547,7 @@ export default function AnimationPreviewContent() {
         // Prefetch next frame to reduce first-loop stutter.
         if (maxEnabledCount > 1) {
           const nextVisualIndex = (visualIndex + 1) % maxEnabledCount;
-          void compositeFrame(enabledTracks, nextVisualIndex, undefined, { includeDataUrl: false });
+          void compositeFrame(enabledTracks, nextVisualIndex, outputSize, { includeDataUrl: false });
         }
       }
     });
@@ -464,7 +555,7 @@ export default function AnimationPreviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [isAutosaveLoading, enabledTracks, currentVisualIndex, maxEnabledCount, requestRender]);
+  }, [isAutosaveLoading, enabledTracks, currentVisualIndex, maxEnabledCount, requestRender, exportFrameSize]);
 
   // Keep editable frame canvas in sync with active frame.
   useEffect(() => {
@@ -544,6 +635,24 @@ export default function AnimationPreviewContent() {
     });
   }, [hasCompositedFrame, isEditMode, requestRender]);
 
+  useEffect(() => {
+    if (toolMode !== "crop") return;
+    requestRender();
+  }, [toolMode, cropArea, cropCursor, isDraggingCrop, requestRender]);
+
+  useEffect(() => {
+    if (toolMode === "crop") return;
+    cropDragRef.current = {
+      mode: "none",
+      pointerStart: { x: 0, y: 0 },
+      cropStart: null,
+      resizeHandle: null,
+    };
+    originalCropAreaRef.current = null;
+    setIsDraggingCrop(false);
+    setCropCursor("crosshair");
+  }, [toolMode]);
+
   const handlePrev = useCallback(() => {
     if (activeEnabledIndices.length === 0) return;
     commitFrameEdits();
@@ -594,6 +703,46 @@ export default function AnimationPreviewContent() {
     },
     [getAnimVpZoom],
   );
+
+  const getCropCanvasBounds = useCallback(() => {
+    const sourceCanvas = compositedCanvasRef.current;
+    if (sourceCanvas) {
+      return {
+        width: sourceCanvas.width,
+        height: sourceCanvas.height,
+      };
+    }
+    if (exportFrameSize) {
+      return {
+        width: exportFrameSize.width,
+        height: exportFrameSize.height,
+      };
+    }
+    return null;
+  }, [exportFrameSize]);
+
+  const clampToCropCanvas = useCallback((point: { x: number; y: number }) => {
+    const bounds = getCropCanvasBounds();
+    if (!bounds) return point;
+    return {
+      x: Math.max(0, Math.min(bounds.width, point.x)),
+      y: Math.max(0, Math.min(bounds.height, point.y)),
+    };
+  }, [getCropCanvasBounds]);
+
+  useEffect(() => {
+    if (toolMode !== "crop") return;
+    if (cropArea) return;
+    const bounds = getCropCanvasBounds();
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+
+    setCropArea({
+      x: 0,
+      y: 0,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }, [toolMode, cropArea, getCropCanvasBounds, setCropArea, hasCompositedFrame, currentVisualIndex]);
 
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure = 1) => {
@@ -811,6 +960,64 @@ export default function AnimationPreviewContent() {
         return;
       }
 
+      if (toolMode === "crop") {
+        const rawPoint = getPixelCoordinates(e.clientX, e.clientY);
+        if (!rawPoint) return;
+
+        const bounds = getCropCanvasBounds();
+        if (!bounds) return;
+        const point = canvasExpandMode ? rawPoint : clampToCropCanvas(rawPoint);
+
+        e.preventDefault();
+        safeSetPointerCapture(e.currentTarget, e.pointerId);
+
+        if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
+          const hit = getRectHandleAtPosition(point, cropArea, {
+            handleSize: 12,
+            includeMove: true,
+          });
+
+          if (hit && hit !== "move") {
+            originalCropAreaRef.current = { ...cropArea };
+            cropDragRef.current = {
+              mode: "resize",
+              pointerStart: point,
+              cropStart: { ...cropArea },
+              resizeHandle: hit as RectHandle,
+            };
+            setIsDraggingCrop(true);
+            return;
+          }
+
+          if (hit === "move") {
+            cropDragRef.current = {
+              mode: "move",
+              pointerStart: point,
+              cropStart: { ...cropArea },
+              resizeHandle: null,
+            };
+            setIsDraggingCrop(true);
+            return;
+          }
+        }
+
+        const nextArea = {
+          x: Math.round(point.x),
+          y: Math.round(point.y),
+          width: 0,
+          height: 0,
+        };
+        setCropArea(nextArea);
+        cropDragRef.current = {
+          mode: "create",
+          pointerStart: point,
+          cropStart: nextArea,
+          resizeHandle: null,
+        };
+        setIsDraggingCrop(true);
+        return;
+      }
+
       if (!isEditMode || !editableFrame) {
         return;
       }
@@ -845,6 +1052,12 @@ export default function AnimationPreviewContent() {
       zoomAtCursor,
       isEyedropperTool,
       pickColorFromComposited,
+      toolMode,
+      getCropCanvasBounds,
+      canvasExpandMode,
+      clampToCropCanvas,
+      cropArea,
+      setCropArea,
       isEditMode,
       editableFrame,
       getPixelCoordinates,
@@ -871,6 +1084,128 @@ export default function AnimationPreviewContent() {
         return;
       }
 
+      if (toolMode === "crop" && cropDragRef.current.mode === "none") {
+        const hoverPoint = getPixelCoordinates(e.clientX, e.clientY);
+        if (hoverPoint && cropArea && cropArea.width > 0 && cropArea.height > 0) {
+          const hit = getRectHandleAtPosition(hoverPoint, cropArea, {
+            handleSize: 12,
+            includeMove: true,
+          });
+          if (hit && hit !== "move") {
+            const cursorMap: Record<string, string> = {
+              nw: "nwse-resize",
+              se: "nwse-resize",
+              ne: "nesw-resize",
+              sw: "nesw-resize",
+              n: "ns-resize",
+              s: "ns-resize",
+              e: "ew-resize",
+              w: "ew-resize",
+            };
+            setCropCursor(cursorMap[hit] || "crosshair");
+          } else if (hit === "move") {
+            setCropCursor("move");
+          } else {
+            setCropCursor("crosshair");
+          }
+        } else {
+          setCropCursor("crosshair");
+        }
+      }
+
+      if (cropDragRef.current.mode !== "none") {
+        const rawPoint = getPixelCoordinates(e.clientX, e.clientY);
+        if (!rawPoint) return;
+        const point = canvasExpandMode ? rawPoint : clampToCropCanvas(rawPoint);
+        const bounds = getCropCanvasBounds();
+        if (!bounds) return;
+
+        if (cropDragRef.current.mode === "create") {
+          const start = cropDragRef.current.pointerStart;
+          const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
+          const clampedPos = canvasExpandMode
+            ? point
+            : {
+                x: Math.max(0, Math.min(Math.round(point.x), bounds.width)),
+                y: Math.max(0, Math.min(Math.round(point.y), bounds.height)),
+              };
+          const nextArea = createRectFromDrag(start, clampedPos, {
+            keepAspect: Boolean(ratioValue),
+            targetAspect: ratioValue ?? undefined,
+            round: true,
+            bounds: canvasExpandMode
+              ? undefined
+              : {
+                  minX: 0,
+                  minY: 0,
+                  maxX: bounds.width,
+                  maxY: bounds.height,
+                },
+          });
+          setCropArea(nextArea);
+          return;
+        }
+
+        if (cropDragRef.current.mode === "move" && cropDragRef.current.cropStart) {
+          const start = cropDragRef.current.cropStart;
+          const dx = point.x - cropDragRef.current.pointerStart.x;
+          const dy = point.y - cropDragRef.current.pointerStart.y;
+          let nextX = start.x + dx;
+          let nextY = start.y + dy;
+
+          if (!canvasExpandMode) {
+            nextX = Math.max(0, Math.min(bounds.width - start.width, nextX));
+            nextY = Math.max(0, Math.min(bounds.height - start.height, nextY));
+          }
+
+          setCropArea({
+            x: Math.round(nextX),
+            y: Math.round(nextY),
+            width: Math.round(start.width),
+            height: Math.round(start.height),
+          });
+          return;
+        }
+
+        if (cropDragRef.current.mode === "resize" && originalCropAreaRef.current && cropDragRef.current.resizeHandle) {
+          const orig = originalCropAreaRef.current;
+          const dx = point.x - cropDragRef.current.pointerStart.x;
+          const dy = point.y - cropDragRef.current.pointerStart.y;
+          const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
+          const originalAspect = orig.width / Math.max(1, orig.height);
+          const effectiveRatio = ratioValue || (lockCropAspect ? originalAspect : null);
+
+          let newArea = resizeRectByHandle(
+            orig,
+            cropDragRef.current.resizeHandle,
+            { dx, dy },
+            {
+              minWidth: 10,
+              minHeight: 10,
+              keepAspect: Boolean(effectiveRatio),
+              targetAspect: effectiveRatio ?? undefined,
+            },
+          );
+
+          if (!canvasExpandMode) {
+            newArea = {
+              x: Math.max(0, newArea.x),
+              y: Math.max(0, newArea.y),
+              width: Math.min(newArea.width, bounds.width - Math.max(0, newArea.x)),
+              height: Math.min(newArea.height, bounds.height - Math.max(0, newArea.y)),
+            };
+          }
+
+          setCropArea({
+            x: Math.round(newArea.x),
+            y: Math.round(newArea.y),
+            width: Math.round(newArea.width),
+            height: Math.round(newArea.height),
+          });
+          return;
+        }
+      }
+
       if (!isEditMode || !isDrawing || drawingPointerIdRef.current !== e.pointerId || !editableFrame) {
         return;
       }
@@ -894,7 +1229,24 @@ export default function AnimationPreviewContent() {
 
       lastMousePosRef.current = { x: coords.x, y: coords.y };
     },
-    [isEditMode, isDrawing, editableFrame, getPixelCoordinates, drawPixel, brushColor, isEraserTool, requestRender],
+    [
+      toolMode,
+      cropArea,
+      setCropArea,
+      cropAspectRatio,
+      lockCropAspect,
+      canvasExpandMode,
+      clampToCropCanvas,
+      getCropCanvasBounds,
+      isEditMode,
+      isDrawing,
+      editableFrame,
+      getPixelCoordinates,
+      drawPixel,
+      brushColor,
+      isEraserTool,
+      requestRender,
+    ],
   );
 
   const handlePreviewCanvasPointerUp = useCallback(
@@ -910,8 +1262,21 @@ export default function AnimationPreviewContent() {
         setIsDrawing(false);
         commitFrameEdits();
       }
+
+      originalCropAreaRef.current = null;
+      cropDragRef.current = {
+        mode: "none",
+        pointerStart: { x: 0, y: 0 },
+        cropStart: null,
+        resizeHandle: null,
+      };
+      setIsDraggingCrop(false);
+
+      if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
+        setCropArea(null);
+      }
     },
-    [commitFrameEdits],
+    [commitFrameEdits, cropArea, setCropArea],
   );
 
   const handlePreviewCanvasPointerEnter = useCallback(() => {
@@ -931,6 +1296,16 @@ export default function AnimationPreviewContent() {
         setIsDrawing(false);
         commitFrameEdits();
       }
+      if (cropDragRef.current.mode !== "none" && e.pointerId !== drawingPointerIdRef.current) {
+        cropDragRef.current = {
+          mode: "none",
+          pointerStart: { x: 0, y: 0 },
+          cropStart: null,
+          resizeHandle: null,
+        };
+        originalCropAreaRef.current = null;
+        setIsDraggingCrop(false);
+      }
     },
     [commitFrameEdits],
   );
@@ -947,6 +1322,13 @@ export default function AnimationPreviewContent() {
     }
     if (isEyedropperTool) {
       return "crosshair";
+    }
+    if (toolMode === "crop") {
+      return isDraggingCrop
+        ? cropDragRef.current.mode === "move"
+          ? "grabbing"
+          : cropCursor
+        : cropCursor;
     }
     return "default";
   };
