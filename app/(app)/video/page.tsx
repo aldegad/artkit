@@ -57,7 +57,11 @@ import {
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
-import { interpolateFramesWithAI } from "@/shared/ai/frameInterpolation";
+import {
+  interpolateFramesWithAI,
+  type RifeInterpolationQuality,
+} from "@/shared/ai/frameInterpolation";
+import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -420,6 +424,9 @@ function VideoEditorContent() {
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
+    () => readAISettings().frameInterpolationQuality,
+  );
   const [isInterpolatingGap, setIsInterpolatingGap] = useState(false);
   const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
   const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
@@ -1069,6 +1076,7 @@ function VideoEditorContent() {
         fromImageData: fromFrame.dataUrl,
         toImageData: toFrame.dataUrl,
         steps: suggestedSteps,
+        quality: videoInterpolationQuality,
         onProgress: (progress, status) => {
           setGapInterpolationProgress(Math.max(0, Math.min(90, progress)));
           setGapInterpolationStatus(status || (t.interpolationProgress || "Interpolating frames"));
@@ -1142,6 +1150,7 @@ function VideoEditorContent() {
     t.saving,
     t.interpolationFailed,
     project.frameRate,
+    videoInterpolationQuality,
     saveToHistory,
     addClips,
     selectClips,
@@ -1339,6 +1348,11 @@ function VideoEditorContent() {
     openFloatingWindow("timeline", { x: 140, y: 140 });
   }, [layoutState, closeFloatingWindow, removePanel, addPanel, openFloatingWindow]);
 
+  const handleVideoInterpolationQualityChange = useCallback((quality: RifeInterpolationQuality) => {
+    setVideoInterpolationQuality(quality);
+    updateAISettings({ frameInterpolationQuality: quality });
+  }, []);
+
   // Auto-pause when app/window loses foreground to prevent lingering audio playback.
   useEffect(() => {
     const pausePlaybackIfNeeded = () => {
@@ -1454,6 +1468,9 @@ function VideoEditorContent() {
     timeline: t.timeline,
     previewVideoCache: t.previewVideoCache,
     resetLayout: t.resetLayout,
+    frameInterpolation: t.frameInterpolation,
+    interpolationQualityFast: t.interpolationQualityFast,
+    interpolationQualityHigh: t.interpolationQualityHigh,
   };
 
   const toolbarTranslations = {
@@ -1526,6 +1543,8 @@ function VideoEditorContent() {
             onResetLayout={resetLayout}
             onTogglePreviewCache={togglePreviewPreRender}
             previewCacheEnabled={previewPreRenderEnabled}
+            interpolationQuality={videoInterpolationQuality}
+            onSetInterpolationQuality={handleVideoInterpolationQualityChange}
             translations={menuTranslations}
           />
         }
