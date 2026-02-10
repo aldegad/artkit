@@ -3,6 +3,7 @@
 import { useCallback, type RefObject } from "react";
 import { ClipboardData, Clip, MaskData, VideoTrack } from "../types";
 import { copyMediaBlob } from "../utils/mediaStorage";
+import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 
 interface UseVideoClipboardActionsOptions {
   selectedClipIds: string[];
@@ -41,6 +42,7 @@ function cloneClip(clip: Clip): Clip {
     ...clip,
     position: { ...clip.position },
     sourceSize: { ...clip.sourceSize },
+    transformKeyframes: normalizeClipTransformKeyframes(clip),
   };
 }
 

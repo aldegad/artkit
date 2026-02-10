@@ -27,10 +27,11 @@ import {
   MaskData,
   TimelineViewState,
 } from "@/domains/video/types";
-import { Clip } from "@/domains/video/types/clip";
+import { Clip, ClipTransformKeyframes } from "@/domains/video/types/clip";
 import {
   loadMediaBlob,
 } from "@/domains/video/utils/mediaStorage";
+import { normalizeClipTransformKeyframes } from "@/domains/video/utils/clipTransformKeyframes";
 
 // ============================================
 // Firestore Types
@@ -53,6 +54,7 @@ interface FirestoreClipMeta {
   scaleX?: number;
   scaleY?: number;
   rotation: number;
+  transformKeyframes?: ClipTransformKeyframes;
   sourceId: string;
   sourceDuration?: number;
   sourceSize: { width: number; height: number };
@@ -301,6 +303,7 @@ function clipToMeta(clip: Clip, storageRef: string): FirestoreClipMeta {
     scaleX: clip.scaleX,
     scaleY: clip.scaleY,
     rotation: clip.rotation,
+    transformKeyframes: normalizeClipTransformKeyframes(clip),
     sourceId: clip.sourceId,
     sourceSize: clip.sourceSize,
     storageRef,
@@ -324,6 +327,11 @@ function clipToMeta(clip: Clip, storageRef: string): FirestoreClipMeta {
 }
 
 function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
+  const transformKeyframes = normalizeClipTransformKeyframes({
+    duration: meta.duration,
+    transformKeyframes: meta.transformKeyframes,
+  } as Pick<Clip, "duration" | "transformKeyframes">);
+
   const base = {
     id: meta.id,
     name: meta.name,
@@ -340,6 +348,7 @@ function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
     scaleX: typeof meta.scaleX === "number" ? meta.scaleX : 1,
     scaleY: typeof meta.scaleY === "number" ? meta.scaleY : 1,
     rotation: meta.rotation,
+    transformKeyframes,
     sourceId: meta.sourceId,
     sourceSize: meta.sourceSize,
     sourceUrl,
