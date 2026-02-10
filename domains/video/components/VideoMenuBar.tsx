@@ -36,10 +36,15 @@ interface VideoMenuBarProps {
   onFitToScreen: () => void;
   onToggleTimeline: () => void;
   showTimeline: boolean;
+  onResetLayout: () => void;
+  onTogglePreviewCache: () => void;
+  previewCacheEnabled: boolean;
   translations: {
     file: string;
     edit: string;
     view: string;
+    window: string;
+    settings: string;
     new: string;
     load: string;
     save: string;
@@ -56,6 +61,8 @@ interface VideoMenuBarProps {
     zoomOut: string;
     fitToScreen: string;
     timeline: string;
+    previewVideoCache: string;
+    resetLayout: string;
   };
 }
 
@@ -84,9 +91,12 @@ export default function VideoMenuBar({
   onFitToScreen,
   onToggleTimeline,
   showTimeline,
+  onResetLayout,
+  onTogglePreviewCache,
+  previewCacheEnabled,
   translations: t,
 }: VideoMenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | null>(null);
 
   const d = shortcutToDisplayString;
   const db = bindingToDisplayString;
@@ -115,8 +125,15 @@ export default function VideoMenuBar({
     { label: t.zoomIn, onClick: onZoomIn, shortcut: d(COMMON_SHORTCUTS.zoomIn) },
     { label: t.zoomOut, onClick: onZoomOut, shortcut: d(COMMON_SHORTCUTS.zoomOut) },
     { label: t.fitToScreen, onClick: onFitToScreen, shortcut: d(COMMON_SHORTCUTS.resetZoom) },
-    { divider: true },
+  ];
+
+  const windowMenuItems: MenuItem[] = [
     { label: t.timeline, onClick: onToggleTimeline, checked: showTimeline },
+    { divider: true },
+    { label: t.settings, disabled: true },
+    { label: t.previewVideoCache, onClick: onTogglePreviewCache, checked: previewCacheEnabled },
+    { divider: true },
+    { label: t.resetLayout, onClick: onResetLayout },
   ];
 
   return (
@@ -143,6 +160,12 @@ export default function VideoMenuBar({
         items={viewMenuItems}
         isOpen={openMenu === "view"}
         onOpenChange={(open) => setOpenMenu(open ? "view" : null)}
+      />
+      <MenuDropdown
+        label={t.window}
+        items={windowMenuItems}
+        isOpen={openMenu === "window"}
+        onOpenChange={(open) => setOpenMenu(open ? "window" : null)}
       />
     </div>
   );

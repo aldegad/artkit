@@ -37,6 +37,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     canvasExpandMode,
     cropAspectRatio,
     lockCropAspect,
+    previewPreRenderEnabled,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -54,6 +55,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
+  previewPerf.preRenderEnabled = previewPreRenderEnabled;
   const playbackPerfRef = useRef({
     windowStartMs: 0,
     lastTickMs: 0,
