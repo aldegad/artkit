@@ -1327,6 +1327,11 @@ function VideoEditorContent() {
           fileName: t.projectName,
           format: t.format,
           includeAudio: t.includeAudio,
+          compression: t.compression,
+          backgroundColor: t.backgroundColor,
+          compressionHighQuality: t.compressionHighQuality,
+          compressionBalanced: t.compressionBalanced,
+          compressionSmallFile: t.compressionSmallFile,
         }}
       />
     </div>

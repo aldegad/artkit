@@ -303,6 +303,11 @@ interface Translations {
   previousFrame: string;
   nextFrame: string;
   includeAudio: string;
+  compression: string;
+  backgroundColor: string;
+  compressionHighQuality: string;
+  compressionBalanced: string;
+  compressionSmallFile: string;
   dropMediaHere: string;
   dropMediaDesc: string;
   dropOrClickToImport: string;
@@ -634,6 +639,11 @@ const translations: Record<Language, Translations> = {
     previousFrame: "이전 프레임",
     nextFrame: "다음 프레임",
     includeAudio: "오디오 포함",
+    compression: "압축",
+    backgroundColor: "배경색",
+    compressionHighQuality: "고품질 (큰 용량)",
+    compressionBalanced: "균형 (권장)",
+    compressionSmallFile: "고압축 (작은 용량)",
     dropMediaHere: "미디어 파일을 여기에 드롭",
     dropMediaDesc: "비디오 또는 이미지 파일을 드래그하여 추가",
     dropOrClickToImport: "클릭하거나 파일을 드래그하세요",
@@ -963,6 +973,11 @@ const translations: Record<Language, Translations> = {
     previousFrame: "Previous Frame",
     nextFrame: "Next Frame",
     includeAudio: "Include Audio",
+    compression: "Compression",
+    backgroundColor: "Background Color",
+    compressionHighQuality: "High Quality (Large File)",
+    compressionBalanced: "Balanced (Recommended)",
+    compressionSmallFile: "High Compression (Small File)",
     dropMediaHere: "Drop media files here",
     dropMediaDesc: "Drag video or image files to add",
     dropOrClickToImport: "Click or drag files here",
