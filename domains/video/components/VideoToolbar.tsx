@@ -1,7 +1,15 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
-import { CursorIcon, CropIcon, TrimToolIcon, RazorToolIcon, MaskToolIcon, DeleteIcon } from "@/shared/components/icons";
+import {
+  MoveIcon,
+  TransformIcon,
+  CropIcon,
+  TrimToolIcon,
+  RazorToolIcon,
+  MaskToolIcon,
+  DeleteIcon,
+} from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
 
 interface ToolButton {
@@ -21,6 +29,8 @@ interface VideoToolbarProps {
   translations: {
     select: string;
     selectDesc: string;
+    transform: string;
+    transformDesc: string;
     crop: string;
     cropDesc: string;
     trim: string;
@@ -46,7 +56,15 @@ export default function VideoToolbar({
       description: t.selectDesc,
       shortcut: "V",
       keys: ["Drag: Move clip", "Alt+Drag: Duplicate"],
-      icon: <CursorIcon />,
+      icon: <MoveIcon />,
+    },
+    {
+      mode: "transform",
+      name: t.transform,
+      description: t.transformDesc,
+      shortcut: "T",
+      keys: ["⌘T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
+      icon: <TransformIcon />,
     },
     {
       mode: "crop",
@@ -60,7 +78,7 @@ export default function VideoToolbar({
       mode: "trim",
       name: t.trim,
       description: t.trimDesc,
-      shortcut: "T",
+      shortcut: "Y",
       keys: ["Drag edges: Adjust in/out points"],
       icon: <TrimToolIcon />,
     },

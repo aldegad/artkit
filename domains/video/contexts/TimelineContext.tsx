@@ -136,9 +136,16 @@ function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[])
 }
 
 function normalizeClip(clip: Clip): Clip {
+  const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
+  const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
+  const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+
   if (clip.type === "video") {
     return {
       ...clip,
+      scale: baseScale,
+      scaleX,
+      scaleY,
       hasAudio: clip.hasAudio ?? true,
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -148,13 +155,21 @@ function normalizeClip(clip: Clip): Clip {
   if (clip.type === "audio") {
     return {
       ...clip,
+      scale: baseScale,
+      scaleX,
+      scaleY,
       sourceSize: clip.sourceSize || { width: 0, height: 0 },
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
     };
   }
 
-  return clip;
+  return {
+    ...clip,
+    scale: baseScale,
+    scaleX,
+    scaleY,
+  };
 }
 
 function fitsTrackType(track: VideoTrack | null, clip: Clip): boolean {

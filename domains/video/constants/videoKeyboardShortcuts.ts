@@ -23,11 +23,18 @@ export {
 
 export const VIDEO_TOOL_SHORTCUTS: ToolShortcutMap<VideoToolMode> = {
   KeyV: "select",
+  KeyT: "transform",
   KeyR: "crop",
-  KeyT: "trim",
+  KeyY: "trim",
   KeyC: "razor",
   KeyM: "mask",
 };
+
+export const VIDEO_TRANSFORM_SHORTCUTS = {
+  enterTransform: { code: "KeyT", ctrlOrMeta: true } as const,
+  applyTransform: COMMON_SHORTCUTS.confirm,
+  cancelTransform: COMMON_SHORTCUTS.cancel,
+} as const;
 
 // ============================================
 // Playback Shortcuts

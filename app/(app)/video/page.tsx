@@ -46,6 +46,8 @@ import {
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
   TIMELINE,
+  getClipScaleX,
+  getClipScaleY,
   type Clip,
   type SavedVideoProject,
   type TimelineViewState,
@@ -78,9 +80,16 @@ function cloneClip(clip: Clip): Clip {
 }
 
 function normalizeLoadedClip(clip: Clip): Clip {
+  const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
+  const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
+  const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+
   if (clip.type === "video") {
     return {
       ...clip,
+      scale: baseScale,
+      scaleX,
+      scaleY,
       hasAudio: clip.hasAudio ?? true,
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -90,13 +99,21 @@ function normalizeLoadedClip(clip: Clip): Clip {
   if (clip.type === "audio") {
     return {
       ...clip,
+      scale: baseScale,
+      scaleX,
+      scaleY,
       sourceSize: clip.sourceSize || { width: 0, height: 0 },
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
     };
   }
 
-  return clip;
+  return {
+    ...clip,
+    scale: baseScale,
+    scaleX,
+    scaleY,
+  };
 }
 
 function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | null {
@@ -325,6 +342,9 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const selectedVisualScalePercent = selectedVisualClip
+    ? Math.round(((getClipScaleX(selectedVisualClip) + getClipScaleY(selectedVisualClip)) / 2) * 100)
+    : 100;
   const isTimelineVisible = isPanelOpen("timeline");
 
   // buildSavedProject is now inside useVideoSave hook
@@ -840,8 +860,14 @@ function VideoEditorContent() {
 
   const handleSelectedVisualScaleChange = useCallback((scalePercent: number) => {
     if (!selectedVisualClip) return;
+    const currentScaleX = getClipScaleX(selectedVisualClip);
+    const currentScaleY = getClipScaleY(selectedVisualClip);
+    const currentAverage = (currentScaleX + currentScaleY) / 2;
+    const targetAverage = Math.max(0.05, Math.min(8, scalePercent / 100));
+    const scaleFactor = currentAverage > 0 ? targetAverage / currentAverage : 1;
+    const currentBaseScale = typeof selectedVisualClip.scale === "number" ? selectedVisualClip.scale : 1;
     updateClip(selectedVisualClip.id, {
-      scale: Math.max(0.05, Math.min(8, scalePercent / 100)),
+      scale: Math.max(0.05, Math.min(8, currentBaseScale * scaleFactor)),
     });
   }, [selectedVisualClip, updateClip]);
 
@@ -865,10 +891,6 @@ function VideoEditorContent() {
     setCropArea(null);
     setCanvasExpandMode(false);
   }, [setCropArea, setCanvasExpandMode]);
-
-  const getAspectRatioValue = useCallback((ratio: AspectRatio): number | null => {
-    return ASPECT_RATIO_VALUES[ratio] ?? null;
-  }, []);
 
   const handleCropWidthChange = useCallback((newWidth: number) => {
     if (!cropArea) return;
@@ -959,10 +981,53 @@ function VideoEditorContent() {
 
   // Preview zoom (synced from PreviewCanvas viewport)
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewTransformState, setPreviewTransformState] = useState<{
+    isActive: boolean;
+    clipId: string | null;
+    aspectRatio: AspectRatio;
+  }>({
+    isActive: false,
+    clipId: null,
+    aspectRatio: "free",
+  });
+  const previousToolModeRef = useRef<VideoToolMode | null>(null);
   useEffect(() => {
-    const api = previewViewportRef.current;
-    if (!api) return;
-    return api.onZoomChange((z) => setPreviewZoom(z));
+    let unsubscribe: (() => void) | undefined;
+    let rafId: number | null = null;
+
+    const attach = () => {
+      const api = previewViewportRef.current;
+      if (!api) {
+        rafId = requestAnimationFrame(attach);
+        return;
+      }
+      unsubscribe = api.onZoomChange((z) => setPreviewZoom(z));
+    };
+
+    attach();
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      unsubscribe?.();
+    };
+  }, [previewViewportRef]);
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let rafId: number | null = null;
+
+    const attach = () => {
+      const api = previewViewportRef.current;
+      if (!api) {
+        rafId = requestAnimationFrame(attach);
+        return;
+      }
+      unsubscribe = api.onTransformChange((next) => setPreviewTransformState(next));
+    };
+
+    attach();
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      unsubscribe?.();
+    };
   }, [previewViewportRef]);
 
   const handlePreviewZoomIn = useCallback(() => {
@@ -1038,6 +1103,13 @@ function VideoEditorContent() {
 
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
+    if (mode === "transform" && toolMode !== "transform" && previousToolModeRef.current === null) {
+      previousToolModeRef.current = toolMode;
+    }
+    if (mode !== "transform" && toolMode === "transform") {
+      previousToolModeRef.current = null;
+    }
+
     if (mode === "mask" && selectedClipIds.length > 0) {
       const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
       if (selected.length > 0) {
@@ -1058,7 +1130,41 @@ function VideoEditorContent() {
       });
     }
     setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime, isEditingMask, endMaskEdit]);
+  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime, isEditingMask, endMaskEdit, toolMode]);
+
+  const handleStartTransformShortcut = useCallback(() => {
+    if (!selectedVisualClip) return;
+    if (toolMode !== "transform") {
+      previousToolModeRef.current = toolMode;
+      handleToolModeChange("transform");
+      return;
+    }
+    previewViewportRef.current?.startTransformForSelection();
+  }, [selectedVisualClip, toolMode, handleToolModeChange, previewViewportRef]);
+
+  const handleApplyTransform = useCallback(() => {
+    previewViewportRef.current?.applyTransform();
+    if (previousToolModeRef.current) {
+      setToolMode(previousToolModeRef.current);
+      previousToolModeRef.current = null;
+    } else {
+      setToolMode("select");
+    }
+  }, [previewViewportRef, setToolMode]);
+
+  const handleCancelTransform = useCallback(() => {
+    previewViewportRef.current?.cancelTransform();
+    if (previousToolModeRef.current) {
+      setToolMode(previousToolModeRef.current);
+      previousToolModeRef.current = null;
+    } else {
+      setToolMode("select");
+    }
+  }, [previewViewportRef, setToolMode]);
+
+  const handleSetTransformAspectRatio = useCallback((ratio: AspectRatio) => {
+    previewViewportRef.current?.setTransformAspectRatio(ratio);
+  }, [previewViewportRef]);
 
   // Auto-start mask edit when clip is selected while already in mask mode
   // Skip during initial restoration to prevent creating new masks before masks are loaded
@@ -1097,6 +1203,10 @@ function VideoEditorContent() {
     handleZoomOut,
     handleFitToScreen,
     handleApplyCrop,
+    isTransformActive: previewTransformState.isActive,
+    handleStartTransformShortcut,
+    handleApplyTransform,
+    handleCancelTransform,
     activeMaskId,
     deselectMask,
     isEditingMask,
@@ -1132,6 +1242,8 @@ function VideoEditorContent() {
   const toolbarTranslations = {
     select: t.select,
     selectDesc: t.selectDesc,
+    transform: "Transform",
+    transformDesc: "Scale and move clip content",
     trim: t.trim,
     trimDesc: t.trimDesc,
     razor: t.razor,
@@ -1141,8 +1253,6 @@ function VideoEditorContent() {
     mask: t.mask,
     maskDesc: t.maskDesc,
   };
-
-  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask"];
 
   return (
     <div
@@ -1337,7 +1447,43 @@ function VideoEditorContent() {
           </div>
         )}
 
-        {selectedVisualClip && toolMode !== "crop" && (
+        {toolMode === "transform" && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-text-secondary">Ratio:</span>
+              <Select
+                value={previewTransformState.aspectRatio}
+                onChange={(value) => handleSetTransformAspectRatio(value as AspectRatio)}
+                options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
+                size="sm"
+              />
+            </div>
+            <span className="text-xs text-text-tertiary">
+              {previewTransformState.isActive
+                ? "Drag handles to resize. Shift: keep ratio, Alt: from center"
+                : "Select a visual clip to transform"}
+            </span>
+            {previewTransformState.isActive && (
+              <>
+                <div className="w-px h-4 bg-border-default" />
+                <button
+                  onClick={handleApplyTransform}
+                  className="px-1.5 py-0.5 text-xs bg-accent-primary text-white hover:bg-accent-primary/90 rounded transition-colors font-medium"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={handleCancelTransform}
+                  className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {selectedVisualClip && toolMode !== "crop" && toolMode !== "transform" && (
           <>
             <div className="h-4 w-px bg-border-default mx-1" />
             <div className="flex items-center gap-2 min-w-[250px]">
@@ -1346,7 +1492,7 @@ function VideoEditorContent() {
                 type="range"
                 min={5}
                 max={400}
-                value={Math.round((selectedVisualClip.scale || 1) * 100)}
+                value={selectedVisualScalePercent}
                 onMouseDown={beginVisualAdjustment}
                 onTouchStart={beginVisualAdjustment}
                 onMouseUp={endVisualAdjustment}
@@ -1355,7 +1501,7 @@ function VideoEditorContent() {
                 className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
               />
               <span className="text-xs text-text-secondary w-10 text-right">
-                {Math.round((selectedVisualClip.scale || 1) * 100)}%
+                {selectedVisualScalePercent}%
               </span>
             </div>
             <div className="flex items-center gap-1 min-w-[132px]">
