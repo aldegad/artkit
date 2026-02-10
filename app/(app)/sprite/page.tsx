@@ -31,7 +31,8 @@ import {
 import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
-import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
+import type { RifeInterpolationQuality } from "@/shared/ai/frameInterpolation";
+import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
@@ -111,7 +112,9 @@ function SpriteEditorMain() {
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
   const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
   const [interpolationSteps, setInterpolationSteps] = useState(1);
-  const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>("fast");
+  const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>(
+    () => readAISettings().frameInterpolationQuality
+  );
 
   // File input ref for menu-triggered image import
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -845,7 +848,10 @@ function SpriteEditorMain() {
         steps={interpolationSteps}
         quality={interpolationQuality}
         onStepsChange={setInterpolationSteps}
-        onQualityChange={setInterpolationQuality}
+        onQualityChange={(quality) => {
+          setInterpolationQuality(quality);
+          updateAISettings({ frameInterpolationQuality: quality });
+        }}
         translations={{
           frameInterpolation: t.frameInterpolation,
           interpolationDescription: t.frameInterpolationDescription,

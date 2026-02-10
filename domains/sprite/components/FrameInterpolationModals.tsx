@@ -1,7 +1,7 @@
 "use client";
 
 import { SpinnerIcon } from "@/shared/components/icons";
-import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
+import type { RifeInterpolationQuality } from "@/shared/ai/frameInterpolation";
 
 interface FrameInterpolationModalsProps {
   showConfirm: boolean;

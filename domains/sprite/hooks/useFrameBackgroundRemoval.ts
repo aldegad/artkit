@@ -2,7 +2,10 @@
 
 import { useState, useCallback, Dispatch, SetStateAction } from "react";
 import { SpriteFrame } from "../types";
-import { removeBackground } from "@/shared/utils/backgroundRemoval";
+import {
+  removeBackground,
+  type BackgroundRemovalQuality,
+} from "@/shared/ai/backgroundRemoval";
 
 // ============================================
 // Types
@@ -15,6 +18,7 @@ interface UseFrameBackgroundRemovalOptions {
   selectedFrameIds: number[];
   setFrames: Dispatch<SetStateAction<SpriteFrame[]>>;
   pushHistory: () => void;
+  quality?: BackgroundRemovalQuality;
   translations: {
     backgroundRemovalFailed?: string;
     selectFrameForBgRemoval?: string;
@@ -44,6 +48,7 @@ export function useFrameBackgroundRemoval(
     selectedFrameIds,
     setFrames,
     pushHistory,
+    quality,
     translations: t,
   } = options;
 
@@ -104,11 +109,15 @@ export function useFrameBackgroundRemoval(
           ? `${t.processingFrameProgress || "Processing frames"} (${i + 1}/${totalFrames})`
           : "";
 
-        const resultCanvas = await removeBackground(frame.imageData!, (progress, status) => {
-          const overallProgress = ((i + progress / 100) / totalFrames) * 100;
-          setBgRemovalProgress(overallProgress);
-          setBgRemovalStatus(frameLabel ? `${frameLabel}: ${status}` : status);
-        });
+        const resultCanvas = await removeBackground(
+          frame.imageData!,
+          (progress, status) => {
+            const overallProgress = ((i + progress / 100) / totalFrames) * 100;
+            setBgRemovalProgress(overallProgress);
+            setBgRemovalStatus(frameLabel ? `${frameLabel}: ${status}` : status);
+          },
+          quality ? { quality } : undefined,
+        );
 
         updatedFrameData.set(frame.id, resultCanvas.toDataURL("image/png"));
       }
@@ -132,7 +141,7 @@ export function useFrameBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, t]);
+  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, t]);
 
   return {
     isRemovingBackground,

@@ -9,6 +9,7 @@ import {
   TrimToolIcon,
   RazorToolIcon,
   MaskToolIcon,
+  MagicWandIcon,
   DeleteIcon,
 } from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
@@ -25,6 +26,9 @@ interface ToolButton {
 interface VideoToolbarProps {
   toolMode: VideoToolMode;
   onToolModeChange: (mode: VideoToolMode) => void;
+  onInterpolateGap?: () => void;
+  canInterpolateGap?: boolean;
+  isInterpolatingGap?: boolean;
   onDelete?: () => void;
   hasSelection?: boolean;
   translations: {
@@ -42,12 +46,18 @@ interface VideoToolbarProps {
     razorDesc: string;
     mask: string;
     maskDesc: string;
+    frameInterpolation: string;
+    frameInterpolationDescription: string;
+    delete: string;
   };
 }
 
 export default function VideoToolbar({
   toolMode,
   onToolModeChange,
+  onInterpolateGap,
+  canInterpolateGap,
+  isInterpolatingGap,
   onDelete,
   hasSelection,
   translations: t,
@@ -149,8 +159,35 @@ export default function VideoToolbar({
       {/* Separator */}
       <div className="w-px bg-border-default mx-0.5" />
 
+      {/* AI gap interpolation */}
+      <Tooltip
+        content={
+          <div className="flex flex-col gap-1">
+            <span className="font-medium">{t.frameInterpolation}</span>
+            <span className="text-text-tertiary text-[11px]">{t.frameInterpolationDescription}</span>
+          </div>
+        }
+      >
+        <button
+          onClick={onInterpolateGap}
+          disabled={!canInterpolateGap || isInterpolatingGap}
+          className={`p-1.5 rounded transition-colors ${
+            canInterpolateGap
+              ? isInterpolatingGap
+                ? "bg-accent-primary text-white cursor-wait"
+                : "hover:bg-interactive-hover text-text-secondary hover:text-text-primary"
+              : "text-text-quaternary cursor-not-allowed"
+          }`}
+        >
+          <MagicWandIcon />
+        </button>
+      </Tooltip>
+
+      {/* Separator */}
+      <div className="w-px bg-border-default mx-0.5" />
+
       {/* Delete button */}
-      <Tooltip content="Delete" shortcut="Del">
+      <Tooltip content={t.delete} shortcut="Del">
         <button
           onClick={onDelete}
           disabled={!hasSelection}
