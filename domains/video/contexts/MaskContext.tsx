@@ -20,6 +20,13 @@ import { Size } from "@/shared/types";
 import type { BrushPreset } from "@/domains/image/types/brush";
 import { DEFAULT_BRUSH_PRESETS } from "@/domains/image/constants/brushPresets";
 
+export interface MaskRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface MaskContextValue {
   // Current mask being edited
   activeMaskId: string | null;
@@ -34,8 +41,9 @@ interface MaskContextValue {
   setBrushMode: (mode: "paint" | "erase") => void;
   maskDrawShape: MaskDrawShape;
   setMaskDrawShape: (shape: MaskDrawShape) => void;
+  maskRegion: MaskRegion | null;
+  setMaskRegion: (region: MaskRegion | null) => void;
   hasMaskRegion: boolean;
-  setHasMaskRegion: (hasRegion: boolean) => void;
   maskRegionClearRequestId: number;
   requestMaskRegionClear: () => void;
   activePreset: BrushPreset;
@@ -142,7 +150,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [isEditingMask, setIsEditingMask] = useState(false);
   const [brushSettings, setBrushSettingsState] = useState<MaskBrushSettings>(DEFAULT_MASK_BRUSH);
   const [maskDrawShape, setMaskDrawShapeState] = useState<MaskDrawShape>("brush");
-  const [hasMaskRegion, setHasMaskRegionState] = useState(false);
+  const [maskRegion, setMaskRegionState] = useState<MaskRegion | null>(null);
   const [maskRegionClearRequestId, setMaskRegionClearRequestId] = useState(0);
   const [presets] = useState<BrushPreset[]>(() => [...DEFAULT_BRUSH_PRESETS]);
   const [activePreset, setActivePresetState] = useState<BrushPreset>(() => DEFAULT_BRUSH_PRESETS[0]);
@@ -306,11 +314,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setMaskDrawShapeState(shape);
   }, []);
 
-  const setHasMaskRegion = useCallback((hasRegion: boolean) => {
-    setHasMaskRegionState(hasRegion);
+  const setMaskRegion = useCallback((region: MaskRegion | null) => {
+    setMaskRegionState(region);
   }, []);
 
   const requestMaskRegionClear = useCallback(() => {
+    setMaskRegionState(null);
     setMaskRegionClearRequestId((prev) => prev + 1);
   }, []);
 
@@ -540,7 +549,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       setActiveMaskId(mask.id);
       setActiveTrackId(trackId);
       setIsEditingMask(true);
-      setHasMaskRegionState(false);
+      setMaskRegionState(null);
 
       // Initialize mask canvas
       if (maskCanvasRef.current) {
@@ -590,7 +599,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       setActiveMaskId(maskId);
       setActiveTrackId(mask.trackId);
       setIsEditingMask(true);
-      setHasMaskRegionState(false);
+      setMaskRegionState(null);
 
       // Initialize mask canvas
       if (maskCanvasRef.current) {
@@ -630,9 +639,11 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setActiveMaskId(null);
     setActiveTrackId(null);
     setIsEditingMask(false);
-    setHasMaskRegionState(false);
+    setMaskRegionState(null);
     maskLoadVersionRef.current += 1;
   }, [activeMaskId]);
+
+  const hasMaskRegion = maskRegion !== null;
 
   // Get mask data for a track at an absolute timeline time
   const getMaskAtTimeForTrack = useCallback(
@@ -665,8 +676,9 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setBrushMode,
     maskDrawShape,
     setMaskDrawShape,
+    maskRegion,
+    setMaskRegion,
     hasMaskRegion,
-    setHasMaskRegion,
     maskRegionClearRequestId,
     requestMaskRegionClear,
     activePreset,

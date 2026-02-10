@@ -64,7 +64,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     start: { x: number; y: number };
     current: { x: number; y: number };
   } | null>(null);
-  const [maskRegion, setMaskRegion] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const maskRegionRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
@@ -96,11 +95,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     brushSettings,
     setBrushMode,
     maskDrawShape,
+    maskRegion,
+    setMaskRegion,
     saveMaskData,
     saveMaskHistoryPoint,
     maskCanvasVersion,
     maskRegionClearRequestId,
-    setHasMaskRegion,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
@@ -108,8 +108,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   const updateMaskRegion = useCallback((nextRegion: { x: number; y: number; width: number; height: number } | null) => {
     setMaskRegion(nextRegion);
-    setHasMaskRegion(Boolean(nextRegion));
-  }, [setHasMaskRegion]);
+  }, [setMaskRegion]);
 
   const createMaskRegionFromPoints = useCallback(
     (start: { x: number; y: number }, current: { x: number; y: number }) => {
