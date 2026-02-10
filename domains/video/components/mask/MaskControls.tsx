@@ -11,6 +11,7 @@ import { BrushPresetSelector } from "@/domains/image/components/toolbars/BrushPr
 import {
   BrushIcon,
   EraserIcon,
+  MarqueeIcon,
   FillBucketIcon,
   DeleteIcon,
 } from "@/shared/components/icons";
@@ -34,6 +35,8 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
     setBrushSize,
     setBrushHardness,
     setBrushMode,
+    maskDrawShape,
+    setMaskDrawShape,
     activePreset,
     setActivePreset,
     presets,
@@ -97,18 +100,32 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
           {/* Paint / Erase mode toggle */}
           <Tooltip content={t.paintMask} shortcut="B">
             <button
-              onClick={() => setBrushMode("paint")}
-              className={modeBtn(brushSettings.mode === "paint")}
+              onClick={() => {
+                setMaskDrawShape("brush");
+                setBrushMode("paint");
+              }}
+              className={modeBtn(maskDrawShape === "brush" && brushSettings.mode === "paint")}
             >
               <BrushIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
           <Tooltip content={t.eraseMask} shortcut="E">
             <button
-              onClick={() => setBrushMode("erase")}
-              className={modeBtn(brushSettings.mode === "erase")}
+              onClick={() => {
+                setMaskDrawShape("brush");
+                setBrushMode("erase");
+              }}
+              className={modeBtn(maskDrawShape === "brush" && brushSettings.mode === "erase")}
             >
               <EraserIcon className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content={t.rectangleMask}>
+            <button
+              onClick={() => setMaskDrawShape("rectangle")}
+              className={modeBtn(maskDrawShape === "rectangle")}
+            >
+              <MarqueeIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
 
