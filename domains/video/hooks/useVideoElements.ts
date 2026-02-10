@@ -10,76 +10,120 @@ import { VideoClip, AudioClip } from "../types";
 export function useVideoElements() {
   const { videoElementsRef, audioElementsRef } = useVideoRefs();
   const { clips } = useTimeline();
-  const loadedVideoSourcesRef = useRef<Set<string>>(new Set());
-  const loadedAudioSourcesRef = useRef<Set<string>>(new Set());
+  const loadedVideoClipIdsRef = useRef<Set<string>>(new Set());
+  const loadedAudioClipIdsRef = useRef<Set<string>>(new Set());
+  const videoSourceByClipIdRef = useRef<Map<string, string>>(new Map());
+  const audioSourceByClipIdRef = useRef<Map<string, string>>(new Map());
 
-  // Create or get video element for a source URL
+  // Create or get video element for a clip instance
   const getVideoElement = useCallback(
-    (sourceUrl: string): HTMLVideoElement | null => {
+    (clipId: string): HTMLVideoElement | null => {
       if (!videoElementsRef.current) return null;
 
-      let video = videoElementsRef.current.get(sourceUrl);
+      let video = videoElementsRef.current.get(clipId);
       if (!video) {
         video = document.createElement("video");
-        video.src = sourceUrl;
         video.preload = "auto";
         video.muted = true; // Mute for autoplay policy
         video.playsInline = true;
-        videoElementsRef.current.set(sourceUrl, video);
+        videoElementsRef.current.set(clipId, video);
       }
       return video;
     },
     [videoElementsRef]
   );
 
-  // Create or get audio element for a source URL
+  // Create or get audio element for a clip instance
   const getAudioElement = useCallback(
-    (sourceUrl: string): HTMLAudioElement | null => {
+    (clipId: string): HTMLAudioElement | null => {
       if (!audioElementsRef.current) return null;
 
-      let audio = audioElementsRef.current.get(sourceUrl);
+      let audio = audioElementsRef.current.get(clipId);
       if (!audio) {
         audio = document.createElement("audio");
-        audio.src = sourceUrl;
         audio.preload = "auto";
         audio.muted = true;
-        audioElementsRef.current.set(sourceUrl, audio);
+        audioElementsRef.current.set(clipId, audio);
       }
       return audio;
     },
     [audioElementsRef]
   );
 
-  // Preload video elements for all video clips
+  // Sync media element pool to current clips (clip.id-keyed instance pool)
   const preloadVideos = useCallback(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
     const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
+    const activeVideoClipIds = new Set<string>();
+    const activeAudioClipIds = new Set<string>();
 
     for (const clip of videoClips) {
-      if (!loadedVideoSourcesRef.current.has(clip.sourceUrl)) {
-        const video = getVideoElement(clip.sourceUrl);
-        if (video) {
-          video.load();
-          loadedVideoSourcesRef.current.add(clip.sourceUrl);
-        }
+      activeVideoClipIds.add(clip.id);
+      const video = getVideoElement(clip.id);
+      if (!video) continue;
+
+      const prevSource = videoSourceByClipIdRef.current.get(clip.id);
+      if (prevSource !== clip.sourceUrl) {
+        video.pause();
+        video.src = clip.sourceUrl;
+        videoSourceByClipIdRef.current.set(clip.id, clip.sourceUrl);
+        loadedVideoClipIdsRef.current.delete(clip.id);
+      }
+
+      if (!loadedVideoClipIdsRef.current.has(clip.id)) {
+        video.load();
+        loadedVideoClipIdsRef.current.add(clip.id);
       }
     }
 
     for (const clip of audioClips) {
-      if (!loadedAudioSourcesRef.current.has(clip.sourceUrl)) {
-        const audio = getAudioElement(clip.sourceUrl);
-        if (audio) {
-          audio.load();
-          loadedAudioSourcesRef.current.add(clip.sourceUrl);
-        }
+      activeAudioClipIds.add(clip.id);
+      const audio = getAudioElement(clip.id);
+      if (!audio) continue;
+
+      const prevSource = audioSourceByClipIdRef.current.get(clip.id);
+      if (prevSource !== clip.sourceUrl) {
+        audio.pause();
+        audio.src = clip.sourceUrl;
+        audioSourceByClipIdRef.current.set(clip.id, clip.sourceUrl);
+        loadedAudioClipIdsRef.current.delete(clip.id);
+      }
+
+      if (!loadedAudioClipIdsRef.current.has(clip.id)) {
+        audio.load();
+        loadedAudioClipIdsRef.current.add(clip.id);
       }
     }
-  }, [clips, getVideoElement, getAudioElement]);
+
+    if (videoElementsRef.current) {
+      for (const [clipId, video] of videoElementsRef.current) {
+        if (activeVideoClipIds.has(clipId)) continue;
+        video.pause();
+        video.src = "";
+        video.load();
+        videoElementsRef.current.delete(clipId);
+        loadedVideoClipIdsRef.current.delete(clipId);
+        videoSourceByClipIdRef.current.delete(clipId);
+      }
+    }
+
+    if (audioElementsRef.current) {
+      for (const [clipId, audio] of audioElementsRef.current) {
+        if (activeAudioClipIds.has(clipId)) continue;
+        audio.pause();
+        audio.src = "";
+        audio.load();
+        audioElementsRef.current.delete(clipId);
+        loadedAudioClipIdsRef.current.delete(clipId);
+        audioSourceByClipIdRef.current.delete(clipId);
+      }
+    }
+  }, [clips, getVideoElement, getAudioElement, videoElementsRef, audioElementsRef]);
 
   // Seek a video element to a specific time
   const seekVideo = useCallback(
-    async (sourceUrl: string, time: number): Promise<void> => {
-      const video = getVideoElement(sourceUrl);
+    async (clipId: string, time: number): Promise<void> => {
+      const video = getVideoElement(clipId);
       if (!video) return;
 
       return new Promise((resolve) => {
@@ -102,8 +146,8 @@ export function useVideoElements() {
 
   // Get current frame from video as canvas
   const getVideoFrame = useCallback(
-    (sourceUrl: string): HTMLCanvasElement | null => {
-      const video = getVideoElement(sourceUrl);
+    (clipId: string): HTMLCanvasElement | null => {
+      const video = getVideoElement(clipId);
       if (!video || video.readyState < 2) return null;
 
       const canvas = document.createElement("canvas");
@@ -138,8 +182,10 @@ export function useVideoElements() {
         });
         audioElementsRef.current.clear();
       }
-      loadedVideoSourcesRef.current.clear();
-      loadedAudioSourcesRef.current.clear();
+      loadedVideoClipIdsRef.current.clear();
+      loadedAudioClipIdsRef.current.clear();
+      videoSourceByClipIdRef.current.clear();
+      audioSourceByClipIdRef.current.clear();
     };
   }, [videoElementsRef, audioElementsRef]);
 

@@ -6,6 +6,7 @@ export interface CompositeRenderParams {
   tracks: VideoTrack[];
   getClipAtTime: (trackId: string, time: number) => Clip | null;
   getMaskAtTimeForTrack: (trackId: string, time: number) => string | null;
+  // clip.id -> HTMLVideoElement
   videoElements: Map<string, HTMLVideoElement>;
   imageCache: Map<string, HTMLImageElement>;
   maskImageCache: Map<string, HTMLImageElement>;
@@ -59,7 +60,7 @@ export function renderCompositeFrame(
     const clip = getClipAtTime(track.id, time);
     if (!clip || !clip.visible) continue;
 
-    const videoElement = videoElements.get(clip.sourceUrl);
+    const videoElement = videoElements.get(clip.id);
     let sourceEl: CanvasImageSource | null = null;
 
     if (clip.type === "video" && videoElement) {
