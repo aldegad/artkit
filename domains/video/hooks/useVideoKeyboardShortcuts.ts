@@ -88,6 +88,11 @@ export function useVideoKeyboardShortcuts(
 
       // --- Modifier shortcuts (Cmd/Ctrl) ---
       if (hasCmdOrCtrl(e)) {
+        if (e.repeat && matchesShortcut(e, VIDEO_EDIT_SHORTCUTS.save)) {
+          e.preventDefault();
+          return;
+        }
+
         for (const redo of VIDEO_EDIT_SHORTCUTS.redo) {
           if (matchesShortcut(e, redo)) {
             e.preventDefault();

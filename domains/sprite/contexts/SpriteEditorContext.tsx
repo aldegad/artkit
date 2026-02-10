@@ -71,6 +71,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // UI store actions (selector-based)
   const setProjectName = useSpriteUIStore((s) => s.setProjectName);
+  const setCurrentProjectId = useSpriteUIStore((s) => s.setCurrentProjectId);
   const setIsAutosaveLoading = useSpriteUIStore((s) => s.setIsAutosaveLoading);
 
   // Autosave: Load saved data on mount
@@ -106,6 +107,9 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
         // Restore UI state
         if (data.projectName) setProjectName(data.projectName);
+        if (data.currentProjectId !== undefined) {
+          setCurrentProjectId(data.currentProjectId);
+        }
       }
       isInitializedRef.current = true;
       setIsAutosaveLoading(false);
@@ -130,6 +134,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         tracks: ts.tracks,
         nextFrameId: ts.nextFrameId,
         fps: ts.fps,
+        currentProjectId: us.currentProjectId,
         zoom: vs.zoom,
         pan: vs.pan,
         scale: vs.scale,
@@ -176,7 +181,12 @@ export function EditorProvider({ children }: EditorProviderProps) {
     });
 
     const unsubUI = useSpriteUIStore.subscribe((state, prev) => {
-      if (state.projectName === prev.projectName) return;
+      if (
+        state.projectName === prev.projectName &&
+        state.currentProjectId === prev.currentProjectId
+      ) {
+        return;
+      }
       queueAutosave();
     });
 

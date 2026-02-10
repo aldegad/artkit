@@ -10,6 +10,7 @@ export const AUTOSAVE_KEY = "sprite-editor-autosave";
 export const AUTOSAVE_DEBOUNCE_MS = 1000;
 
 export interface AutosaveData extends BaseAutosaveData {
+  currentProjectId?: string | null;
   imageSrc: string | null;
   imageSize: Size;
   tracks: SpriteTrack[];

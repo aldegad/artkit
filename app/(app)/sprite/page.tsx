@@ -172,6 +172,12 @@ function SpriteEditorMain() {
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [localProjectCount, setLocalProjectCount] = useState(0);
   const [cloudProjectCount, setCloudProjectCount] = useState(0);
+  const saveInFlightRef = useRef(false);
+  const currentProjectIdRef = useRef<string | null>(currentProjectId);
+
+  useEffect(() => {
+    currentProjectIdRef.current = currentProjectId;
+  }, [currentProjectId]);
 
   // Load saved projects when storage provider changes (login/logout)
   useEffect(() => {
@@ -326,68 +332,47 @@ function SpriteEditorMain() {
     if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       return;
     }
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
 
     const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
     const saveImageSrc = imageSrc || firstFrameImage || "";
+    const existingProjectId = currentProjectIdRef.current;
+    const resolvedProjectId = existingProjectId || crypto.randomUUID();
+    currentProjectIdRef.current = resolvedProjectId;
+    const projectToSave: SavedSpriteProject = {
+      id: resolvedProjectId,
+      name,
+      imageSrc: saveImageSrc,
+      imageSize: imageSize,
+      tracks,
+      nextFrameId,
+      fps,
+      savedAt: Date.now(),
+    };
 
     setIsSaving(true);
     setSaveProgress(null);
-    if (currentProjectId) {
-      const updatedProject = {
-        id: currentProjectId,
-        name,
-        imageSrc: saveImageSrc,
-        imageSize: imageSize,
-        tracks,
-        nextFrameId,
-        fps,
-        savedAt: Date.now(),
-      };
+    try {
+      await storageProvider.saveProject(projectToSave, setSaveProgress);
+      setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
+        existingProjectId
+          ? prev.map((p) => (p.id === resolvedProjectId ? projectToSave : p))
+          : [projectToSave, ...prev],
+      );
+      setCurrentProjectId(resolvedProjectId);
+      currentProjectIdRef.current = resolvedProjectId;
 
-      try {
-        await storageProvider.saveProject(updatedProject, setSaveProgress);
-        setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
-          prev.map((p) => (p.id === currentProjectId ? updatedProject : p)),
-        );
-
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-        setSaveCount((c) => c + 1);
-      } catch (error) {
-        console.error("Save failed:", error);
-        alert(`${t.saveFailed}: ${(error as Error).message}`);
-      } finally {
-        setIsSaving(false);
-        setSaveProgress(null);
-      }
-    } else {
-      const newId = Date.now().toString();
-      const newProj = {
-        id: newId,
-        name,
-        imageSrc: saveImageSrc,
-        imageSize: imageSize,
-        tracks,
-        nextFrameId,
-        fps,
-        savedAt: Date.now(),
-      };
-
-      try {
-        await storageProvider.saveProject(newProj, setSaveProgress);
-        setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
-        setCurrentProjectId(newId);
-
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-        setSaveCount((c) => c + 1);
-      } catch (error) {
-        console.error("Save failed:", error);
-        alert(`${t.saveFailed}: ${(error as Error).message}`);
-      } finally {
-        setIsSaving(false);
-        setSaveProgress(null);
-      }
+      const info = await storageProvider.getStorageInfo();
+      setStorageInfo(info);
+      setSaveCount((c) => c + 1);
+    } catch (error) {
+      console.error("Save failed:", error);
+      alert(`${t.saveFailed}: ${(error as Error).message}`);
+    } finally {
+      saveInFlightRef.current = false;
+      setIsSaving(false);
+      setSaveProgress(null);
     }
   }, [
     t,
@@ -399,7 +384,6 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     fps,
-    currentProjectId,
     storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
@@ -410,12 +394,17 @@ function SpriteEditorMain() {
     if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
       return;
     }
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
 
     const inputName = prompt(t.enterProjectName, projectName || "");
-    if (inputName === null) return;
+    if (inputName === null) {
+      saveInFlightRef.current = false;
+      return;
+    }
 
     const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
-    const newId = Date.now().toString();
+    const newId = crypto.randomUUID();
     const saveImageSrc = imageSrc || firstFrameImage || "";
 
     const newProj = {
@@ -435,6 +424,7 @@ function SpriteEditorMain() {
       await storageProvider.saveProject(newProj, setSaveProgress);
       setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
       setCurrentProjectId(newId);
+      currentProjectIdRef.current = newId;
       setProjectName(name);
 
       const info = await storageProvider.getStorageInfo();
@@ -444,6 +434,7 @@ function SpriteEditorMain() {
       console.error("Save failed:", error);
       alert(`${t.saveFailed}: ${(error as Error).message}`);
     } finally {
+      saveInFlightRef.current = false;
       setIsSaving(false);
       setSaveProgress(null);
     }
