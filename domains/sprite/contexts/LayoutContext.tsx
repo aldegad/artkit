@@ -14,7 +14,7 @@ import {
 // ============================================
 
 const { Provider, useLayoutContext } = createLayoutContext({
-  storageKey: "sprite-editor-layout-v2",
+  storageKey: "sprite-editor-layout-v3",
   defaultLayout: DEFAULT_LAYOUT,
   getPanelContent,
   getPanelTitle,

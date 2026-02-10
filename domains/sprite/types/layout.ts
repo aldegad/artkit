@@ -17,9 +17,8 @@ export const DEFAULT_LAYOUT: SplitNode = {
       children: [
         { type: "panel", id: "timeline-panel", panelId: "timeline", minSize: 100 } as PanelNode,
         { type: "panel", id: "frames-panel", panelId: "frames", minSize: 100 } as PanelNode,
-        { type: "panel", id: "frame-edit-panel", panelId: "frame-edit", minSize: 200 } as PanelNode,
       ],
-      sizes: [50, 25, 25],
+      sizes: [65, 35],
     } as SplitNode,
   ],
   sizes: [50, 50],

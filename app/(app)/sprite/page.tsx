@@ -99,7 +99,6 @@ function SpriteEditorMain() {
 
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
-  const [isFrameEditOpen, setIsFrameEditOpen] = useState(true);
 
   // Save feedback state
   const [isSaving, setIsSaving] = useState(false);
@@ -611,10 +610,8 @@ function SpriteEditorMain() {
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
             onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
-            onToggleFrameEdit={() => setIsFrameEditOpen(!isFrameEditOpen)}
             onResetLayout={resetLayout}
             isPreviewOpen={isPreviewOpen}
-            isFrameEditOpen={isFrameEditOpen}
             canSave={hasRenderableFrames && !isSaving}
             canExport={hasRenderableFrames}
             isLoading={isSaving}
@@ -637,7 +634,6 @@ function SpriteEditorMain() {
               undo: t.undo,
               redo: t.redo,
               preview: t.animation,
-              frameEdit: t.frameWindow,
               resetLayout: t.resetLayout,
             }}
           />

@@ -4,7 +4,6 @@ import { createPanelRegistry } from "@/shared/components/layout";
 import SpriteCanvas from "../SpriteCanvas";
 import TimelineContent from "../TimelineContent";
 import AnimationPreview from "../AnimationPreview";
-import FramePreview from "../FramePreview";
 import FrameStrip from "../FrameStrip";
 
 // ============================================
@@ -30,12 +29,6 @@ const PANEL_META = {
     defaultSize: { width: 400, height: 450 },
     minSize: 200,
   },
-  "frame-edit": {
-    title: "Frame Edit",
-    showHeader: true,
-    defaultSize: { width: 450, height: 480 },
-    minSize: 200,
-  },
   frames: {
     title: "Frames",
     showHeader: true,
@@ -49,7 +42,6 @@ const registry = createPanelRegistry(PANEL_META);
 registry.registerPanelComponent("canvas", () => <SpriteCanvas />);
 registry.registerPanelComponent("timeline", () => <TimelineContent />);
 registry.registerPanelComponent("preview", () => <AnimationPreview />);
-registry.registerPanelComponent("frame-edit", () => <FramePreview />);
 registry.registerPanelComponent("frames", () => <FrameStrip />);
 
 export const {
