@@ -101,10 +101,10 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
           <Tooltip content={t.paintMask} shortcut="B">
             <button
               onClick={() => {
-                setMaskDrawShape("brush");
                 setBrushMode("paint");
+                setMaskDrawShape("brush");
               }}
-              className={modeBtn(maskDrawShape === "brush" && brushSettings.mode === "paint")}
+              className={modeBtn(brushSettings.mode === "paint")}
             >
               <BrushIcon className="w-3.5 h-3.5" />
             </button>
@@ -112,17 +112,17 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
           <Tooltip content={t.eraseMask} shortcut="E">
             <button
               onClick={() => {
-                setMaskDrawShape("brush");
                 setBrushMode("erase");
+                setMaskDrawShape("brush");
               }}
-              className={modeBtn(maskDrawShape === "brush" && brushSettings.mode === "erase")}
+              className={modeBtn(brushSettings.mode === "erase")}
             >
               <EraserIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
           <Tooltip content={t.rectangleMask}>
             <button
-              onClick={() => setMaskDrawShape("rectangle")}
+              onClick={() => setMaskDrawShape(maskDrawShape === "rectangle" ? "brush" : "rectangle")}
               className={modeBtn(maskDrawShape === "rectangle")}
             >
               <MarqueeIcon className="w-3.5 h-3.5" />
