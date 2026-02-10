@@ -39,4 +39,4 @@ export function createAudioTrack(name: string, zIndex: number): VideoTrack {
 /**
  * Default track height
  */
-export const DEFAULT_TRACK_HEIGHT = 60;
+export const DEFAULT_TRACK_HEIGHT = 45;
