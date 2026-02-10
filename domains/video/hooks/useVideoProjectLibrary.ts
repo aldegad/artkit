@@ -207,13 +207,9 @@ export function useVideoProjectLibrary(
         targetStart + 0.001,
         Math.min(loaded.playbackRange?.loopEnd ?? duration, duration)
       );
-      window.setTimeout(() => {
-        setLoopRange(targetStart, targetEnd, true);
-        if (!targetLoop) {
-          toggleLoop();
-          seek(restoredTime);
-        }
-      }, 0);
+      const persistedCurrentTime = targetLoop
+        ? Math.max(targetStart, Math.min(restoredTime, targetEnd))
+        : Math.max(0, Math.min(restoredTime, duration));
 
       const shouldPersistPlaybackRange =
         targetLoop || targetStart > 0.001 || targetEnd < duration - 0.001;
@@ -225,26 +221,38 @@ export function useVideoProjectLibrary(
           }
         : undefined;
 
-      void saveVideoAutosave({
-        project: {
-          ...loadedProject,
-          name: loaded.name,
-          tracks: loadedProject.tracks,
-          clips: restoredClips,
-          duration: loadedDuration,
-        },
-        projectName: loaded.name,
-        tracks: loadedProject.tracks,
-        clips: restoredClips,
-        masks: loadedProject.masks || [],
-        timelineView: loaded.timelineView || INITIAL_TIMELINE_VIEW,
-        currentTime: restoredTime,
-        playbackRange: normalizedPlaybackRange,
-        toolMode,
-        selectedClipIds: [],
-        selectedMaskIds: [],
-      }).catch((error) => {
-        console.error("Failed to persist autosave after project load:", error);
+      await new Promise<void>((resolve) => {
+        window.setTimeout(() => {
+          setLoopRange(targetStart, targetEnd, true);
+          if (!targetLoop) {
+            toggleLoop();
+          }
+          seek(persistedCurrentTime);
+
+          void saveVideoAutosave({
+            project: {
+              ...loadedProject,
+              name: loaded.name,
+              tracks: loadedProject.tracks,
+              clips: restoredClips,
+              duration: loadedDuration,
+            },
+            projectName: loaded.name,
+            tracks: loadedProject.tracks,
+            clips: restoredClips,
+            masks: loadedProject.masks || [],
+            timelineView: loaded.timelineView || INITIAL_TIMELINE_VIEW,
+            currentTime: persistedCurrentTime,
+            playbackRange: normalizedPlaybackRange,
+            toolMode,
+            selectedClipIds: [],
+            selectedMaskIds: [],
+          })
+            .catch((error) => {
+              console.error("Failed to persist autosave after project load:", error);
+            })
+            .finally(resolve);
+        }, 0);
       });
 
       setCurrentProjectId(loaded.id);
