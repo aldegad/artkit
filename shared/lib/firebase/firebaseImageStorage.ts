@@ -52,6 +52,31 @@ interface FirestoreImageProject {
   updatedAt: Timestamp;
 }
 
+const IMAGE_LOAD_CONCURRENCY = 8;
+const IMAGE_DELETE_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      results[idx] = await mapper(items[idx], idx);
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return results;
+}
+
 // ============================================
 // Storage Functions (Layer Images)
 // ============================================
@@ -131,9 +156,9 @@ async function deleteProjectLayers(
 
   try {
     const listResult = await listAll(folderRef);
-    await Promise.all(
-      listResult.items.map((itemRef) => deleteObject(itemRef))
-    );
+    await mapWithConcurrency(listResult.items, IMAGE_DELETE_CONCURRENCY, async (itemRef) => {
+      await deleteObject(itemRef);
+    });
   } catch {
     // Folder might not exist, ignore
   }
@@ -152,13 +177,17 @@ export async function saveImageProjectToFirebase(
 ): Promise<void> {
   const docRef = doc(db, "users", userId, "imageProjects", project.id);
   const existingSnap = await getDoc(docRef);
-  const existingCreatedAt = existingSnap.exists()
-    ? (existingSnap.data() as { createdAt?: Timestamp }).createdAt
-    : undefined;
+  const existingProject = existingSnap.exists()
+    ? (existingSnap.data() as FirestoreImageProject)
+    : null;
+  const existingCreatedAt = existingProject?.createdAt;
   const createdAt =
     existingCreatedAt && typeof existingCreatedAt.toMillis === "function"
       ? existingCreatedAt
       : Timestamp.fromMillis(project.savedAt || Date.now());
+  const existingLayerMap = new Map(
+    (existingProject?.layers || []).map((layerMeta) => [layerMeta.id, layerMeta] as const)
+  );
 
   // 1. Upload all layer images to Storage
   const layerMetas: FirestoreLayerMeta[] = [];
@@ -174,6 +203,9 @@ export async function saveImageProjectToFirebase(
           layer.id,
           layer.paintData
         );
+      } else {
+        // Keep previous storage reference when layer bitmap is temporarily unavailable.
+        storageRef = existingLayerMap.get(layer.id)?.storageRef || "";
       }
 
       // Filter out undefined values (Firestore doesn't accept undefined)
@@ -199,7 +231,7 @@ export async function saveImageProjectToFirebase(
   }
 
   // 2. Generate and upload optimized thumbnail (144x144, all layers merged)
-  let thumbnailUrl: string | undefined;
+  let thumbnailUrl: string | undefined = existingProject?.thumbnailUrl;
   if (project.unifiedLayers && project.unifiedLayers.length > 0 && project.canvasSize) {
     try {
       const thumbnailData = await generateThumbnailFromLayers(
@@ -245,8 +277,10 @@ export async function getImageProjectFromFirebase(
   const data = docSnap.data() as FirestoreImageProject;
 
   // Download layer images from Storage (in parallel for better mobile performance)
-  const unifiedLayers: UnifiedLayer[] = await Promise.all(
-    data.layers.map(async (layerMeta) => {
+  const unifiedLayers: UnifiedLayer[] = await mapWithConcurrency(
+    data.layers,
+    IMAGE_LOAD_CONCURRENCY,
+    async (layerMeta) => {
       let paintData = "";
 
       if (layerMeta.storageRef) {
@@ -271,7 +305,7 @@ export async function getImageProjectFromFirebase(
         originalSize: layerMeta.originalSize,
         paintData,
       };
-    })
+    }
   );
 
   return {
