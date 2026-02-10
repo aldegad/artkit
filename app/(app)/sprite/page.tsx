@@ -27,17 +27,14 @@ import {
   useSpriteKeyboardShortcuts,
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
+  SpriteExportModal,
+  useSpriteExport,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
-import type { RifeInterpolationQuality } from "@/shared/ai/frameInterpolation";
-import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
-import { readAISettings, updateAISettings } from "@/shared/ai/settings";
+import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
-import SpriteExportModal, {
-  type SpriteExportOptions,
-} from "@/domains/sprite/components/SpriteExportModal";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
@@ -52,13 +49,7 @@ import {
   clearLocalProjects,
   clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
-import {
-  downloadCompositedFramesAsZip,
-  downloadCompositedSpriteSheet,
-  type SpriteExportFrameSize,
-} from "@/domains/sprite/utils/export";
-
-const MAX_EXPORT_FRAME_SIZE = 16384;
+import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet } from "@/domains/sprite/utils/export";
 
 // ============================================
 // Main Editor Component
@@ -81,6 +72,8 @@ function SpriteEditorMain() {
   const {
     toolMode,
     setSpriteToolMode,
+    frameEditToolMode,
+    setFrameEditToolMode,
     setCurrentPoints,
     setIsSpacePressed,
   } = useEditorTools();
@@ -106,6 +99,10 @@ function SpriteEditorMain() {
   const { copyFrame, pasteFrame } = useEditorClipboard();
   const { resetLayout } = useLayout();
 
+  // Export
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const { isExporting, exportProgress, exportMp4 } = useSpriteExport();
+
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
 
@@ -122,16 +119,7 @@ function SpriteEditorMain() {
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
   const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
   const [interpolationSteps, setInterpolationSteps] = useState(1);
-  const [backgroundRemovalQuality, setBackgroundRemovalQuality] = useState<BackgroundRemovalQuality>(
-    () => readAISettings().backgroundRemovalQuality,
-  );
-  const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>(
-    () => readAISettings().frameInterpolationQuality
-  );
-  const [exportFrameSize, setExportFrameSize] = useState<SpriteExportFrameSize | null>(null);
-  const [detectedOriginalFrameSize, setDetectedOriginalFrameSize] =
-    useState<SpriteExportFrameSize | null>(null);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>("fast");
 
   // File input ref for menu-triggered image import
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -151,7 +139,6 @@ function SpriteEditorMain() {
     selectedFrameIds,
     setFrames,
     pushHistory,
-    quality: backgroundRemovalQuality,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
@@ -317,90 +304,47 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
-  const estimatedExportFrameCount = useMemo(() => {
-    const visibleTracks = tracks.filter((track) => track.visible);
-    if (visibleTracks.length === 0) return 0;
-    return Math.max(
-      ...visibleTracks.map((track) => track.frames.filter((frame) => !frame.disabled).length),
-      0,
-    );
-  }, [tracks]);
 
-  useEffect(() => {
-    if (imageSize.width > 0 && imageSize.height > 0) {
-      setDetectedOriginalFrameSize({
-        width: Math.floor(imageSize.width),
-        height: Math.floor(imageSize.height),
-      });
-      return;
-    }
-
-    if (!firstFrameImage) {
-      setDetectedOriginalFrameSize(null);
-      return;
-    }
-
-    let cancelled = false;
-    const img = new Image();
-    img.onload = () => {
-      if (cancelled) return;
-      if (img.width <= 0 || img.height <= 0) {
-        setDetectedOriginalFrameSize(null);
-        return;
-      }
-      setDetectedOriginalFrameSize({
-        width: Math.floor(img.width),
-        height: Math.floor(img.height),
-      });
-    };
-    img.onerror = () => {
-      if (!cancelled) setDetectedOriginalFrameSize(null);
-    };
-    img.src = firstFrameImage;
-
-    return () => {
-      cancelled = true;
-    };
-  }, [firstFrameImage, imageSize.height, imageSize.width]);
-
-  const openExportModal = useCallback(() => {
+  // Unified export handler
+  const handleExport = useCallback(async (settings: import("@/domains/sprite/components/SpriteExportModal").SpriteExportSettings) => {
     if (!hasRenderableFrames) return;
-    setIsExportModalOpen(true);
-  }, [hasRenderableFrames]);
-
-  const handleExportConfirm = useCallback(async (options: SpriteExportOptions) => {
-    if (!hasRenderableFrames) {
-      throw new Error(t.noFramesToSave || "No frames to save.");
-    }
-
-    const baseName = options.fileName.trim() || projectName.trim() || "sprite-project";
-
+    const name = settings.fileName.trim() || projectName.trim() || "sprite-project";
     try {
-      if (options.exportType === "zip-png") {
-        await downloadCompositedFramesAsZip(tracks, baseName, {
-          frameSize: options.frameSize ?? undefined,
-          appendFrameCount: options.appendFrameCount,
-        });
-      } else {
-        await downloadCompositedSpriteSheet(tracks, baseName, {
-          format: options.exportType === "sheet-webp" ? "webp" : "png",
-          frameSize: options.frameSize ?? undefined,
-          appendFrameCount: options.appendFrameCount,
-        });
+      switch (settings.exportType) {
+        case "zip":
+          await downloadCompositedFramesAsZip(tracks, name);
+          break;
+        case "sprite-png":
+          await downloadCompositedSpriteSheet(tracks, name, {
+            columns: settings.columns || undefined,
+            padding: settings.padding,
+            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
+          });
+          break;
+        case "sprite-webp":
+          await downloadCompositedSpriteSheet(tracks, name, {
+            format: "webp",
+            columns: settings.columns || undefined,
+            padding: settings.padding,
+            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
+            quality: settings.webpQuality,
+          });
+          break;
+        case "mp4":
+          await exportMp4(tracks, name, {
+            fps: settings.mp4Fps,
+            compression: settings.mp4Compression,
+            backgroundColor: settings.mp4BackgroundColor,
+            loopCount: settings.mp4LoopCount,
+          });
+          break;
       }
-
-      setExportFrameSize(options.frameSize ?? null);
+      setIsExportModalOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
-      throw new Error(`${t.exportFailed}: ${(error as Error).message}`);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
     }
-  }, [
-    hasRenderableFrames,
-    projectName,
-    tracks,
-    t.noFramesToSave,
-    t.exportFailed,
-  ]);
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed, exportMp4]);
 
   // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
@@ -420,7 +364,6 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
-      exportFrameSize: exportFrameSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -460,7 +403,6 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     fps,
-    exportFrameSize,
     storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
@@ -489,7 +431,6 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
-      exportFrameSize: exportFrameSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -525,7 +466,6 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     fps,
-    exportFrameSize,
     storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
@@ -549,7 +489,6 @@ function SpriteEditorMain() {
 
         setImageSrc(project.imageSrc);
         setImageSize(project.imageSize);
-        setExportFrameSize(project.exportFrameSize ?? null);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = project as any;
@@ -583,7 +522,6 @@ function SpriteEditorMain() {
       storageProvider,
       setImageSrc,
       setImageSize,
-      setExportFrameSize,
       restoreTracks,
       setProjectName,
       setCurrentProjectId,
@@ -622,6 +560,7 @@ function SpriteEditorMain() {
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
     setSpriteToolMode,
+    setFrameEditToolMode,
     canUndo,
     canRedo,
     undo,
@@ -633,8 +572,7 @@ function SpriteEditorMain() {
   });
 
   useEffect(() => {
-    // Legacy "pen" mode can surface from older persisted states.
-    if (toolMode === "pen") {
+    if (toolMode !== "select") {
       setSpriteToolMode("select");
     }
   }, [toolMode, setSpriteToolMode]);
@@ -692,7 +630,7 @@ function SpriteEditorMain() {
             onLoad={() => setIsProjectListOpen(true)}
             onSave={saveProject}
             onSaveAs={saveProjectAs}
-            onExport={openExportModal}
+            onExport={() => setIsExportModalOpen(true)}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -735,6 +673,8 @@ function SpriteEditorMain() {
       <SpriteTopToolbar
         toolMode={toolMode}
         setSpriteToolMode={setSpriteToolMode}
+        frameEditToolMode={frameEditToolMode}
+        setFrameEditToolMode={setFrameEditToolMode}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
@@ -749,6 +689,7 @@ function SpriteEditorMain() {
 
       <SpriteToolOptionsBar
         toolMode={toolMode}
+        frameEditToolMode={frameEditToolMode}
         brushColor={brushColor}
         setBrushColor={setBrushColor}
         brushSize={brushSize}
@@ -770,14 +711,12 @@ function SpriteEditorMain() {
           brush: t.brush,
           eraser: t.eraser,
           eyedropper: t.eyedropper,
-          zoomInOut: t.zoomInOut,
           frame: t.frame,
           selected: t.selected,
           point: t.point,
           presets: t.presets,
           pressure: t.pressure,
           builtIn: t.builtIn,
-          zoomToolTip: t.zoomToolTip,
         }}
       />
 
@@ -833,6 +772,39 @@ function SpriteEditorMain() {
         }}
       />
 
+      {/* Export Modal */}
+      <SpriteExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onExport={handleExport}
+        defaultFileName={projectName.trim() || "sprite-project"}
+        currentFps={fps}
+        isExporting={isExporting}
+        exportProgress={exportProgress}
+        translations={{
+          export: t.export,
+          cancel: t.cancel,
+          exportType: t.exportType,
+          exportTypeZip: t.exportTypeZip,
+          exportTypeSpriteSheetPng: t.exportTypeSpriteSheetPng,
+          exportTypeSpriteSheetWebp: t.exportTypeSpriteSheetWebp,
+          exportTypeMp4: t.exportTypeMp4,
+          exportFileName: t.exportFileName,
+          exportColumns: t.exportColumns,
+          exportColumnsAuto: t.exportColumnsAuto,
+          exportPadding: t.exportPadding,
+          backgroundColor: t.backgroundColor,
+          exportBgTransparent: t.exportBgTransparent,
+          quality: t.quality,
+          compression: t.compression,
+          compressionHighQuality: t.compressionHighQuality,
+          compressionBalanced: t.compressionBalanced,
+          compressionSmallFile: t.compressionSmallFile,
+          exportLoopCount: t.exportLoopCount,
+          exporting: t.exporting,
+        }}
+      />
+
       {/* Sprite Sheet Import Modal */}
       <SpriteSheetImportModal
         isOpen={isSpriteSheetImportOpen}
@@ -872,17 +844,6 @@ function SpriteEditorMain() {
         }}
       />
 
-      <SpriteExportModal
-        isOpen={isExportModalOpen}
-        defaultFileName={projectName.trim() || "sprite-project"}
-        defaultFrameSize={exportFrameSize}
-        originalFrameSize={detectedOriginalFrameSize}
-        estimatedFrameCount={estimatedExportFrameCount}
-        maxFrameSize={MAX_EXPORT_FRAME_SIZE}
-        onClose={() => setIsExportModalOpen(false)}
-        onConfirm={handleExportConfirm}
-      />
-
       {/* Background Removal Modals */}
       <FrameBackgroundRemovalModals
         showConfirm={showBgRemovalConfirm}
@@ -898,11 +859,6 @@ function SpriteEditorMain() {
         onConfirmAllFrames={() => {
           setShowBgRemovalConfirm(false);
           handleRemoveBackground("all");
-        }}
-        quality={backgroundRemovalQuality}
-        onQualityChange={(quality) => {
-          setBackgroundRemovalQuality(quality);
-          updateAISettings({ backgroundRemovalQuality: quality });
         }}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
@@ -939,10 +895,7 @@ function SpriteEditorMain() {
         steps={interpolationSteps}
         quality={interpolationQuality}
         onStepsChange={setInterpolationSteps}
-        onQualityChange={(quality) => {
-          setInterpolationQuality(quality);
-          updateAISettings({ frameInterpolationQuality: quality });
-        }}
+        onQualityChange={setInterpolationQuality}
         translations={{
           frameInterpolation: t.frameInterpolation,
           interpolationDescription: t.frameInterpolationDescription,

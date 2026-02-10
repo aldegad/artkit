@@ -87,7 +87,7 @@ export default function SpriteMenuBar({
     { label: t.save, onClick: onSave, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.save) },
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.saveAs) },
     { divider: true },
-    { label: t.export, onClick: onExport, disabled: !canExport },
+    { label: `${t.export}...`, onClick: onExport, disabled: !canExport },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
     { label: t.importSheet, onClick: onImportSheet },
