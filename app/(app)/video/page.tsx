@@ -239,6 +239,8 @@ function VideoEditorContent() {
     clearMaskHistory,
     brushSettings,
     setBrushSize,
+    hasMaskRegion,
+    requestMaskRegionClear,
   } = useMask();
   const {
     layoutState,
@@ -1305,6 +1307,8 @@ function VideoEditorContent() {
     deselectMask,
     isEditingMask,
     endMaskEdit,
+    hasMaskRegion,
+    clearMaskRegion: requestMaskRegionClear,
     adjustMaskBrushSize: handleAdjustMaskBrushSize,
     isSpacePanning,
     setIsSpacePanning,
@@ -1426,7 +1430,7 @@ function VideoEditorContent() {
           translations={toolbarTranslations}
         />
 
-        <div className="md:hidden flex items-center gap-0.5 bg-surface-secondary rounded p-0.5">
+        <div className="flex items-center gap-0.5 bg-surface-secondary rounded p-0.5">
           <button
             onClick={handleUndo}
             disabled={!canUndoAny}
