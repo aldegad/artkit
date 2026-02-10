@@ -7,6 +7,7 @@ import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
 import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, MenuIcon, PlusIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
+import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
 
 interface FrameCardProps {
   frame: SpriteFrame;
@@ -148,6 +149,7 @@ export default function FrameStrip() {
   const [isSkipToggleMode, setIsSkipToggleMode] = useState(false);
   const [showNthPopover, setShowNthPopover] = useState(false);
   const [nthValue, setNthValue] = useState(2);
+  const [isFlippingFrames, setIsFlippingFrames] = useState(false);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
   const { t } = useLanguage();
 
@@ -390,6 +392,55 @@ export default function FrameStrip() {
     }
   }, [selectedFrameIds, frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
 
+  const flipSelectedFrames = useCallback(
+    async (direction: FrameFlipDirection) => {
+      if (isFlippingFrames || selectedFrameIds.length === 0) return;
+
+      const selectedSet = new Set(selectedFrameIds);
+      const framesToFlip = frames.filter(
+        (frame: SpriteFrame) => selectedSet.has(frame.id) && Boolean(frame.imageData),
+      );
+
+      if (framesToFlip.length === 0) return;
+
+      setIsFlippingFrames(true);
+      try {
+        const flippedResults = await Promise.all(
+          framesToFlip.map(async (frame: SpriteFrame) => {
+            try {
+              const flippedImageData = await flipFrameImageData(frame.imageData!, direction);
+              return { id: frame.id, imageData: flippedImageData };
+            } catch (error) {
+              console.error(`Failed to flip frame ${frame.id}`, error);
+              return null;
+            }
+          }),
+        );
+
+        const flippedById = new Map<number, string>();
+        for (const result of flippedResults) {
+          if (result) {
+            flippedById.set(result.id, result.imageData);
+          }
+        }
+
+        if (flippedById.size === 0) return;
+
+        pushHistory();
+        setIsPlaying(false);
+        setFrames((prev: SpriteFrame[]) =>
+          prev.map((frame: SpriteFrame) => {
+            const flippedImageData = flippedById.get(frame.id);
+            return flippedImageData ? { ...frame, imageData: flippedImageData } : frame;
+          }),
+        );
+      } finally {
+        setIsFlippingFrames(false);
+      }
+    },
+    [frames, isFlippingFrames, pushHistory, selectedFrameIds, setFrames, setIsPlaying],
+  );
+
   // Nth skip: mark every non-nth frame as disabled (instead of deleting)
   const applyNthSkip = useCallback(() => {
     const currentFrameIndex = getCurrentFrameIndex();
@@ -585,6 +636,24 @@ export default function FrameStrip() {
                     Skip selected ({selectedFrameIds.length})
                   </button>
                 )}
+                {selectedFrameIds.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => void flipSelectedFrames("horizontal")}
+                      disabled={isFlippingFrames}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isFlippingFrames ? "Flipping..." : `Flip selected H (${selectedFrameIds.length})`}
+                    </button>
+                    <button
+                      onClick={() => void flipSelectedFrames("vertical")}
+                      disabled={isFlippingFrames}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-text-secondary hover:bg-interactive-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Flip selected V ({selectedFrameIds.length})
+                    </button>
+                  </>
+                )}
                 {/* Reset all skips */}
                 {disabledCount > 0 && (
                   <button
@@ -594,7 +663,7 @@ export default function FrameStrip() {
                     Reset all skips ({disabledCount})
                   </button>
                 )}
-                {(selectedFrameIds.length > 1 || disabledCount > 0) && (
+                {(selectedFrameIds.length > 0 || disabledCount > 0) && (
                   <div className="h-px bg-border-default mx-1" />
                 )}
                 {/* Show active only */}
@@ -723,6 +792,27 @@ export default function FrameStrip() {
                 >
                   Skip
                 </button>
+              )}
+
+              {selectedFrameIds.length > 0 && (
+                <>
+                  <button
+                    onClick={() => void flipSelectedFrames("horizontal")}
+                    disabled={isFlippingFrames}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="선택된 프레임 이미지 좌우 반전"
+                  >
+                    {isFlippingFrames ? "Flipping" : "Flip H"}
+                  </button>
+                  <button
+                    onClick={() => void flipSelectedFrames("vertical")}
+                    disabled={isFlippingFrames}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-mono text-text-tertiary hover:text-accent-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="선택된 프레임 이미지 상하 반전"
+                  >
+                    Flip V
+                  </button>
+                </>
               )}
 
               {/* Clear all disabled */}
