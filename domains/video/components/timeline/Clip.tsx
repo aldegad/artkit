@@ -7,7 +7,6 @@ import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { VideoClipIcon, AudioClipIcon, ImageClipIcon } from "@/shared/components/icons";
 import { UI } from "../../constants";
-import { getClipPositionKeyframes } from "../../utils/clipTransformKeyframes";
 
 interface ClipProps {
   clip: ClipType;
@@ -71,7 +70,7 @@ async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
 
 export function Clip({ clip, isLifted }: ClipProps) {
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
-  const { selectedClipIds, playback } = useVideoState();
+  const { selectedClipIds } = useVideoState();
   const clipHasAudio =
     clip.type === "audio" || (clip.type === "video" && (clip.hasAudio ?? true));
   const clipSourceUrl = clip.type === "image" ? "" : clip.sourceUrl;
@@ -82,11 +81,6 @@ export function Clip({ clip, isLifted }: ClipProps) {
   const isSelected = selectedClipIds.includes(clip.id);
   const x = timeToPixel(clip.startTime);
   const width = durationToWidth(clip.duration);
-  const positionKeyframes = useMemo(
-    () => (clip.type === "audio" ? [] : getClipPositionKeyframes(clip)),
-    [clip]
-  );
-  const currentLocalTime = playback.currentTime - clip.startTime;
 
   // Slice waveform to match trimIn/trimOut
   const visibleWaveform = useMemo(() => {
@@ -158,12 +152,7 @@ export function Clip({ clip, isLifted }: ClipProps) {
 
       {/* Waveform preview */}
       {clip.type !== "image" && clipHasAudio && visibleWaveform && (
-        <div
-          className={cn(
-            "absolute left-1 right-1 h-4 flex items-end gap-[1px] opacity-70 pointer-events-none",
-            positionKeyframes.length > 0 ? "bottom-4" : "bottom-1"
-          )}
-        >
+        <div className="absolute left-1 right-1 bottom-1 h-4 flex items-end gap-[1px] opacity-70 pointer-events-none">
           {visibleWaveform.map((value, idx) => (
             <div
               key={`${clip.id}-wave-${idx}`}
@@ -171,30 +160,6 @@ export function Clip({ clip, isLifted }: ClipProps) {
               style={{ height: `${Math.round(value * 100)}%` }}
             />
           ))}
-        </div>
-      )}
-
-      {/* Position keyframe lane */}
-      {clip.type !== "audio" && positionKeyframes.length > 0 && (
-        <div className="absolute left-0 right-0 bottom-0 h-3 border-t border-black/25 bg-black/10 pointer-events-none">
-          <div className="absolute left-1 right-1 top-[6px] h-px bg-white/20" />
-          {positionKeyframes.map((keyframe) => {
-            const ratio = clip.duration > 0 ? keyframe.time / clip.duration : 0;
-            const leftPercent = Math.max(0, Math.min(100, ratio * 100));
-            const isCurrent = Math.abs(keyframe.time - currentLocalTime) <= 0.02;
-            return (
-              <span
-                key={`${clip.id}-pos-kf-${keyframe.id}`}
-                className={cn(
-                  "absolute top-[2px] w-2 h-2 -translate-x-1/2 rotate-45 border",
-                  isCurrent
-                    ? "bg-accent-primary border-accent-primary"
-                    : "bg-white/85 border-black/30"
-                )}
-                style={{ left: `${leftPercent}%` }}
-              />
-            );
-          })}
         </div>
       )}
 
