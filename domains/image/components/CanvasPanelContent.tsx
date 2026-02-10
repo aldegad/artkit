@@ -16,7 +16,7 @@ export default function CanvasPanelContent() {
     handleMouseUp,
     handleMouseLeave,
     getCursor,
-    loadImageFile,
+    loadImageFiles,
     displaySize,
     onGuideCreate,
     onGuideDragStateChange,
@@ -36,7 +36,7 @@ export default function CanvasPanelContent() {
       {layers.length === 0 ? (
         <ImageDropZone
           variant="editor"
-          onFileSelect={(files) => files[0] && loadImageFile(files[0])}
+          onFileSelect={loadImageFiles}
         />
       ) : (
         <canvas

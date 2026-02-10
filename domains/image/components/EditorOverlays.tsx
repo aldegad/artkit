@@ -189,6 +189,7 @@ export function EditorOverlays({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileSelect}
         className="hidden"
       />
