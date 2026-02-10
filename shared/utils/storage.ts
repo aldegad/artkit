@@ -2,12 +2,12 @@ import { SavedSpriteProject } from "@/domains/sprite/types";
 import { SavedImageProject } from "@/domains/image/types";
 
 // ============================================
-// IndexedDB Storage for Sprite Editor
+// IndexedDB Storage for Sprite + Image Projects
 // ============================================
 
-const DB_NAME = "sprite-editor-db";
-const DB_VERSION = 2; // Bump version for new store
-const STORE_NAME = "projects";
+const DB_NAME = "artkit-projects-db";
+const DB_VERSION = 3; // Bump version for store rename
+const SPRITE_STORE_NAME = "sprite-projects";
 const IMAGE_STORE_NAME = "image-projects";
 
 let dbInstance: IDBDatabase | null = null;
@@ -34,12 +34,12 @@ function openDB(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
 
-      // Create projects store (sprite editor)
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      // Create sprite-projects store
+      if (!db.objectStoreNames.contains(SPRITE_STORE_NAME)) {
+        const store = db.createObjectStore(SPRITE_STORE_NAME, { keyPath: "id" });
         store.createIndex("savedAt", "savedAt", { unique: false });
         store.createIndex("name", "name", { unique: false });
-        console.log("[IndexedDB] Created projects store");
+        console.log("[IndexedDB] Created sprite-projects store");
       }
 
       // Create image-projects store (image editor)
@@ -60,8 +60,8 @@ export async function saveProject(project: SavedSpriteProject): Promise<void> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(SPRITE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(SPRITE_STORE_NAME);
 
     const request = store.put(project);
 
@@ -84,8 +84,8 @@ export async function getAllProjects(): Promise<SavedSpriteProject[]> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(SPRITE_STORE_NAME, "readonly");
+    const store = transaction.objectStore(SPRITE_STORE_NAME);
     const index = store.index("savedAt");
 
     // Get all, sorted by savedAt descending
@@ -112,8 +112,8 @@ export async function getProject(id: string): Promise<SavedSpriteProject | undef
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(SPRITE_STORE_NAME, "readonly");
+    const store = transaction.objectStore(SPRITE_STORE_NAME);
 
     const request = store.get(id);
 
@@ -135,8 +135,8 @@ export async function deleteProject(id: string): Promise<void> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(SPRITE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(SPRITE_STORE_NAME);
 
     const request = store.delete(id);
 
@@ -159,8 +159,8 @@ export async function clearAllProjects(): Promise<void> {
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(SPRITE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(SPRITE_STORE_NAME);
 
     const request = store.clear();
 
@@ -206,33 +206,6 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-/**
- * Migrate from localStorage to IndexedDB (one-time)
- */
-export async function migrateFromLocalStorage(): Promise<number> {
-  const STORAGE_KEY = "sprite-editor-projects";
-  const stored = localStorage.getItem(STORAGE_KEY);
-
-  if (!stored) return 0;
-
-  try {
-    const projects: SavedSpriteProject[] = JSON.parse(stored);
-
-    for (const project of projects) {
-      await saveProject(project);
-    }
-
-    // Clear localStorage after successful migration
-    localStorage.removeItem(STORAGE_KEY);
-    console.log(`[IndexedDB] Migrated ${projects.length} projects from localStorage`);
-
-    return projects.length;
-  } catch (error) {
-    console.error("[IndexedDB] Migration failed:", error);
-    return 0;
-  }
-}
-
 // ============================================
 // Export/Import Functions
 // ============================================
@@ -265,7 +238,7 @@ export async function exportAllProjectsToJSON(): Promise<void> {
 
   const link = document.createElement("a");
   link.href = url;
-  link.download = `sprite-editor-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `sprite-projects-backup-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

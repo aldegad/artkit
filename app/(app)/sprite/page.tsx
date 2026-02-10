@@ -40,9 +40,6 @@ import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
-  migrateFromLocalStorage,
-} from "@/shared/utils/storage";
-import {
   getSpriteStorageProvider,
   hasLocalProjects,
   checkCloudProjects,
@@ -177,9 +174,6 @@ function SpriteEditorMain() {
   useEffect(() => {
     const loadProjects = async () => {
       try {
-        // Migrate from localStorage if needed (one-time)
-        await migrateFromLocalStorage();
-
         const projects = await storageProvider.getAllProjects();
         setSavedSpriteProjects(projects);
 

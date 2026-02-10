@@ -8,13 +8,13 @@ import {
   getStorageInfo,
 } from "@/shared/utils/storage";
 import {
-  saveProjectToFirebase,
-  getProjectFromFirebase,
-  getAllProjectsFromFirebase,
-  deleteProjectFromFirebase,
-  hasCloudProjects,
-  deleteAllProjectsFromFirebase,
-} from "@/shared/lib/firebase/firebaseStorage";
+  saveImageProjectToFirebase,
+  getImageProjectFromFirebase,
+  getAllImageProjectsFromFirebase,
+  deleteImageProjectFromFirebase,
+  hasCloudImageProjects,
+  deleteAllImageProjectsFromFirebase,
+} from "@/shared/lib/firebase/firebaseImageStorage";
 
 // ============================================
 // Storage Provider Interface
@@ -77,19 +77,19 @@ class FirebaseStorageProvider implements StorageProvider {
   }
 
   async saveProject(project: SavedImageProject): Promise<void> {
-    await saveProjectToFirebase(this.userId, project);
+    await saveImageProjectToFirebase(this.userId, project);
   }
 
   async getProject(id: string): Promise<SavedImageProject | null> {
-    return getProjectFromFirebase(this.userId, id);
+    return getImageProjectFromFirebase(this.userId, id);
   }
 
   async getAllProjects(): Promise<SavedImageProject[]> {
-    return getAllProjectsFromFirebase(this.userId);
+    return getAllImageProjectsFromFirebase(this.userId);
   }
 
   async deleteProject(id: string): Promise<void> {
-    await deleteProjectFromFirebase(this.userId, id);
+    await deleteImageProjectFromFirebase(this.userId, id);
   }
 
   async getStorageInfo(): Promise<StorageInfo> {
@@ -126,7 +126,7 @@ export async function hasLocalProjects(): Promise<boolean> {
  * Check if there are cloud projects for a user
  */
 export async function checkCloudProjects(userId: string): Promise<boolean> {
-  return hasCloudProjects(userId);
+  return hasCloudImageProjects(userId);
 }
 
 /**
@@ -163,7 +163,7 @@ export async function clearLocalProjects(): Promise<void> {
  * Clear all cloud projects
  */
 export async function clearCloudProjects(user: User): Promise<void> {
-  await deleteAllProjectsFromFirebase(user.uid);
+  await deleteAllImageProjectsFromFirebase(user.uid);
 }
 
 // Export provider class for type checking

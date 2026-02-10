@@ -147,7 +147,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
 
         if (hasLocal && hasCloud) {
           const localProjects = await (await import("@/shared/utils/storage")).getAllImageProjects();
-          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseStorage")).getAllProjectsFromFirebase(user.uid);
+          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseImageStorage")).getAllImageProjectsFromFirebase(user.uid);
 
           setLocalProjectCount(localProjects.length);
           setCloudProjectCount(cloudProjects.length);

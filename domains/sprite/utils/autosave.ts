@@ -32,7 +32,7 @@ export interface AutosaveData extends BaseAutosaveData {
 // Create autosave storage using shared abstraction
 const spriteAutosave = createAutosave<AutosaveData>({
   key: AUTOSAVE_KEY,
-  dbName: "sprite-autosave-db",
+  dbName: "sprite-editor-autosave-db",
   storeName: "autosave",
   dbVersion: 2, // Bump version to force fresh DB
 });
