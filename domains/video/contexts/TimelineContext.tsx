@@ -314,6 +314,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setToolMode,
     seek,
     setLoopRange,
+    clearLoopRange,
     toggleLoop,
   } = useVideoState();
 
@@ -523,18 +524,23 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           }
           const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
           seek(restoredTime);
-          if (data.playbackRange) {
-            const durationHint = Math.max(data.project?.duration || 0, 0.001);
-            const rangeStart = Math.max(0, Math.min(data.playbackRange.loopStart, durationHint));
-            const rangeEnd = Math.max(rangeStart + 0.001, Math.min(data.playbackRange.loopEnd, durationHint));
-            window.setTimeout(() => {
+          const durationHint = Math.max(data.project?.duration || 0, 0.001);
+          window.setTimeout(() => {
+            if (data.playbackRange) {
+              const rangeStart = Math.max(0, Math.min(data.playbackRange.loopStart, durationHint));
+              const rangeEnd = Math.max(rangeStart + 0.001, Math.min(data.playbackRange.loopEnd, durationHint));
               setLoopRange(rangeStart, rangeEnd, true);
               if (!data.playbackRange?.loop) {
                 toggleLoop();
                 seek(restoredTime);
               }
-            }, 0);
-          }
+            } else {
+              // Autosave can omit playbackRange when user cleared IN/OUT.
+              // In that case, explicitly restore a cleared range.
+              clearLoopRange();
+              seek(restoredTime);
+            }
+          }, 0);
         }
       } catch (error) {
         console.error("Failed to load autosave:", error);
@@ -548,7 +554,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, selectClips, selectMasksForTimeline, seek, setLoopRange, toggleLoop, syncHistoryFlags]);
+  }, [setProject, setProjectName, setToolMode, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, toggleLoop, syncHistoryFlags]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles
