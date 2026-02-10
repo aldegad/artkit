@@ -267,24 +267,33 @@ export function useMaskTool(): UseMaskToolReturn {
 
   // Clear mask (fully transparent = clip invisible)
   const clearMask = useCallback(() => {
-    if (!maskCanvasRef.current) return;
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    if (width <= 0 || height <= 0) return;
 
-    const ctx = maskCanvasRef.current.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    // Reset the canvas context to clear any lingering clip region.
+    canvas.width = width;
+    canvas.height = height;
   }, [maskCanvasRef]);
 
   // Fill mask (all white = fully visible)
   const fillMask = useCallback(() => {
-    if (!maskCanvasRef.current) return;
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    if (width <= 0 || height <= 0) return;
 
-    const ctx = maskCanvasRef.current.getContext("2d");
+    // Reset the canvas context so fill always applies to the full mask.
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    ctx.fillRect(0, 0, width, height);
   }, [maskCanvasRef]);
 
   return {

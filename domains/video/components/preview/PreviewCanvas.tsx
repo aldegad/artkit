@@ -144,12 +144,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   const clearMaskRegionSelection = useCallback(() => {
     const hadRegion = Boolean(maskRegionRef.current || maskRectDragRef.current || isMaskRegionDraggingRef.current);
-    if (!hadRegion) return false;
+    const hadClip = maskClipActiveRef.current;
+    if (!hadRegion && !hadClip) return false;
 
     updateMaskRegion(null);
     maskRectDragRef.current = null;
     isMaskRegionDraggingRef.current = false;
-    clearMaskRegionClip();
+    if (hadClip) {
+      clearMaskRegionClip();
+    }
 
     cancelAnimationFrame(renderRequestRef.current);
     renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
@@ -166,6 +169,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (maskRegionClearRequestId <= 0) return;
     clearMaskRegionSelection();
   }, [isEditingMask, maskRegionClearRequestId, clearMaskRegionSelection]);
+
+  useEffect(() => {
+    if (!isEditingMask || !activeMaskId) return;
+    clearMaskRegionSelection();
+  }, [isEditingMask, activeMaskId, clearMaskRegionSelection]);
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
   const viewport = useCanvasViewport({
