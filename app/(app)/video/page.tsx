@@ -43,6 +43,7 @@ import {
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
+  createImageClip,
   TIMELINE,
   type Clip,
   type SavedVideoProject,
@@ -56,6 +57,7 @@ import {
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
+import { interpolateFramesWithAI } from "@/shared/ai/frameInterpolation";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -109,6 +111,224 @@ function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | n
   }
 
   return null;
+}
+
+const VIDEO_GAP_INTERPOLATION_MAX_STEPS = 180;
+const VIDEO_GAP_INTERPOLATION_MIN_GAP = 0.0001;
+const VIDEO_SEEK_EPSILON = 1 / 600;
+
+type GapInterpolationIssue =
+  | "select_two_visual_clips"
+  | "same_track_required"
+  | "gap_required"
+  | "gap_blocked";
+
+interface GapInterpolationAnalysis {
+  ready: boolean;
+  issue?: GapInterpolationIssue;
+  firstClip?: Clip;
+  secondClip?: Clip;
+  gapDuration: number;
+  suggestedSteps: number;
+}
+
+interface FrameSnapshot {
+  dataUrl: string;
+  size: { width: number; height: number };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function estimateGapInterpolationSteps(gapDuration: number, frameRate: number): number {
+  const fps = Math.max(1, Math.round(frameRate || 30));
+  const estimated = Math.round(gapDuration * fps);
+  return Math.max(1, Math.min(VIDEO_GAP_INTERPOLATION_MAX_STEPS, estimated));
+}
+
+function analyzeGapInterpolationSelection(
+  clips: Clip[],
+  selectedClipIds: string[],
+  frameRate: number,
+): GapInterpolationAnalysis {
+  const selectedVisual = clips
+    .filter((clip) => selectedClipIds.includes(clip.id) && clip.type !== "audio")
+    .sort((a, b) => a.startTime - b.startTime);
+
+  if (selectedVisual.length !== 2) {
+    return { ready: false, issue: "select_two_visual_clips", gapDuration: 0, suggestedSteps: 0 };
+  }
+
+  const [firstClip, secondClip] = selectedVisual;
+  if (firstClip.trackId !== secondClip.trackId) {
+    return {
+      ready: false,
+      issue: "same_track_required",
+      firstClip,
+      secondClip,
+      gapDuration: 0,
+      suggestedSteps: 0,
+    };
+  }
+
+  const firstEnd = firstClip.startTime + firstClip.duration;
+  const gapDuration = secondClip.startTime - firstEnd;
+  if (gapDuration <= VIDEO_GAP_INTERPOLATION_MIN_GAP) {
+    return {
+      ready: false,
+      issue: "gap_required",
+      firstClip,
+      secondClip,
+      gapDuration,
+      suggestedSteps: 0,
+    };
+  }
+
+  const selectedSet = new Set(selectedVisual.map((clip) => clip.id));
+  const hasBlockingClip = clips.some((clip) => {
+    if (clip.trackId !== firstClip.trackId) return false;
+    if (selectedSet.has(clip.id)) return false;
+    const clipEnd = clip.startTime + clip.duration;
+    return clip.startTime < secondClip.startTime && clipEnd > firstEnd;
+  });
+
+  if (hasBlockingClip) {
+    return {
+      ready: false,
+      issue: "gap_blocked",
+      firstClip,
+      secondClip,
+      gapDuration,
+      suggestedSteps: 0,
+    };
+  }
+
+  return {
+    ready: true,
+    firstClip,
+    secondClip,
+    gapDuration,
+    suggestedSteps: estimateGapInterpolationSteps(gapDuration, frameRate),
+  };
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl);
+  if (!response.ok) {
+    throw new Error("Failed to convert generated frame to blob.");
+  }
+  return response.blob();
+}
+
+async function captureVideoFrame(sourceUrl: string, sourceTime: number): Promise<FrameSnapshot> {
+  const video = document.createElement("video");
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  if (!sourceUrl.startsWith("blob:") && !sourceUrl.startsWith("data:")) {
+    video.crossOrigin = "anonymous";
+  }
+
+  const waitForMetadata = async () => {
+    if (video.readyState >= 1 && Number.isFinite(video.duration)) return;
+    await new Promise<void>((resolve, reject) => {
+      const onLoadedMetadata = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("Failed to load video metadata for interpolation."));
+      };
+      const cleanup = () => {
+        video.removeEventListener("loadedmetadata", onLoadedMetadata);
+        video.removeEventListener("error", onError);
+      };
+      video.addEventListener("loadedmetadata", onLoadedMetadata);
+      video.addEventListener("error", onError);
+      video.load();
+    });
+  };
+
+  const seekTo = async (time: number) => {
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const clamped = clamp(time, 0, Math.max(0, duration - VIDEO_SEEK_EPSILON));
+    if (Math.abs(video.currentTime - clamped) <= VIDEO_SEEK_EPSILON) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        cleanup();
+        reject(new Error("Video seek timeout during interpolation."));
+      }, 5000);
+      const onSeeked = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("Failed to seek video frame for interpolation."));
+      };
+      const cleanup = () => {
+        window.clearTimeout(timer);
+        video.removeEventListener("seeked", onSeeked);
+        video.removeEventListener("error", onError);
+      };
+      video.addEventListener("seeked", onSeeked);
+      video.addEventListener("error", onError);
+      video.currentTime = clamped;
+    });
+  };
+
+  video.src = sourceUrl;
+
+  try {
+    await waitForMetadata();
+    await seekTo(sourceTime);
+
+    const width = video.videoWidth || 1;
+    const height = video.videoHeight || 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to create interpolation frame canvas.");
+    }
+
+    ctx.drawImage(video, 0, 0, width, height);
+    return {
+      dataUrl: canvas.toDataURL("image/png"),
+      size: { width, height },
+    };
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+async function captureClipBoundaryFrame(clip: Clip, boundary: "start" | "end", frameRate: number): Promise<FrameSnapshot> {
+  if (clip.type === "audio") {
+    throw new Error("Audio clips are not supported for visual interpolation.");
+  }
+
+  if (clip.type === "image") {
+    return {
+      dataUrl: clip.imageData || clip.sourceUrl,
+      size: { ...clip.sourceSize },
+    };
+  }
+
+  const fps = Math.max(1, frameRate || 30);
+  const frameStep = 1 / fps;
+  const sourceStart = clip.trimIn;
+  const sourceEnd = Math.max(sourceStart, clip.trimOut - VIDEO_SEEK_EPSILON);
+  const sourceTime = boundary === "end"
+    ? clamp(sourceStart + clip.duration - frameStep, sourceStart, sourceEnd)
+    : clamp(sourceStart, sourceStart, sourceEnd);
+
+  return captureVideoFrame(clip.sourceUrl, sourceTime);
 }
 
 function VideoDockableArea() {
@@ -200,6 +420,9 @@ function VideoEditorContent() {
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [isInterpolatingGap, setIsInterpolatingGap] = useState(false);
+  const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
+  const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
   const audioHistorySavedRef = useRef(false);
   const visualHistorySavedRef = useRef(false);
 
@@ -322,6 +545,10 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const gapInterpolationAnalysis = useMemo(
+    () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
+    [clips, selectedClipIds, project.frameRate],
+  );
   const isTimelineVisible = isPanelOpen("timeline");
 
   // buildSavedProject is now inside useVideoSave hook
@@ -797,6 +1024,129 @@ function VideoEditorContent() {
     if (duplicatedMaskIds.length > 0) selectMasksForTimeline(duplicatedMaskIds);
   }, [selectedClipIds, selectedMaskIds, clips, saveToHistory, addClips, selectClips, selectMasksForTimeline, duplicateMask, masksMap, updateMaskTime]);
 
+  const handleInterpolateClipGap = useCallback(async () => {
+    if (isInterpolatingGap) return;
+
+    if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) {
+      switch (gapInterpolationAnalysis.issue) {
+        case "same_track_required":
+          alert("Select 2 clips on the same track.");
+          break;
+        case "gap_required":
+          alert("No empty gap between selected clips.");
+          break;
+        case "gap_blocked":
+          alert("The gap is occupied by another clip.");
+          break;
+        default:
+          alert("Select exactly 2 visual clips for interpolation.");
+          break;
+      }
+      return;
+    }
+
+    const { firstClip, secondClip, gapDuration, suggestedSteps } = gapInterpolationAnalysis;
+    if (playback.isPlaying) {
+      pause();
+    }
+
+    setIsInterpolatingGap(true);
+    setGapInterpolationProgress(0);
+    setGapInterpolationStatus(t.interpolationProgress || "Interpolating frames");
+
+    try {
+      const [fromFrame, toFrame] = await Promise.all([
+        captureClipBoundaryFrame(firstClip, "end", project.frameRate),
+        captureClipBoundaryFrame(secondClip, "start", project.frameRate),
+      ]);
+
+      const outputSize = {
+        width: Math.max(fromFrame.size.width, toFrame.size.width),
+        height: Math.max(fromFrame.size.height, toFrame.size.height),
+      };
+
+      const generatedFrames = await interpolateFramesWithAI({
+        fromImageData: fromFrame.dataUrl,
+        toImageData: toFrame.dataUrl,
+        steps: suggestedSteps,
+        onProgress: (progress, status) => {
+          setGapInterpolationProgress(Math.max(0, Math.min(90, progress)));
+          setGapInterpolationStatus(status || (t.interpolationProgress || "Interpolating frames"));
+        },
+      });
+
+      if (generatedFrames.length === 0) {
+        throw new Error("No interpolation frames generated.");
+      }
+
+      setGapInterpolationProgress(92);
+      setGapInterpolationStatus(t.saving || "Saving...");
+
+      const createdClips: Clip[] = [];
+      const persistTasks: Promise<void>[] = [];
+      const frameDuration = gapDuration / generatedFrames.length;
+      let nextStart = firstClip.startTime + firstClip.duration;
+
+      for (let i = 0; i < generatedFrames.length; i++) {
+        const imageData = generatedFrames[i];
+        const blob = await dataUrlToBlob(imageData);
+        const sourceUrl = URL.createObjectURL(blob);
+        const duration = i === generatedFrames.length - 1
+          ? Math.max(VIDEO_GAP_INTERPOLATION_MIN_GAP, secondClip.startTime - nextStart)
+          : frameDuration;
+
+        const clip = createImageClip(
+          firstClip.trackId,
+          sourceUrl,
+          outputSize,
+          nextStart,
+          duration,
+        );
+        clip.name = `${firstClip.name} • AI ${i + 1}/${generatedFrames.length}`;
+        clip.imageData = imageData;
+        createdClips.push(clip);
+        nextStart += duration;
+
+        persistTasks.push(
+          saveMediaBlob(clip.id, blob).catch((error) => {
+            console.error("Failed to save interpolated media blob:", error);
+          })
+        );
+      }
+
+      saveToHistory();
+      addClips(createdClips);
+      selectClips(createdClips.map((clip) => clip.id));
+
+      await Promise.all(persistTasks);
+
+      setGapInterpolationProgress(100);
+      setGapInterpolationStatus("Done");
+    } catch (error) {
+      console.error("Video gap interpolation failed:", error);
+      setGapInterpolationStatus("Failed");
+      alert(t.interpolationFailed || "Frame interpolation failed. Please try again.");
+    } finally {
+      setIsInterpolatingGap(false);
+      window.setTimeout(() => {
+        setGapInterpolationProgress(0);
+        setGapInterpolationStatus("");
+      }, 1500);
+    }
+  }, [
+    isInterpolatingGap,
+    gapInterpolationAnalysis,
+    playback.isPlaying,
+    pause,
+    t.interpolationProgress,
+    t.saving,
+    t.interpolationFailed,
+    project.frameRate,
+    saveToHistory,
+    addClips,
+    selectClips,
+  ]);
+
   const beginAudioAdjustment = useCallback(() => {
     if (audioHistorySavedRef.current) return;
     saveToHistory();
@@ -1121,6 +1471,9 @@ function VideoEditorContent() {
     cropDesc: t.cropToolTip || "Crop and expand canvas",
     mask: t.mask,
     maskDesc: t.maskDesc,
+    frameInterpolation: t.frameInterpolation,
+    frameInterpolationDescription: t.frameInterpolationDescription,
+    delete: t.delete,
   };
 
   return (
@@ -1193,6 +1546,9 @@ function VideoEditorContent() {
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
+          onInterpolateGap={handleInterpolateClipGap}
+          canInterpolateGap={gapInterpolationAnalysis.ready}
+          isInterpolatingGap={isInterpolatingGap}
           onDelete={handleDelete}
           hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId}
           translations={toolbarTranslations}
@@ -1471,6 +1827,25 @@ function VideoEditorContent() {
           e.target.value = "";
         }}
       />
+
+      {isInterpolatingGap && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm">
+          <div className="bg-surface-primary border border-border-default rounded-lg shadow-lg p-5 min-w-[280px] max-w-[360px]">
+            <div className="flex items-center gap-2 text-sm text-text-secondary mb-2">
+              <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
+              <span>{t.frameInterpolation}</span>
+            </div>
+            <div className="text-xs text-text-tertiary mb-2">{gapInterpolationStatus}</div>
+            <div className="w-full h-1.5 bg-surface-tertiary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent-primary rounded-full transition-all"
+                style={{ width: `${Math.max(0, Math.min(100, gapInterpolationProgress))}%` }}
+              />
+            </div>
+            <div className="text-xs text-text-tertiary mt-2 text-right">{Math.round(gapInterpolationProgress)}%</div>
+          </div>
+        </div>
+      )}
 
       {/* Save progress indicator */}
       {isSaving && saveProgress && (

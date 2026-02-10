@@ -3,9 +3,9 @@
 import { useCallback, useMemo, useState, Dispatch, SetStateAction } from "react";
 import { SpriteFrame } from "../types";
 import {
-  interpolateFramesWithRife,
+  interpolateFramesWithAI,
   type RifeInterpolationQuality,
-} from "@/shared/utils/rifeInterpolation";
+} from "@/shared/ai/frameInterpolation";
 
 interface UseFrameInterpolationOptions {
   frames: SpriteFrame[];
@@ -133,7 +133,7 @@ export function useFrameInterpolation(
         const from = selectedFrames[pairIndex].frame;
         const to = selectedFrames[pairIndex + 1].frame;
 
-        const generated = await interpolateFramesWithRife({
+        const generated = await interpolateFramesWithAI({
           fromImageData: from.imageData!,
           toImageData: to.imageData!,
           steps: normalizedSteps,

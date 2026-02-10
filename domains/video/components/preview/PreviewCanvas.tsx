@@ -336,6 +336,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     currentTimeRef,
   ]);
 
+  const stopAllMediaElements = useCallback(() => {
+    videoElementsRef.current?.forEach((video) => {
+      video.pause();
+      video.muted = true;
+      video.volume = 0;
+    });
+
+    audioElementsRef.current?.forEach((audio) => {
+      audio.pause();
+      audio.muted = true;
+      audio.volume = 0;
+    });
+  }, [videoElementsRef, audioElementsRef]);
+
   // Handle playback state changes - sync video/audio elements.
   // Runs only when play state or clip/track structure changes, NOT every frame.
   useEffect(() => {
@@ -345,18 +359,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (!playback.isPlaying) {
       if (wasPlayingRef.current) {
         // Playback stopped - pause all media.
-        for (const clip of videoClips) {
-          const video = videoElementsRef.current?.get(clip.sourceUrl);
-          if (!video) continue;
-          video.pause();
-          video.muted = true;
-        }
-        for (const clip of audioClips) {
-          const audio = audioElementsRef.current?.get(clip.sourceUrl);
-          if (!audio) continue;
-          audio.pause();
-          audio.muted = true;
-        }
+        stopAllMediaElements();
       }
       wasPlayingRef.current = false;
       return;
@@ -456,8 +459,36 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const intervalId = setInterval(syncMedia, PLAYBACK.SYNC_INTERVAL_MS);
     wasPlayingRef.current = true;
 
-    return () => clearInterval(intervalId);
-  }, [playback.isPlaying, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef]);
+    return () => {
+      clearInterval(intervalId);
+      if (!playback.isPlaying) {
+        stopAllMediaElements();
+      }
+    };
+  }, [playback.isPlaying, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef, stopAllMediaElements]);
+
+  // Hard-stop HTML media elements when the tab/window loses foreground.
+  useEffect(() => {
+    const stopWhenBackgrounded = () => {
+      if (document.visibilityState !== "visible") {
+        stopAllMediaElements();
+      }
+    };
+
+    const stopNow = () => {
+      stopAllMediaElements();
+    };
+
+    document.addEventListener("visibilitychange", stopWhenBackgrounded);
+    window.addEventListener("blur", stopNow);
+    window.addEventListener("pagehide", stopNow);
+
+    return () => {
+      document.removeEventListener("visibilitychange", stopWhenBackgrounded);
+      window.removeEventListener("blur", stopNow);
+      window.removeEventListener("pagehide", stopNow);
+    };
+  }, [stopAllMediaElements]);
 
   // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
   useEffect(() => {

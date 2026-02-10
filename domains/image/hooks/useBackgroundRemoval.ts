@@ -2,7 +2,10 @@
 
 import { useState, useCallback, RefObject } from "react";
 import { UnifiedLayer } from "../types";
-import { removeBackground } from "@/shared/utils/backgroundRemoval";
+import {
+  removeBackground,
+  type BackgroundRemovalQuality,
+} from "@/shared/ai/backgroundRemoval";
 
 // ============================================
 // Types
@@ -14,6 +17,7 @@ interface UseBackgroundRemovalOptions {
   selection: { x: number; y: number; width: number; height: number } | null;
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
   saveToHistory: () => void;
+  quality?: BackgroundRemovalQuality;
   translations: {
     backgroundRemovalFailed?: string;
     selectLayerForBgRemoval?: string;
@@ -43,6 +47,7 @@ export function useBackgroundRemoval(
     selection,
     layerCanvasesRef,
     saveToHistory,
+    quality,
     translations: t,
   } = options;
 
@@ -105,10 +110,14 @@ export function useBackgroundRemoval(
         const sourceImage = selectionCanvas.toDataURL("image/png");
 
         // Remove background from selection
-        resultCanvas = await removeBackground(sourceImage, (progress, status) => {
-          setBgRemovalProgress(progress);
-          setBgRemovalStatus(status);
-        });
+        resultCanvas = await removeBackground(
+          sourceImage,
+          (progress, status) => {
+            setBgRemovalProgress(progress);
+            setBgRemovalStatus(status);
+          },
+          quality ? { quality } : undefined,
+        );
 
         // Composite the result back onto the layer canvas
         const ctx = layerCanvas.getContext("2d")!;
@@ -125,10 +134,14 @@ export function useBackgroundRemoval(
         // Process the entire layer canvas
         const sourceImage = layerCanvas.toDataURL("image/png");
 
-        resultCanvas = await removeBackground(sourceImage, (progress, status) => {
-          setBgRemovalProgress(progress);
-          setBgRemovalStatus(status);
-        });
+        resultCanvas = await removeBackground(
+          sourceImage,
+          (progress, status) => {
+            setBgRemovalProgress(progress);
+            setBgRemovalStatus(status);
+          },
+          quality ? { quality } : undefined,
+        );
 
         // Replace layer canvas content with result
         const ctx = layerCanvas.getContext("2d")!;
@@ -149,7 +162,7 @@ export function useBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, layers, activeLayerId, selection, layerCanvasesRef, saveToHistory, t]);
+  }, [isRemovingBackground, layers, activeLayerId, selection, layerCanvasesRef, saveToHistory, quality, t]);
 
   return {
     isRemovingBackground,

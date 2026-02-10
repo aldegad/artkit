@@ -50,6 +50,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   const lastTickWallTimeRef = useRef<number>(0);
   const lastRescheduleAtRef = useRef<number>(0);
   const debugLogsRef = useRef(debugLogs);
+  const isForegroundRef = useRef<boolean>(typeof document === "undefined" ? true : document.visibilityState === "visible");
   const debugStatsRef = useRef<AudioDebugStats>({
     startedNodes: 0,
     stoppedNodes: 0,
@@ -124,7 +125,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
 
   // Schedule audio nodes for all audible clips at current time
   const scheduleAudio = useCallback(() => {
-    if (!isPlayingRef.current) return;
+    if (!isPlayingRef.current || !isForegroundRef.current) return;
     debugStatsRef.current.scheduleRuns += 1;
 
     const ctx = getSharedAudioContext();
@@ -263,11 +264,48 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   const rescheduleAudio = useCallback(() => {
     debugStatsRef.current.rescheduleCount += 1;
     stopAllNodes();
-    if (isPlayingRef.current) {
+    if (isPlayingRef.current && isForegroundRef.current) {
       scheduleAudio();
     }
     maybeReportDebugStats();
   }, [stopAllNodes, scheduleAudio, maybeReportDebugStats]);
+
+  // Force-stop audio when app loses foreground.
+  useEffect(() => {
+    const handleBackground = () => {
+      isForegroundRef.current = false;
+      stopAllNodes();
+    };
+
+    const handleVisible = () => {
+      isForegroundRef.current = true;
+      if (isPlayingRef.current) {
+        scheduleAudio();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleVisible();
+      } else {
+        handleBackground();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBackground);
+    window.addEventListener("focus", handleVisible);
+    window.addEventListener("pagehide", handleBackground);
+    window.addEventListener("pageshow", handleVisible);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBackground);
+      window.removeEventListener("focus", handleVisible);
+      window.removeEventListener("pagehide", handleBackground);
+      window.removeEventListener("pageshow", handleVisible);
+    };
+  }, [scheduleAudio, stopAllNodes]);
 
   // Detect seek/loop wrap via timeline jump relative to wall-time progression.
   // This avoids false seek detection when rendering is slow (large but expected deltas).
@@ -321,7 +359,9 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       lastTickWallTimeRef.current = now;
 
       // Initial schedule
-      scheduleAudio();
+      if (isForegroundRef.current) {
+        scheduleAudio();
+      }
 
       // Periodic scheduler for clip boundary transitions
       schedulerTimerRef.current = setInterval(() => {
