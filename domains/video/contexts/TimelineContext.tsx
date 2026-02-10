@@ -27,6 +27,7 @@ import {
   loadVideoAutosave,
 } from "../utils/videoAutosave";
 import { loadMediaBlob, copyMediaBlob } from "../utils/mediaStorage";
+import { normalizeClipTransformKeyframes, sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
 
 interface TimelineContextValue {
   // View state
@@ -109,9 +110,11 @@ function cloneTrack(track: VideoTrack): VideoTrack {
 }
 
 function cloneClip(clip: Clip): Clip {
+  const transformKeyframes = normalizeClipTransformKeyframes(clip);
   const base = {
     ...clip,
     position: { ...clip.position },
+    transformKeyframes,
   };
 
   return {
@@ -139,6 +142,7 @@ function normalizeClip(clip: Clip): Clip {
   const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
   const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
   const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+  const transformKeyframes = normalizeClipTransformKeyframes(clip);
 
   if (clip.type === "video") {
     return {
@@ -146,6 +150,7 @@ function normalizeClip(clip: Clip): Clip {
       scale: baseScale,
       scaleX,
       scaleY,
+      transformKeyframes,
       hasAudio: clip.hasAudio ?? true,
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -158,6 +163,7 @@ function normalizeClip(clip: Clip): Clip {
       scale: baseScale,
       scaleX,
       scaleY,
+      transformKeyframes,
       sourceSize: clip.sourceSize || { width: 0, height: 0 },
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -169,6 +175,7 @@ function normalizeClip(clip: Clip): Clip {
     scale: baseScale,
     scaleX,
     scaleY,
+    transformKeyframes,
   };
 }
 
@@ -312,6 +319,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     selectClips,
     selectMasksForTimeline,
     setToolMode,
+    setAutoKeyframeEnabled,
     seek,
     setLoopRange,
     clearLoopRange,
@@ -516,6 +524,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           if (data.toolMode) {
             setToolMode(data.toolMode);
           }
+          if (typeof data.autoKeyframeEnabled === "boolean") {
+            setAutoKeyframeEnabled(data.autoKeyframeEnabled);
+          }
           if (data.selectedClipIds) {
             selectClips(data.selectedClipIds);
           }
@@ -554,7 +565,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, toggleLoop, syncHistoryFlags]);
+  }, [setProject, setProjectName, setToolMode, setAutoKeyframeEnabled, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, toggleLoop, syncHistoryFlags]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles
@@ -804,11 +815,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setClips((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
-        // Preserve the type discriminant
-        if (c.type === "video") {
-          return { ...c, ...updates } as Clip;
-        }
-        return { ...c, ...updates } as Clip;
+        const next = { ...c, ...updates } as Clip;
+        const normalizedTransformKeyframes = normalizeClipTransformKeyframes(next);
+        return {
+          ...next,
+          transformKeyframes: normalizedTransformKeyframes,
+        } as Clip;
       })
     );
     updateProjectDuration();
@@ -856,11 +868,21 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]));
         if (overlaps) return c;
 
+        const transformKeyframes = sliceClipPositionKeyframes(
+          c,
+          deltaTime,
+          newDuration,
+          { includeStart: true, includeEnd: false }
+        );
+        const nextPosition = transformKeyframes?.position?.[0]?.value || c.position;
+
         return {
           ...c,
           startTime: newStartTime,
           trimIn: newTrimIn,
           duration: newDuration,
+          position: { ...nextPosition },
+          transformKeyframes,
         };
       })
     );
@@ -887,10 +909,20 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]));
         if (overlaps) return c;
 
+        const transformKeyframes = sliceClipPositionKeyframes(
+          c,
+          0,
+          newDuration,
+          { includeStart: true, includeEnd: true }
+        );
+        const nextPosition = transformKeyframes?.position?.[0]?.value || c.position;
+
         return {
           ...c,
           duration: newDuration,
           trimOut: newTrimOut,
+          position: { ...nextPosition },
+          transformKeyframes,
         };
       })
     );
@@ -937,6 +969,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       trackId,
       name: `${sourceClip.name} (Copy)`,
       startTime: candidateStart,
+      position: { ...sourceClip.position },
+      sourceSize: { ...sourceClip.sourceSize },
+      transformKeyframes: normalizeClipTransformKeyframes(sourceClip),
     };
 
     void copyMediaBlob(sourceClip.id, newClip.id).catch((error) => {
