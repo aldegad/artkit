@@ -25,7 +25,7 @@ interface UseMaskToolReturn {
 }
 
 export function useMaskTool(): UseMaskToolReturn {
-  const { brushSettings, activePreset, pressureEnabled, maskCanvasRef, isEditingMask } = useMask();
+  const { brushSettings, activePreset, pressureEnabled, maskCanvasRef, isEditingMask, maskRegion } = useMask();
   const lastPointRef = useRef<Point | null>(null);
   const isDrawingRef = useRef(false);
 
@@ -273,10 +273,28 @@ export function useMaskTool(): UseMaskToolReturn {
     const height = canvas.height;
     if (width <= 0 || height <= 0) return;
 
+    if (maskRegion && maskRegion.width > 0 && maskRegion.height > 0) {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const rx = Math.round(Math.max(0, Math.min(maskRegion.x, width)));
+      const ry = Math.round(Math.max(0, Math.min(maskRegion.y, height)));
+      const rw = Math.round(Math.max(1, Math.min(maskRegion.width, width - rx)));
+      const rh = Math.round(Math.max(1, Math.min(maskRegion.height, height - ry)));
+      if (rw <= 0 || rh <= 0) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.clearRect(rx, ry, rw, rh);
+      ctx.restore();
+      return;
+    }
+
     // Reset the canvas context to clear any lingering clip region.
     canvas.width = width;
     canvas.height = height;
-  }, [maskCanvasRef]);
+  }, [maskCanvasRef, maskRegion]);
 
   // Fill mask (all white = fully visible)
   const fillMask = useCallback(() => {
@@ -286,6 +304,25 @@ export function useMaskTool(): UseMaskToolReturn {
     const height = canvas.height;
     if (width <= 0 || height <= 0) return;
 
+    if (maskRegion && maskRegion.width > 0 && maskRegion.height > 0) {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const rx = Math.round(Math.max(0, Math.min(maskRegion.x, width)));
+      const ry = Math.round(Math.max(0, Math.min(maskRegion.y, height)));
+      const rw = Math.round(Math.max(1, Math.min(maskRegion.width, width - rx)));
+      const rh = Math.round(Math.max(1, Math.min(maskRegion.height, height - ry)));
+      if (rw <= 0 || rh <= 0) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.restore();
+      return;
+    }
+
     // Reset the canvas context so fill always applies to the full mask.
     canvas.width = width;
     canvas.height = height;
@@ -294,7 +331,7 @@ export function useMaskTool(): UseMaskToolReturn {
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
-  }, [maskCanvasRef]);
+  }, [maskCanvasRef, maskRegion]);
 
   return {
     startDraw,
