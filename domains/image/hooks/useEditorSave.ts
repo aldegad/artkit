@@ -88,6 +88,12 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
 
   const [isSaving, setIsSaving] = useState(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const savingRef = useRef(false);
+  const currentProjectIdRef = useRef<string | null>(currentProjectId);
+
+  useEffect(() => {
+    currentProjectIdRef.current = currentProjectId;
+  }, [currentProjectId]);
 
   // Extract layers with paint data (shared by autosave and project save)
   const extractLayersWithPaintData = useCallback((): UnifiedLayer[] => {
@@ -114,13 +120,13 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
 
   // Prepare project data for saving
   const prepareProjectData = useCallback(
-    (forceNewId: boolean): SavedImageProject | null => {
+    (projectId: string): SavedImageProject | null => {
       if (layers.length === 0) return null;
 
       const savedLayers = extractLayersWithPaintData();
 
       return {
-        id: forceNewId ? crypto.randomUUID() : (currentProjectId || crypto.randomUUID()),
+        id: projectId,
         name: projectName,
         unifiedLayers: savedLayers,
         activeLayerId: activeLayerId || undefined,
@@ -146,7 +152,6 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     [
       layers,
       extractLayersWithPaintData,
-      currentProjectId,
       projectName,
       activeLayerId,
       canvasSize,
@@ -175,36 +180,55 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
 
   // Save project (overwrites existing or creates new)
   const saveProject = useCallback(async () => {
-    const project = prepareProjectData(false);
-    if (!project) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
+
+    const projectId = currentProjectIdRef.current || crypto.randomUUID();
+    currentProjectIdRef.current = projectId;
+    const project = prepareProjectData(projectId);
+    if (!project) {
+      savingRef.current = false;
+      return;
+    }
 
     setIsSaving(true);
     try {
       await storageProvider.saveProject(project);
-      setCurrentProjectId(project.id);
+      currentProjectIdRef.current = projectId;
+      setCurrentProjectId(projectId);
       await refreshProjectList();
     } catch (error) {
       console.error("Failed to save project:", error);
       throw error;
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   }, [prepareProjectData, storageProvider, setCurrentProjectId, refreshProjectList]);
 
   // Save as new project (always creates new)
   const saveAsProject = useCallback(async () => {
-    const project = prepareProjectData(true);
-    if (!project) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
+
+    const projectId = crypto.randomUUID();
+    const project = prepareProjectData(projectId);
+    if (!project) {
+      savingRef.current = false;
+      return;
+    }
 
     setIsSaving(true);
     try {
       await storageProvider.saveProject(project);
-      setCurrentProjectId(project.id);
+      currentProjectIdRef.current = projectId;
+      setCurrentProjectId(projectId);
       await refreshProjectList();
     } catch (error) {
       console.error("Failed to save project:", error);
       throw error;
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   }, [prepareProjectData, storageProvider, setCurrentProjectId, refreshProjectList]);

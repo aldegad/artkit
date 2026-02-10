@@ -85,6 +85,7 @@ export function useSpriteKeyboardShortcuts({
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
+        if (e.repeat) return;
         if (e.shiftKey) {
           saveProjectAs();
         } else {
