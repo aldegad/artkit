@@ -13,6 +13,7 @@ export { default as SpriteToolOptionsBar } from "./SpriteToolOptionsBar";
 export { default as VideoImportModal } from "./VideoImportModal";
 export { FrameBackgroundRemovalModals } from "./FrameBackgroundRemovalModals";
 export { FrameInterpolationModals } from "./FrameInterpolationModals";
+export { default as SpriteExportModal } from "./SpriteExportModal";
 
 // Layout components
 export * from "./layout";

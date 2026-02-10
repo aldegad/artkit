@@ -36,11 +36,12 @@ export {
   VideoImportModal,
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
+  SpriteExportModal,
   SplitView,
 } from "./components";
 
 // Hooks
-export { useFrameBackgroundRemoval, useFrameInterpolation, useSpriteKeyboardShortcuts } from "./hooks";
+export { useFrameBackgroundRemoval, useFrameInterpolation, useSpriteKeyboardShortcuts, useSpriteExport } from "./hooks";
 
 // Types
 export type {
