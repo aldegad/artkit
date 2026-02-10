@@ -20,6 +20,7 @@ import {
 } from "@/domains/video/services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { TIMELINE } from "../constants";
+import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 
 // ============================================
 // Types
@@ -39,6 +40,7 @@ export interface UseVideoSaveOptions {
   currentTime: number;
   playbackRange?: PlaybackRangeState;
   toolMode: string;
+  autoKeyframeEnabled: boolean;
   selectedClipIds: string[];
   selectedMaskIds: string[];
   previewCanvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -100,6 +102,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     currentTime,
     playbackRange,
     toolMode,
+    autoKeyframeEnabled,
     selectedClipIds,
     selectedMaskIds,
     previewCanvasRef,
@@ -156,7 +159,11 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
           ...project,
           name: resolvedName,
           tracks: tracks.map((track) => ({ ...track })),
-          clips: clips.map((clip) => ({ ...clip, position: { ...clip.position } })),
+          clips: clips.map((clip) => ({
+            ...clip,
+            position: { ...clip.position },
+            transformKeyframes: normalizeClipTransformKeyframes(clip),
+          })),
           masks: masks.map((mask) => ({ ...mask })),
           duration,
         },
@@ -253,6 +260,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         currentTime,
         playbackRange,
         toolMode: toolMode as import("../types").VideoToolMode,
+        autoKeyframeEnabled,
         selectedClipIds,
         selectedMaskIds,
       });
@@ -275,6 +283,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     currentTime,
     playbackRange,
     toolMode,
+    autoKeyframeEnabled,
     selectedClipIds,
     selectedMaskIds,
   ]);

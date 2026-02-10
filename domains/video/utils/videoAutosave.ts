@@ -37,6 +37,7 @@ export interface VideoAutosaveData extends BaseAutosaveData {
 
   // Tool state
   toolMode: VideoToolMode;
+  autoKeyframeEnabled?: boolean;
   selectedClipIds: string[];
   selectedMaskIds?: string[];
 }

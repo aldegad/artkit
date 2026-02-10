@@ -43,6 +43,7 @@ interface VideoState {
   showAssetLibrary: boolean;
   isPanLocked: boolean;
   isSpacePanning: boolean;
+  autoKeyframeEnabled: boolean;
 
   // Crop
   cropArea: { x: number; y: number; width: number; height: number } | null;
@@ -85,6 +86,7 @@ interface VideoStateContextValue extends VideoState {
   setShowAssetLibrary: (show: boolean) => void;
   setIsPanLocked: (locked: boolean) => void;
   setIsSpacePanning: (panning: boolean) => void;
+  setAutoKeyframeEnabled: (enabled: boolean) => void;
 
   // Crop actions
   setCropArea: (area: { x: number; y: number; width: number; height: number } | null) => void;
@@ -118,6 +120,7 @@ const initialState: VideoState = {
   showAssetLibrary: false,
   isPanLocked: false,
   isSpacePanning: false,
+  autoKeyframeEnabled: false,
   cropArea: null,
   canvasExpandMode: false,
   cropAspectRatio: "free" as AspectRatio,
@@ -472,6 +475,13 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setAutoKeyframeEnabled = useCallback((enabled: boolean) => {
+    setState((prev) => {
+      if (prev.autoKeyframeEnabled === enabled) return prev;
+      return { ...prev, autoKeyframeEnabled: enabled };
+    });
+  }, []);
+
   const setCropArea = useCallback((area: { x: number; y: number; width: number; height: number } | null) => {
     setState((prev) => ({ ...prev, cropArea: area }));
   }, []);
@@ -527,6 +537,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setShowAssetLibrary,
     setIsPanLocked,
     setIsSpacePanning,
+    setAutoKeyframeEnabled,
     setCropArea,
     setCanvasExpandMode,
     setCropAspectRatio,

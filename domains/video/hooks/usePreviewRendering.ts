@@ -7,6 +7,7 @@ import { getCanvasColorsSync } from "@/shared/hooks";
 import { PREVIEW } from "../constants";
 import { getClipScaleX, getClipScaleY } from "../types";
 import { Clip, VideoClip, ImageClip } from "../types";
+import { resolveClipPositionAtTimelineTime } from "../utils/clipTransformKeyframes";
 
 /**
  * Handles compositing and rendering the preview canvas
@@ -158,8 +159,9 @@ export function usePreviewRendering() {
       // Calculate clip position within preview
       const clipScaleX = getClipScaleX(clip);
       const clipScaleY = getClipScaleY(clip);
-      const clipX = offsetX + clip.position.x * scale;
-      const clipY = offsetY + clip.position.y * scale;
+      const clipPosition = resolveClipPositionAtTimelineTime(clip, playback.currentTime);
+      const clipX = offsetX + clipPosition.x * scale;
+      const clipY = offsetY + clipPosition.y * scale;
       const clipWidth = clip.sourceSize.width * scale * clipScaleX;
       const clipHeight = clip.sourceSize.height * scale * clipScaleY;
 
