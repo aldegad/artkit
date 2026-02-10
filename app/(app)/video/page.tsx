@@ -455,6 +455,7 @@ function VideoEditorContent() {
     seek,
     setLoopRange,
     toggleLoop,
+    toolMode,
     selectClips,
     clearHistory,
     clearMaskHistory,
