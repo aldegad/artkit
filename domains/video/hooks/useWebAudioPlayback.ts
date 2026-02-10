@@ -18,6 +18,16 @@ interface ActiveAudioNode {
   gainNode: GainNode;
 }
 
+interface AudioDebugStats {
+  startedNodes: number;
+  stoppedNodes: number;
+  endedNodes: number;
+  bufferMisses: number;
+  scheduleRuns: number;
+  rescheduleCount: number;
+  lastReportAt: number;
+}
+
 interface UseWebAudioPlaybackParams {
   tracks: VideoTrack[];
   clips: Clip[];
@@ -25,17 +35,28 @@ interface UseWebAudioPlaybackParams {
   isPlaying: boolean;
   playbackRate: number;
   currentTimeRef: React.RefObject<number>;
+  debugLogs?: boolean;
 }
 
 // --- Hook ---
 
 export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
-  const { tracks, clips, getClipAtTime, isPlaying, playbackRate, currentTimeRef } =
+  const { tracks, clips, getClipAtTime, isPlaying, playbackRate, currentTimeRef, debugLogs = false } =
     params;
 
   const activeNodesRef = useRef<Map<string, ActiveAudioNode>>(new Map());
   const schedulerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTickTimeRef = useRef<number>(0);
+  const debugLogsRef = useRef(debugLogs);
+  const debugStatsRef = useRef<AudioDebugStats>({
+    startedNodes: 0,
+    stoppedNodes: 0,
+    endedNodes: 0,
+    bufferMisses: 0,
+    scheduleRuns: 0,
+    rescheduleCount: 0,
+    lastReportAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+  });
 
   // Keep latest values in refs for use inside callbacks
   const tracksRef = useRef(tracks);
@@ -49,6 +70,36 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   useEffect(() => { getClipAtTimeRef.current = getClipAtTime; }, [getClipAtTime]);
   useEffect(() => { playbackRateRef.current = playbackRate; }, [playbackRate]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { debugLogsRef.current = debugLogs; }, [debugLogs]);
+
+  const maybeReportDebugStats = useCallback(() => {
+    if (!debugLogsRef.current) return;
+
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const stats = debugStatsRef.current;
+    const elapsedMs = now - stats.lastReportAt;
+    if (elapsedMs < 3000) return;
+
+    const elapsedSec = elapsedMs / 1000;
+    console.info("[VideoPreviewAudio]", {
+      activeNodes: activeNodesRef.current.size,
+      scheduleRuns: stats.scheduleRuns,
+      schedulePerSec: Number((stats.scheduleRuns / elapsedSec).toFixed(2)),
+      startedNodes: stats.startedNodes,
+      stoppedNodes: stats.stoppedNodes,
+      endedNodes: stats.endedNodes,
+      bufferMisses: stats.bufferMisses,
+      reschedules: stats.rescheduleCount,
+    });
+
+    stats.startedNodes = 0;
+    stats.stoppedNodes = 0;
+    stats.endedNodes = 0;
+    stats.bufferMisses = 0;
+    stats.scheduleRuns = 0;
+    stats.rescheduleCount = 0;
+    stats.lastReportAt = now;
+  }, []);
 
   // Stop all active audio source nodes
   const stopAllNodes = useCallback(() => {
@@ -60,6 +111,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       }
       node.sourceNode.disconnect();
       node.gainNode.disconnect();
+      debugStatsRef.current.stoppedNodes += 1;
     }
     activeNodesRef.current.clear();
   }, []);
@@ -67,6 +119,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   // Schedule audio nodes for all audible clips at current time
   const scheduleAudio = useCallback(() => {
     if (!isPlayingRef.current) return;
+    debugStatsRef.current.scheduleRuns += 1;
 
     const ctx = getSharedAudioContext();
     const ct = currentTimeRef.current;
@@ -102,7 +155,10 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       if (!isAudible || volume <= 0) continue;
 
       // Check if AudioBuffer is available
-      if (!isAudioBufferReady(clip.sourceUrl)) continue;
+      if (!isAudioBufferReady(clip.sourceUrl)) {
+        debugStatsRef.current.bufferMisses += 1;
+        continue;
+      }
 
       const clipTime = ct - clip.startTime;
       const sourceTime = clip.trimIn + clipTime;
@@ -126,6 +182,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
         node.sourceNode.disconnect();
         node.gainNode.disconnect();
         activeNodesRef.current.delete(clipId);
+        debugStatsRef.current.stoppedNodes += 1;
       }
     }
 
@@ -177,10 +234,12 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       if (playDuration <= 0) continue;
 
       sourceNode.start(0, sourceTimeOffset, playDuration);
+      debugStatsRef.current.startedNodes += 1;
 
       // Auto-cleanup when source node finishes
       sourceNode.onended = () => {
         activeNodesRef.current.delete(clipId);
+        debugStatsRef.current.endedNodes += 1;
         sourceNode.disconnect();
         gainNode.disconnect();
       };
@@ -191,15 +250,18 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
         gainNode,
       });
     }
-  }, [currentTimeRef]);
+    maybeReportDebugStats();
+  }, [currentTimeRef, maybeReportDebugStats]);
 
   // Reschedule all audio from scratch (for seek events)
   const rescheduleAudio = useCallback(() => {
+    debugStatsRef.current.rescheduleCount += 1;
     stopAllNodes();
     if (isPlayingRef.current) {
       scheduleAudio();
     }
-  }, [stopAllNodes, scheduleAudio]);
+    maybeReportDebugStats();
+  }, [stopAllNodes, scheduleAudio, maybeReportDebugStats]);
 
   // Detect seek via playbackTick time jumps
   useEffect(() => {
