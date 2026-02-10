@@ -43,6 +43,7 @@ export const MASK_BRUSH = {
 
 // Mask lane height in timeline
 export const MASK_LANE_HEIGHT = 20;
+export const TRANSFORM_LANE_HEIGHT = 28;
 
 // Playback constants
 export const PLAYBACK = {

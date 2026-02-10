@@ -72,10 +72,11 @@ interface MiddlePanPendingState {
 interface UseTimelineInputOptions {
   tracksContainerRef: React.RefObject<HTMLDivElement | null>;
   containerRef?: React.RefObject<HTMLDivElement | null>;
+  getTransformLaneHeight?: (trackId: string) => number;
 }
 
 export function useTimelineInput(options: UseTimelineInputOptions) {
-  const { tracksContainerRef, containerRef } = options;
+  const { tracksContainerRef, containerRef, getTransformLaneHeight } = options;
   const {
     tracks,
     clips,
@@ -185,34 +186,46 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   );
 
   const getTrackAtY = useCallback(
-    (y: number): { trackId: string | null; inMaskLane: boolean } => {
-      if (tracks.length === 0 || y < 0) return { trackId: null, inMaskLane: false };
+    (y: number): { trackId: string | null; inMaskLane: boolean; inTransformLane: boolean } => {
+      if (tracks.length === 0 || y < 0) {
+        return { trackId: null, inMaskLane: false, inTransformLane: false };
+      }
 
       let offset = 0;
       for (const track of tracks) {
         const hasMasks = getMasksForTrack(track.id).length > 0;
+        const transformLaneHeight = Math.max(0, getTransformLaneHeight?.(track.id) || 0);
         const clipEnd = offset + TIMELINE.TRACK_DEFAULT_HEIGHT;
-        const trackEnd = clipEnd + (hasMasks ? MASK_LANE_HEIGHT : 0);
+        const transformEnd = clipEnd + transformLaneHeight;
+        const trackEnd = transformEnd + (hasMasks ? MASK_LANE_HEIGHT : 0);
 
-        if (y >= offset && y < trackEnd) {
-          if (y >= clipEnd && hasMasks) {
-            return { trackId: track.id, inMaskLane: true };
+        if (y >= offset && y < clipEnd) {
+          return { trackId: track.id, inMaskLane: false, inTransformLane: false };
+        }
+
+        if (y >= clipEnd && y < transformEnd) {
+          return { trackId: track.id, inMaskLane: false, inTransformLane: true };
+        }
+
+        if (y >= transformEnd && y < trackEnd) {
+          if (hasMasks) {
+            return { trackId: track.id, inMaskLane: true, inTransformLane: false };
           }
-          return { trackId: track.id, inMaskLane: false };
+          return { trackId: track.id, inMaskLane: false, inTransformLane: false };
         }
         offset = trackEnd;
       }
 
-      return { trackId: tracks[tracks.length - 1].id, inMaskLane: false };
+      return { trackId: tracks[tracks.length - 1].id, inMaskLane: false, inTransformLane: false };
     },
-    [tracks, getMasksForTrack]
+    [tracks, getMasksForTrack, getTransformLaneHeight]
   );
 
   // Find clip at position (returns null for mask lane clicks)
   const findClipAtPosition = useCallback(
     (x: number, contentY: number): { clip: Clip; handle: "start" | "end" | "body" } | null => {
-      const { trackId, inMaskLane } = getTrackAtY(contentY);
-      if (!trackId || inMaskLane) return null;
+      const { trackId, inMaskLane, inTransformLane } = getTrackAtY(contentY);
+      if (!trackId || inMaskLane || inTransformLane) return null;
 
       const time = pixelToTime(x);
       const trackClips = clips
@@ -409,8 +422,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
       // ── Touch: defer ALL processing until gesture direction is known ──
       if (e.pointerType === "touch" && e.button === 0) {
-        const { inMaskLane } = getTrackAtY(contentY);
-        if (inMaskLane) return; // Let MaskClip handle it
+        const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
+        if (inMaskLane || inTransformLane) return; // Let lane-specific handlers manage it
         capturePointer(e.pointerId, e.clientX, e.clientY);
         const timelineViewport = timelineViewportRef.current;
 
@@ -433,8 +446,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       // Left click
       if (e.button === 0) {
         // Check if click is in a mask lane - let MaskClip handle it
-        const { inMaskLane } = getTrackAtY(contentY);
-        if (inMaskLane) return;
+        const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
+        if (inMaskLane || inTransformLane) return;
 
         const result = findClipAtPosition(x, contentY);
 

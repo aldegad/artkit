@@ -44,10 +44,6 @@ import {
   TIMELINE,
   MASK_BRUSH,
   VideoPanModeToggle,
-  hasClipPositionKeyframeAtTimelineTime,
-  removeClipPositionKeyframeAtTimelineTime,
-  resolveClipPositionAtTimelineTime,
-  upsertClipPositionKeyframeAtTimelineTime,
   type Clip,
   type SavedVideoProject,
   type VideoToolMode,
@@ -355,7 +351,6 @@ function VideoEditorContent() {
     isSpacePanning,
     setIsSpacePanning,
     autoKeyframeEnabled,
-    setAutoKeyframeEnabled,
     previewPreRenderEnabled,
     togglePreviewPreRender,
   } = useVideoState();
@@ -577,12 +572,6 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
-  const selectedVisualClipPositionAtPlayhead = selectedVisualClip
-    ? resolveClipPositionAtTimelineTime(selectedVisualClip, playback.currentTime)
-    : null;
-  const hasPositionKeyframeAtPlayhead = selectedVisualClip
-    ? hasClipPositionKeyframeAtTimelineTime(selectedVisualClip, playback.currentTime)
-    : false;
   const gapInterpolationAnalysis = useMemo(
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
     [clips, selectedClipIds, project.frameRate],
@@ -1101,40 +1090,6 @@ function VideoEditorContent() {
     return previewViewportRef.current?.nudgeTransform(dx, dy) ?? false;
   }, [previewViewportRef]);
 
-  const handleToggleAutoKeyframe = useCallback(() => {
-    setAutoKeyframeEnabled(!autoKeyframeEnabled);
-  }, [autoKeyframeEnabled, setAutoKeyframeEnabled]);
-
-  const handleTogglePositionKeyframeAtPlayhead = useCallback(() => {
-    if (!selectedVisualClip || !selectedVisualClipPositionAtPlayhead) return;
-
-    saveToHistory();
-    if (hasPositionKeyframeAtPlayhead) {
-      const result = removeClipPositionKeyframeAtTimelineTime(selectedVisualClip, playback.currentTime);
-      if (result.removed) {
-        updateClip(selectedVisualClip.id, result.updates);
-      }
-      return;
-    }
-
-    updateClip(
-      selectedVisualClip.id,
-      upsertClipPositionKeyframeAtTimelineTime(
-        selectedVisualClip,
-        playback.currentTime,
-        selectedVisualClipPositionAtPlayhead,
-        { ensureInitialKeyframe: true }
-      )
-    );
-  }, [
-    hasPositionKeyframeAtPlayhead,
-    playback.currentTime,
-    saveToHistory,
-    selectedVisualClip,
-    selectedVisualClipPositionAtPlayhead,
-    updateClip,
-  ]);
-
   const handleAdjustMaskBrushSize = useCallback((delta: number) => {
     if (toolMode !== "mask") return;
     const nextSize = Math.max(
@@ -1424,43 +1379,6 @@ function VideoEditorContent() {
                 size="sm"
               />
             </div>
-            <button
-              onClick={handleToggleAutoKeyframe}
-              className={`px-1.5 py-0.5 text-xs rounded transition-colors border ${
-                autoKeyframeEnabled
-                  ? "bg-accent-primary text-white border-accent-primary"
-                  : "hover:bg-interactive-hover border-border-default text-text-secondary"
-              }`}
-              title="Automatically add/update position keyframes while transforming"
-            >
-              Auto KF
-            </button>
-            <button
-              onClick={handleTogglePositionKeyframeAtPlayhead}
-              disabled={!selectedVisualClip}
-              className={`px-1.5 py-0.5 text-xs rounded transition-colors border flex items-center gap-1 ${
-                selectedVisualClip
-                  ? hasPositionKeyframeAtPlayhead
-                    ? "bg-accent-primary/15 text-accent-primary border-accent-primary/40 hover:bg-accent-primary/20"
-                    : "hover:bg-interactive-hover border-border-default text-text-secondary"
-                  : "opacity-40 cursor-not-allowed border-border-default text-text-quaternary"
-              }`}
-              title={hasPositionKeyframeAtPlayhead ? "Remove position keyframe at playhead" : "Add position keyframe at playhead"}
-            >
-              <span
-                className={`inline-block h-2.5 w-2.5 rotate-45 border ${
-                  hasPositionKeyframeAtPlayhead
-                    ? "bg-accent-primary border-accent-primary"
-                    : "border-border-default"
-                }`}
-              />
-              KF
-            </button>
-            {selectedVisualClipPositionAtPlayhead && (
-              <span className="text-xs text-text-tertiary tabular-nums whitespace-nowrap">
-                Pos {Math.round(selectedVisualClipPositionAtPlayhead.x)}, {Math.round(selectedVisualClipPositionAtPlayhead.y)}
-              </span>
-            )}
             <span className="text-xs text-text-tertiary">
               {previewTransformState.isActive
                 ? "Drag handles to resize. Shift: keep ratio, Alt: from center"

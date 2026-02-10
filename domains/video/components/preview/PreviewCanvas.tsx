@@ -29,8 +29,9 @@ import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
 import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
 import {
-  offsetClipPositionValues,
+  getClipPositionKeyframes,
   resolveClipPositionAtTimelineTime,
+  upsertClipPositionKeyframeAtTimelineTime,
 } from "../../utils/clipTransformKeyframes";
 import { usePreviewFrameCapture } from "./usePreviewFrameCapture";
 import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
@@ -1347,7 +1348,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     dragStateRef.current = {
       clipId: hitClip.id,
       pointerStart: point,
-      clipStart: { ...hitClip.position },
+      clipStart: resolveClipPositionAtTimelineTime(hitClip, currentTimeRef.current),
       clipSnapshot: hitClip,
     };
     setIsDraggingClip(true);
@@ -1546,8 +1547,26 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const dy = point.y - dragState.pointerStart.y;
     const clipSnapshot = dragState.clipSnapshot;
     if (!clipSnapshot) return;
-    updateClip(clipId, offsetClipPositionValues(clipSnapshot, dx, dy));
-  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender]);
+    const nextPosition = {
+      x: dragState.clipStart.x + dx,
+      y: dragState.clipStart.y + dy,
+    };
+    const hasPositionAnimation = getClipPositionKeyframes(clipSnapshot).length > 0;
+    const shouldUsePositionKeyframe = autoKeyframeEnabled || hasPositionAnimation;
+    if (shouldUsePositionKeyframe) {
+      updateClip(
+        clipId,
+        upsertClipPositionKeyframeAtTimelineTime(
+          clipSnapshot,
+          currentTimeRef.current,
+          nextPosition,
+          { ensureInitialKeyframe: true }
+        )
+      );
+      return;
+    }
+    updateClip(clipId, { position: nextPosition });
+  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender, autoKeyframeEnabled, currentTimeRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     stopPanDrag();

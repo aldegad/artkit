@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useTimeline, useVideoState, useMask } from "../../contexts";
 import { useTimelineInput, useTimelineLayoutInput, useVideoCoordinates } from "../../hooks";
 import { TimeRuler } from "./TimeRuler";
@@ -12,7 +12,7 @@ import { cn } from "@/shared/utils/cn";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
-import { MASK_LANE_HEIGHT, TIMELINE } from "../../constants";
+import { MASK_LANE_HEIGHT, TIMELINE, TRANSFORM_LANE_HEIGHT } from "../../constants";
 
 interface TimelineProps {
   className?: string;
@@ -35,6 +35,41 @@ export function Timeline({ className }: TimelineProps) {
   const { project, playback } = useVideoState();
   const { getMasksForTrack, duplicateMasksToTrack } = useMask();
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
+  const [transformLaneOpenByTrack, setTransformLaneOpenByTrack] = useState<Record<string, boolean>>({});
+
+  const isTransformLaneOpen = useCallback(
+    (trackId: string) => Boolean(transformLaneOpenByTrack[trackId]),
+    [transformLaneOpenByTrack]
+  );
+
+  const toggleTransformLane = useCallback((trackId: string) => {
+    setTransformLaneOpenByTrack((prev) => ({
+      ...prev,
+      [trackId]: !prev[trackId],
+    }));
+  }, []);
+
+  const getTransformLaneHeight = useCallback(
+    (trackId: string) => (isTransformLaneOpen(trackId) ? TRANSFORM_LANE_HEIGHT : 0),
+    [isTransformLaneOpen]
+  );
+
+  // Remove stale lane states when tracks are deleted.
+  useEffect(() => {
+    const trackIds = new Set(tracks.map((track) => track.id));
+    setTransformLaneOpenByTrack((prev) => {
+      const next: Record<string, boolean> = {};
+      let changed = false;
+      for (const [trackId, isOpen] of Object.entries(prev)) {
+        if (trackIds.has(trackId)) {
+          next[trackId] = isOpen;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [tracks]);
 
   // Timeline input handling (clip drag, trim, seek, lift)
   const {
@@ -46,6 +81,7 @@ export function Timeline({ className }: TimelineProps) {
   } = useTimelineInput({
     tracksContainerRef,
     containerRef,
+    getTransformLaneHeight,
   });
   const {
     trackHeadersRef,
@@ -73,7 +109,10 @@ export function Timeline({ className }: TimelineProps) {
   // Calculate total tracks height (including mask lanes)
   const totalTracksHeight = tracks.reduce((sum, t) => {
     const hasMasks = getMasksForTrack(t.id).length > 0;
-    return sum + TIMELINE.TRACK_DEFAULT_HEIGHT + (hasMasks ? MASK_LANE_HEIGHT : 0);
+    return sum
+      + TIMELINE.TRACK_DEFAULT_HEIGHT
+      + getTransformLaneHeight(t.id)
+      + (hasMasks ? MASK_LANE_HEIGHT : 0);
   }, 0);
 
   const rangeStart = Math.max(0, Math.min(playback.loopStart, project.duration));
@@ -149,7 +188,9 @@ export function Timeline({ className }: TimelineProps) {
           <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
             {tracks.map((track) => {
               const trackMasks = getMasksForTrack(track.id);
-              const headerHeight = TIMELINE.TRACK_DEFAULT_HEIGHT + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
+              const transformLaneOpen = isTransformLaneOpen(track.id);
+              const transformLaneHeight = transformLaneOpen ? TRANSFORM_LANE_HEIGHT : 0;
+              const headerHeight = TIMELINE.TRACK_DEFAULT_HEIGHT + transformLaneHeight + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
               const isLiftDropTarget = !!liftedClipId && liftedClipTrackId !== track.id;
               const isLiftSource = !!liftedClipId && liftedClipTrackId === track.id;
               return (
@@ -180,6 +221,16 @@ export function Timeline({ className }: TimelineProps) {
                 >
                   {trackHeaderWidth >= 120 ? (
                   <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+                    <button
+                      onClick={() => toggleTransformLane(track.id)}
+                      className={cn(
+                        "shrink-0 p-1 rounded hover:bg-surface-tertiary transition-colors",
+                        transformLaneOpen ? "text-accent-primary" : "text-text-tertiary"
+                      )}
+                      title={transformLaneOpen ? "Hide transform lane" : "Show transform lane"}
+                    >
+                      <ChevronDownIcon className={cn("w-3 h-3 transition-transform", !transformLaneOpen && "-rotate-90")} />
+                    </button>
                     <button
                       onClick={() => updateTrack(track.id, { visible: !track.visible })}
                       className={cn(
@@ -230,6 +281,13 @@ export function Timeline({ className }: TimelineProps) {
                   >
                     <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
                       <span className="text-xs font-medium text-text-primary px-2 py-1 truncate">{track.name}</span>
+                      <button
+                        onClick={() => toggleTransformLane(track.id)}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                      >
+                        <ChevronDownIcon className={cn("w-3 h-3 transition-transform", !transformLaneOpen && "-rotate-90")} />
+                        {transformLaneOpen ? "Hide Transform Lane" : "Show Transform Lane"}
+                      </button>
                       <button
                         onClick={() => updateTrack(track.id, { visible: !track.visible })}
                         className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
@@ -346,6 +404,7 @@ export function Timeline({ className }: TimelineProps) {
                   track={track}
                   clips={getClipsInTrack(track.id)}
                   masks={getMasksForTrack(track.id)}
+                  transformLaneOpen={isTransformLaneOpen(track.id)}
                   liftedClipId={liftedClipId}
                   isLiftDropTarget={!!liftedClipId && liftedClipTrackId !== track.id}
                 />
