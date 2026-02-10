@@ -34,6 +34,34 @@ interface PreviewCanvasProps {
   className?: string;
 }
 
+const SAMPLE_FRAME_EPSILON = 1e-6;
+
+function getLoopFrameBounds(
+  loop: boolean,
+  loopStart: number,
+  loopEnd: number,
+  duration: number
+): { minFrame: number; maxFrame: number } | null {
+  if (!loop) return null;
+
+  const safeDuration = Math.max(0, duration);
+  const rangeStart = Math.max(0, Math.min(loopStart, safeDuration));
+  const hasRange = loopEnd > rangeStart + 0.001;
+  const rangeEnd = hasRange
+    ? Math.max(rangeStart + 0.001, Math.min(loopEnd, safeDuration))
+    : safeDuration;
+
+  // Keep sampled frames inside [loopStart, loopEnd) to avoid one-frame flashes
+  // from just before IN when loop points are not aligned to frame boundaries.
+  const minFrame = Math.max(0, Math.ceil(rangeStart * PRE_RENDER.FRAME_RATE - SAMPLE_FRAME_EPSILON));
+  const exclusiveEndFrame = Math.max(
+    minFrame + 1,
+    Math.ceil(rangeEnd * PRE_RENDER.FRAME_RATE - SAMPLE_FRAME_EPSILON)
+  );
+
+  return { minFrame, maxFrame: exclusiveEndFrame - 1 };
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -85,6 +113,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cacheFrames: 0,
     liveFrames: 0,
   });
+  const syncMediaRef = useRef<(() => void) | null>(null);
+  const lastPlaybackTickTimeRef = useRef<number | null>(null);
   const scheduleRender = useCallback(() => {
     cancelAnimationFrame(renderRequestRef.current);
     renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
@@ -421,6 +451,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
 
     if (!playback.isPlaying) {
+      syncMediaRef.current = null;
+      lastPlaybackTickTimeRef.current = null;
       if (wasPlayingRef.current) {
         // Playback stopped - pause all media.
         stopAllMediaElements();
@@ -518,6 +550,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
     };
 
+    syncMediaRef.current = syncMedia;
     syncMedia(); // Initial sync when playback starts
     // Periodic re-sync for clip boundaries and drift correction (not every frame)
     const intervalId = setInterval(syncMedia, PLAYBACK.SYNC_INTERVAL_MS);
@@ -525,6 +558,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     return () => {
       clearInterval(intervalId);
+      syncMediaRef.current = null;
       if (!playback.isPlaying) {
         stopAllMediaElements();
       }
@@ -553,7 +587,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       window.removeEventListener("pagehide", stopNow);
     };
   }, [stopAllMediaElements]);
-
   // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
@@ -623,8 +656,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.fillRect(0, 0, width, height);
   }, []);
 
-  const getPlaybackSampleTime = useCallback((time: number) => {
-    const frameIdx = Math.max(0, Math.floor(time * PRE_RENDER.FRAME_RATE + 1e-6));
+  const getPlaybackSampleTime = useCallback((
+    time: number,
+    bounds: { minFrame: number; maxFrame: number } | null = null
+  ) => {
+    let frameIdx = Math.max(0, Math.floor(time * PRE_RENDER.FRAME_RATE + SAMPLE_FRAME_EPSILON));
+    if (bounds) {
+      frameIdx = Math.max(bounds.minFrame, Math.min(frameIdx, bounds.maxFrame));
+    }
     return frameIdx / PRE_RENDER.FRAME_RATE;
   }, []);
 
@@ -639,8 +678,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     // Read current time from ref (source of truth during playback)
     const ct = currentTimeRef.current;
+    const loopFrameBounds = getLoopFrameBounds(
+      playback.loop,
+      playback.loopStart,
+      playback.loopEnd,
+      project.duration || 0
+    );
     const renderTime = (playback.isPlaying && previewPerf.preRenderEnabled)
-      ? getPlaybackSampleTime(ct)
+      ? getPlaybackSampleTime(ct, loopFrameBounds)
       : ct;
 
     const deviceDpr = window.devicePixelRatio || 1;
@@ -1544,9 +1589,21 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip, updateMaskRegion, scheduleRender]);
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
-  usePlaybackTick(() => {
+  usePlaybackTick((tickTime) => {
     const now = performance.now();
     const stats = playbackPerfRef.current;
+    const previousTickTime = lastPlaybackTickTimeRef.current;
+    lastPlaybackTickTimeRef.current = tickTime;
+
+    // Loop wrap / playback seek can jump timeline backward between ticks.
+    // Force immediate media sync instead of waiting for interval drift correction.
+    if (
+      playback.isPlaying &&
+      previousTickTime !== null &&
+      tickTime < previousTickTime - PLAYBACK.FRAME_STEP
+    ) {
+      syncMediaRef.current?.();
+    }
 
     if (stats.lastTickMs > 0) {
       const tickDelta = now - stats.lastTickMs;
