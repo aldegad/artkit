@@ -61,6 +61,11 @@ export {
   useVideoElements,
   usePreviewRendering,
   useMaskTool,
+  useMediaImport,
+  useCaptureFrameToImageLayer,
+  useVideoProjectLibrary,
+  useVideoClipboardActions,
+  useVideoCropActions,
   useVideoSave,
   useVideoExport,
 } from "./hooks";

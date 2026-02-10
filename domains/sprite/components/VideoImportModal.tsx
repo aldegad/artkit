@@ -60,6 +60,7 @@ export default function VideoImportModal({
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+  const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
 
   // Auto-load initial file when provided
   useEffect(() => {
@@ -71,6 +72,9 @@ export default function VideoImportModal({
       setVideoSrc(url);
       setExtractedFrames([]);
       setSelectedFrameIndices(new Set());
+      setVideoDuration(0);
+      setVideoSize({ width: 0, height: 0 });
+      setVideoLoadError(null);
     }
   }, [isOpen, initialFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,6 +104,9 @@ export default function VideoImportModal({
     setVideoSrc(url);
     setExtractedFrames([]);
     setSelectedFrameIndices(new Set());
+    setVideoDuration(0);
+    setVideoSize({ width: 0, height: 0 });
+    setVideoLoadError(null);
   }, [videoSrc]);
 
   // Handle video metadata loaded
@@ -107,14 +114,35 @@ export default function VideoImportModal({
     const video = videoRef.current;
     if (!video) return;
 
-    setVideoDuration(video.duration);
-    setVideoSize({ width: video.videoWidth, height: video.videoHeight });
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const width = video.videoWidth || 0;
+    const height = video.videoHeight || 0;
+
+    setVideoDuration(duration);
+    setVideoSize({ width, height });
+
+    if (duration <= 0 || width <= 0 || height <= 0) {
+      setVideoLoadError("Unsupported video format/codec in this browser. Re-export as MP4 or MOV (H.264).");
+      return;
+    }
+
+    setVideoLoadError(null);
+  }, []);
+
+  const handleVideoError = useCallback(() => {
+    setVideoLoadError("Failed to decode video. Re-export as MP4 or MOV (H.264).");
+    setVideoDuration(0);
   }, []);
 
   // Extract frames from video
   const extractFrames = useCallback(async () => {
     const video = videoRef.current;
     if (!video || !videoSrc) return;
+    const duration = Number.isFinite(video.duration) ? video.duration : videoDuration;
+    if (!(duration > 0)) {
+      alert("This video cannot be decoded in the browser. Please use MP4 or MOV (H.264).");
+      return;
+    }
 
     setIsExtracting(true);
     setExtractionProgress(0);
@@ -132,11 +160,11 @@ export default function VideoImportModal({
       // Estimate video frame rate (default 30fps)
       const estimatedFPS = 30;
       const frameDuration = 1 / estimatedFPS;
-      for (let t = 0; t < video.duration && times.length < limit; t += frameDuration * nthFrame) {
+      for (let t = 0; t < duration && times.length < limit; t += frameDuration * nthFrame) {
         times.push(t);
       }
     } else {
-      for (let t = 0; t < video.duration && times.length < limit; t += timeInterval) {
+      for (let t = 0; t < duration && times.length < limit; t += timeInterval) {
         times.push(t);
       }
     }
@@ -172,7 +200,7 @@ export default function VideoImportModal({
     setExtractedFrames(frames);
     setSelectedFrameIndices(new Set(frames.map((_, i) => i)));
     setIsExtracting(false);
-  }, [videoSrc, extractionMode, nthFrame, timeInterval, maxFrames]);
+  }, [videoSrc, extractionMode, nthFrame, timeInterval, maxFrames, videoDuration]);
 
   // Toggle frame selection
   const toggleFrameSelection = useCallback((index: number) => {
@@ -217,6 +245,9 @@ export default function VideoImportModal({
       URL.revokeObjectURL(videoSrc);
     }
     setVideoSrc(null);
+    setVideoDuration(0);
+    setVideoSize({ width: 0, height: 0 });
+    setVideoLoadError(null);
     setExtractedFrames([]);
     setSelectedFrameIndices(new Set());
     setExtractionProgress(0);
@@ -275,12 +306,19 @@ export default function VideoImportModal({
                   ref={videoRef}
                   src={videoSrc}
                   onLoadedMetadata={handleVideoLoaded}
+                  onDurationChange={handleVideoLoaded}
+                  onError={handleVideoError}
                   controls
                   className="w-64 h-auto rounded-lg bg-black"
                 />
                 <div className="text-xs text-text-tertiary mt-1">
                   {videoSize.width}×{videoSize.height} · {videoDuration.toFixed(1)}s
                 </div>
+                {videoLoadError && (
+                  <div className="text-xs text-red-400 mt-1 max-w-64">
+                    {videoLoadError}
+                  </div>
+                )}
               </div>
 
               {/* Extraction Settings */}
@@ -359,7 +397,7 @@ export default function VideoImportModal({
                   {/* Extract button */}
                   <button
                     onClick={extractFrames}
-                    disabled={isExtracting}
+                    disabled={isExtracting || Boolean(videoLoadError) || videoDuration <= 0}
                     className="w-full px-4 py-2 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                   >
                     {isExtracting ? (

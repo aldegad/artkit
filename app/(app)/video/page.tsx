@@ -42,89 +42,29 @@ import {
   VideoPreviewPanelContent,
   VideoTimelinePanelContent,
   clearVideoAutosave,
-  saveMediaBlob,
-  loadMediaBlob,
-  copyMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
   TIMELINE,
   MASK_BRUSH,
   VideoPanModeToggle,
-  type Clip,
-  type MaskData,
   type SavedVideoProject,
-  type TimelineViewState,
   type VideoToolMode,
 } from "@/domains/video";
-import { useVideoKeyboardShortcuts } from "@/domains/video/hooks";
 import {
-  getVideoStorageProvider,
-  type VideoStorageInfo,
-} from "@/domains/video/services/videoProjectStorage";
-import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
+  useVideoKeyboardShortcuts,
+  useMediaImport,
+  useCaptureFrameToImageLayer,
+  useVideoProjectLibrary,
+  useVideoClipboardActions,
+  useVideoCropActions,
+} from "@/domains/video/hooks";
+import { getVideoStorageProvider } from "@/domains/video/services/videoProjectStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
-import { ASPECT_RATIOS, ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
+import { ASPECT_RATIOS, type AspectRatio } from "@/shared/types/aspectRatio";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
-}
-
-function calculateProjectDuration(clips: Clip[]): number {
-  const maxEnd = clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0);
-  return Math.max(maxEnd, 10);
-}
-
-function cloneClip(clip: Clip): Clip {
-  return {
-    ...clip,
-    position: { ...clip.position },
-    sourceSize: { ...clip.sourceSize },
-  };
-}
-
-function cloneMask(mask: MaskData): MaskData {
-  return {
-    ...mask,
-    size: { ...mask.size },
-  };
-}
-
-function normalizeLoadedClip(clip: Clip): Clip {
-  const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
-  const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
-  const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
-
-  if (clip.type === "video") {
-    return {
-      ...clip,
-      scale: baseScale,
-      scaleX,
-      scaleY,
-      hasAudio: clip.hasAudio ?? true,
-      audioMuted: clip.audioMuted ?? false,
-      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
-    };
-  }
-
-  if (clip.type === "audio") {
-    return {
-      ...clip,
-      scale: baseScale,
-      scaleX,
-      scaleY,
-      sourceSize: clip.sourceSize || { width: 0, height: 0 },
-      audioMuted: clip.audioMuted ?? false,
-      audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
-    };
-  }
-
-  return {
-    ...clip,
-    scale: baseScale,
-    scaleX,
-    scaleY,
-  };
 }
 
 function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | null {
@@ -204,8 +144,6 @@ function VideoEditorContent() {
     setScrollX,
     setViewState,
     addTrack,
-    addVideoClip,
-    addAudioClip,
     addImageClip,
     removeClip,
     addClips,
@@ -257,17 +195,39 @@ function VideoEditorContent() {
   const editorRootRef = useRef<HTMLDivElement>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const audioHistorySavedRef = useRef(false);
-
-  // Save system state
-  const [savedProjects, setSavedProjects] = useState<SavedVideoProject[]>([]);
-  const [storageInfo, setStorageInfo] = useState<VideoStorageInfo>({ used: 0, quota: 0, percentage: 0 });
-  const [isProjectListOpen, setIsProjectListOpen] = useState(false);
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [isLoadingProject, setIsLoadingProject] = useState(false);
-  const [loadProgress, setLoadProgress] = useState<SaveLoadProgress | null>(null);
-  const [projectListOperation, setProjectListOperation] = useState<"load" | "delete" | null>(null);
   const [saveCount, setSaveCount] = useState(0);
-  const [isCapturingFrame, setIsCapturingFrame] = useState(false);
+
+  const {
+    currentProjectId,
+    setCurrentProjectId,
+    savedProjects,
+    setSavedProjects,
+    storageInfo,
+    setStorageInfo,
+    isProjectListOpen,
+    setIsProjectListOpen,
+    isLoadingProject,
+    loadProgress,
+    projectListOperation,
+    openProjectList,
+    loadProject,
+    deleteProject,
+  } = useVideoProjectLibrary({
+    storageProvider,
+    deleteConfirmLabel: t.deleteConfirm || "Delete this project?",
+    setProjectName,
+    setProject,
+    restoreTracks,
+    restoreClips,
+    restoreMasks,
+    setViewState,
+    seek,
+    setLoopRange,
+    toggleLoop,
+    selectClips,
+    clearHistory,
+    clearMaskHistory,
+  });
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
   const playbackRange = useMemo(() => ({
@@ -366,12 +326,6 @@ function VideoEditorContent() {
     }
   }, [isEditingMask, toolMode, setToolMode]);
 
-  // Load saved projects when storage provider changes
-  useEffect(() => {
-    storageProvider.getAllProjects().then(setSavedProjects).catch(console.error);
-    storageProvider.getStorageInfo().then(setStorageInfo).catch(console.error);
-  }, [storageProvider]);
-
   const hasContent = clips.length > 0;
   const selectedClip = selectedClipIds.length > 0
     ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
@@ -382,170 +336,7 @@ function VideoEditorContent() {
   const canUndoAny = canUndo || canUndoMask;
   const canRedoAny = canRedo || canRedoMask;
 
-  // buildSavedProject is now inside useVideoSave hook
-
-  const importMediaFiles = useCallback(
-    async (files: File[]) => {
-      if (files.length === 0) return;
-
-      saveToHistory();
-
-      let targetVideoTrackId = tracks.find((track) => track.type === "video")?.id || null;
-      let targetAudioTrackId = tracks.find((track) => track.type === "audio")?.id || null;
-      const hasExistingVisualClip = clips.some((clip) => clip.type !== "audio");
-      let insertTime = playback.currentTime;
-      let visualImportedCount = 0;
-
-      for (const file of files) {
-        const isVideo =
-          file.type.startsWith("video/") ||
-          SUPPORTED_VIDEO_FORMATS.some((format) => file.type === format);
-        const isImage =
-          file.type.startsWith("image/") ||
-          SUPPORTED_IMAGE_FORMATS.some((format) => file.type === format);
-        const isAudio =
-          file.type.startsWith("audio/") ||
-          SUPPORTED_AUDIO_FORMATS.some((format) => file.type === format);
-
-        if (!isVideo && !isImage && !isAudio) {
-          continue;
-        }
-
-        if (isVideo) {
-          if (!targetVideoTrackId) {
-            targetVideoTrackId = addTrack("Video 1", "video");
-          }
-
-          const url = URL.createObjectURL(file);
-          const video = document.createElement("video");
-          video.src = url;
-
-          const metadata = await new Promise<{ duration: number; size: { width: number; height: number } } | null>((resolve) => {
-            video.onloadedmetadata = () => {
-              resolve({
-                duration: Math.max(video.duration || 0, 0.1),
-                size: { width: video.videoWidth || project.canvasSize.width, height: video.videoHeight || project.canvasSize.height },
-              });
-            };
-            video.onerror = () => resolve(null);
-          });
-
-          if (!metadata) {
-            URL.revokeObjectURL(url);
-            continue;
-          }
-
-          const isFirstVisual = !hasExistingVisualClip && visualImportedCount === 0;
-          if (isFirstVisual) {
-            setProject({
-              ...project,
-              canvasSize: metadata.size,
-            });
-          }
-
-          const clipId = addVideoClip(targetVideoTrackId, url, metadata.duration, metadata.size, Math.max(0, insertTime), isFirstVisual ? metadata.size : undefined);
-          try {
-            await saveMediaBlob(clipId, file);
-          } catch (error) {
-            console.error("Failed to save media blob:", error);
-          }
-
-          insertTime += metadata.duration;
-          visualImportedCount += 1;
-          continue;
-        }
-
-        if (isAudio) {
-          const url = URL.createObjectURL(file);
-          const audio = document.createElement("audio");
-          audio.src = url;
-
-          const metadata = await new Promise<{ duration: number } | null>((resolve) => {
-            audio.onloadedmetadata = () => {
-              resolve({
-                duration: Math.max(audio.duration || 0, 0.1),
-              });
-            };
-            audio.onerror = () => resolve(null);
-          });
-
-          if (!metadata) {
-            URL.revokeObjectURL(url);
-            continue;
-          }
-
-          if (!targetAudioTrackId) {
-            targetAudioTrackId = addTrack("Audio 1", "audio");
-          }
-
-          const clipId = addAudioClip(
-            targetAudioTrackId,
-            url,
-            metadata.duration,
-            Math.max(0, insertTime),
-            { ...project.canvasSize }
-          );
-
-          try {
-            await saveMediaBlob(clipId, file);
-          } catch (error) {
-            console.error("Failed to save media blob:", error);
-          }
-
-          insertTime += metadata.duration;
-          continue;
-        }
-
-        if (!targetVideoTrackId) {
-          targetVideoTrackId = addTrack("Video 1", "video");
-        }
-
-        const url = URL.createObjectURL(file);
-        const image = new Image();
-        image.src = url;
-
-        const size = await new Promise<{ width: number; height: number } | null>((resolve) => {
-          image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-          image.onerror = () => resolve(null);
-        });
-
-        if (!size) {
-          URL.revokeObjectURL(url);
-          continue;
-        }
-
-        const isFirstVisualImg = !hasExistingVisualClip && visualImportedCount === 0;
-        if (isFirstVisualImg) {
-          setProject({
-            ...project,
-            canvasSize: size,
-          });
-        }
-
-        const clipId = addImageClip(targetVideoTrackId, url, size, Math.max(0, insertTime), 5, isFirstVisualImg ? size : undefined);
-        try {
-          await saveMediaBlob(clipId, file);
-        } catch (error) {
-          console.error("Failed to save media blob:", error);
-        }
-
-        insertTime += 5;
-        visualImportedCount += 1;
-      }
-    },
-    [
-      saveToHistory,
-      tracks,
-      addTrack,
-      playback.currentTime,
-      clips.length,
-      project,
-      setProject,
-      addVideoClip,
-      addAudioClip,
-      addImageClip,
-    ]
-  );
+  const { importFiles: importMediaFiles } = useMediaImport();
 
   // Menu handlers
   const handleNew = useCallback(async () => {
@@ -556,8 +347,8 @@ function VideoEditorContent() {
   }, [t]);
 
   const handleOpen = useCallback(() => {
-    setIsProjectListOpen(true);
-  }, []);
+    openProjectList();
+  }, [openProjectList]);
 
   const handleSave = useCallback(async () => {
     try {
@@ -585,126 +376,12 @@ function VideoEditorContent() {
   }, [projectName, setProjectName, saveAsProject]);
 
   const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
-    setIsLoadingProject(true);
-    setProjectListOperation("load");
-    setLoadProgress(null);
-    try {
-      const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
-      if (!loaded) {
-        alert("Failed to load project");
-        return;
-      }
-
-      const loadedProject = loaded.project;
-      const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
-      const clipIdsBySourceId = new Map<string, string[]>();
-      for (const clip of normalizedClips) {
-        if (!clip.sourceId) continue;
-        const ids = clipIdsBySourceId.get(clip.sourceId) || [];
-        ids.push(clip.id);
-        clipIdsBySourceId.set(clip.sourceId, ids);
-      }
-      const sourceBlobCache = new Map<string, Blob>();
-
-      // Restore media blobs from IndexedDB and create new blob URLs
-      const restoredClips: Clip[] = [];
-      for (const clip of normalizedClips) {
-        let blob = await loadMediaBlob(clip.id);
-        if (!blob && clip.sourceId) {
-          blob = sourceBlobCache.get(clip.sourceId) || null;
-          if (!blob) {
-            const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
-            for (const candidateId of candidateIds) {
-              if (candidateId === clip.id) continue;
-              const candidateBlob = await loadMediaBlob(candidateId);
-              if (candidateBlob) {
-                blob = candidateBlob;
-                sourceBlobCache.set(clip.sourceId, candidateBlob);
-                break;
-              }
-            }
-          }
-        }
-        if (blob) {
-          if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
-            sourceBlobCache.set(clip.sourceId, blob);
-          }
-          const newUrl = URL.createObjectURL(blob);
-          restoredClips.push({ ...clip, sourceUrl: newUrl });
-        } else if (!clip.sourceUrl.startsWith("blob:")) {
-          // Non-blob URL (e.g., remote URL), keep as is
-          restoredClips.push(clip);
-        }
-        // Skip clips with invalid blob URLs (no stored blob)
-      }
-
-      const loadedDuration = calculateProjectDuration(restoredClips);
-
-      setProjectName(loaded.name);
-      setProject({
-        ...loadedProject,
-        name: loaded.name,
-        tracks: loadedProject.tracks,
-        clips: restoredClips,
-        duration: loadedDuration,
-      });
-      restoreTracks(loadedProject.tracks);
-      restoreClips(restoredClips);
-      restoreMasks(loadedProject.masks || []);
-
-      if (loaded.timelineView) {
-        setViewState(loaded.timelineView);
-      }
-      const restoredTime = typeof loaded.currentTime === "number" ? loaded.currentTime : 0;
-      seek(restoredTime);
-      const duration = Math.max(loadedDuration, 0.001);
-      const targetLoop = loaded.playbackRange?.loop ?? false;
-      const targetStart = Math.max(0, Math.min(loaded.playbackRange?.loopStart ?? 0, duration));
-      const targetEnd = Math.max(
-        targetStart + 0.001,
-        Math.min(loaded.playbackRange?.loopEnd ?? duration, duration)
-      );
-      window.setTimeout(() => {
-        setLoopRange(targetStart, targetEnd, true);
-        if (!targetLoop) {
-          toggleLoop();
-          seek(restoredTime);
-        }
-      }, 0);
-
-      setCurrentProjectId(loaded.id);
-      selectClips([]);
-      clearHistory();
-      clearMaskHistory();
-      setIsProjectListOpen(false);
-    } catch (error) {
-      console.error("Failed to load project:", error);
-      alert(`Load failed: ${(error as Error).message}`);
-    } finally {
-      setIsLoadingProject(false);
-      setLoadProgress(null);
-      setProjectListOperation(null);
-    }
-  }, [storageProvider, setProjectName, setProject, restoreTracks, restoreClips, restoreMasks, setViewState, seek, setLoopRange, toggleLoop, selectClips, clearHistory, clearMaskHistory]);
+    await loadProject(projectMeta);
+  }, [loadProject]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
-    if (!window.confirm(t.deleteConfirm || "Delete this project?")) return;
-    setIsLoadingProject(true);
-    setProjectListOperation("delete");
-    setLoadProgress(null);
-    try {
-      await storageProvider.deleteProject(id, setLoadProgress);
-      const projects = await storageProvider.getAllProjects();
-      setSavedProjects(projects);
-      if (currentProjectId === id) setCurrentProjectId(null);
-    } catch (error) {
-      console.error("Failed to delete project:", error);
-    } finally {
-      setIsLoadingProject(false);
-      setLoadProgress(null);
-      setProjectListOperation(null);
-    }
-  }, [storageProvider, currentProjectId, t]);
+    await deleteProject(id);
+  }, [deleteProject]);
 
   const handleImportMedia = useCallback(() => {
     mediaFileInputRef.current?.click();
@@ -741,198 +418,35 @@ function VideoEditorContent() {
     deselectAll();
   }, [canRedoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, redoMask, redo, deselectAll]);
 
-  const handleCopy = useCallback(() => {
-    const selectedClips = clips.filter((c) => selectedClipIds.includes(c.id));
-    const selectedMasks = selectedMaskIds
-      .map((maskId) => masksMap.get(maskId))
-      .filter((mask): mask is MaskData => !!mask);
-    if (selectedClips.length === 0 && selectedMasks.length === 0) return;
-
-    clipboardRef.current = {
-      clips: selectedClips.map(cloneClip),
-      masks: selectedMasks.map(cloneMask),
-      mode: "copy",
-      sourceTime: playback.currentTime,
-    };
-    setHasClipboard(true);
-  }, [selectedClipIds, selectedMaskIds, clips, masksMap, playback.currentTime, clipboardRef, setHasClipboard]);
-
-  const handleCut = useCallback(() => {
-    if (selectedClipIds.length === 0) return;
-    const selectedClips = clips.filter((c) => selectedClipIds.includes(c.id));
-    if (selectedClips.length === 0) return;
-
-    clipboardRef.current = {
-      clips: selectedClips.map(cloneClip),
-      mode: "cut",
-      sourceTime: playback.currentTime,
-    };
-    setHasClipboard(true);
-
-    saveToHistory();
-    selectedClipIds.forEach((id) => removeClip(id));
-    deselectAll();
-  }, [selectedClipIds, clips, playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, removeClip, deselectAll]);
-
-  const handlePaste = useCallback(() => {
-    const clipboard = clipboardRef.current;
-    if (!clipboard) return;
-
-    const clipboardMasks = clipboard.masks || [];
-    const hasClipClipboard = clipboard.clips.length > 0;
-    const hasMaskClipboard = clipboardMasks.length > 0;
-    if (!hasClipClipboard && !hasMaskClipboard) return;
-
-    saveToHistory();
-
-    const currentTime = playback.currentTime;
-    const earliestClipStart = hasClipClipboard
-      ? Math.min(...clipboard.clips.map((c) => c.startTime))
-      : Number.POSITIVE_INFINITY;
-    const earliestMaskStart = hasMaskClipboard
-      ? Math.min(...clipboardMasks.map((m) => m.startTime))
-      : Number.POSITIVE_INFINITY;
-    const earliestStart = Math.min(earliestClipStart, earliestMaskStart);
-    const timeOffset = currentTime - earliestStart;
-    const duplicatedClipIds: string[] = [];
-    const duplicatedMaskIds: string[] = [];
-
-    if (hasClipClipboard) {
-      const newClips = clipboard.clips.map((clipData) => ({
-        ...cloneClip(clipData),
-        id: crypto.randomUUID(),
-        startTime: Math.max(0, clipData.startTime + timeOffset),
-      }));
-
-      // Keep media persistence stable for duplicated IDs.
-      void Promise.all(
-        newClips.map((newClip, index) =>
-          copyMediaBlob(clipboard.clips[index].id, newClip.id).catch((error) => {
-            console.error("Failed to copy media blob on paste:", error);
-          })
-        )
-      );
-
-      addClips(newClips);
-      duplicatedClipIds.push(...newClips.map((clip) => clip.id));
-    }
-
-    if (hasMaskClipboard) {
-      const trackIds = new Set(tracks.map((track) => track.id));
-      const fallbackTrackId = tracks.find((track) => track.type !== "audio")?.id || tracks[0]?.id || null;
-
-      const newMasks = clipboardMasks
-        .map((sourceMask) => {
-          const targetTrackId = trackIds.has(sourceMask.trackId) ? sourceMask.trackId : fallbackTrackId;
-          if (!targetTrackId) return null;
-          return {
-            ...cloneMask(sourceMask),
-            id: crypto.randomUUID(),
-            trackId: targetTrackId,
-            startTime: Math.max(0, sourceMask.startTime + timeOffset),
-          };
-        })
-        .filter((mask): mask is MaskData => !!mask);
-
-      if (newMasks.length > 0) {
-        addMasks(newMasks);
-        duplicatedMaskIds.push(...newMasks.map((mask) => mask.id));
-      }
-    }
-
-    if (duplicatedClipIds.length > 0) {
-      selectClips(duplicatedClipIds);
-    }
-    if (duplicatedMaskIds.length > 0) {
-      selectMasksForTimeline(duplicatedMaskIds);
-    }
-
-    if (clipboard.mode === "cut") {
-      clipboardRef.current = null;
-      setHasClipboard(false);
-    }
-  }, [
-    playback.currentTime,
+  const {
+    handleCopy,
+    handleCut,
+    handlePaste,
+    handleDelete,
+    handleDuplicate,
+  } = useVideoClipboardActions({
+    selectedClipIds,
+    selectedMaskIds,
+    clips,
+    masksMap,
+    tracks,
+    playbackCurrentTime: playback.currentTime,
     clipboardRef,
     setHasClipboard,
     saveToHistory,
+    removeClip,
+    deselectAll,
     addClips,
     addMasks,
     selectClips,
     selectMasksForTimeline,
-    tracks,
-  ]);
-
-  const handleDelete = useCallback(() => {
-    // Delete selected mask if one is active (editing mode)
-    if (activeMaskId && isEditingMask) {
-      endMaskEdit();
-      deleteMask(activeMaskId);
-      return;
-    }
-
-    const hasClips = selectedClipIds.length > 0;
-    const hasMasks = selectedMaskIds.length > 0;
-
-    // Also handle active mask (non-editing) if nothing else selected
-    if (!hasClips && !hasMasks) {
-      if (activeMaskId) {
-        deleteMask(activeMaskId);
-      }
-      return;
-    }
-
-    saveToHistory();
-    selectedClipIds.forEach((id) => removeClip(id));
-    selectedMaskIds.forEach((id) => deleteMask(id));
-    deselectAll();
-  }, [selectedClipIds, selectedMaskIds, saveToHistory, removeClip, deselectAll, activeMaskId, isEditingMask, deleteMask, endMaskEdit]);
-
-  const handleDuplicate = useCallback(() => {
-    const hasClips = selectedClipIds.length > 0;
-    const hasMasks = selectedMaskIds.length > 0;
-    if (!hasClips && !hasMasks) return;
-
-    saveToHistory();
-
-    const duplicatedClipIds: string[] = [];
-    const duplicatedMaskIds: string[] = [];
-
-    // Duplicate clips
-    if (hasClips) {
-      const selectedClips = clips.filter((clip) => selectedClipIds.includes(clip.id));
-      const duplicated = selectedClips.map((clip) => ({
-        ...cloneClip(clip),
-        id: crypto.randomUUID(),
-        startTime: clip.startTime + 0.25,
-        name: `${clip.name} (Copy)`,
-      }));
-      void Promise.all(
-        duplicated.map((dupClip, index) =>
-          copyMediaBlob(selectedClips[index].id, dupClip.id).catch((error) => {
-            console.error("Failed to copy media blob on duplicate:", error);
-          })
-        )
-      );
-      addClips(duplicated);
-      duplicatedClipIds.push(...duplicated.map((c) => c.id));
-    }
-
-    // Duplicate masks
-    for (const mid of selectedMaskIds) {
-      const newId = duplicateMask(mid);
-      if (newId) {
-        const source = masksMap.get(mid);
-        if (source) {
-          updateMaskTime(newId, source.startTime + 0.25, source.duration);
-        }
-        duplicatedMaskIds.push(newId);
-      }
-    }
-
-    if (duplicatedClipIds.length > 0) selectClips(duplicatedClipIds);
-    if (duplicatedMaskIds.length > 0) selectMasksForTimeline(duplicatedMaskIds);
-  }, [selectedClipIds, selectedMaskIds, clips, saveToHistory, addClips, selectClips, selectMasksForTimeline, duplicateMask, masksMap, updateMaskTime]);
+    duplicateMask,
+    updateMaskTime,
+    deleteMask,
+    activeMaskId,
+    isEditingMask,
+    endMaskEdit,
+  });
 
   const beginAudioAdjustment = useCallback(() => {
     if (audioHistorySavedRef.current) return;
@@ -962,82 +476,25 @@ function VideoEditorContent() {
     [selectedAudioClip, updateClip]
   );
 
-  const handleSelectAllCrop = useCallback(() => {
-    setCropArea({
-      x: 0,
-      y: 0,
-      width: project.canvasSize.width,
-      height: project.canvasSize.height,
-    });
-  }, [setCropArea, project.canvasSize.width, project.canvasSize.height]);
-
-  const handleClearCrop = useCallback(() => {
-    setCropArea(null);
-    setCanvasExpandMode(false);
-  }, [setCropArea, setCanvasExpandMode]);
-
-  const handleCropWidthChange = useCallback((newWidth: number) => {
-    if (!cropArea) return;
-    if (lockCropAspect && cropArea.width > 0) {
-      const ratio = cropArea.height / cropArea.width;
-      setCropArea({ ...cropArea, width: newWidth, height: Math.round(newWidth * ratio) });
-    } else {
-      setCropArea({ ...cropArea, width: newWidth });
-    }
-  }, [cropArea, lockCropAspect, setCropArea]);
-
-  const handleCropHeightChange = useCallback((newHeight: number) => {
-    if (!cropArea) return;
-    if (lockCropAspect && cropArea.height > 0) {
-      const ratio = cropArea.width / cropArea.height;
-      setCropArea({ ...cropArea, height: newHeight, width: Math.round(newHeight * ratio) });
-    } else {
-      setCropArea({ ...cropArea, height: newHeight });
-    }
-  }, [cropArea, lockCropAspect, setCropArea]);
-
-  const handleExpandToSquare = useCallback(() => {
-    if (!cropArea) return;
-    const maxSide = Math.max(cropArea.width, cropArea.height);
-    setCropArea({ ...cropArea, width: maxSide, height: maxSide });
-  }, [cropArea, setCropArea]);
-
-  const handleFitToSquare = useCallback(() => {
-    if (!cropArea) return;
-    const minSide = Math.min(cropArea.width, cropArea.height);
-    setCropArea({ ...cropArea, width: minSide, height: minSide });
-  }, [cropArea, setCropArea]);
-
-  const handleApplyCrop = useCallback(() => {
-    if (!cropArea) return;
-
-    const width = Math.max(1, Math.round(cropArea.width));
-    const height = Math.max(1, Math.round(cropArea.height));
-    if (width < 2 || height < 2) return;
-
-    const offsetX = Math.round(cropArea.x);
-    const offsetY = Math.round(cropArea.y);
-
-    saveToHistory();
-
-    for (const clip of clips) {
-      if (clip.type === "audio") continue;
-      updateClip(clip.id, {
-        position: {
-          x: clip.position.x - offsetX,
-          y: clip.position.y - offsetY,
-        },
-      });
-    }
-
-    setProject({
-      ...project,
-      canvasSize: { width, height },
-    });
-
-    setCropArea(null);
-    setCanvasExpandMode(false);
-  }, [cropArea, clips, saveToHistory, updateClip, setProject, project, setCropArea, setCanvasExpandMode]);
+  const {
+    handleSelectAllCrop,
+    handleClearCrop,
+    handleCropWidthChange,
+    handleCropHeightChange,
+    handleExpandToSquare,
+    handleFitToSquare,
+    handleApplyCrop,
+  } = useVideoCropActions({
+    cropArea,
+    lockCropAspect,
+    clips,
+    project,
+    setProject,
+    updateClip,
+    saveToHistory,
+    setCropArea,
+    setCanvasExpandMode,
+  });
 
   // View menu handlers
   const handleZoomIn = useCallback(() => {
@@ -1126,61 +583,21 @@ function VideoEditorContent() {
     previewViewportRef.current?.fitToContainer();
   }, [previewViewportRef]);
 
-  const handleCaptureFrameToImageLayer = useCallback(async () => {
-    if (isCapturingFrame) return;
-    const viewportApi = previewViewportRef.current;
-    if (!viewportApi) return;
-
-    setIsCapturingFrame(true);
-    try {
-      const captureTime = Math.max(0, playback.currentTime);
-      const frameBlob = await viewportApi.captureCompositeFrame(captureTime);
-      if (!frameBlob) {
-        alert("Failed to capture current frame.");
-        return;
-      }
-
-      let targetVideoTrackId = selectedVisualClip?.trackId ?? tracks.find((track) => track.type === "video")?.id ?? null;
-      if (!targetVideoTrackId) {
-        targetVideoTrackId = addTrack("Video 1", "video");
-      }
-
-      const frameUrl = URL.createObjectURL(frameBlob);
-      const frameSize = {
-        width: project.canvasSize.width,
-        height: project.canvasSize.height,
-      };
-
-      saveToHistory();
-      const clipId = addImageClip(targetVideoTrackId, frameUrl, frameSize, captureTime, 5);
-      try {
-        await saveMediaBlob(clipId, frameBlob);
-      } catch (error) {
-        console.error("Failed to save captured frame blob:", error);
-      }
-
-      selectClips([clipId]);
-      selectMasksForTimeline([]);
-    } catch (error) {
-      console.error("Frame capture failed:", error);
-      alert(`Failed to capture current frame: ${(error as Error).message}`);
-    } finally {
-      setIsCapturingFrame(false);
-    }
-  }, [
-    isCapturingFrame,
+  const clearSelectedMasks = useCallback(() => {
+    selectMasksForTimeline([]);
+  }, [selectMasksForTimeline]);
+  const { isCapturingFrame, captureFrameToImageLayer: handleCaptureFrameToImageLayer } = useCaptureFrameToImageLayer({
     previewViewportRef,
-    playback.currentTime,
-    selectedVisualClip?.trackId,
+    currentTime: playback.currentTime,
+    canvasSize: project.canvasSize,
     tracks,
+    selectedTrackId: selectedVisualClip?.trackId ?? null,
     addTrack,
-    project.canvasSize.height,
-    project.canvasSize.width,
-    saveToHistory,
     addImageClip,
+    saveToHistory,
     selectClips,
-    selectMasksForTimeline,
-  ]);
+    clearSelectedMasks,
+  });
 
   // Canvas size adjustment
   const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
