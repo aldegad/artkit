@@ -84,6 +84,18 @@ interface Translations {
   deleteFailed: string;
   importFailed: string;
   exportFailed: string;
+  exportType: string;
+  exportTypeZip: string;
+  exportTypeSpriteSheetPng: string;
+  exportTypeSpriteSheetWebp: string;
+  exportTypeMp4: string;
+  exportColumns: string;
+  exportColumnsAuto: string;
+  exportPadding: string;
+  exportBgTransparent: string;
+  exportLoopCount: string;
+  exporting: string;
+  exportFileName: string;
   enterProjectName: string;
   importOverwriteConfirm: string;
   noFrames: string;
@@ -420,6 +432,18 @@ const translations: Record<Language, Translations> = {
     deleteFailed: "삭제 실패",
     importFailed: "가져오기 실패",
     exportFailed: "내보내기 실패",
+    exportType: "내보내기 형식",
+    exportTypeZip: "PNG ZIP (개별 프레임)",
+    exportTypeSpriteSheetPng: "스프라이트 시트 (PNG)",
+    exportTypeSpriteSheetWebp: "스프라이트 시트 (WebP)",
+    exportTypeMp4: "MP4 (H.264)",
+    exportColumns: "열 수",
+    exportColumnsAuto: "자동",
+    exportPadding: "여백",
+    exportBgTransparent: "투명",
+    exportLoopCount: "반복 횟수",
+    exporting: "내보내는 중...",
+    exportFileName: "파일 이름",
     enterProjectName: "프로젝트 이름을 입력하세요:",
     importOverwriteConfirm: "기존 프로젝트를 모두 삭제하고 가져오시겠습니까?",
     noFrames: "프레임 없음",
@@ -754,6 +778,18 @@ const translations: Record<Language, Translations> = {
     deleteFailed: "Delete failed",
     importFailed: "Import failed",
     exportFailed: "Export failed",
+    exportType: "Export Type",
+    exportTypeZip: "PNG ZIP (Individual Frames)",
+    exportTypeSpriteSheetPng: "Sprite Sheet (PNG)",
+    exportTypeSpriteSheetWebp: "Sprite Sheet (WebP)",
+    exportTypeMp4: "MP4 (H.264)",
+    exportColumns: "Columns",
+    exportColumnsAuto: "Auto",
+    exportPadding: "Padding",
+    exportBgTransparent: "Transparent",
+    exportLoopCount: "Loop Count",
+    exporting: "Exporting...",
+    exportFileName: "File Name",
     enterProjectName: "Enter project name:",
     importOverwriteConfirm: "Delete all existing projects and import?",
     noFrames: "No frames",

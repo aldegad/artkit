@@ -27,6 +27,8 @@ import {
   useSpriteKeyboardShortcuts,
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
+  SpriteExportModal,
+  useSpriteExport,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
@@ -96,6 +98,10 @@ function SpriteEditorMain() {
   const { tracks, addTrack, restoreTracks } = useEditorTracks();
   const { copyFrame, pasteFrame } = useEditorClipboard();
   const { resetLayout } = useLayout();
+
+  // Export
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const { isExporting, exportProgress, exportMp4 } = useSpriteExport();
 
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
@@ -299,36 +305,46 @@ function SpriteEditorMain() {
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
 
-  // Export actions (moved from timeline panel to File menu)
-  const exportZip = useCallback(async () => {
+  // Unified export handler
+  const handleExport = useCallback(async (settings: import("@/domains/sprite/components/SpriteExportModal").SpriteExportSettings) => {
     if (!hasRenderableFrames) return;
+    const name = settings.fileName.trim() || projectName.trim() || "sprite-project";
     try {
-      await downloadCompositedFramesAsZip(tracks, projectName.trim() || "sprite-project");
+      switch (settings.exportType) {
+        case "zip":
+          await downloadCompositedFramesAsZip(tracks, name);
+          break;
+        case "sprite-png":
+          await downloadCompositedSpriteSheet(tracks, name, {
+            columns: settings.columns || undefined,
+            padding: settings.padding,
+            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
+          });
+          break;
+        case "sprite-webp":
+          await downloadCompositedSpriteSheet(tracks, name, {
+            format: "webp",
+            columns: settings.columns || undefined,
+            padding: settings.padding,
+            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
+            quality: settings.webpQuality,
+          });
+          break;
+        case "mp4":
+          await exportMp4(tracks, name, {
+            fps: settings.mp4Fps,
+            compression: settings.mp4Compression,
+            backgroundColor: settings.mp4BackgroundColor,
+            loopCount: settings.mp4LoopCount,
+          });
+          break;
+      }
+      setIsExportModalOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
       alert(`${t.exportFailed}: ${(error as Error).message}`);
     }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
-
-  const exportSpriteSheet = useCallback(async () => {
-    if (!hasRenderableFrames) return;
-    try {
-      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project");
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert(`${t.exportFailed}: ${(error as Error).message}`);
-    }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
-
-  const exportSpriteSheetWebp = useCallback(async () => {
-    if (!hasRenderableFrames) return;
-    try {
-      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project", { format: "webp" });
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert(`${t.exportFailed}: ${(error as Error).message}`);
-    }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed, exportMp4]);
 
   // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
@@ -614,9 +630,7 @@ function SpriteEditorMain() {
             onLoad={() => setIsProjectListOpen(true)}
             onSave={saveProject}
             onSaveAs={saveProjectAs}
-            onExportZip={exportZip}
-            onExportSpriteSheet={exportSpriteSheet}
-            onExportSpriteSheetWebp={exportSpriteSheetWebp}
+            onExport={() => setIsExportModalOpen(true)}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -755,6 +769,39 @@ function SpriteEditorMain() {
         }}
         onCancel={() => {
           setShowSyncDialog(false);
+        }}
+      />
+
+      {/* Export Modal */}
+      <SpriteExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onExport={handleExport}
+        defaultFileName={projectName.trim() || "sprite-project"}
+        currentFps={fps}
+        isExporting={isExporting}
+        exportProgress={exportProgress}
+        translations={{
+          export: t.export,
+          cancel: t.cancel,
+          exportType: t.exportType,
+          exportTypeZip: t.exportTypeZip,
+          exportTypeSpriteSheetPng: t.exportTypeSpriteSheetPng,
+          exportTypeSpriteSheetWebp: t.exportTypeSpriteSheetWebp,
+          exportTypeMp4: t.exportTypeMp4,
+          exportFileName: t.exportFileName,
+          exportColumns: t.exportColumns,
+          exportColumnsAuto: t.exportColumnsAuto,
+          exportPadding: t.exportPadding,
+          backgroundColor: t.backgroundColor,
+          exportBgTransparent: t.exportBgTransparent,
+          quality: t.quality,
+          compression: t.compression,
+          compressionHighQuality: t.compressionHighQuality,
+          compressionBalanced: t.compressionBalanced,
+          compressionSmallFile: t.compressionSmallFile,
+          exportLoopCount: t.exportLoopCount,
+          exporting: t.exporting,
         }}
       />
 
