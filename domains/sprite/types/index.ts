@@ -35,7 +35,7 @@ export interface SpriteTrack {
 }
 
 export type SpriteToolMode = "pen" | "select" | "hand";
-export type FrameEditToolMode = "brush" | "eraser" | "eyedropper";
+export type FrameEditToolMode = "brush" | "eraser" | "eyedropper" | "zoom";
 
 export type TimelineMode = "reorder" | "offset";
 
