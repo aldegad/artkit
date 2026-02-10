@@ -51,7 +51,7 @@ interface SpriteToolStore {
 
 export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   // Initial State
-  toolMode: "select",
+  toolMode: "brush",
   frameEditToolMode: "brush",
   isSpacePressed: false,
   isPanLocked: false,
@@ -64,8 +64,17 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   pressureEnabled: true,
 
   // Tool Actions
-  setSpriteToolMode: (mode) => set({ toolMode: mode }),
-  setFrameEditToolMode: (mode) => set({ frameEditToolMode: mode }),
+  setSpriteToolMode: (mode) =>
+    set(() => {
+      if (mode === "brush" || mode === "eraser" || mode === "eyedropper" || mode === "zoom") {
+        return {
+          toolMode: mode,
+          frameEditToolMode: mode,
+        };
+      }
+      return { toolMode: mode };
+    }),
+  setFrameEditToolMode: (mode) => set({ frameEditToolMode: mode, toolMode: mode }),
   setIsSpacePressed: (pressed) => set({ isSpacePressed: pressed }),
   setIsPanLocked: (locked) => set({ isPanLocked: locked }),
 
@@ -87,7 +96,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   // Reset
   reset: () =>
     set({
-      toolMode: "select",
+      toolMode: "brush",
       frameEditToolMode: "brush",
       isSpacePressed: false,
       isPanLocked: false,

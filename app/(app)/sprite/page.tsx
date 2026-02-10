@@ -70,8 +70,6 @@ function SpriteEditorMain() {
   const {
     toolMode,
     setSpriteToolMode,
-    frameEditToolMode,
-    setFrameEditToolMode,
     setCurrentPoints,
     setIsSpacePressed,
   } = useEditorTools();
@@ -544,7 +542,6 @@ function SpriteEditorMain() {
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
     setSpriteToolMode,
-    setFrameEditToolMode,
     canUndo,
     canRedo,
     undo,
@@ -660,8 +657,6 @@ function SpriteEditorMain() {
       <SpriteTopToolbar
         toolMode={toolMode}
         setSpriteToolMode={setSpriteToolMode}
-        frameEditToolMode={frameEditToolMode}
-        setFrameEditToolMode={setFrameEditToolMode}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
@@ -676,7 +671,6 @@ function SpriteEditorMain() {
 
       <SpriteToolOptionsBar
         toolMode={toolMode}
-        frameEditToolMode={frameEditToolMode}
         brushColor={brushColor}
         setBrushColor={setBrushColor}
         brushSize={brushSize}

@@ -14,13 +14,11 @@ import {
   UndoIcon,
   RedoIcon,
 } from "@/shared/components/icons";
-import type { SpriteToolMode, FrameEditToolMode } from "../types";
+import type { SpriteToolMode } from "../types";
 
 interface SpriteTopToolbarProps {
   toolMode: SpriteToolMode;
   setSpriteToolMode: (mode: SpriteToolMode) => void;
-  frameEditToolMode: FrameEditToolMode;
-  setFrameEditToolMode: (mode: FrameEditToolMode) => void;
   isRemovingBackground: boolean;
   isInterpolating: boolean;
   hasFramesWithImage: boolean;
@@ -36,8 +34,6 @@ interface SpriteTopToolbarProps {
 export default function SpriteTopToolbar({
   toolMode,
   setSpriteToolMode,
-  frameEditToolMode,
-  setFrameEditToolMode,
   isRemovingBackground,
   isInterpolating,
   hasFramesWithImage,
@@ -112,12 +108,9 @@ export default function SpriteTopToolbar({
             shortcut="B"
           >
             <button
-              onClick={() => {
-                setSpriteToolMode("select");
-                setFrameEditToolMode("brush");
-              }}
+              onClick={() => setSpriteToolMode("brush")}
               className={`p-1.5 rounded transition-colors ${
-                toolMode !== "hand" && frameEditToolMode === "brush"
+                toolMode === "brush"
                   ? "bg-accent-primary text-white"
                   : "hover:bg-interactive-hover"
               }`}
@@ -136,12 +129,9 @@ export default function SpriteTopToolbar({
             shortcut="E"
           >
             <button
-              onClick={() => {
-                setSpriteToolMode("select");
-                setFrameEditToolMode("eraser");
-              }}
+              onClick={() => setSpriteToolMode("eraser")}
               className={`p-1.5 rounded transition-colors ${
-                toolMode !== "hand" && frameEditToolMode === "eraser"
+                toolMode === "eraser"
                   ? "bg-accent-primary text-white"
                   : "hover:bg-interactive-hover"
               }`}
@@ -160,12 +150,9 @@ export default function SpriteTopToolbar({
             shortcut="I"
           >
             <button
-              onClick={() => {
-                setSpriteToolMode("select");
-                setFrameEditToolMode("eyedropper");
-              }}
+              onClick={() => setSpriteToolMode("eyedropper")}
               className={`p-1.5 rounded transition-colors ${
-                toolMode !== "hand" && frameEditToolMode === "eyedropper"
+                toolMode === "eyedropper"
                   ? "bg-accent-primary text-white"
                   : "hover:bg-interactive-hover"
               }`}
@@ -184,12 +171,9 @@ export default function SpriteTopToolbar({
             shortcut="Z"
           >
             <button
-              onClick={() => {
-                setSpriteToolMode("select");
-                setFrameEditToolMode("zoom");
-              }}
+              onClick={() => setSpriteToolMode("zoom")}
               className={`p-1.5 rounded transition-colors ${
-                toolMode !== "hand" && frameEditToolMode === "zoom"
+                toolMode === "zoom"
                   ? "bg-accent-primary text-white"
                   : "hover:bg-interactive-hover"
               }`}
