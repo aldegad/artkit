@@ -465,14 +465,20 @@ function VideoEditorContent() {
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
   const playbackRange = useMemo(() => {
-    // Don't persist range when cleared (loop off + start at 0)
-    if (!playback.loop && playback.loopStart === 0) return undefined;
+    const duration = Math.max(project.duration, 0.001);
+    const loopStart = Math.max(0, Math.min(playback.loopStart, duration));
+    const loopEnd = Math.max(loopStart + 0.001, Math.min(playback.loopEnd, duration));
+    const hasCustomRange = loopStart > 0.001 || loopEnd < duration - 0.001;
+
+    // Don't persist when range is effectively cleared (full range + loop off).
+    if (!playback.loop && !hasCustomRange) return undefined;
+
     return {
       loop: playback.loop,
-      loopStart: playback.loopStart,
-      loopEnd: playback.loopEnd,
+      loopStart,
+      loopEnd,
     };
-  }, [playback.loop, playback.loopStart, playback.loopEnd]);
+  }, [project.duration, playback.loop, playback.loopStart, playback.loopEnd]);
   const projectRef = useRef(project);
   projectRef.current = project;
 
