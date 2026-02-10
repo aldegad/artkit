@@ -21,9 +21,35 @@ interface UseImageImportOptions {
 
 interface UseImageImportReturn {
   loadImageFile: (file: File) => void;
+  loadImageFiles: (files: File[]) => void;
   handleFileSelect: (e: ChangeEvent<HTMLInputElement>) => void;
   handleDrop: (e: DragEvent) => void;
   handleDragOver: (e: DragEvent) => void;
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
+function readFileAsDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const src = event.target?.result;
+      resolve(typeof src === "string" ? src : null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromSrc(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }
 
 export function useImageImport(options: UseImageImportOptions): UseImageImportReturn {
@@ -43,26 +69,29 @@ export function useImageImport(options: UseImageImportOptions): UseImageImportRe
     setStampSource,
   } = options;
 
-  const loadImageFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith("image/")) return;
+  const loadImageFiles = useCallback(
+    (files: File[]) => {
+      void (async () => {
+        const imageFiles = files.filter(isImageFile);
+        if (imageFiles.length === 0) return;
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const src = event.target?.result;
-        if (typeof src !== "string") return;
+        let shouldInitializeCanvas = layersCount === 0;
 
-        const fileName = file.name.replace(/\.[^/.]+$/, "");
+        for (const file of imageFiles) {
+          const src = await readFileAsDataUrl(file);
+          if (!src) continue;
 
-        if (layersCount === 0) {
-          setRotation(0);
-          setCropArea(null);
-          setZoom(1);
-          setPan({ x: 0, y: 0 });
-          setStampSource(null);
+          const fileName = file.name.replace(/\.[^/.]+$/, "");
 
-          const img = new Image();
-          img.onload = () => {
+          if (shouldInitializeCanvas) {
+            const img = await loadImageFromSrc(src);
+            if (!img) continue;
+
+            setRotation(0);
+            setCropArea(null);
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+            setStampSource(null);
             imageRef.current = img;
             setCanvasSize({ width: img.width, height: img.height });
 
@@ -81,14 +110,13 @@ export function useImageImport(options: UseImageImportOptions): UseImageImportRe
             editCanvasRef.current = canvas;
             setLayers([imageLayer]);
             setActiveLayerId(imageLayer.id);
-          };
-          img.src = src;
-          return;
-        }
+            shouldInitializeCanvas = false;
+            continue;
+          }
 
-        addImageLayer(src, fileName || undefined);
-      };
-      reader.readAsDataURL(file);
+          addImageLayer(src, fileName || undefined);
+        }
+      })();
     },
     [
       layersCount,
@@ -107,22 +135,29 @@ export function useImageImport(options: UseImageImportOptions): UseImageImportRe
     ]
   );
 
+  const loadImageFile = useCallback(
+    (file: File) => {
+      loadImageFiles([file]);
+    },
+    [loadImageFiles]
+  );
+
   const handleFileSelect = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) loadImageFile(file);
+      const files = e.target.files ? Array.from(e.target.files) : [];
+      if (files.length > 0) loadImageFiles(files);
       e.currentTarget.value = "";
     },
-    [loadImageFile]
+    [loadImageFiles]
   );
 
   const handleDrop = useCallback(
     (e: DragEvent) => {
       e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) loadImageFile(file);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) loadImageFiles(files);
     },
-    [loadImageFile]
+    [loadImageFiles]
   );
 
   const handleDragOver = useCallback((e: DragEvent) => {
@@ -131,6 +166,7 @@ export function useImageImport(options: UseImageImportOptions): UseImageImportRe
 
   return {
     loadImageFile,
+    loadImageFiles,
     handleFileSelect,
     handleDrop,
     handleDragOver,

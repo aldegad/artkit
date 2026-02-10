@@ -514,7 +514,7 @@ export function useImageEditorController() {
     previousToolModeRef,
   });
 
-  const { loadImageFile, handleFileSelect, handleDrop, handleDragOver } = useImageImport({
+  const { loadImageFile, loadImageFiles, handleFileSelect, handleDrop, handleDragOver } = useImageImport({
     layersCount: layers.length,
     addImageLayer,
     layerCanvasesRef,
@@ -590,6 +590,7 @@ export function useImageEditorController() {
     handleMouseLeave,
     getCursor,
     loadImageFile,
+    loadImageFiles,
     displaySize,
     onGuideCreate: addGuide,
     onGuideDragStateChange: handleGuideDragStateChange,
