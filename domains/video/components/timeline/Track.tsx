@@ -4,7 +4,7 @@ import { VideoTrack, Clip as ClipType, MaskData } from "../../types";
 import { Clip } from "./Clip";
 import { MaskClip } from "./MaskClip";
 import { cn } from "@/shared/utils/cn";
-import { MASK_LANE_HEIGHT } from "../../constants";
+import { MASK_LANE_HEIGHT, TIMELINE } from "../../constants";
 
 interface TrackProps {
   track: VideoTrack;
@@ -17,7 +17,8 @@ interface TrackProps {
 
 export function Track({ track, clips, masks, liftedClipId, isLiftDropTarget, className }: TrackProps) {
   const hasMasks = masks.length > 0;
-  const totalHeight = track.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
+  const trackHeight = TIMELINE.TRACK_DEFAULT_HEIGHT;
+  const totalHeight = trackHeight + (hasMasks ? MASK_LANE_HEIGHT : 0);
 
   return (
     <div
@@ -30,7 +31,7 @@ export function Track({ track, clips, masks, liftedClipId, isLiftDropTarget, cla
       style={{ height: totalHeight }}
     >
       {/* Clips area */}
-      <div className="relative" style={{ height: track.height }}>
+      <div className="relative" style={{ height: trackHeight }}>
         <div className={cn(
           "absolute inset-0 bg-surface-secondary/50 transition-colors",
           isLiftDropTarget && "bg-accent/10"

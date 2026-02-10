@@ -190,7 +190,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       let offset = 0;
       for (const track of tracks) {
         const hasMasks = getMasksForTrack(track.id).length > 0;
-        const clipEnd = offset + track.height;
+        const clipEnd = offset + TIMELINE.TRACK_DEFAULT_HEIGHT;
         const trackEnd = clipEnd + (hasMasks ? MASK_LANE_HEIGHT : 0);
 
         if (y >= offset && y < trackEnd) {
