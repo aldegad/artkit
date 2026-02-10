@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Select } from "@/shared/components";
+import { CloseIcon } from "@/shared/components/icons";
 
 // ============================================
 // Types
@@ -90,9 +91,7 @@ export function VideoExportModal({
             disabled={isExporting}
             className="p-1 rounded hover:bg-interactive-hover text-text-tertiary disabled:opacity-50"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <CloseIcon />
           </button>
         </div>
 

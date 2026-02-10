@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useLayout, useLayoutConfig } from "./LayoutConfigContext";
 import { PanelNode } from "@/shared/types/layout";
+import { MinusIcon, UndockIcon, ExpandPanelIcon } from "@/shared/components/icons";
 
 // ============================================
 // Types
@@ -217,9 +218,7 @@ export default function Panel({ node }: PanelProps) {
               className="p-1.5 hover:bg-interactive-hover rounded-lg text-text-tertiary hover:text-text-primary transition-all"
               title="Minimize panel"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14" />
-              </svg>
+              <MinusIcon />
             </button>
             {/* Undock button */}
             <button
@@ -227,14 +226,7 @@ export default function Panel({ node }: PanelProps) {
               className="p-1.5 hover:bg-interactive-hover rounded-lg text-text-tertiary hover:text-text-primary transition-all"
               title="Floating mode"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                />
-              </svg>
+              <UndockIcon />
             </button>
           </div>
         </div>
@@ -246,9 +238,7 @@ export default function Panel({ node }: PanelProps) {
             className="p-2 hover:bg-interactive-hover rounded-lg text-text-tertiary hover:text-text-primary transition-all"
             title="Expand panel"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-            </svg>
+            <ExpandPanelIcon className="w-5 h-5" />
           </button>
         </div>
       )}

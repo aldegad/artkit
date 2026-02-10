@@ -7,6 +7,7 @@ import { Point, SpriteFrame } from "../types";
 import { isPointInPolygon } from "../utils/geometry";
 import { extractFrameImageFromSource } from "../utils";
 import { ImageDropZone } from "../../../shared/components";
+import { ImageIcon } from "../../../shared/components/icons";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
@@ -643,21 +644,9 @@ export default function CanvasContent() {
           />
           {/* 드래그 오버레이 - 이미지가 있을 때도 드래그 앤 드롭 피드백 표시 */}
           {isDragOver && (
-            <div className="absolute inset-0 bg-accent-primary/50 border-2 border-dashed border-accent-primary flex items-center justify-center pointer-events-none">
-              <div className="text-center">
-                <svg
-                  className="w-16 h-16 mx-auto mb-4 text-accent-primary"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
+              <div className="absolute inset-0 bg-accent-primary/50 border-2 border-dashed border-accent-primary flex items-center justify-center pointer-events-none">
+                <div className="text-center">
+                  <ImageIcon className="w-16 h-16 mx-auto mb-4 text-accent-primary" />
                 <p className="text-lg text-accent-primary">새 이미지로 교체</p>
               </div>
             </div>

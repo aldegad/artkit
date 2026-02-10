@@ -3,8 +3,14 @@ import {
   CloseIcon,
   ChevronDownIcon,
   MenuIcon,
+  CogIcon,
+  CloudIcon,
   PlusIcon,
   MinusIcon,
+  ExpandPanelIcon,
+  UndockIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
   CheckIcon,
   SpinnerIcon,
   WarningIcon,
@@ -21,6 +27,8 @@ import {
   LoopOffIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
+  MusicNoteIcon,
+  VideoCameraIcon,
   // Editor Tools
   CursorIcon,
   MarqueeIcon,
@@ -35,6 +43,10 @@ import {
   HandIcon,
   ZoomSearchIcon,
   PanIcon,
+  ReorderIcon,
+  OffsetIcon,
+  FlipIcon,
+  BackgroundPatternIcon,
   // Layers & Alignment
   EyeOpenIcon,
   EyeClosedIcon,
@@ -101,6 +113,8 @@ import {
   LandingSpriteIcon,
   FrameSkipToggleIcon,
   NthFrameSkipIcon,
+  GoogleIcon,
+  GithubIcon,
 } from "@/shared/components/icons";
 import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
 import ArtkitWordmark from "@/shared/components/app/icons/ArtkitWordmark";
@@ -125,13 +139,21 @@ const iconRegistry: IconMeta[] = [
   // Brand
   { name: "ArtkitLogo", component: ArtkitLogo, category: "brand", tags: ["artkit", "logo", "ak", "brand"] },
   { name: "ArtkitWordmark", component: ArtkitWordmark, category: "brand", tags: ["artkit", "wordmark", "brand", "text"] },
+  { name: "GoogleIcon", component: GoogleIcon, category: "brand", tags: ["google", "brand", "auth", "signin"] },
+  { name: "GithubIcon", component: GithubIcon, category: "brand", tags: ["github", "brand", "social", "code"] },
 
   // Navigation & UI Controls
   { name: "CloseIcon", component: CloseIcon, category: "navigation", tags: ["close", "x", "dismiss", "remove"] },
   { name: "ChevronDownIcon", component: ChevronDownIcon, category: "navigation", tags: ["chevron", "down", "arrow", "dropdown"] },
   { name: "MenuIcon", component: MenuIcon, category: "navigation", tags: ["menu", "hamburger", "navigation"] },
+  { name: "CogIcon", component: CogIcon, category: "navigation", tags: ["settings", "cog", "gear", "options"] },
+  { name: "CloudIcon", component: CloudIcon, category: "navigation", tags: ["cloud", "sync", "storage", "online"] },
   { name: "PlusIcon", component: PlusIcon, category: "navigation", tags: ["plus", "add", "new", "create"] },
   { name: "MinusIcon", component: MinusIcon, category: "navigation", tags: ["minus", "subtract", "remove", "decrease"] },
+  { name: "ExpandPanelIcon", component: ExpandPanelIcon, category: "navigation", tags: ["expand", "restore", "panel", "maximize"] },
+  { name: "UndockIcon", component: UndockIcon, category: "navigation", tags: ["undock", "float", "detach", "window"] },
+  { name: "ZoomInIcon", component: ZoomInIcon, category: "navigation", tags: ["zoom", "in", "magnify", "plus"] },
+  { name: "ZoomOutIcon", component: ZoomOutIcon, category: "navigation", tags: ["zoom", "out", "magnify", "minus"] },
   { name: "CheckIcon", component: CheckIcon, category: "navigation", tags: ["check", "done", "complete", "success"] },
   { name: "SpinnerIcon", component: SpinnerIcon, category: "navigation", tags: ["spinner", "loading", "progress", "wait"] },
   { name: "WarningIcon", component: WarningIcon, category: "navigation", tags: ["warning", "alert", "caution", "error"] },
@@ -149,6 +171,8 @@ const iconRegistry: IconMeta[] = [
   { name: "LoopOffIcon", component: LoopOffIcon, category: "media", tags: ["loop", "repeat", "cycle", "off", "disabled", "no-repeat"] },
   { name: "VolumeOnIcon", component: VolumeOnIcon, category: "media", tags: ["volume", "sound", "audio", "on", "unmute"] },
   { name: "VolumeMutedIcon", component: VolumeMutedIcon, category: "media", tags: ["volume", "sound", "audio", "muted", "off"] },
+  { name: "MusicNoteIcon", component: MusicNoteIcon, category: "media", tags: ["music", "audio", "note", "sound"] },
+  { name: "VideoCameraIcon", component: VideoCameraIcon, category: "media", tags: ["video", "camera", "record", "media"] },
 
   // Editor Tools
   { name: "CursorIcon", component: CursorIcon, category: "editorTools", tags: ["cursor", "pointer", "select", "arrow"] },
@@ -164,6 +188,10 @@ const iconRegistry: IconMeta[] = [
   { name: "HandIcon", component: HandIcon, category: "editorTools", tags: ["hand", "pan", "grab", "move canvas"] },
   { name: "ZoomSearchIcon", component: ZoomSearchIcon, category: "editorTools", tags: ["zoom", "search", "magnify", "magnifying glass"] },
   { name: "PanIcon", component: PanIcon, category: "editorTools", tags: ["pan", "arrows", "four-way", "move"] },
+  { name: "ReorderIcon", component: ReorderIcon, category: "editorTools", tags: ["reorder", "sort", "arrange", "order"] },
+  { name: "OffsetIcon", component: OffsetIcon, category: "editorTools", tags: ["offset", "shift", "translate", "move"] },
+  { name: "FlipIcon", component: FlipIcon, category: "editorTools", tags: ["flip", "mirror", "reflect", "axis"] },
+  { name: "BackgroundPatternIcon", component: BackgroundPatternIcon, category: "editorTools", tags: ["checkerboard", "background", "pattern", "transparency"] },
   { name: "FrameSkipToggleIcon", component: FrameSkipToggleIcon, category: "editorTools", tags: ["frame", "skip", "toggle", "disable", "sprite"] },
   { name: "NthFrameSkipIcon", component: NthFrameSkipIcon, category: "editorTools", tags: ["nth", "frame", "skip", "pattern", "filter", "sprite"] },
 

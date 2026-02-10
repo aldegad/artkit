@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "@/shared/contexts";
 import { ImageDropZone, Select, HeaderContent } from "@/shared/components";
+import { PlusIcon } from "@/shared/components/icons";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
 
 export default function ImageConverter() {
@@ -327,19 +328,7 @@ export default function ImageConverter() {
               onClick={() => fileInputRef.current?.click()}
               className="aspect-square border-2 border-dashed border-border-default rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-accent-primary hover:bg-surface-secondary/50 transition-colors"
             >
-              <svg
-                className="w-8 h-8 text-text-tertiary"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
+              <PlusIcon className="w-8 h-8 text-text-tertiary" />
               <span className="text-sm text-text-tertiary">{t.addMore}</span>
             </div>
           </div>

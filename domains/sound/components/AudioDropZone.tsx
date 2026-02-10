@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { useLanguage } from "@/shared/contexts/LanguageContext";
+import { MusicNoteIcon } from "@/shared/components/icons";
 
 export function AudioDropZone() {
   const { t } = useLanguage();
@@ -48,20 +49,7 @@ export function AudioDropZone() {
       onClick={handleClick}
       className="m-4 w-[calc(100%-2rem)] h-[calc(100%-2rem)] bg-surface-secondary border-2 border-dashed border-text-tertiary/50 rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-accent-primary hover:bg-surface-tertiary/50 transition-colors"
     >
-      {/* Audio Icon */}
-      <svg
-        className="w-16 h-16 text-text-tertiary"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-        />
-      </svg>
+      <MusicNoteIcon className="w-16 h-16 text-text-tertiary" />
 
       <div className="text-center">
         <p className="text-lg text-text-primary">{t.dragOrClickToOpen}</p>

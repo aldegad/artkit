@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditorFramesMeta, useEditorBrush, useEditorHistory, useEditorTools } from "../contexts/SpriteEditorContext";
 import { useLanguage } from "../../../shared/contexts";
-import { StepBackwardIcon, StepForwardIcon } from "../../../shared/components/icons";
+import { StepBackwardIcon, StepForwardIcon, PlusIcon, MinusIcon } from "../../../shared/components/icons";
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
@@ -595,7 +595,7 @@ export default function FramePreviewContent() {
             }
             className="p-1 hover:bg-interactive-hover rounded transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M5 12h14" /></svg>
+            <MinusIcon className="w-3.5 h-3.5" />
           </button>
           <span className="text-xs w-10 text-center text-text-primary">{Math.round(currentZoom * 100)}%</span>
           <button
@@ -609,7 +609,7 @@ export default function FramePreviewContent() {
             }
             className="p-1 hover:bg-interactive-hover rounded transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeWidth={2} d="M12 5v14M5 12h14" /></svg>
+            <PlusIcon className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

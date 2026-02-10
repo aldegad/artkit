@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, KeyboardEvent } from "react";
 import { Popover } from "./Popover";
 import { Scrollbar } from "./Scrollbar";
+import { ChevronDownIcon, CheckIcon } from "./icons";
 
 // ============================================
 // Types
@@ -137,14 +138,7 @@ export function Select<T extends string = string>({
       <span className={selectedOption ? "text-text-primary" : "text-text-tertiary"}>
         {selectedOption?.label ?? placeholder}
       </span>
-      <svg
-        className={`w-3 h-3 text-text-tertiary transition-transform ${isOpen ? "rotate-180" : ""}`}
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
+      <ChevronDownIcon className={`w-3 h-3 text-text-tertiary transition-transform ${isOpen ? "rotate-180" : ""}`} />
     </button>
   );
 
@@ -188,9 +182,7 @@ export function Select<T extends string = string>({
               {/* Check mark for selected item */}
               <span className="w-4 flex-shrink-0">
                 {isSelected && (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <CheckIcon />
                 )}
               </span>
               <span>{option.label}</span>

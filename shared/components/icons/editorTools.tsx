@@ -123,3 +123,12 @@ export const NthFrameSkipIcon: React.FC<IconProps> = ({ className = "w-4 h-4" })
     <rect x="18" y="4" width="4" height="16" rx="1" strokeWidth={2} />
   </svg>
 );
+
+export const BackgroundPatternIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="currentColor">
+    <rect x="1" y="1" width="6" height="6" opacity="0.8" />
+    <rect x="9" y="1" width="6" height="6" opacity="0.3" />
+    <rect x="1" y="9" width="6" height="6" opacity="0.3" />
+    <rect x="9" y="9" width="6" height="6" opacity="0.8" />
+  </svg>
+);
