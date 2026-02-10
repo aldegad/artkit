@@ -34,6 +34,7 @@ import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
+import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
@@ -72,8 +73,6 @@ function SpriteEditorMain() {
   const {
     toolMode,
     setSpriteToolMode,
-    frameEditToolMode,
-    setFrameEditToolMode,
     setCurrentPoints,
     setIsSpacePressed,
   } = useEditorTools();
@@ -117,6 +116,7 @@ function SpriteEditorMain() {
 
   // Background removal state
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
+  const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>("balanced");
   const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
   const [interpolationSteps, setInterpolationSteps] = useState(1);
   const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>("fast");
@@ -139,6 +139,7 @@ function SpriteEditorMain() {
     selectedFrameIds,
     setFrames,
     pushHistory,
+    quality: bgRemovalQuality,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
@@ -560,7 +561,6 @@ function SpriteEditorMain() {
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
     setSpriteToolMode,
-    setFrameEditToolMode,
     canUndo,
     canRedo,
     undo,
@@ -673,8 +673,6 @@ function SpriteEditorMain() {
       <SpriteTopToolbar
         toolMode={toolMode}
         setSpriteToolMode={setSpriteToolMode}
-        frameEditToolMode={frameEditToolMode}
-        setFrameEditToolMode={setFrameEditToolMode}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
@@ -689,7 +687,6 @@ function SpriteEditorMain() {
 
       <SpriteToolOptionsBar
         toolMode={toolMode}
-        frameEditToolMode={frameEditToolMode}
         brushColor={brushColor}
         setBrushColor={setBrushColor}
         brushSize={brushSize}
@@ -711,12 +708,14 @@ function SpriteEditorMain() {
           brush: t.brush,
           eraser: t.eraser,
           eyedropper: t.eyedropper,
+          zoomInOut: t.zoomInOut,
           frame: t.frame,
           selected: t.selected,
           point: t.point,
           presets: t.presets,
           pressure: t.pressure,
           builtIn: t.builtIn,
+          zoomToolTip: t.zoomToolTip,
         }}
       />
 
@@ -860,6 +859,8 @@ function SpriteEditorMain() {
           setShowBgRemovalConfirm(false);
           handleRemoveBackground("all");
         }}
+        quality={bgRemovalQuality}
+        onQualityChange={setBgRemovalQuality}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
         status={bgRemovalStatus}

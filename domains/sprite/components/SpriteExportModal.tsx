@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { Select } from "@/shared/components";
-import { CloseIcon } from "@/shared/components/icons";
+import { ExportModal, Select } from "@/shared/components";
 import type { SpriteExportProgressState } from "../hooks/useSpriteExport";
 
 // ============================================
@@ -79,13 +77,13 @@ function saveSettings(settings: SavedExportSettings) {
 function getExtension(type: SpriteExportType): string {
   switch (type) {
     case "zip":
-      return "zip";
+      return ".zip";
     case "sprite-png":
-      return "png";
+      return ".png";
     case "sprite-webp":
-      return "webp";
+      return ".webp";
     case "mp4":
-      return "mp4";
+      return ".mp4";
   }
 }
 
@@ -217,307 +215,210 @@ export default function SpriteExportModal({
     onExport,
   ]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleExport();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        if (!isExporting) onClose();
-      }
-    },
-    [handleExport, isExporting, onClose],
-  );
-
-  if (!isOpen) return null;
-
   const isSpriteSheet =
     exportType === "sprite-png" || exportType === "sprite-webp";
-  const ext = getExtension(exportType);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onKeyDown={handleKeyDown}
+  return (
+    <ExportModal
+      isOpen={isOpen}
+      onClose={onClose}
+      onExport={handleExport}
+      title={t.export}
+      fileName={fileName}
+      onFileNameChange={setFileName}
+      fileSuffix={getExtension(exportType)}
+      fileNameLabel={t.exportFileName}
+      formatLabel={t.exportType}
+      formatOptions={[
+        { value: "zip", label: t.exportTypeZip },
+        { value: "sprite-png", label: t.exportTypeSpriteSheetPng },
+        { value: "sprite-webp", label: t.exportTypeSpriteSheetWebp },
+        { value: "mp4", label: t.exportTypeMp4 },
+      ]}
+      formatValue={exportType}
+      onFormatChange={(value) => setExportType(value as SpriteExportType)}
+      isExporting={isExporting}
+      exportProgress={exportProgress}
+      cancelLabel={t.cancel}
+      exportLabel={t.export}
+      exportingLabel={t.exporting}
     >
-      <div
-        className="bg-surface-primary border border-border-default rounded-lg shadow-xl w-[380px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-2">
-          <h3 className="text-sm font-semibold">{t.export}</h3>
-          <button
-            onClick={onClose}
-            disabled={isExporting}
-            className="p-1 rounded hover:bg-interactive-hover text-text-tertiary disabled:opacity-50"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        {/* Progress */}
-        {isExporting && exportProgress && (
-          <div className="px-4 py-2 border-b border-border-default bg-surface-secondary">
-            <div className="flex items-center gap-2 text-sm text-text-secondary">
-              <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
-              <span>{exportProgress.stage}</span>
-            </div>
-            {exportProgress.detail && (
-              <div className="mt-0.5 text-xs text-text-tertiary truncate">
-                {exportProgress.detail}
-              </div>
-            )}
-            <div className="mt-1 w-full h-1 bg-surface-tertiary rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent-primary rounded-full transition-all"
-                style={{
-                  width: `${Math.max(0, Math.min(100, exportProgress.percent))}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Content */}
-        <div className="px-4 py-3 flex flex-col gap-3 max-h-[60vh] overflow-y-auto">
-          {/* File name */}
+      {/* Sprite Sheet Options */}
+      {isSpriteSheet && (
+        <>
+          {/* Columns */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">
-              {t.exportFileName}
+              {t.exportColumns}
             </label>
-            <div className="flex items-center gap-0">
+            <div className="flex items-center gap-2">
               <input
-                type="text"
-                value={fileName}
-                onChange={(e) => setFileName(e.target.value)}
+                type="number"
+                min={0}
+                max={100}
+                value={columns}
+                onChange={(e) =>
+                  setColumns(Math.max(0, Number(e.target.value)))
+                }
                 disabled={isExporting}
-                autoFocus
-                className="flex-1 min-w-0 px-2 py-1.5 bg-surface-secondary border border-border-default rounded-l text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
+                className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
               />
-              <span className="px-2 py-1.5 bg-surface-tertiary border border-l-0 border-border-default rounded-r text-sm text-text-tertiary whitespace-nowrap">
-                .{ext}
-              </span>
+              {columns === 0 && (
+                <span className="text-xs text-text-tertiary">
+                  ({t.exportColumnsAuto})
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Export Type */}
+          {/* Padding */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">
-              {t.exportType}
+              {t.exportPadding} ({padding}px)
             </label>
-            <Select
-              value={exportType}
-              onChange={(value) => setExportType(value as SpriteExportType)}
-              options={[
-                { value: "zip", label: t.exportTypeZip },
-                { value: "sprite-png", label: t.exportTypeSpriteSheetPng },
-                { value: "sprite-webp", label: t.exportTypeSpriteSheetWebp },
-                { value: "mp4", label: t.exportTypeMp4 },
-              ]}
-              size="sm"
+            <input
+              type="range"
+              min={0}
+              max={32}
+              value={padding}
+              onChange={(e) => setPadding(Number(e.target.value))}
+              disabled={isExporting}
+              className="w-full accent-accent-primary"
             />
           </div>
 
-          {/* Sprite Sheet Options */}
-          {isSpriteSheet && (
-            <>
-              {/* Columns */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">
-                  {t.exportColumns}
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={columns}
-                    onChange={(e) =>
-                      setColumns(Math.max(0, Number(e.target.value)))
-                    }
-                    disabled={isExporting}
-                    className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
-                  />
-                  {columns === 0 && (
-                    <span className="text-xs text-text-tertiary">
-                      ({t.exportColumnsAuto})
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Padding */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">
-                  {t.exportPadding} ({padding}px)
-                </label>
+          {/* Background Color */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.backgroundColor}
+            </label>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
                 <input
-                  type="range"
-                  min={0}
-                  max={32}
-                  value={padding}
-                  onChange={(e) => setPadding(Number(e.target.value))}
+                  type="checkbox"
+                  checked={bgTransparent}
+                  onChange={(e) => setBgTransparent(e.target.checked)}
                   disabled={isExporting}
-                  className="w-full accent-accent-primary"
+                  className="accent-accent-primary"
                 />
-              </div>
-
-              {/* Background Color */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">
-                  {t.backgroundColor}
-                </label>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bgTransparent}
-                      onChange={(e) => setBgTransparent(e.target.checked)}
-                      disabled={isExporting}
-                      className="accent-accent-primary"
-                    />
-                    {t.exportBgTransparent}
-                  </label>
-                  {!bgTransparent && (
-                    <>
-                      <input
-                        type="color"
-                        value={backgroundColor}
-                        onChange={(e) => setBackgroundColor(e.target.value)}
-                        disabled={isExporting}
-                        className="w-8 h-8 rounded border border-border-default cursor-pointer bg-transparent disabled:opacity-50"
-                      />
-                      <span className="text-xs text-text-tertiary font-mono">
-                        {backgroundColor}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* WebP Quality */}
-          {exportType === "sprite-webp" && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-text-secondary">
-                {t.quality} ({Math.round(webpQuality * 100)}%)
+                {t.exportBgTransparent}
               </label>
-              <input
-                type="range"
-                min={10}
-                max={100}
-                value={Math.round(webpQuality * 100)}
-                onChange={(e) => setWebpQuality(Number(e.target.value) / 100)}
-                disabled={isExporting}
-                className="w-full accent-accent-primary"
-              />
-            </div>
-          )}
-
-          {/* MP4 Options */}
-          {exportType === "mp4" && (
-            <>
-              {/* FPS */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">FPS</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={mp4Fps}
-                  onChange={(e) =>
-                    setMp4Fps(Math.max(1, Math.min(60, Number(e.target.value))))
-                  }
-                  disabled={isExporting}
-                  className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
-                />
-              </div>
-
-              {/* Compression */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">
-                  {t.compression}
-                </label>
-                <Select
-                  value={mp4Compression}
-                  onChange={(value) =>
-                    setMp4Compression(
-                      value as "high" | "balanced" | "small",
-                    )
-                  }
-                  options={[
-                    { value: "high", label: t.compressionHighQuality },
-                    { value: "balanced", label: t.compressionBalanced },
-                    { value: "small", label: t.compressionSmallFile },
-                  ]}
-                  size="sm"
-                />
-              </div>
-
-              {/* Background Color */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">
-                  {t.backgroundColor}
-                </label>
-                <div className="flex items-center gap-2">
+              {!bgTransparent && (
+                <>
                   <input
                     type="color"
-                    value={mp4BackgroundColor}
-                    onChange={(e) => setMp4BackgroundColor(e.target.value)}
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
                     disabled={isExporting}
                     className="w-8 h-8 rounded border border-border-default cursor-pointer bg-transparent disabled:opacity-50"
                   />
                   <span className="text-xs text-text-tertiary font-mono">
-                    {mp4BackgroundColor}
+                    {backgroundColor}
                   </span>
-                </div>
-              </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
-              {/* Loop Count */}
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-text-secondary">
-                  {t.exportLoopCount}
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={mp4LoopCount}
-                  onChange={(e) =>
-                    setMp4LoopCount(
-                      Math.max(1, Math.min(100, Number(e.target.value))),
-                    )
-                  }
-                  disabled={isExporting}
-                  className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border-default">
-          <button
-            onClick={onClose}
+      {/* WebP Quality */}
+      {exportType === "sprite-webp" && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-text-secondary">
+            {t.quality} ({Math.round(webpQuality * 100)}%)
+          </label>
+          <input
+            type="range"
+            min={10}
+            max={100}
+            value={Math.round(webpQuality * 100)}
+            onChange={(e) => setWebpQuality(Number(e.target.value) / 100)}
             disabled={isExporting}
-            className="px-3 py-1.5 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors disabled:opacity-50"
-          >
-            {t.cancel}
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={!fileName.trim() || isExporting}
-            className="px-3 py-1.5 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors disabled:opacity-50"
-          >
-            {isExporting ? t.exporting : t.export}
-          </button>
+            className="w-full accent-accent-primary"
+          />
         </div>
-      </div>
-    </div>,
-    document.body,
+      )}
+
+      {/* MP4 Options */}
+      {exportType === "mp4" && (
+        <>
+          {/* FPS */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">FPS</label>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={mp4Fps}
+              onChange={(e) =>
+                setMp4Fps(Math.max(1, Math.min(60, Number(e.target.value))))
+              }
+              disabled={isExporting}
+              className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
+            />
+          </div>
+
+          {/* Compression */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.compression}
+            </label>
+            <Select
+              value={mp4Compression}
+              onChange={(value) =>
+                setMp4Compression(value as "high" | "balanced" | "small")
+              }
+              options={[
+                { value: "high", label: t.compressionHighQuality },
+                { value: "balanced", label: t.compressionBalanced },
+                { value: "small", label: t.compressionSmallFile },
+              ]}
+              size="sm"
+              disabled={isExporting}
+            />
+          </div>
+
+          {/* Background Color */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.backgroundColor}
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={mp4BackgroundColor}
+                onChange={(e) => setMp4BackgroundColor(e.target.value)}
+                disabled={isExporting}
+                className="w-8 h-8 rounded border border-border-default cursor-pointer bg-transparent disabled:opacity-50"
+              />
+              <span className="text-xs text-text-tertiary font-mono">
+                {mp4BackgroundColor}
+              </span>
+            </div>
+          </div>
+
+          {/* Loop Count */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.exportLoopCount}
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={mp4LoopCount}
+              onChange={(e) =>
+                setMp4LoopCount(
+                  Math.max(1, Math.min(100, Number(e.target.value))),
+                )
+              }
+              disabled={isExporting}
+              className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
+            />
+          </div>
+        </>
+      )}
+    </ExportModal>
   );
 }
