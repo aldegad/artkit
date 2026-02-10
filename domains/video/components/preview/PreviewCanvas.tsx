@@ -2,12 +2,19 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
-import { useVideoElements, usePlaybackTick, usePreRenderCache, useAudioBufferCache, useWebAudioPlayback } from "../../hooks";
+import {
+  useVideoElements,
+  usePlaybackTick,
+  usePreRenderCache,
+  useAudioBufferCache,
+  useWebAudioPlayback,
+  useClipTransformTool,
+} from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
-import { AudioClip, Clip, VideoClip } from "../../types";
+import { AudioClip, Clip, VideoClip, getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
@@ -17,7 +24,7 @@ import {
   createRectFromDrag,
   type RectHandle,
 } from "@/shared/utils/rectTransform";
-import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
+import { ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
 
 interface PreviewCanvasProps {
@@ -25,7 +32,7 @@ interface PreviewCanvasProps {
 }
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
-  const { previewCanvasRef, previewContainerRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
     playback,
     project,
@@ -185,7 +192,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       stopPanDrag();
     }
   }, [isHandTool, stopPanDrag]);
-
   const dragStateRef = useRef<{
     clipId: string | null;
     pointerStart: { x: number; y: number };
@@ -702,8 +708,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           const drawPoint = vpContentToScreen(clip.position);
           const drawX = drawPoint.x;
           const drawY = drawPoint.y;
-          const drawW = clip.sourceSize.width * scale * clip.scale;
-          const drawH = clip.sourceSize.height * scale * clip.scale;
+          const drawW = clip.sourceSize.width * scale * getClipScaleX(clip);
+          const drawH = clip.sourceSize.height * scale * getClipScaleY(clip);
 
           // Check for mask on this track at current time
           const maskResult = getMaskAtTimeForTrack(clip.trackId, renderTime);
@@ -751,8 +757,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
                 sourceEl,
                 clip.position.x,
                 clip.position.y,
-                clip.sourceSize.width * clip.scale,
-                clip.sourceSize.height * clip.scale
+                clip.sourceSize.width * getClipScaleX(clip),
+                clip.sourceSize.height * getClipScaleY(clip)
               );
               tmpCtx.globalCompositeOperation = "destination-in";
               tmpCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
@@ -796,12 +802,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           }
         }
 
-        if (selectedVisualClipId && clip.id === selectedVisualClipId && clip.type !== "audio") {
+        if (
+          selectedVisualClipId
+          && clip.id === selectedVisualClipId
+          && clip.type !== "audio"
+          && !(toolMode === "transform" && transformTool.state.isActive)
+        ) {
           const boxPoint = vpContentToScreen(clip.position);
           const boxX = boxPoint.x;
           const boxY = boxPoint.y;
-          const boxW = clip.sourceSize.width * scale * clip.scale;
-          const boxH = clip.sourceSize.height * scale * clip.scale;
+          const boxW = clip.sourceSize.width * scale * getClipScaleX(clip);
+          const boxH = clip.sourceSize.height * scale * getClipScaleY(clip);
 
           ctx.save();
           if (clip.rotation !== 0) {
@@ -885,6 +896,42 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ctx.restore();
     }
 
+    if (toolMode === "transform" && transformTool.state.isActive && transformTool.state.bounds) {
+      const bounds = transformTool.state.bounds;
+      const topLeft = vpContentToScreen({ x: bounds.x, y: bounds.y });
+      const transformX = topLeft.x;
+      const transformY = topLeft.y;
+      const transformW = bounds.width * scale;
+      const transformH = bounds.height * scale;
+
+      ctx.save();
+      ctx.strokeStyle = colors.selection;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.strokeRect(transformX, transformY, transformW, transformH);
+
+      const handleSize = 10;
+      const handles = [
+        { x: transformX, y: transformY },
+        { x: transformX + transformW / 2, y: transformY },
+        { x: transformX + transformW, y: transformY },
+        { x: transformX + transformW, y: transformY + transformH / 2 },
+        { x: transformX + transformW, y: transformY + transformH },
+        { x: transformX + transformW / 2, y: transformY + transformH },
+        { x: transformX, y: transformY + transformH },
+        { x: transformX, y: transformY + transformH / 2 },
+      ];
+
+      ctx.fillStyle = colors.selection;
+      ctx.strokeStyle = colors.textOnColor;
+      ctx.lineWidth = 1;
+      for (const handle of handles) {
+        ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+        ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+      }
+      ctx.restore();
+    }
+
     // Draw frame border
     ctx.strokeStyle = borderDefault;
     ctx.lineWidth = 1;
@@ -934,8 +981,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const clip = getClipAtTime(track.id, currentTimeRef.current);
       if (!clip || !clip.visible || clip.type === "audio") continue;
 
-      const width = clip.sourceSize.width * clip.scale;
-      const height = clip.sourceSize.height * clip.scale;
+      const width = clip.sourceSize.width * getClipScaleX(clip);
+      const height = clip.sourceSize.height * getClipScaleY(clip);
       const centerX = clip.position.x + width / 2;
       const centerY = clip.position.y + height / 2;
       const angle = ((clip.rotation || 0) * Math.PI) / 180;
@@ -961,6 +1008,70 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     return null;
   }, [tracks, getClipAtTime, currentTimeRef]);
+
+  const transformTool = useClipTransformTool({
+    clips,
+    selectedClipIds,
+    toolMode,
+    selectClip,
+    updateClip,
+    saveToHistory,
+    screenToProject,
+    hitTestClipAtPoint,
+  });
+  const transformListenersRef = useRef(new Set<(state: { isActive: boolean; clipId: string | null; aspectRatio: AspectRatio }) => void>());
+  const transformPublicStateRef = useRef({
+    isActive: false,
+    clipId: null as string | null,
+    aspectRatio: "free" as AspectRatio,
+  });
+
+  useEffect(() => {
+    transformPublicStateRef.current = {
+      isActive: transformTool.state.isActive,
+      clipId: transformTool.state.clipId,
+      aspectRatio: transformTool.state.aspectRatio,
+    };
+    for (const listener of transformListenersRef.current) {
+      listener(transformPublicStateRef.current);
+    }
+  }, [
+    transformTool.state.isActive,
+    transformTool.state.clipId,
+    transformTool.state.aspectRatio,
+  ]);
+
+  // Expose viewport + transform API to parent (toolbar + shortcuts)
+  useEffect(() => {
+    previewViewportRef.current = {
+      zoomIn: () => vpSetZoom(vpGetZoom() * 1.25),
+      zoomOut: () => vpSetZoom(vpGetZoom() / 1.25),
+      fitToContainer: () => vpFitToContainer(40),
+      getZoom: () => vpGetZoom(),
+      setZoom: (z) => vpSetZoom(z),
+      onZoomChange: (cb) => onVideoViewportChange((s) => cb(s.zoom)),
+      startTransformForSelection: () => transformTool.startTransformForSelection(),
+      applyTransform: () => transformTool.applyTransform(),
+      cancelTransform: () => transformTool.cancelTransform(),
+      setTransformAspectRatio: (ratio) => transformTool.setAspectRatio(ratio),
+      getTransformState: () => transformPublicStateRef.current,
+      onTransformChange: (cb) => {
+        transformListenersRef.current.add(cb);
+        cb(transformPublicStateRef.current);
+        return () => {
+          transformListenersRef.current.delete(cb);
+        };
+      },
+    };
+    return () => { previewViewportRef.current = null; };
+  }, [
+    onVideoViewportChange,
+    previewViewportRef,
+    transformTool,
+    vpFitToContainer,
+    vpGetZoom,
+    vpSetZoom,
+  ]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button drag for pan
@@ -1064,6 +1175,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
+    if (toolMode === "transform") {
+      const handled = transformTool.handlePointerDown(e);
+      if (handled) {
+        e.preventDefault();
+        safeSetPointerCapture(e.currentTarget, e.pointerId);
+      }
+      return;
+    }
+
     if (toolMode !== "select") return;
 
     const point = screenToProject(e.clientX, e.clientY);
@@ -1102,6 +1222,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     hitTestClipAtPoint,
     saveToHistory,
     selectClip,
+    transformTool,
   ]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1125,6 +1246,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       if (maskCoords) {
         const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
         continueDraw(maskCoords.x, maskCoords.y, pressure);
+        cancelAnimationFrame(renderRequestRef.current);
+        renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      }
+      return;
+    }
+
+    if (toolMode === "transform") {
+      const handled = transformTool.handlePointerMove(e);
+      if (handled) {
         cancelAnimationFrame(renderRequestRef.current);
         renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
       }
@@ -1259,7 +1389,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef]);
+  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     stopPanDrag();
@@ -1284,6 +1414,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (e) {
       safeReleasePointerCapture(e.currentTarget, e.pointerId);
     }
+    transformTool.handlePointerUp();
     dragStateRef.current = {
       clipId: null,
       pointerStart: { x: 0, y: 0 },
@@ -1303,7 +1434,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea]);
+  }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
@@ -1354,7 +1485,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Render on structural changes (tracks, clips, selection, etc.)
   useEffect(() => {
     renderRef.current();
-  }, [playback.isPlaying, tracks, clips, selectedClipIds, toolMode, cropArea, project.canvasSize, isEditingMask, activeTrackId]);
+  }, [
+    playback.isPlaying,
+    tracks,
+    clips,
+    selectedClipIds,
+    toolMode,
+    cropArea,
+    project.canvasSize,
+    isEditingMask,
+    activeTrackId,
+    transformTool.state.isActive,
+    transformTool.state.bounds,
+  ]);
 
   // Invalidate CSS color cache on theme changes
   useEffect(() => {
@@ -1440,7 +1583,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
                   ? "zoom-in"
               : toolMode === "crop"
                 ? (isDraggingCrop ? (cropDragRef.current.mode === "move" ? "grabbing" : cropCursor) : cropCursor)
-                : (isDraggingClip ? "grabbing" : (toolMode === "select" ? "grab" : "default")),
+                : toolMode === "transform"
+                  ? transformTool.cursor
+                  : (isDraggingClip ? "grabbing" : (toolMode === "select" ? "grab" : "default")),
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}

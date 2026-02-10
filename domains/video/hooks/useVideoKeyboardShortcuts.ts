@@ -10,6 +10,7 @@ import {
   VIDEO_ZOOM_SHORTCUTS,
   PLAYBACK_SHORTCUTS,
   VIDEO_CONTEXT_SHORTCUTS,
+  VIDEO_TRANSFORM_SHORTCUTS,
 } from "../constants";
 import type { VideoToolMode } from "../types";
 
@@ -41,6 +42,10 @@ interface UseVideoKeyboardShortcutsOptions {
 
   // Context
   handleApplyCrop: () => void;
+  isTransformActive: boolean;
+  handleStartTransformShortcut: () => void;
+  handleApplyTransform: () => void;
+  handleCancelTransform: () => void;
 
   // Mask
   activeMaskId: string | null;
@@ -73,6 +78,10 @@ export function useVideoKeyboardShortcuts(
     handleZoomOut,
     handleFitToScreen,
     handleApplyCrop,
+    isTransformActive,
+    handleStartTransformShortcut,
+    handleApplyTransform,
+    handleCancelTransform,
     activeMaskId,
     deselectMask,
     isEditingMask,
@@ -146,6 +155,11 @@ export function useVideoKeyboardShortcuts(
           handleFitToScreen();
           return;
         }
+        if (matchesShortcut(e, VIDEO_TRANSFORM_SHORTCUTS.enterTransform)) {
+          e.preventDefault();
+          handleStartTransformShortcut();
+          return;
+        }
         return;
       }
 
@@ -178,6 +192,11 @@ export function useVideoKeyboardShortcuts(
         return;
       }
       if (e.code === VIDEO_CONTEXT_SHORTCUTS.applyCrop) {
+        if (isTransformActive) {
+          e.preventDefault();
+          handleApplyTransform();
+          return;
+        }
         if (toolMode === "crop") {
           e.preventDefault();
           handleApplyCrop();
@@ -185,6 +204,11 @@ export function useVideoKeyboardShortcuts(
         return;
       }
       if (e.code === VIDEO_CONTEXT_SHORTCUTS.cancel) {
+        if (isTransformActive) {
+          e.preventDefault();
+          handleCancelTransform();
+          return;
+        }
         if (activeMaskId) deselectMask();
         if (isEditingMask) endMaskEdit();
         return;
@@ -222,5 +246,9 @@ export function useVideoKeyboardShortcuts(
     handlePaste,
     handleDelete,
     handleDuplicate,
+    isTransformActive,
+    handleStartTransformShortcut,
+    handleApplyTransform,
+    handleCancelTransform,
   ]);
 }

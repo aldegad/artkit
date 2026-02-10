@@ -1,4 +1,4 @@
-import { VideoTrack, Clip } from "../types";
+import { VideoTrack, Clip, getClipScaleX, getClipScaleY } from "../types";
 import { Size } from "@/shared/types";
 
 export interface CompositeRenderParams {
@@ -94,10 +94,12 @@ export function renderCompositeFrame(
 
     if (!sourceEl) continue;
 
+    const clipScaleX = getClipScaleX(clip);
+    const clipScaleY = getClipScaleY(clip);
     const drawX = offsetX + clip.position.x * scale;
     const drawY = offsetY + clip.position.y * scale;
-    const drawW = clip.sourceSize.width * scale * clip.scale;
-    const drawH = clip.sourceSize.height * scale * clip.scale;
+    const drawW = clip.sourceSize.width * scale * clipScaleX;
+    const drawH = clip.sourceSize.height * scale * clipScaleY;
 
     // Check for mask on this track at current time
     const maskResult = getMaskAtTimeForTrack(clip.trackId, time);
@@ -140,8 +142,8 @@ export function renderCompositeFrame(
           sourceEl,
           clip.position.x,
           clip.position.y,
-          clip.sourceSize.width * clip.scale,
-          clip.sourceSize.height * clip.scale,
+          clip.sourceSize.width * clipScaleX,
+          clip.sourceSize.height * clipScaleY,
         );
         tmpCtx.globalCompositeOperation = "destination-in";
         tmpCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
