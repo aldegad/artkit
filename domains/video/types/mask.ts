@@ -45,6 +45,8 @@ export interface MaskBrushSettings {
   feather: number; // Edge feathering (pixels)
 }
 
+export type MaskDrawShape = "brush" | "rectangle";
+
 export const DEFAULT_MASK_BRUSH: MaskBrushSettings = {
   size: 50,
   hardness: 80,

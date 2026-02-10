@@ -12,6 +12,7 @@ import {
 import {
   MaskData,
   MaskBrushSettings,
+  MaskDrawShape,
   DEFAULT_MASK_BRUSH,
   createMaskData,
 } from "../types";
@@ -31,6 +32,8 @@ interface MaskContextValue {
   setBrushSize: (size: number) => void;
   setBrushHardness: (hardness: number) => void;
   setBrushMode: (mode: "paint" | "erase") => void;
+  maskDrawShape: MaskDrawShape;
+  setMaskDrawShape: (shape: MaskDrawShape) => void;
   activePreset: BrushPreset;
   setActivePreset: (preset: BrushPreset) => void;
   presets: BrushPreset[];
@@ -133,6 +136,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [isEditingMask, setIsEditingMask] = useState(false);
   const [brushSettings, setBrushSettingsState] = useState<MaskBrushSettings>(DEFAULT_MASK_BRUSH);
+  const [maskDrawShape, setMaskDrawShapeState] = useState<MaskDrawShape>("brush");
   const [presets] = useState<BrushPreset[]>(() => [...DEFAULT_BRUSH_PRESETS]);
   const [activePreset, setActivePresetState] = useState<BrushPreset>(() => DEFAULT_BRUSH_PRESETS[0]);
   const [pressureEnabled, setPressureEnabledState] = useState(true);
@@ -277,6 +281,10 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   const setBrushMode = useCallback((mode: "paint" | "erase") => {
     setBrushSettingsState((prev) => ({ ...prev, mode }));
+  }, []);
+
+  const setMaskDrawShape = useCallback((shape: MaskDrawShape) => {
+    setMaskDrawShapeState(shape);
   }, []);
 
   const setActivePreset = useCallback((preset: BrushPreset) => {
@@ -620,6 +628,8 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setBrushSize,
     setBrushHardness,
     setBrushMode,
+    maskDrawShape,
+    setMaskDrawShape,
     activePreset,
     setActivePreset,
     presets,
