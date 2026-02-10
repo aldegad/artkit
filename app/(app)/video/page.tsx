@@ -50,6 +50,7 @@ import {
   TIMELINE,
   VideoPanModeToggle,
   type Clip,
+  type MaskData,
   type SavedVideoProject,
   type VideoToolMode,
 } from "@/domains/video";
@@ -81,6 +82,13 @@ function cloneClip(clip: Clip): Clip {
     ...clip,
     position: { ...clip.position },
     sourceSize: { ...clip.sourceSize },
+  };
+}
+
+function cloneMask(mask: MaskData): MaskData {
+  return {
+    ...mask,
+    size: { ...mask.size },
   };
 }
 
@@ -435,6 +443,7 @@ function VideoEditorContent() {
     activeMaskId,
     deleteMask,
     duplicateMask,
+    addMasks,
     deselectMask,
     selectMask,
     restoreMasks,
@@ -959,17 +968,20 @@ function VideoEditorContent() {
   }, [canRedoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, redoMask, redo, deselectAll]);
 
   const handleCopy = useCallback(() => {
-    if (selectedClipIds.length === 0) return;
     const selectedClips = clips.filter((c) => selectedClipIds.includes(c.id));
-    if (selectedClips.length === 0) return;
+    const selectedMasks = selectedMaskIds
+      .map((maskId) => masksMap.get(maskId))
+      .filter((mask): mask is MaskData => !!mask);
+    if (selectedClips.length === 0 && selectedMasks.length === 0) return;
 
     clipboardRef.current = {
       clips: selectedClips.map(cloneClip),
+      masks: selectedMasks.map(cloneMask),
       mode: "copy",
       sourceTime: playback.currentTime,
     };
     setHasClipboard(true);
-  }, [selectedClipIds, clips, playback.currentTime, clipboardRef, setHasClipboard]);
+  }, [selectedClipIds, selectedMaskIds, clips, masksMap, playback.currentTime, clipboardRef, setHasClipboard]);
 
   const handleCut = useCallback(() => {
     if (selectedClipIds.length === 0) return;
@@ -990,37 +1002,92 @@ function VideoEditorContent() {
 
   const handlePaste = useCallback(() => {
     const clipboard = clipboardRef.current;
-    if (!clipboard || clipboard.clips.length === 0) return;
+    if (!clipboard) return;
+
+    const clipboardMasks = clipboard.masks || [];
+    const hasClipClipboard = clipboard.clips.length > 0;
+    const hasMaskClipboard = clipboardMasks.length > 0;
+    if (!hasClipClipboard && !hasMaskClipboard) return;
 
     saveToHistory();
 
     const currentTime = playback.currentTime;
-    const earliestStart = Math.min(...clipboard.clips.map((c) => c.startTime));
+    const earliestClipStart = hasClipClipboard
+      ? Math.min(...clipboard.clips.map((c) => c.startTime))
+      : Number.POSITIVE_INFINITY;
+    const earliestMaskStart = hasMaskClipboard
+      ? Math.min(...clipboardMasks.map((m) => m.startTime))
+      : Number.POSITIVE_INFINITY;
+    const earliestStart = Math.min(earliestClipStart, earliestMaskStart);
     const timeOffset = currentTime - earliestStart;
+    const duplicatedClipIds: string[] = [];
+    const duplicatedMaskIds: string[] = [];
 
-    const newClips = clipboard.clips.map((clipData) => ({
-      ...cloneClip(clipData),
-      id: crypto.randomUUID(),
-      startTime: Math.max(0, clipData.startTime + timeOffset),
-    }));
+    if (hasClipClipboard) {
+      const newClips = clipboard.clips.map((clipData) => ({
+        ...cloneClip(clipData),
+        id: crypto.randomUUID(),
+        startTime: Math.max(0, clipData.startTime + timeOffset),
+      }));
 
-    // Keep media persistence stable for duplicated IDs.
-    void Promise.all(
-      newClips.map((newClip, index) =>
-        copyMediaBlob(clipboard.clips[index].id, newClip.id).catch((error) => {
-          console.error("Failed to copy media blob on paste:", error);
+      // Keep media persistence stable for duplicated IDs.
+      void Promise.all(
+        newClips.map((newClip, index) =>
+          copyMediaBlob(clipboard.clips[index].id, newClip.id).catch((error) => {
+            console.error("Failed to copy media blob on paste:", error);
+          })
+        )
+      );
+
+      addClips(newClips);
+      duplicatedClipIds.push(...newClips.map((clip) => clip.id));
+    }
+
+    if (hasMaskClipboard) {
+      const trackIds = new Set(tracks.map((track) => track.id));
+      const fallbackTrackId = tracks.find((track) => track.type !== "audio")?.id || tracks[0]?.id || null;
+
+      const newMasks = clipboardMasks
+        .map((sourceMask) => {
+          const targetTrackId = trackIds.has(sourceMask.trackId) ? sourceMask.trackId : fallbackTrackId;
+          if (!targetTrackId) return null;
+          return {
+            ...cloneMask(sourceMask),
+            id: crypto.randomUUID(),
+            trackId: targetTrackId,
+            startTime: Math.max(0, sourceMask.startTime + timeOffset),
+          };
         })
-      )
-    );
+        .filter((mask): mask is MaskData => !!mask);
 
-    addClips(newClips);
-    selectClips(newClips.map((c) => c.id));
+      if (newMasks.length > 0) {
+        addMasks(newMasks);
+        duplicatedMaskIds.push(...newMasks.map((mask) => mask.id));
+      }
+    }
+
+    if (duplicatedClipIds.length > 0) {
+      selectClips(duplicatedClipIds);
+    }
+    if (duplicatedMaskIds.length > 0) {
+      selectMasksForTimeline(duplicatedMaskIds);
+    }
 
     if (clipboard.mode === "cut") {
       clipboardRef.current = null;
       setHasClipboard(false);
     }
-  }, [playback.currentTime, clipboardRef, setHasClipboard, saveToHistory, addClips, selectClips]);
+  }, [
+    playback.currentTime,
+    clipboardRef,
+    setHasClipboard,
+    saveToHistory,
+    addClips,
+    addMasks,
+    selectClips,
+    selectMasksForTimeline,
+    tracks,
+  ]);
 
   const handleDelete = useCallback(() => {
     // Delete selected mask if one is active (editing mode)
