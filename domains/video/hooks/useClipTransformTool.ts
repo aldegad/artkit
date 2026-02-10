@@ -52,6 +52,7 @@ interface ClipTransformApi {
   applyTransform: () => void;
   cancelTransform: () => void;
   setAspectRatio: (ratio: AspectRatio) => void;
+  nudgeTransform: (dx: number, dy: number) => boolean;
   handlePointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => boolean;
   handlePointerMove: (e: React.PointerEvent<HTMLCanvasElement>) => boolean;
   handlePointerUp: () => void;
@@ -354,6 +355,26 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
     setCursor(cursorForHandle(currentHandle, false));
   }, [stopDragging]);
 
+  const nudgeTransform = useCallback((dx: number, dy: number): boolean => {
+    if (toolMode !== "transform") return false;
+    if (!state.isActive || !snapshotRef.current || !boundsRef.current) return false;
+    if (dx === 0 && dy === 0) return false;
+
+    if (dragRef.current.dragging) {
+      stopDragging();
+      setCursor("default");
+    }
+
+    saveToHistory();
+    const currentBounds = boundsRef.current;
+    applyBoundsToClip({
+      ...currentBounds,
+      x: currentBounds.x + dx,
+      y: currentBounds.y + dy,
+    });
+    return true;
+  }, [applyBoundsToClip, saveToHistory, state.isActive, stopDragging, toolMode]);
+
   useEffect(() => {
     if (toolMode !== "transform" && state.isActive) {
       applyTransform();
@@ -414,6 +435,7 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
     applyTransform,
     cancelTransform,
     setAspectRatio,
+    nudgeTransform,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
