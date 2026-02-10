@@ -57,6 +57,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isMaskDrawingRef = useRef(false);
+  const maskRectDragRef = useRef<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+    mode: "paint" | "erase";
+  } | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
@@ -86,10 +91,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     masks,
     brushSettings,
     setBrushMode,
+    maskDrawShape,
     saveMaskData,
     saveMaskHistoryPoint,
   } = useMask();
-  const { startDraw, continueDraw, endDraw } = useMaskTool();
+  const { startDraw, continueDraw, endDraw, drawRectangle } = useMaskTool();
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
   const viewport = useCanvasViewport({
@@ -843,6 +849,26 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ctx.restore();
     }
 
+    const rectangleDrag = maskRectDragRef.current;
+    if (isEditingMask && maskDrawShape === "rectangle" && rectangleDrag) {
+      const start = vpContentToScreen(rectangleDrag.start);
+      const current = vpContentToScreen(rectangleDrag.current);
+      const rectX = Math.min(start.x, current.x);
+      const rectY = Math.min(start.y, current.y);
+      const rectW = Math.max(1, Math.abs(current.x - start.x));
+      const rectH = Math.max(1, Math.abs(current.y - start.y));
+      const isErase = rectangleDrag.mode === "erase";
+
+      ctx.save();
+      ctx.fillStyle = isErase ? "rgba(255, 80, 80, 0.18)" : "rgba(168, 85, 247, 0.18)";
+      ctx.strokeStyle = isErase ? "rgba(255, 120, 120, 0.95)" : colors.selection;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.fillRect(rectX, rectY, rectW, rectH);
+      ctx.strokeRect(rectX, rectY, rectW, rectH);
+      ctx.restore();
+    }
+
     // Draw frame border
     ctx.strokeStyle = borderDefault;
     ctx.lineWidth = 1;
@@ -1030,15 +1056,26 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       e.preventDefault();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
 
+      let drawMode: "paint" | "erase" = brushSettings.mode;
+
       // Alt key toggles erase mode temporarily
       if (e.altKey && brushSettings.mode !== "erase") {
         prevBrushModeRef.current = brushSettings.mode;
         setBrushMode("erase");
+        drawMode = "erase";
       }
 
       saveMaskHistoryPoint();
-      const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
-      startDraw(maskCoords.x, maskCoords.y, pressure);
+      if (maskDrawShape === "rectangle") {
+        maskRectDragRef.current = {
+          start: maskCoords,
+          current: maskCoords,
+          mode: drawMode,
+        };
+      } else {
+        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        startDraw(maskCoords.x, maskCoords.y, pressure);
+      }
       isMaskDrawingRef.current = true;
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
@@ -1129,7 +1166,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [vpStartPanDrag, isSpacePanning, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, transformTool]);
+  }, [vpStartPanDrag, isSpacePanning, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, maskDrawShape, transformTool]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button pan
@@ -1150,8 +1187,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (isMaskDrawingRef.current) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords) {
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
-        continueDraw(maskCoords.x, maskCoords.y, pressure);
+        if (maskRectDragRef.current) {
+          maskRectDragRef.current.current = maskCoords;
+        } else {
+          const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+          continueDraw(maskCoords.x, maskCoords.y, pressure);
+        }
         cancelAnimationFrame(renderRequestRef.current);
         renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
       }
@@ -1304,8 +1345,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     if (isMaskDrawingRef.current) {
-      endDraw();
+      const rectDrag = maskRectDragRef.current;
+      if (rectDrag) {
+        drawRectangle(rectDrag.start, rectDrag.current, rectDrag.mode);
+      } else {
+        endDraw();
+      }
       isMaskDrawingRef.current = false;
+      maskRectDragRef.current = null;
 
       // Auto-save mask data after each stroke
       saveMaskData();
@@ -1343,7 +1390,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool]);
+  }, [vpEndPanDrag, endDraw, drawRectangle, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool]);
 
   // Double-click to fit/reset zoom
   const handleDoubleClick = useCallback(() => {
@@ -1482,7 +1529,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             : isSpacePanning
               ? "grab"
             : isEditingMask
-              ? "none"
+              ? (maskDrawShape === "rectangle" ? "crosshair" : "none")
               : toolMode === "crop"
                 ? (isDraggingCrop ? (cropDragRef.current.mode === "move" ? "grabbing" : cropCursor) : cropCursor)
                 : toolMode === "transform"
@@ -1501,7 +1548,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         onDoubleClick={handleDoubleClick}
       />
       {/* Brush cursor preview */}
-      {isEditingMask && brushCursor && (() => {
+      {isEditingMask && maskDrawShape === "brush" && brushCursor && (() => {
         const scale = vpGetEffectiveScale();
         const displaySize = brushSettings.size * scale;
         return (
