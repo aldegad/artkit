@@ -52,6 +52,9 @@ interface UseVideoKeyboardShortcutsOptions {
   deselectMask: () => void;
   isEditingMask: boolean;
   endMaskEdit: () => void;
+  adjustMaskBrushSize: (delta: number) => void;
+  isSpacePanning: boolean;
+  setIsSpacePanning: (panning: boolean) => void;
 
   enabled?: boolean;
 }
@@ -86,14 +89,54 @@ export function useVideoKeyboardShortcuts(
     deselectMask,
     isEditingMask,
     endMaskEdit,
+    adjustMaskBrushSize,
+    isSpacePanning,
+    setIsSpacePanning,
     enabled = true,
   } = options;
 
   useEffect(() => {
     if (!enabled) return;
 
+    const isPreviewScopeKeyEvent = (event: KeyboardEvent): boolean => {
+      const previewRoot = document.querySelector<HTMLElement>("[data-video-preview-root]");
+      if (!previewRoot) return false;
+      const target = event.target;
+      if (target && target instanceof Node && previewRoot.contains(target)) return true;
+      const activeElement = document.activeElement;
+      if (activeElement && previewRoot.contains(activeElement)) return true;
+      return previewRoot.matches(":hover");
+    };
+
+    const BRUSH_SIZE_DECREASE_CODES: readonly string[] = ["BracketLeft", "Minus", "NumpadSubtract"];
+    const BRUSH_SIZE_INCREASE_CODES: readonly string[] = ["BracketRight", "Equal", "NumpadAdd"];
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreKeyEvent(e)) return;
+
+      if (e.code === PLAYBACK_SHORTCUTS.togglePlay && isPreviewScopeKeyEvent(e)) {
+        e.preventDefault();
+        if (!e.repeat) {
+          setIsSpacePanning(true);
+        }
+        return;
+      }
+
+      if (
+        toolMode === "mask" &&
+        !hasCmdOrCtrl(e) &&
+        !e.altKey &&
+        (BRUSH_SIZE_DECREASE_CODES.includes(e.code) || BRUSH_SIZE_INCREASE_CODES.includes(e.code))
+      ) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        if (BRUSH_SIZE_DECREASE_CODES.includes(e.code)) {
+          adjustMaskBrushSize(-step);
+        } else {
+          adjustMaskBrushSize(step);
+        }
+        return;
+      }
 
       // --- Modifier shortcuts (Cmd/Ctrl) ---
       if (hasCmdOrCtrl(e)) {
@@ -219,8 +262,25 @@ export function useVideoKeyboardShortcuts(
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== PLAYBACK_SHORTCUTS.togglePlay) return;
+      if (!isSpacePanning) return;
+      e.preventDefault();
+      setIsSpacePanning(false);
+    };
+
+    const handleBlur = () => {
+      setIsSpacePanning(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keyup", handleKeyUp, true);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keyup", handleKeyUp, true);
+      window.removeEventListener("blur", handleBlur);
+    };
   }, [
     enabled,
     togglePlay,
@@ -231,6 +291,9 @@ export function useVideoKeyboardShortcuts(
     deselectMask,
     isEditingMask,
     endMaskEdit,
+    adjustMaskBrushSize,
+    isSpacePanning,
+    setIsSpacePanning,
     stepBackward,
     stepForward,
     handleUndo,

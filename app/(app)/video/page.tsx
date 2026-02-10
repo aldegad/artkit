@@ -48,6 +48,7 @@ import {
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
   TIMELINE,
+  MASK_BRUSH,
   VideoPanModeToggle,
   type Clip,
   type MaskData,
@@ -188,6 +189,8 @@ function VideoEditorContent() {
     setCropAspectRatio,
     lockCropAspect,
     setLockCropAspect,
+    isSpacePanning,
+    setIsSpacePanning,
     previewPreRenderEnabled,
     togglePreviewPreRender,
   } = useVideoState();
@@ -234,6 +237,8 @@ function VideoEditorContent() {
     undoMask,
     redoMask,
     clearMaskHistory,
+    brushSettings,
+    setBrushSize,
   } = useMask();
   const {
     layoutState,
@@ -1240,6 +1245,16 @@ function VideoEditorContent() {
     previewViewportRef.current?.setTransformAspectRatio(ratio);
   }, [previewViewportRef]);
 
+  const handleAdjustMaskBrushSize = useCallback((delta: number) => {
+    if (toolMode !== "mask") return;
+    const nextSize = Math.max(
+      MASK_BRUSH.MIN_SIZE,
+      Math.min(MASK_BRUSH.MAX_SIZE, brushSettings.size + delta),
+    );
+    if (nextSize === brushSettings.size) return;
+    setBrushSize(nextSize);
+  }, [toolMode, brushSettings.size, setBrushSize]);
+
   // Auto-start mask edit when clip is selected while already in mask mode
   // Skip during initial restoration to prevent creating new masks before masks are loaded
   useEffect(() => {
@@ -1285,6 +1300,9 @@ function VideoEditorContent() {
     deselectMask,
     isEditingMask,
     endMaskEdit,
+    adjustMaskBrushSize: handleAdjustMaskBrushSize,
+    isSpacePanning,
+    setIsSpacePanning,
   });
 
   const menuTranslations = {
