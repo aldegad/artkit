@@ -32,6 +32,7 @@ import type { SavedSpriteProject } from "@/domains/sprite";
 import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/ai/frameInterpolation";
+import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import SpriteExportModal, {
@@ -121,6 +122,9 @@ function SpriteEditorMain() {
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
   const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
   const [interpolationSteps, setInterpolationSteps] = useState(1);
+  const [backgroundRemovalQuality, setBackgroundRemovalQuality] = useState<BackgroundRemovalQuality>(
+    () => readAISettings().backgroundRemovalQuality,
+  );
   const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality
   );
@@ -147,6 +151,7 @@ function SpriteEditorMain() {
     selectedFrameIds,
     setFrames,
     pushHistory,
+    quality: backgroundRemovalQuality,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
@@ -893,6 +898,11 @@ function SpriteEditorMain() {
         onConfirmAllFrames={() => {
           setShowBgRemovalConfirm(false);
           handleRemoveBackground("all");
+        }}
+        quality={backgroundRemovalQuality}
+        onQualityChange={(quality) => {
+          setBackgroundRemovalQuality(quality);
+          updateAISettings({ backgroundRemovalQuality: quality });
         }}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
