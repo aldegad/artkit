@@ -7,6 +7,7 @@ import { useTimelineViewport } from "./useTimelineViewport";
 import { TimelineDragType, Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
+import { sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
@@ -492,12 +493,29 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
               const firstDuration = splitOffset;
               const secondDuration = clip.duration - splitOffset;
+              const firstTransformKeyframes = sliceClipPositionKeyframes(
+                clip,
+                0,
+                firstDuration,
+                { includeStart: true, includeEnd: true }
+              );
+              const secondTransformKeyframes = sliceClipPositionKeyframes(
+                clip,
+                splitOffset,
+                secondDuration,
+                { includeStart: true, includeEnd: false }
+              );
+              const firstPosition = firstTransformKeyframes?.position?.[0]?.value || clip.position;
+              const secondPosition = secondTransformKeyframes?.position?.[0]?.value || clip.position;
 
               const firstClip: Clip = {
                 ...clip,
                 id: crypto.randomUUID(),
                 duration: firstDuration,
                 trimOut: clip.trimIn + firstDuration,
+                sourceSize: { ...clip.sourceSize },
+                position: { ...firstPosition },
+                transformKeyframes: firstTransformKeyframes,
               };
 
               const secondClip: Clip = {
@@ -507,6 +525,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
                 startTime: splitTime,
                 duration: secondDuration,
                 trimIn: clip.trimIn + splitOffset,
+                sourceSize: { ...clip.sourceSize },
+                position: { ...secondPosition },
+                transformKeyframes: secondTransformKeyframes,
               };
 
               void Promise.all([

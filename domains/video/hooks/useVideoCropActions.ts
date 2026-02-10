@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { Clip, VideoProject } from "../types";
+import { offsetClipPositionValues } from "../utils/clipTransformKeyframes";
 
 interface CropArea {
   x: number;
@@ -107,12 +108,7 @@ export function useVideoCropActions(
 
     for (const clip of clips) {
       if (clip.type === "audio") continue;
-      updateClip(clip.id, {
-        position: {
-          x: clip.position.x - offsetX,
-          y: clip.position.y - offsetY,
-        },
-      });
+      updateClip(clip.id, offsetClipPositionValues(clip, -offsetX, -offsetY));
     }
 
     setProject({
