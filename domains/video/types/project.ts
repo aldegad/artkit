@@ -88,6 +88,8 @@ export function createVideoProject(
  */
 export type VideoToolMode =
   | "select"
+  | "hand"
+  | "zoom"
   | "crop"
   | "trim"
   | "razor" // Split clip

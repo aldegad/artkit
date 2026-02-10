@@ -5,7 +5,7 @@ import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import { useVideoElements, usePlaybackTick, usePreRenderCache, useAudioBufferCache, useWebAudioPlayback } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
-import { getCanvasColorsSync } from "@/shared/hooks";
+import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
 import { AudioClip, Clip, VideoClip } from "../../types";
 import { useMask } from "../../contexts";
@@ -25,7 +25,7 @@ interface PreviewCanvasProps {
 }
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
-  const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const { previewCanvasRef, previewContainerRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
     playback,
     project,
@@ -80,13 +80,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     saveMaskData,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
+  const isHandTool = toolMode === "hand";
+  const isZoomTool = toolMode === "zoom";
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
   const viewport = useCanvasViewport({
     containerRef: previewContainerRef,
     canvasRef: previewCanvasRef,
     contentSize: project.canvasSize,
-    config: { origin: "center", minZoom: 0.1, maxZoom: 10 },
+    config: { origin: "center", minZoom: PREVIEW.MIN_ZOOM, maxZoom: PREVIEW.MAX_ZOOM },
     fitOnMount: true,
     fitPadding: 40,
     enableWheel: true,
@@ -109,6 +111,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     fitToContainer: vpFitToContainer,
     setZoom: vpSetZoom,
     getZoom: vpGetZoom,
+    setPan: vpSetPan,
+    getPan: vpGetPan,
     setBaseScale: vpSetBaseScale,
     getTransform: vpGetTransform,
     getRenderOffset: vpGetRenderOffset,
@@ -124,18 +128,21 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     vpPinchRef(el);
   }, [previewContainerRef, vpWheelRef, vpPinchRef]);
 
-  // Expose viewport API to parent (for toolbar zoom controls)
-  useEffect(() => {
-    previewViewportRef.current = {
-      zoomIn: () => vpSetZoom(vpGetZoom() * 1.25),
-      zoomOut: () => vpSetZoom(vpGetZoom() / 1.25),
-      fitToContainer: () => vpFitToContainer(40),
-      getZoom: () => vpGetZoom(),
-      setZoom: (z) => vpSetZoom(z),
-      onZoomChange: (cb) => onVideoViewportChange((s) => cb(s.zoom)),
-    };
-    return () => { previewViewportRef.current = null; };
-  }, [vpSetZoom, vpGetZoom, vpFitToContainer, onVideoViewportChange, previewViewportRef]);
+  const { zoomAtClientPoint } = useViewportZoomTool({
+    viewportRef: previewContainerRef,
+    getZoom: vpGetZoom,
+    getPan: vpGetPan,
+    setZoom: vpSetZoom,
+    setPan: vpSetPan,
+    minZoom: PREVIEW.MIN_ZOOM,
+    maxZoom: PREVIEW.MAX_ZOOM,
+    zoomInFactor: PREVIEW.ZOOM_STEP_IN,
+    zoomOutFactor: PREVIEW.ZOOM_STEP_OUT,
+    onZoom: () => {
+      cancelAnimationFrame(renderRequestRef.current);
+      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    },
+  });
 
   const dragStateRef = useRef<{
     clipId: string | null;
@@ -844,15 +851,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     };
   }, [screenToProject, project.canvasSize]);
 
-  const isInsideCropArea = useCallback((point: { x: number; y: number }, area: { x: number; y: number; width: number; height: number }) => {
-    return (
-      point.x >= area.x &&
-      point.x <= area.x + area.width &&
-      point.y >= area.y &&
-      point.y <= area.y + area.height
-    );
-  }, []);
-
   const hitTestClipAtPoint = useCallback((point: { x: number; y: number }): Clip | null => {
     const tracksById = new Map(tracks.map((track) => [track.id, track]));
     // Top track (index 0) is foreground — check it first for hit testing
@@ -894,6 +892,21 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button drag for pan
     if (e.button === 1) {
+      e.preventDefault();
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
+      vpStartPanDrag({ x: e.clientX, y: e.clientY });
+      isPanningRef.current = true;
+      return;
+    }
+
+    if (isZoomTool) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      zoomAtClientPoint(e.clientX, e.clientY, e.altKey);
+      return;
+    }
+
+    if (isHandTool && e.button === 0) {
       e.preventDefault();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
       vpStartPanDrag({ x: e.clientX, y: e.clientY });
@@ -996,7 +1009,27 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [vpStartPanDrag, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode]);
+  }, [
+    vpStartPanDrag,
+    isZoomTool,
+    zoomAtClientPoint,
+    isHandTool,
+    isEditingMask,
+    activeTrackId,
+    screenToMaskCoords,
+    startDraw,
+    brushSettings.mode,
+    setBrushMode,
+    toolMode,
+    screenToProject,
+    canvasExpandMode,
+    clampToCanvas,
+    cropArea,
+    setCropArea,
+    hitTestClipAtPoint,
+    saveToHistory,
+    selectClip,
+  ]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button pan
@@ -1324,6 +1357,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             ? "grabbing"
             : isEditingMask
               ? "none"
+              : isHandTool
+                ? "grab"
+                : isZoomTool
+                  ? "zoom-in"
               : toolMode === "crop"
                 ? (isDraggingCrop ? (cropDragRef.current.mode === "move" ? "grabbing" : cropCursor) : cropCursor)
                 : (isDraggingClip ? "grabbing" : (toolMode === "select" ? "grab" : "default")),

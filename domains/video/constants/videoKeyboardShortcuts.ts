@@ -23,6 +23,8 @@ export {
 
 export const VIDEO_TOOL_SHORTCUTS: ToolShortcutMap<VideoToolMode> = {
   KeyV: "select",
+  KeyH: "hand",
+  KeyZ: "zoom",
   KeyR: "crop",
   KeyT: "trim",
   KeyC: "razor",
@@ -55,7 +57,7 @@ export const VIDEO_EDIT_SHORTCUTS = {
 };
 
 // ============================================
-// Zoom Shortcuts (with Cmd/Ctrl) — preview zoom
+// Zoom Shortcuts (with Cmd/Ctrl) — timeline zoom
 // ============================================
 
 export const VIDEO_ZOOM_SHORTCUTS = {
