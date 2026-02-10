@@ -26,6 +26,7 @@ export interface EditorCanvasContextValue {
   // Utilities
   getCursor: () => string;
   loadImageFile: (file: File) => void;
+  loadImageFiles: (files: File[]) => void;
 
   // Guides
   displaySize: { width: number; height: number };

@@ -212,8 +212,9 @@ export default function LayersPanelContent() {
 
   // Handle image file upload
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type.startsWith("image/")) {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
       const reader = new FileReader();
       reader.onload = (event) => {
         const src = event.target?.result as string;
@@ -255,6 +256,7 @@ export default function LayersPanelContent() {
           <input
             type="file"
             accept="image/*"
+            multiple
             onChange={handleImageUpload}
             className="hidden"
             id="editor-layers-panel-file-input"

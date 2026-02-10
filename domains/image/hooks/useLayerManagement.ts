@@ -187,10 +187,9 @@ export function useLayerManagement(
     img.onload = () => {
       saveToHistory?.();
 
-      const maxZIndex = layers.length > 0 ? Math.max(...layers.map(l => l.zIndex)) + 1 : 0;
       const newLayer = createPaintLayer(
-        name || `${t.layer} ${layers.length + 1}`,
-        maxZIndex
+        name || t.layer,
+        0
       );
       newLayer.originalSize = { width: img.width, height: img.height };
 
@@ -204,12 +203,22 @@ export function useLayerManagement(
       }
       layerCanvasesRef.current.set(newLayer.id, layerCanvas);
 
-      setLayers((prev) => [newLayer, ...prev]);
+      setLayers((prev) => {
+        const maxZIndex = prev.length > 0 ? Math.max(...prev.map((l) => l.zIndex)) + 1 : 0;
+        return [
+          {
+            ...newLayer,
+            zIndex: maxZIndex,
+            name: name || `${t.layer} ${prev.length + 1}`,
+          },
+          ...prev,
+        ];
+      });
       setActiveLayerId(newLayer.id);
       editCanvasRef.current = layerCanvas;
     };
     img.src = imageSrc;
-  }, [layers, saveToHistory, t.layer]);
+  }, [saveToHistory, t.layer]);
 
   // Delete layer (internal helper with optional history save)
   const deleteLayerInternal = useCallback(
