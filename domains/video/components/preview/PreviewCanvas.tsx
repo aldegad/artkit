@@ -25,9 +25,10 @@ import {
   createRectFromDrag,
   type RectHandle,
 } from "@/shared/utils/rectTransform";
-import { ASPECT_RATIO_VALUES, type AspectRatio } from "@/shared/types/aspectRatio";
+import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
-import { renderCompositeFrame } from "../../utils/compositeRenderer";
+import { usePreviewFrameCapture } from "./usePreviewFrameCapture";
+import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -84,6 +85,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cacheFrames: 0,
     liveFrames: 0,
   });
+  const scheduleRender = useCallback(() => {
+    cancelAnimationFrame(renderRequestRef.current);
+    renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+  }, []);
 
   // Mask
   const {
@@ -154,10 +159,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clearMaskRegionClip();
     }
 
-    cancelAnimationFrame(renderRequestRef.current);
-    renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+    scheduleRender();
     return true;
-  }, [clearMaskRegionClip, updateMaskRegion]);
+  }, [clearMaskRegionClip, scheduleRender, updateMaskRegion]);
 
   useEffect(() => {
     if (isEditingMask) return;
@@ -496,30 +500,27 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
     const cleanupFns: (() => void)[] = [];
 
-    const scheduleRender = () => {
+    const scheduleRenderFromMediaReady = () => {
       // During playback, the playback loop already drives rendering
       if (wasPlayingRef.current) return;
       // During pre-rendering, the pre-render loop seeks video elements to
       // different times. Don't re-render in response — it would fight over
       // video element currentTime and cause frame drops.
       if (isPreRenderingRef.current) return;
-      cancelAnimationFrame(renderRequestRef.current);
-      renderRequestRef.current = requestAnimationFrame(() => {
-        renderRef.current();
-      });
+      scheduleRender();
     };
 
     for (const clip of videoClips) {
       const video = videoElementsRef.current?.get(clip.sourceUrl);
       if (video) {
-        video.addEventListener("canplay", scheduleRender);
-        video.addEventListener("seeked", scheduleRender);
-        video.addEventListener("loadeddata", scheduleRender);
+        video.addEventListener("canplay", scheduleRenderFromMediaReady);
+        video.addEventListener("seeked", scheduleRenderFromMediaReady);
+        video.addEventListener("loadeddata", scheduleRenderFromMediaReady);
 
         cleanupFns.push(() => {
-          video.removeEventListener("canplay", scheduleRender);
-          video.removeEventListener("seeked", scheduleRender);
-          video.removeEventListener("loadeddata", scheduleRender);
+          video.removeEventListener("canplay", scheduleRenderFromMediaReady);
+          video.removeEventListener("seeked", scheduleRenderFromMediaReady);
+          video.removeEventListener("loadeddata", scheduleRenderFromMediaReady);
         });
       }
     }
@@ -528,7 +529,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       cancelAnimationFrame(renderRequestRef.current);
       cleanupFns.forEach((fn) => fn());
     };
-  }, [clips, videoElementsRef]);
+  }, [clips, videoElementsRef, isPreRenderingRef, scheduleRender]);
 
   // Draw checkerboard with cached CanvasPattern to avoid per-frame tile loops.
   const drawCheckerboard = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -1049,119 +1050,31 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     screenToProject,
     hitTestClipAtPoint,
   });
-  const transformListenersRef = useRef(new Set<(state: { isActive: boolean; clipId: string | null; aspectRatio: AspectRatio }) => void>());
-  const transformPublicStateRef = useRef({
-    isActive: false,
-    clipId: null as string | null,
-    aspectRatio: "free" as AspectRatio,
-  });
-
-  useEffect(() => {
-    transformPublicStateRef.current = {
-      isActive: transformTool.state.isActive,
-      clipId: transformTool.state.clipId,
-      aspectRatio: transformTool.state.aspectRatio,
-    };
-    for (const listener of transformListenersRef.current) {
-      listener(transformPublicStateRef.current);
-    }
-  }, [
-    transformTool.state.isActive,
-    transformTool.state.clipId,
-    transformTool.state.aspectRatio,
-  ]);
-
-  const captureCompositeFrame = useCallback(async (time?: number): Promise<Blob | null> => {
-    const width = Math.max(1, Math.round(project.canvasSize.width));
-    const height = Math.max(1, Math.round(project.canvasSize.height));
-    const captureCanvas = document.createElement("canvas");
-    captureCanvas.width = width;
-    captureCanvas.height = height;
-
-    const ctx = captureCanvas.getContext("2d");
-    if (!ctx) return null;
-
-    if (!maskTempCanvasRef.current) {
-      maskTempCanvasRef.current = document.createElement("canvas");
-    }
-    const maskTempCanvas = maskTempCanvasRef.current;
-    const captureTime = Math.max(0, typeof time === "number" ? time : currentTimeRef.current);
-    const maxAttempts = playback.isPlaying ? 1 : 8;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      ctx.clearRect(0, 0, width, height);
-      const fullyRendered = renderCompositeFrame(ctx, {
-        time: captureTime,
-        tracks,
-        getClipAtTime,
-        getMaskAtTimeForTrack,
-        videoElements: videoElementsRef.current,
-        imageCache: imageCacheRef.current,
-        maskImageCache: savedMaskImgCacheRef.current,
-        maskTempCanvas,
-        projectSize: project.canvasSize,
-        renderRect: { x: 0, y: 0, width, height },
-        liveMaskCanvas: maskContextCanvasRef.current,
-        isPlaying: playback.isPlaying,
-      });
-
-      if (fullyRendered || playback.isPlaying) {
-        break;
-      }
-
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
-      });
-    }
-
-    return new Promise<Blob | null>((resolve) => {
-      captureCanvas.toBlob((blob) => resolve(blob), "image/png");
-    });
-  }, [
+  const captureCompositeFrame = usePreviewFrameCapture({
+    projectSize: project.canvasSize,
     currentTimeRef,
+    isPlaying: playback.isPlaying,
+    tracks,
     getClipAtTime,
     getMaskAtTimeForTrack,
-    maskContextCanvasRef,
-    playback.isPlaying,
-    project.canvasSize,
-    tracks,
     videoElementsRef,
-  ]);
-
-  // Expose viewport + transform API to parent (toolbar + shortcuts)
-  useEffect(() => {
-    previewViewportRef.current = {
-      zoomIn: () => vpSetZoom(vpGetZoom() * 1.25),
-      zoomOut: () => vpSetZoom(vpGetZoom() / 1.25),
-      fitToContainer: () => vpFitToContainer(40),
-      getZoom: () => vpGetZoom(),
-      setZoom: (z) => vpSetZoom(z),
-      onZoomChange: (cb) => onVideoViewportChange((s) => cb(s.zoom)),
-      startTransformForSelection: () => transformTool.startTransformForSelection(),
-      applyTransform: () => transformTool.applyTransform(),
-      cancelTransform: () => transformTool.cancelTransform(),
-      setTransformAspectRatio: (ratio) => transformTool.setAspectRatio(ratio),
-      nudgeTransform: (dx, dy) => transformTool.nudgeTransform(dx, dy),
-      captureCompositeFrame: (time) => captureCompositeFrame(time),
-      getTransformState: () => transformPublicStateRef.current,
-      onTransformChange: (cb) => {
-        transformListenersRef.current.add(cb);
-        cb(transformPublicStateRef.current);
-        return () => {
-          transformListenersRef.current.delete(cb);
-        };
-      },
-    };
-    return () => { previewViewportRef.current = null; };
-  }, [
-    onVideoViewportChange,
+    imageCacheRef,
+    maskImageCacheRef: savedMaskImgCacheRef,
+    maskTempCanvasRef,
+    liveMaskCanvasRef: maskContextCanvasRef,
+  });
+  const fitViewportToContainer = useCallback(() => {
+    vpFitToContainer(40);
+  }, [vpFitToContainer]);
+  usePreviewViewportBridge({
     previewViewportRef,
+    onViewportChange: onVideoViewportChange,
+    getZoom: vpGetZoom,
+    setZoom: vpSetZoom,
+    fitToContainer: fitViewportToContainer,
     transformTool,
-    vpFitToContainer,
-    vpGetZoom,
-    vpSetZoom,
     captureCompositeFrame,
-  ]);
+  });
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.focus();
@@ -1221,8 +1134,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         startDraw(maskCoords.x, maskCoords.y, pressure);
         isMaskDrawingRef.current = true;
       }
-      cancelAnimationFrame(renderRequestRef.current);
-      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      scheduleRender();
       return;
     }
 
@@ -1310,7 +1222,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [vpStartPanDrag, isSpacePanning, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, maskDrawShape, transformTool, applyMaskRegionClip]);
+  }, [vpStartPanDrag, isSpacePanning, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, maskDrawShape, transformTool, applyMaskRegionClip, scheduleRender]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button pan
@@ -1332,8 +1244,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords && maskRectDragRef.current) {
         maskRectDragRef.current.current = maskCoords;
-        cancelAnimationFrame(renderRequestRef.current);
-        renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+        scheduleRender();
       }
       return;
     }
@@ -1343,8 +1254,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       if (maskCoords) {
         const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
         continueDraw(maskCoords.x, maskCoords.y, pressure);
-        cancelAnimationFrame(renderRequestRef.current);
-        renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+        scheduleRender();
       }
       return;
     }
@@ -1352,8 +1262,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (toolMode === "transform") {
       const handled = transformTool.handlePointerMove(e);
       if (handled) {
-        cancelAnimationFrame(renderRequestRef.current);
-        renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+        scheduleRender();
       }
       return;
     }
@@ -1486,7 +1395,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         y: dragState.clipStart.y + dy,
       },
     });
-  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool]);
+  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     if (isPanningRef.current) {
@@ -1508,8 +1417,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         }
       }
 
-      cancelAnimationFrame(renderRequestRef.current);
-      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      scheduleRender();
     }
 
     if (isMaskDrawingRef.current) {
@@ -1526,8 +1434,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         prevBrushModeRef.current = null;
       }
 
-      cancelAnimationFrame(renderRequestRef.current);
-      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      scheduleRender();
     } else {
       clearMaskRegionClip();
     }
@@ -1555,7 +1462,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
     }
-  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip, updateMaskRegion]);
+  }, [vpEndPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip, updateMaskRegion, scheduleRender]);
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick(() => {
@@ -1626,10 +1533,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Re-render when viewport changes (zoom/pan)
   useEffect(() => {
     return onVideoViewportChange(() => {
-      cancelAnimationFrame(renderRequestRef.current);
-      renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
+      scheduleRender();
     });
-  }, [onVideoViewportChange]);
+  }, [onVideoViewportChange, scheduleRender]);
 
   // Handle resize — recalculate fit scale via viewport, then re-render
   useEffect(() => {
