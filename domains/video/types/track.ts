@@ -28,7 +28,7 @@ export function createVideoTrack(
     visible: true,
     locked: false,
     muted: false,
-    height: 60,
+    height: DEFAULT_TRACK_HEIGHT,
   };
 }
 

@@ -12,7 +12,7 @@ import { cn } from "@/shared/utils/cn";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
-import { MASK_LANE_HEIGHT } from "../../constants";
+import { MASK_LANE_HEIGHT, TIMELINE } from "../../constants";
 
 interface TimelineProps {
   className?: string;
@@ -73,7 +73,7 @@ export function Timeline({ className }: TimelineProps) {
   // Calculate total tracks height (including mask lanes)
   const totalTracksHeight = tracks.reduce((sum, t) => {
     const hasMasks = getMasksForTrack(t.id).length > 0;
-    return sum + t.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
+    return sum + TIMELINE.TRACK_DEFAULT_HEIGHT + (hasMasks ? MASK_LANE_HEIGHT : 0);
   }, 0);
 
   const rangeStart = Math.max(0, Math.min(playback.loopStart, project.duration));
@@ -149,7 +149,7 @@ export function Timeline({ className }: TimelineProps) {
           <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
             {tracks.map((track) => {
               const trackMasks = getMasksForTrack(track.id);
-              const headerHeight = track.height + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
+              const headerHeight = TIMELINE.TRACK_DEFAULT_HEIGHT + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
               const isLiftDropTarget = !!liftedClipId && liftedClipTrackId !== track.id;
               const isLiftSource = !!liftedClipId && liftedClipTrackId === track.id;
               return (
