@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { SpriteToolMode, TimelineMode, FrameEditToolMode } from "../types";
+import { SpriteToolMode, TimelineMode, FrameEditToolMode, SpriteCropArea, SpriteCropAspectRatio } from "../types";
 import type { BrushPreset } from "@/domains/image/types/brush";
 import { DEFAULT_BRUSH_PRESETS } from "@/domains/image/constants/brushPresets";
 
@@ -13,6 +13,10 @@ interface SpriteToolStore {
   frameEditToolMode: FrameEditToolMode;
   isSpacePressed: boolean;
   isPanLocked: boolean;
+  cropArea: SpriteCropArea | null;
+  cropAspectRatio: SpriteCropAspectRatio;
+  lockCropAspect: boolean;
+  canvasExpandMode: boolean;
 
   // Timeline
   timelineMode: TimelineMode;
@@ -30,6 +34,10 @@ interface SpriteToolStore {
   setFrameEditToolMode: (mode: FrameEditToolMode) => void;
   setIsSpacePressed: (pressed: boolean) => void;
   setIsPanLocked: (locked: boolean) => void;
+  setCropArea: (area: SpriteCropArea | null) => void;
+  setCropAspectRatio: (ratio: SpriteCropAspectRatio) => void;
+  setLockCropAspect: (locked: boolean) => void;
+  setCanvasExpandMode: (enabled: boolean) => void;
 
   // Actions - Timeline
   setTimelineMode: (mode: TimelineMode) => void;
@@ -55,6 +63,10 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   frameEditToolMode: "brush",
   isSpacePressed: false,
   isPanLocked: false,
+  cropArea: null,
+  cropAspectRatio: "free",
+  lockCropAspect: false,
+  canvasExpandMode: false,
   timelineMode: "reorder",
   brushColor: "#000000",
   brushSize: DEFAULT_BRUSH_PRESETS[0].defaultSize,
@@ -72,11 +84,21 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
           frameEditToolMode: mode,
         };
       }
+      if (mode === "crop") {
+        return {
+          toolMode: mode,
+          frameEditToolMode: mode,
+        };
+      }
       return { toolMode: mode };
     }),
   setFrameEditToolMode: (mode) => set({ frameEditToolMode: mode, toolMode: mode }),
   setIsSpacePressed: (pressed) => set({ isSpacePressed: pressed }),
   setIsPanLocked: (locked) => set({ isPanLocked: locked }),
+  setCropArea: (area) => set({ cropArea: area }),
+  setCropAspectRatio: (ratio) => set({ cropAspectRatio: ratio }),
+  setLockCropAspect: (locked) => set({ lockCropAspect: locked }),
+  setCanvasExpandMode: (enabled) => set({ canvasExpandMode: enabled }),
 
   // Timeline Actions
   setTimelineMode: (mode) => set({ timelineMode: mode }),
@@ -100,6 +122,10 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       frameEditToolMode: "brush",
       isSpacePressed: false,
       isPanLocked: false,
+      cropArea: null,
+      cropAspectRatio: "free",
+      lockCropAspect: false,
+      canvasExpandMode: false,
       timelineMode: "reorder",
       brushColor: "#000000",
       brushSize: DEFAULT_BRUSH_PRESETS[0].defaultSize,
