@@ -17,9 +17,7 @@ interface SpriteMenuBarProps {
   onLoad: () => void;
   onSave: () => void;
   onSaveAs: () => void;
-  onExportZip: () => void;
-  onExportSpriteSheet: () => void;
-  onExportSpriteSheetWebp: () => void;
+  onExport: () => void;
   onImportImage: () => void;
   onImportSheet: () => void;
   onImportVideo: () => void;
@@ -62,9 +60,7 @@ export default function SpriteMenuBar({
   onLoad,
   onSave,
   onSaveAs,
-  onExportZip,
-  onExportSpriteSheet,
-  onExportSpriteSheetWebp,
+  onExport,
   onImportImage,
   onImportSheet,
   onImportVideo,
@@ -91,9 +87,7 @@ export default function SpriteMenuBar({
     { label: t.save, onClick: onSave, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.save) },
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.saveAs) },
     { divider: true },
-    { label: `${t.export} PNG ZIP`, onClick: onExportZip, disabled: !canExport },
-    { label: `${t.export} Sprite Sheet (PNG)`, onClick: onExportSpriteSheet, disabled: !canExport },
-    { label: `${t.export} Sprite Sheet (WebP)`, onClick: onExportSpriteSheetWebp, disabled: !canExport },
+    { label: t.export, onClick: onExport, disabled: !canExport },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },
     { label: t.importSheet, onClick: onImportSheet },
