@@ -112,6 +112,16 @@ export function useVideoKeyboardShortcuts(
 
     const BRUSH_SIZE_DECREASE_CODES: readonly string[] = ["BracketLeft", "Minus", "NumpadSubtract"];
     const BRUSH_SIZE_INCREASE_CODES: readonly string[] = ["BracketRight", "Equal", "NumpadAdd"];
+    const setSpacePanningState = (next: boolean) => {
+      if (process.env.NODE_ENV !== "production" && typeof setIsSpacePanning !== "function") {
+        console.error("[VideoKeyboardShortcuts] Invalid setIsSpacePanning handler", {
+          next,
+          receivedType: typeof setIsSpacePanning,
+        });
+        return;
+      }
+      setIsSpacePanning(next);
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreKeyEvent(e)) return;
@@ -120,7 +130,7 @@ export function useVideoKeyboardShortcuts(
       if (e.code === PLAYBACK_SHORTCUTS.togglePlay && isPreviewScopeKeyEvent(e)) {
         e.preventDefault();
         if (!e.repeat) {
-          setIsSpacePanning?.(true);
+          setSpacePanningState(true);
         }
         return;
       }
@@ -286,11 +296,11 @@ export function useVideoKeyboardShortcuts(
       if (e.code !== PLAYBACK_SHORTCUTS.togglePlay) return;
       if (!isSpacePanning) return;
       e.preventDefault();
-      setIsSpacePanning?.(false);
+      setSpacePanningState(false);
     };
 
     const handleBlur = () => {
-      setIsSpacePanning?.(false);
+      setSpacePanningState(false);
     };
 
     document.addEventListener("keydown", handleKeyDown, true);
