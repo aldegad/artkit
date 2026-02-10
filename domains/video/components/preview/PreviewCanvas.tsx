@@ -17,6 +17,7 @@ import {
   type RectHandle,
 } from "@/shared/utils/rectTransform";
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
+import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -50,6 +51,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
+  const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
+  const previewPerf = previewPerfRef.current;
+  const playbackPerfRef = useRef({
+    windowStartMs: 0,
+    lastTickMs: 0,
+    lastRenderMs: 0,
+    renderedFrames: 0,
+    skippedByCap: 0,
+    longTickCount: 0,
+    cacheFrames: 0,
+    liveFrames: 0,
+  });
 
   // Mask
   const {
@@ -166,6 +179,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isPlaying: playback.isPlaying,
     currentTime: playback.currentTime,
     currentTimeRef,
+    enabled: previewPerf.preRenderEnabled,
   });
 
   // Pre-decode audio buffers for all audible clips (Web Audio API)
@@ -179,6 +193,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isPlaying: playback.isPlaying,
     playbackRate: playback.playbackRate,
     currentTimeRef,
+    debugLogs: previewPerf.debugLogs,
   });
 
   // Ref for isWebAudioReady to avoid stale closure in syncMedia
@@ -188,6 +203,81 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Cache for getComputedStyle results (avoid forcing style recalc every frame)
   const cssColorsRef = useRef<{ surfacePrimary: string; borderDefault: string } | null>(null);
   const invalidateCssCache = useCallback(() => { cssColorsRef.current = null; }, []);
+
+  useEffect(() => {
+    if (!previewPerf.debugLogs) return;
+    console.info("[VideoPreviewConfig]", {
+      draftMode: previewPerf.draftMode,
+      preRenderEnabled: previewPerf.preRenderEnabled,
+      playbackRenderFpsCap: previewPerf.playbackRenderFpsCap,
+      maxCanvasDpr: previewPerf.maxCanvasDpr,
+      isMobileLike: previewPerf.isMobileLike,
+    });
+  }, [
+    previewPerf.debugLogs,
+    previewPerf.draftMode,
+    previewPerf.preRenderEnabled,
+    previewPerf.playbackRenderFpsCap,
+    previewPerf.maxCanvasDpr,
+    previewPerf.isMobileLike,
+  ]);
+
+  const maybeReportPlaybackStats = useCallback((now: number) => {
+    if (!previewPerf.debugLogs || !playback.isPlaying) return;
+
+    const stats = playbackPerfRef.current;
+    if (stats.windowStartMs === 0) {
+      stats.windowStartMs = now;
+      return;
+    }
+
+    const elapsedMs = now - stats.windowStartMs;
+    if (elapsedMs < 3000) return;
+
+    const elapsedSec = elapsedMs / 1000;
+    const renderedFps = stats.renderedFrames / elapsedSec;
+    const totalCompositedFrames = stats.cacheFrames + stats.liveFrames;
+    const cacheHitRate = totalCompositedFrames > 0
+      ? stats.cacheFrames / totalCompositedFrames
+      : 0;
+
+    let activeVisualLayers = 0;
+    for (const track of tracks) {
+      if (!track.visible) continue;
+      const clip = getClipAtTime(track.id, currentTimeRef.current);
+      if (!clip || !clip.visible || clip.type === "audio") continue;
+      activeVisualLayers += 1;
+    }
+
+    console.info("[VideoPreviewPerf]", {
+      draftMode: previewPerf.draftMode,
+      preRenderEnabled: previewPerf.preRenderEnabled,
+      fpsCap: previewPerf.playbackRenderFpsCap,
+      renderedFps: Number(renderedFps.toFixed(1)),
+      renderedFrames: stats.renderedFrames,
+      skippedByCap: stats.skippedByCap,
+      longTickCount: stats.longTickCount,
+      cacheHitRate: Number((cacheHitRate * 100).toFixed(1)),
+      activeVisualLayers,
+      visibleTracks: tracks.filter((track) => track.visible).length,
+    });
+
+    stats.windowStartMs = now;
+    stats.renderedFrames = 0;
+    stats.skippedByCap = 0;
+    stats.longTickCount = 0;
+    stats.cacheFrames = 0;
+    stats.liveFrames = 0;
+  }, [
+    previewPerf.debugLogs,
+    previewPerf.draftMode,
+    previewPerf.preRenderEnabled,
+    previewPerf.playbackRenderFpsCap,
+    playback.isPlaying,
+    tracks,
+    getClipAtTime,
+    currentTimeRef,
+  ]);
 
   // Handle playback state changes - sync video/audio elements.
   // Runs only when play state or clip/track structure changes, NOT every frame.
@@ -354,7 +444,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   // Draw checkerboard pattern for transparency
   const drawCheckerboard = useCallback(
     (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-      const size = PREVIEW.CHECKERBOARD_SIZE;
+      const size = previewPerfRef.current.draftMode
+        ? PREVIEW.CHECKERBOARD_SIZE * 2
+        : PREVIEW.CHECKERBOARD_SIZE;
       const colors = getCanvasColorsSync();
 
       for (let y = 0; y < height; y += size) {
@@ -380,7 +472,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Read current time from ref (source of truth during playback)
     const ct = currentTimeRef.current;
 
-    const dpr = window.devicePixelRatio || 1;
+    const deviceDpr = window.devicePixelRatio || 1;
+    const dpr = Math.max(1, Math.min(deviceDpr, previewPerf.maxCanvasDpr));
     const rect = container.getBoundingClientRect();
 
     // Set canvas size with DPI scaling
@@ -435,9 +528,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(ct);
 
     if (cachedBitmap) {
+      if (playback.isPlaying) {
+        playbackPerfRef.current.cacheFrames += 1;
+      }
       // Use pre-rendered cached frame — skip per-track compositing
       ctx.drawImage(cachedBitmap, offsetX, offsetY, previewWidth, previewHeight);
     } else {
+      if (playback.isPlaying) {
+        playbackPerfRef.current.liveFrames += 1;
+      }
       // Draw bottom track first (background), top track last (foreground).
       // Use array order directly — tracks[0] is the topmost track in the timeline.
       const sortedTracks = [...tracks].reverse();
@@ -1081,8 +1180,44 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick(() => {
+    const now = performance.now();
+    const stats = playbackPerfRef.current;
+
+    if (stats.lastTickMs > 0) {
+      const tickDelta = now - stats.lastTickMs;
+      const idealFrameMs = 1000 / Math.max(1, previewPerf.playbackRenderFpsCap);
+      if (tickDelta > idealFrameMs * 1.75) {
+        stats.longTickCount += 1;
+      }
+    }
+    stats.lastTickMs = now;
+
+    const minRenderIntervalMs = 1000 / Math.max(1, previewPerf.playbackRenderFpsCap);
+    if (playback.isPlaying && now - stats.lastRenderMs < minRenderIntervalMs) {
+      stats.skippedByCap += 1;
+      maybeReportPlaybackStats(now);
+      return;
+    }
+
+    stats.lastRenderMs = now;
+    stats.renderedFrames += 1;
     renderRef.current();
+    maybeReportPlaybackStats(now);
   });
+
+  useEffect(() => {
+    if (playback.isPlaying) return;
+    playbackPerfRef.current = {
+      windowStartMs: 0,
+      lastTickMs: 0,
+      lastRenderMs: 0,
+      renderedFrames: 0,
+      skippedByCap: 0,
+      longTickCount: 0,
+      cacheFrames: 0,
+      liveFrames: 0,
+    };
+  }, [playback.isPlaying]);
 
   // Render on structural changes (tracks, clips, selection, etc.)
   useEffect(() => {
@@ -1097,8 +1232,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   // Re-render when viewport changes (zoom/pan)
   useEffect(() => {
-    return onVideoViewportChange((state) => {
-      console.log("[Video Viewport] change:", { zoom: state.zoom, pan: state.pan });
+    return onVideoViewportChange(() => {
       cancelAnimationFrame(renderRequestRef.current);
       renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
     });
@@ -1184,6 +1318,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           />
         );
       })()}
+      {(previewPerf.draftMode || !previewPerf.preRenderEnabled) && (
+        <div className="absolute bottom-2 left-2 rounded bg-surface-primary/80 px-2 py-1 text-[11px] text-text-secondary backdrop-blur-sm pointer-events-none">
+          {previewPerf.draftMode ? "Draft" : "Full"} · PR {previewPerf.preRenderEnabled ? "On" : "Off"}
+        </div>
+      )}
       {/* Zoom indicator — shown when zoomed in/out */}
       {zoomPercent !== 100 && (
         <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-surface-primary/80 backdrop-blur-sm rounded px-2 py-1 text-[11px] text-text-secondary pointer-events-auto">
