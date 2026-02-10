@@ -48,7 +48,35 @@ import {
   clearLocalProjects,
   clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
-import { downloadCompositedFramesAsZip, downloadCompositedSpriteSheet } from "@/domains/sprite/utils/export";
+import {
+  downloadCompositedFramesAsZip,
+  downloadCompositedSpriteSheet,
+  type SpriteExportFrameSize,
+} from "@/domains/sprite/utils/export";
+
+const MAX_EXPORT_FRAME_SIZE = 16384;
+
+function parseExportFrameSizeInput(input: string): SpriteExportFrameSize | null {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed || trimmed === "original" || trimmed === "원본") {
+    return null;
+  }
+
+  const match = trimmed.match(/^(\d+)\s*[x×]\s*(\d+)$/);
+  if (!match) {
+    throw new Error("형식은 가로x세로 입니다. 예: 512x512");
+  }
+
+  const width = Number.parseInt(match[1], 10);
+  const height = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error("가로/세로 값은 1 이상의 숫자여야 합니다.");
+  }
+  if (width > MAX_EXPORT_FRAME_SIZE || height > MAX_EXPORT_FRAME_SIZE) {
+    throw new Error(`최대 해상도는 ${MAX_EXPORT_FRAME_SIZE}x${MAX_EXPORT_FRAME_SIZE} 입니다.`);
+  }
+  return { width, height };
+}
 
 // ============================================
 // Main Editor Component
@@ -115,6 +143,7 @@ function SpriteEditorMain() {
   const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality
   );
+  const [exportFrameSize, setExportFrameSize] = useState<SpriteExportFrameSize | null>(null);
 
   // File input ref for menu-triggered image import
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -299,37 +328,68 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
+  const exportFrameSizeLabel = exportFrameSize
+    ? `${exportFrameSize.width}x${exportFrameSize.height}`
+    : "Original";
+
+  const configureExportFrameSize = useCallback(() => {
+    const fallbackWidth = imageSize.width > 0 ? imageSize.width : "";
+    const fallbackHeight = imageSize.height > 0 ? imageSize.height : "";
+    const defaultValue = exportFrameSize
+      ? `${exportFrameSize.width}x${exportFrameSize.height}`
+      : (fallbackWidth && fallbackHeight ? `${fallbackWidth}x${fallbackHeight}` : "");
+
+    const input = window.prompt(
+      "프레임 내보내기 크기 설정 (가로x세로). 원본 크기는 비우거나 original 입력",
+      defaultValue,
+    );
+    if (input === null) return;
+
+    try {
+      const nextSize = parseExportFrameSizeInput(input);
+      setExportFrameSize(nextSize);
+    } catch (error) {
+      alert((error as Error).message);
+    }
+  }, [exportFrameSize, imageSize.height, imageSize.width]);
 
   // Export actions (moved from timeline panel to File menu)
   const exportZip = useCallback(async () => {
     if (!hasRenderableFrames) return;
     try {
-      await downloadCompositedFramesAsZip(tracks, projectName.trim() || "sprite-project");
+      await downloadCompositedFramesAsZip(tracks, projectName.trim() || "sprite-project", {
+        frameSize: exportFrameSize ?? undefined,
+      });
     } catch (error) {
       console.error("Export failed:", error);
       alert(`${t.exportFailed}: ${(error as Error).message}`);
     }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed, exportFrameSize]);
 
   const exportSpriteSheet = useCallback(async () => {
     if (!hasRenderableFrames) return;
     try {
-      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project");
+      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project", {
+        frameSize: exportFrameSize ?? undefined,
+      });
     } catch (error) {
       console.error("Export failed:", error);
       alert(`${t.exportFailed}: ${(error as Error).message}`);
     }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed, exportFrameSize]);
 
   const exportSpriteSheetWebp = useCallback(async () => {
     if (!hasRenderableFrames) return;
     try {
-      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project", { format: "webp" });
+      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project", {
+        format: "webp",
+        frameSize: exportFrameSize ?? undefined,
+      });
     } catch (error) {
       console.error("Export failed:", error);
       alert(`${t.exportFailed}: ${(error as Error).message}`);
     }
-  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed, exportFrameSize]);
 
   // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
@@ -349,6 +409,7 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
+      exportFrameSize: exportFrameSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -388,6 +449,7 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     fps,
+    exportFrameSize,
     storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
@@ -416,6 +478,7 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
+      exportFrameSize: exportFrameSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -451,6 +514,7 @@ function SpriteEditorMain() {
     projectName,
     nextFrameId,
     fps,
+    exportFrameSize,
     storageProvider,
     setSavedSpriteProjects,
     setCurrentProjectId,
@@ -474,6 +538,7 @@ function SpriteEditorMain() {
 
         setImageSrc(project.imageSrc);
         setImageSize(project.imageSize);
+        setExportFrameSize(project.exportFrameSize ?? null);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = project as any;
@@ -507,6 +572,7 @@ function SpriteEditorMain() {
       storageProvider,
       setImageSrc,
       setImageSize,
+      setExportFrameSize,
       restoreTracks,
       setProjectName,
       setCurrentProjectId,
@@ -618,6 +684,8 @@ function SpriteEditorMain() {
             onExportZip={exportZip}
             onExportSpriteSheet={exportSpriteSheet}
             onExportSpriteSheetWebp={exportSpriteSheetWebp}
+            onConfigureExportFrameSize={configureExportFrameSize}
+            exportFrameSizeLabel={exportFrameSizeLabel}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}

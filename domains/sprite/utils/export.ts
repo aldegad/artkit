@@ -59,12 +59,47 @@ export async function downloadFramesAsZip(
 
 export type SpriteSheetFormat = "png" | "webp";
 
+export interface SpriteExportFrameSize {
+  width: number;
+  height: number;
+}
+
 interface SpriteSheetOptions {
   columns?: number; // Number of columns (auto-calculated if not provided)
   padding?: number; // Padding between frames
   backgroundColor?: string; // Background color (transparent by default)
   format?: SpriteSheetFormat; // Export format (default: png)
   quality?: number; // WebP quality 0-1 (default: 0.95)
+  frameSize?: SpriteExportFrameSize; // Per-frame output size override
+}
+
+interface CompositedFramesZipOptions {
+  frameSize?: SpriteExportFrameSize; // Per-frame output size override
+}
+
+function normalizeFrameSize(
+  frameSize: SpriteExportFrameSize | undefined,
+): SpriteExportFrameSize | null {
+  if (!frameSize) return null;
+  const width = Math.max(1, Math.floor(frameSize.width));
+  const height = Math.max(1, Math.floor(frameSize.height));
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return { width, height };
+}
+
+function resizeCanvas(
+  source: HTMLCanvasElement,
+  width: number,
+  height: number,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(source, 0, 0, width, height);
+  return canvas;
 }
 
 /**
@@ -82,6 +117,7 @@ export function generateSpriteSheet(
     }
 
     const { padding = 0, backgroundColor, format = "png", quality = 0.95 } = options;
+    const frameSize = normalizeFrameSize(options.frameSize);
 
     // Load all images first
     const imagePromises = validFrames.map((frame) => {
@@ -94,13 +130,15 @@ export function generateSpriteSheet(
     });
 
     Promise.all(imagePromises).then((images) => {
-      // Calculate max frame dimensions
-      let maxWidth = 0;
-      let maxHeight = 0;
-      images.forEach((img) => {
-        if (img.width > maxWidth) maxWidth = img.width;
-        if (img.height > maxHeight) maxHeight = img.height;
-      });
+      // Calculate frame dimensions
+      let maxWidth = frameSize?.width ?? 0;
+      let maxHeight = frameSize?.height ?? 0;
+      if (!frameSize) {
+        images.forEach((img) => {
+          if (img.width > maxWidth) maxWidth = img.width;
+          if (img.height > maxHeight) maxHeight = img.height;
+        });
+      }
 
       // Calculate grid dimensions
       const columns = options.columns || Math.ceil(Math.sqrt(validFrames.length));
@@ -129,9 +167,17 @@ export function generateSpriteSheet(
       images.forEach((img, index) => {
         const col = index % columns;
         const row = Math.floor(index / columns);
-        const x = col * cellWidth + padding + (maxWidth - img.width) / 2;
-        const y = row * cellHeight + padding + (maxHeight - img.height) / 2;
-        ctx.drawImage(img, x, y);
+        const x = col * cellWidth + padding;
+        const y = row * cellHeight + padding;
+        if (frameSize) {
+          ctx.drawImage(img, x, y, frameSize.width, frameSize.height);
+        } else {
+          ctx.drawImage(
+            img,
+            x + (maxWidth - img.width) / 2,
+            y + (maxHeight - img.height) / 2,
+          );
+        }
       });
 
       const mimeType = format === "webp" ? "image/webp" : "image/png";
@@ -300,9 +346,10 @@ export async function generateCompositedSpriteSheet(
   if (compositedFrames.length === 0) return null;
 
   const { padding = 0, backgroundColor, format = "png", quality = 0.95 } = options;
+  const frameSize = normalizeFrameSize(options.frameSize);
 
-  const maxWidth = Math.max(...compositedFrames.map((f) => f.width));
-  const maxHeight = Math.max(...compositedFrames.map((f) => f.height));
+  const maxWidth = frameSize?.width ?? Math.max(...compositedFrames.map((f) => f.width));
+  const maxHeight = frameSize?.height ?? Math.max(...compositedFrames.map((f) => f.height));
 
   const columns = options.columns || Math.ceil(Math.sqrt(compositedFrames.length));
   const rows = Math.ceil(compositedFrames.length / columns);
@@ -322,24 +369,21 @@ export async function generateCompositedSpriteSheet(
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  // Load and draw each composited frame
-  const images = await Promise.all(
-    compositedFrames.map(
-      (cf) =>
-        new Promise<HTMLImageElement>((resolve) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.src = cf.dataUrl;
-        }),
-    ),
-  );
-
-  images.forEach((img, index) => {
+  compositedFrames.forEach((frame, index) => {
     const col = index % columns;
     const row = Math.floor(index / columns);
-    const x = col * cellWidth + padding + (maxWidth - img.width) / 2;
-    const y = row * cellHeight + padding + (maxHeight - img.height) / 2;
-    ctx.drawImage(img, x, y);
+    const x = col * cellWidth + padding;
+    const y = row * cellHeight + padding;
+
+    if (frameSize) {
+      ctx.drawImage(frame.canvas, x, y, frameSize.width, frameSize.height);
+    } else {
+      ctx.drawImage(
+        frame.canvas,
+        x + (maxWidth - frame.width) / 2,
+        y + (maxHeight - frame.height) / 2,
+      );
+    }
   });
 
   const mimeType = format === "webp" ? "image/webp" : "image/png";
@@ -373,15 +417,20 @@ export async function downloadCompositedSpriteSheet(
 export async function downloadCompositedFramesAsZip(
   tracks: SpriteTrack[],
   projectName: string,
+  options: CompositedFramesZipOptions = {},
 ): Promise<void> {
   const compositedFrames = await compositeAllFrames(tracks);
   if (compositedFrames.length === 0) return;
+  const frameSize = normalizeFrameSize(options.frameSize);
 
   const JSZip = (await import("jszip")).default;
   const zip = new JSZip();
 
   compositedFrames.forEach((cf, index) => {
-    const base64Data = cf.dataUrl.split(",")[1];
+    const sourceCanvas = frameSize
+      ? resizeCanvas(cf.canvas, frameSize.width, frameSize.height)
+      : cf.canvas;
+    const base64Data = sourceCanvas.toDataURL("image/png").split(",")[1];
     const paddedIndex = String(index + 1).padStart(3, "0");
     zip.file(`${projectName}-${paddedIndex}.png`, base64Data, { base64: true });
   });

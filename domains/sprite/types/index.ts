@@ -55,6 +55,7 @@ export interface SavedSpriteProject {
   name: string;
   imageSrc: string;
   imageSize: Size;
+  exportFrameSize?: Size;
   thumbnailUrl?: string;
   tracks: SpriteTrack[];
   nextFrameId: number;

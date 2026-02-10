@@ -49,6 +49,7 @@ interface FirestoreSpriteProject {
   imageSrcRef?: string;
   imageSrc?: string;
   imageSize: SavedSpriteProject["imageSize"];
+  exportFrameSize?: SavedSpriteProject["exportFrameSize"];
   tracks: FirestoreSpriteTrackMeta[];
   nextFrameId: number;
   fps: number;
@@ -454,6 +455,7 @@ export async function saveSpriteProjectToFirebase(
     imageSrcRef,
     imageSrc: inlineImageSrc,
     imageSize: project.imageSize,
+    exportFrameSize: project.exportFrameSize,
     tracks: trackMetas,
     nextFrameId: project.nextFrameId,
     fps: project.fps,
@@ -557,6 +559,7 @@ export async function getSpriteProjectFromFirebase(
     name: data.name,
     imageSrc,
     imageSize: data.imageSize,
+    exportFrameSize: data.exportFrameSize,
     tracks,
     nextFrameId: data.nextFrameId,
     fps: data.fps,
@@ -582,6 +585,7 @@ export async function getAllSpriteProjectsFromFirebase(
       name: data.name,
       imageSrc: "",
       imageSize: data.imageSize,
+      exportFrameSize: data.exportFrameSize,
       tracks: data.tracks.map((trackMeta) => ({
         id: trackMeta.id,
         name: trackMeta.name,
