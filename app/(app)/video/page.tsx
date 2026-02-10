@@ -13,6 +13,7 @@ import {
   VolumeMutedIcon,
   UndoIcon,
   RedoIcon,
+  VideoCameraIcon,
 } from "@/shared/components/icons";
 import {
   VideoStateProvider,
@@ -494,6 +495,7 @@ function VideoEditorContent() {
   const [loadProgress, setLoadProgress] = useState<SaveLoadProgress | null>(null);
   const [projectListOperation, setProjectListOperation] = useState<"load" | "delete" | null>(null);
   const [saveCount, setSaveCount] = useState(0);
+  const [isCapturingFrame, setIsCapturingFrame] = useState(false);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
   const playbackRange = useMemo(() => {
@@ -1461,6 +1463,74 @@ function VideoEditorContent() {
       unsubscribe?.();
     };
   }, [previewViewportRef]);
+
+  const handlePreviewZoomIn = useCallback(() => {
+    previewViewportRef.current?.zoomIn();
+  }, [previewViewportRef]);
+
+  const handlePreviewZoomOut = useCallback(() => {
+    previewViewportRef.current?.zoomOut();
+  }, [previewViewportRef]);
+
+  const handlePreviewFit = useCallback(() => {
+    previewViewportRef.current?.fitToContainer();
+  }, [previewViewportRef]);
+
+  const handleCaptureFrameToImageLayer = useCallback(async () => {
+    if (isCapturingFrame) return;
+    const viewportApi = previewViewportRef.current;
+    if (!viewportApi) return;
+
+    setIsCapturingFrame(true);
+    try {
+      const captureTime = Math.max(0, playback.currentTime);
+      const frameBlob = await viewportApi.captureCompositeFrame(captureTime);
+      if (!frameBlob) {
+        alert("Failed to capture current frame.");
+        return;
+      }
+
+      let targetVideoTrackId = selectedVisualClip?.trackId ?? tracks.find((track) => track.type === "video")?.id ?? null;
+      if (!targetVideoTrackId) {
+        targetVideoTrackId = addTrack("Video 1", "video");
+      }
+
+      const frameUrl = URL.createObjectURL(frameBlob);
+      const frameSize = {
+        width: project.canvasSize.width,
+        height: project.canvasSize.height,
+      };
+
+      saveToHistory();
+      const clipId = addImageClip(targetVideoTrackId, frameUrl, frameSize, captureTime, 5);
+      try {
+        await saveMediaBlob(clipId, frameBlob);
+      } catch (error) {
+        console.error("Failed to save captured frame blob:", error);
+      }
+
+      selectClips([clipId]);
+      selectMasksForTimeline([]);
+    } catch (error) {
+      console.error("Frame capture failed:", error);
+      alert(`Failed to capture current frame: ${(error as Error).message}`);
+    } finally {
+      setIsCapturingFrame(false);
+    }
+  }, [
+    isCapturingFrame,
+    previewViewportRef,
+    playback.currentTime,
+    selectedVisualClip?.trackId,
+    tracks,
+    addTrack,
+    project.canvasSize.height,
+    project.canvasSize.width,
+    saveToHistory,
+    addImageClip,
+    selectClips,
+    selectMasksForTimeline,
+  ]);
   // Canvas size adjustment
   const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
   const [isEditingCanvasSize, setIsEditingCanvasSize] = useState(false);
@@ -1842,6 +1912,15 @@ function VideoEditorContent() {
             title={`${t.redo} (Ctrl+Shift+Z)`}
           >
             <RedoIcon className="w-4 h-4" />
+          </button>
+          <div className="w-px h-4 bg-border-default mx-0.5" />
+          <button
+            onClick={handleCaptureFrameToImageLayer}
+            disabled={isCapturingFrame}
+            className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+            title="Capture current frame to image layer"
+          >
+            <VideoCameraIcon className="w-4 h-4" />
           </button>
         </div>
 
