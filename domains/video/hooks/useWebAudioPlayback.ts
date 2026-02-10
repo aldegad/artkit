@@ -133,6 +133,12 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       clearInterval(schedulerTimerRef.current);
       schedulerTimerRef.current = null;
     }
+    // Hard mute any stray WebAudio output path immediately.
+    // play() path resumes context again.
+    const ctx = getSharedAudioContext();
+    if (ctx.state === "running") {
+      void ctx.suspend().catch(() => {});
+    }
   }, [stopAllNodes]);
 
   // Schedule audio nodes for all audible clips at current time
