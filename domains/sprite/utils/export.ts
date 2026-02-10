@@ -71,10 +71,12 @@ interface SpriteSheetOptions {
   format?: SpriteSheetFormat; // Export format (default: png)
   quality?: number; // WebP quality 0-1 (default: 0.95)
   frameSize?: SpriteExportFrameSize; // Per-frame output size override
+  appendFrameCount?: boolean; // Append frame count to file name (default: true)
 }
 
 interface CompositedFramesZipOptions {
   frameSize?: SpriteExportFrameSize; // Per-frame output size override
+  appendFrameCount?: boolean; // Append frame count to file name (default: true)
 }
 
 function normalizeFrameSize(
@@ -203,8 +205,10 @@ export async function downloadSpriteSheet(
 
   const validCount = frames.filter((f) => f.imageData && !f.disabled).length;
   const ext = options.format === "webp" ? "webp" : "png";
+  const appendFrameCount = options.appendFrameCount ?? true;
+  const frameSuffix = appendFrameCount ? `-${validCount}f` : "";
   const link = document.createElement("a");
-  link.download = `${projectName}-${validCount}f-spritesheet.${ext}`;
+  link.download = `${projectName}${frameSuffix}-spritesheet.${ext}`;
   link.href = dataUrl;
   link.click();
 }
@@ -405,8 +409,10 @@ export async function downloadCompositedSpriteSheet(
 
   const maxFrameCount = Math.max(...tracks.filter((t) => t.visible).map((t) => t.frames.filter((f) => !f.disabled).length), 0);
   const ext = options.format === "webp" ? "webp" : "png";
+  const appendFrameCount = options.appendFrameCount ?? true;
+  const frameSuffix = appendFrameCount ? `-${maxFrameCount}f` : "";
   const link = document.createElement("a");
-  link.download = `${projectName}-${maxFrameCount}f-spritesheet.${ext}`;
+  link.download = `${projectName}${frameSuffix}-spritesheet.${ext}`;
   link.href = dataUrl;
   link.click();
 }
@@ -435,9 +441,11 @@ export async function downloadCompositedFramesAsZip(
     zip.file(`${projectName}-${paddedIndex}.png`, base64Data, { base64: true });
   });
 
+  const appendFrameCount = options.appendFrameCount ?? true;
+  const frameSuffix = appendFrameCount ? `-${compositedFrames.length}f` : "";
   const blob = await zip.generateAsync({ type: "blob" });
   const link = document.createElement("a");
-  link.download = `${projectName}-${compositedFrames.length}f.zip`;
+  link.download = `${projectName}${frameSuffix}.zip`;
   link.href = URL.createObjectURL(blob);
   link.click();
   URL.revokeObjectURL(link.href);

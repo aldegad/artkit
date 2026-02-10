@@ -20,8 +20,6 @@ interface SpriteMenuBarProps {
   onExportZip: () => void;
   onExportSpriteSheet: () => void;
   onExportSpriteSheetWebp: () => void;
-  onConfigureExportFrameSize: () => void;
-  exportFrameSizeLabel: string;
   onImportImage: () => void;
   onImportSheet: () => void;
   onImportVideo: () => void;
@@ -67,8 +65,6 @@ export default function SpriteMenuBar({
   onExportZip,
   onExportSpriteSheet,
   onExportSpriteSheetWebp,
-  onConfigureExportFrameSize,
-  exportFrameSizeLabel,
   onImportImage,
   onImportSheet,
   onImportVideo,
@@ -94,8 +90,6 @@ export default function SpriteMenuBar({
     { divider: true },
     { label: t.save, onClick: onSave, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.save) },
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.saveAs) },
-    { divider: true },
-    { label: `Export Frame Size (${exportFrameSizeLabel})`, onClick: onConfigureExportFrameSize },
     { divider: true },
     { label: `${t.export} PNG ZIP`, onClick: onExportZip, disabled: !canExport },
     { label: `${t.export} Sprite Sheet (PNG)`, onClick: onExportSpriteSheet, disabled: !canExport },
