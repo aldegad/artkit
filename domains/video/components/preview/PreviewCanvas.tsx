@@ -27,6 +27,7 @@ import {
 } from "@/shared/utils/rectTransform";
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
+import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
 import { usePreviewFrameCapture } from "./usePreviewFrameCapture";
 import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
 
@@ -114,6 +115,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     liveFrames: 0,
   });
   const syncMediaRef = useRef<(() => void) | null>(null);
+  const syncMediaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlaybackTickTimeRef = useRef<number | null>(null);
   const scheduleRender = useCallback(() => {
     cancelAnimationFrame(renderRequestRef.current);
@@ -444,6 +446,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     });
   }, [videoElementsRef, audioElementsRef]);
 
+  const forceStopMediaImmediately = useCallback(() => {
+    if (syncMediaIntervalRef.current !== null) {
+      clearInterval(syncMediaIntervalRef.current);
+      syncMediaIntervalRef.current = null;
+    }
+    syncMediaRef.current = null;
+    lastPlaybackTickTimeRef.current = null;
+    stopAllMediaElements();
+  }, [stopAllMediaElements]);
+
+  useEffect(() => {
+    return subscribeImmediatePlaybackStop(forceStopMediaImmediately);
+  }, [forceStopMediaImmediately]);
+
   // Handle playback state changes - sync video/audio elements.
   // Runs only when play state or clip/track structure changes, NOT every frame.
   useEffect(() => {
@@ -451,12 +467,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
 
     if (!playback.isPlaying) {
-      syncMediaRef.current = null;
-      lastPlaybackTickTimeRef.current = null;
-      if (wasPlayingRef.current) {
-        // Playback stopped - pause all media.
-        stopAllMediaElements();
-      }
+      forceStopMediaImmediately();
       wasPlayingRef.current = false;
       return;
     }
@@ -554,27 +565,31 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     syncMedia(); // Initial sync when playback starts
     // Periodic re-sync for clip boundaries and drift correction (not every frame)
     const intervalId = setInterval(syncMedia, PLAYBACK.SYNC_INTERVAL_MS);
+    syncMediaIntervalRef.current = intervalId;
     wasPlayingRef.current = true;
 
     return () => {
       clearInterval(intervalId);
+      if (syncMediaIntervalRef.current === intervalId) {
+        syncMediaIntervalRef.current = null;
+      }
       syncMediaRef.current = null;
       if (!playback.isPlaying) {
         stopAllMediaElements();
       }
     };
-  }, [playback.isPlaying, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef, stopAllMediaElements]);
+  }, [playback.isPlaying, playback.playbackRate, clips, tracks, getClipAtTime, videoElementsRef, audioElementsRef, stopAllMediaElements, forceStopMediaImmediately]);
 
   // Hard-stop HTML media elements when the tab/window loses foreground.
   useEffect(() => {
     const stopWhenBackgrounded = () => {
       if (document.visibilityState !== "visible") {
-        stopAllMediaElements();
+        forceStopMediaImmediately();
       }
     };
 
     const stopNow = () => {
-      stopAllMediaElements();
+      forceStopMediaImmediately();
     };
 
     document.addEventListener("visibilitychange", stopWhenBackgrounded);
@@ -586,7 +601,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       window.removeEventListener("blur", stopNow);
       window.removeEventListener("pagehide", stopNow);
     };
-  }, [stopAllMediaElements]);
+  }, [forceStopMediaImmediately]);
   // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
   useEffect(() => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
