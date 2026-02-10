@@ -5,6 +5,32 @@ import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { useLanguage } from "@/shared/contexts/LanguageContext";
 import { MusicNoteIcon } from "@/shared/components/icons";
 
+const ACCEPTED_AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".oga"] as const;
+const ACCEPTED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".m4v", ".ogv"] as const;
+const ACCEPTED_MEDIA_INPUT =
+  "audio/*,video/*,.mp3,.wav,.ogg,.m4a,.aac,.oga,.mp4,.mov,.webm,.m4v,.ogv";
+
+function hasAnyExtension(fileName: string, extensions: readonly string[]): boolean {
+  const lower = fileName.toLowerCase();
+  return extensions.some((ext) => lower.endsWith(ext));
+}
+
+function isSupportedMediaFile(file: File): boolean {
+  const mimeType = file.type.toLowerCase();
+  if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) {
+    return true;
+  }
+  return (
+    hasAnyExtension(file.name, ACCEPTED_AUDIO_EXTENSIONS) ||
+    hasAnyExtension(file.name, ACCEPTED_VIDEO_EXTENSIONS)
+  );
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return "Unsupported media format or missing audio track.";
+}
+
 export function AudioDropZone() {
   const { t } = useLanguage();
   const { loadAudio } = useSoundEditor();
@@ -14,11 +40,16 @@ export function AudioDropZone() {
     async (e: React.DragEvent) => {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith("audio/")) {
+      if (!file || !isSupportedMediaFile(file)) return;
+
+      try {
         await loadAudio(file);
+      } catch (error) {
+        console.error("[SoundEditor] Failed to load dropped media:", error);
+        alert(`${t.importFailed}: ${toErrorMessage(error)}`);
       }
     },
-    [loadAudio]
+    [loadAudio, t]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -33,13 +64,18 @@ export function AudioDropZone() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-        await loadAudio(file);
+        try {
+          await loadAudio(file);
+        } catch (error) {
+          console.error("[SoundEditor] Failed to load selected media:", error);
+          alert(`${t.importFailed}: ${toErrorMessage(error)}`);
+        }
       }
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
     },
-    [loadAudio]
+    [loadAudio, t]
   );
 
   return (
@@ -54,14 +90,14 @@ export function AudioDropZone() {
       <div className="text-center">
         <p className="text-lg text-text-primary">{t.dragOrClickToOpen}</p>
         <p className="text-sm text-text-tertiary mt-1">
-          MP3, WAV, OGG, M4A
+          MP3, WAV, OGG, M4A, MP4, MOV, WEBM
         </p>
       </div>
 
       <input
         ref={fileInputRef}
         type="file"
-        accept="audio/*"
+        accept={ACCEPTED_MEDIA_INPUT}
         onChange={handleFileChange}
         className="hidden"
       />
