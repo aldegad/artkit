@@ -56,7 +56,10 @@ function clearCache() {
 }
 
 function timeToFrameIndex(time: number): number {
-  return Math.round(time * PRE_RENDER.FRAME_RATE);
+  if (!Number.isFinite(time)) return 0;
+  // Use floor-based indexing so cached sampling never jumps to a future frame.
+  // This avoids visible rollbacks at cache/non-cache boundaries during playback.
+  return Math.max(0, Math.floor(time * PRE_RENDER.FRAME_RATE + 1e-6));
 }
 
 function frameIndexToTime(frameIndex: number): number {
