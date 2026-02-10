@@ -46,6 +46,7 @@ export default function TimelineContent() {
   const removeTrack = useSpriteTrackStore((s) => s.removeTrack);
   const reverseTrackFrames = useSpriteTrackStore((s) => s.reverseTrackFrames);
   const updateTrack = useSpriteTrackStore((s) => s.updateTrack);
+  const reorderTracks = useSpriteTrackStore((s) => s.reorderTracks);
   const currentFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
   const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const isPlaying = useSpriteTrackStore((s) => s.isPlaying);
@@ -60,6 +61,8 @@ export default function TimelineContent() {
 
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [draggedTrackId, setDraggedTrackId] = useState<string | null>(null);
+  const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Header resize state
@@ -246,6 +249,57 @@ export default function TimelineContent() {
     },
     [pushHistory, reverseTrackFrames],
   );
+
+  const isInteractiveDragTarget = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(target.closest("button, input, textarea, select, [contenteditable='true']"));
+  }, []);
+
+  const handleTrackDropById = useCallback((fromTrackId: string, toTrackId: string) => {
+    if (!fromTrackId || !toTrackId || fromTrackId === toTrackId) return;
+    const fromIndex = tracks.findIndex((track) => track.id === fromTrackId);
+    const toIndex = tracks.findIndex((track) => track.id === toTrackId);
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+    pushHistory();
+    reorderTracks(fromIndex, toIndex);
+  }, [tracks, pushHistory, reorderTracks]);
+
+  const handleTrackDragStart = useCallback((event: React.DragEvent<HTMLDivElement>, trackId: string) => {
+    if (editingTrackId === trackId || isInteractiveDragTarget(event.target)) {
+      event.preventDefault();
+      return;
+    }
+    setDraggedTrackId(trackId);
+    setDragOverTrackId(trackId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", trackId);
+  }, [editingTrackId, isInteractiveDragTarget]);
+
+  const handleTrackDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, trackId: string) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setDragOverTrackId((prev) => (prev === trackId ? prev : trackId));
+  }, []);
+
+  const handleTrackDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>, trackId: string) => {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    setDragOverTrackId((prev) => (prev === trackId ? null : prev));
+  }, []);
+
+  const handleTrackDrop = useCallback((event: React.DragEvent<HTMLDivElement>, toTrackId: string) => {
+    event.preventDefault();
+    const fromTrackId = draggedTrackId ?? event.dataTransfer.getData("text/plain");
+    if (fromTrackId) {
+      handleTrackDropById(fromTrackId, toTrackId);
+    }
+    setDraggedTrackId(null);
+    setDragOverTrackId(null);
+  }, [draggedTrackId, handleTrackDropById]);
+
+  const handleTrackDragEnd = useCallback(() => {
+    setDraggedTrackId(null);
+    setDragOverTrackId(null);
+  }, []);
 
   // Start editing track name
   const startEditingName = useCallback((track: SpriteTrack) => {
@@ -508,19 +562,33 @@ export default function TimelineContent() {
           className="shrink-0 overflow-hidden"
           style={{ width: headerWidth }}
         >
-          {tracks.map((track: SpriteTrack) => (
-            <div
-              key={track.id}
-              onClick={() => setActiveTrackId(track.id)}
-              className={`flex items-center gap-1 px-2 border-b border-r border-border-default cursor-pointer transition-colors ${
-                track.id === activeTrackId
-                  ? "bg-accent-primary/10"
-                  : "bg-surface-primary hover:bg-surface-secondary/50"
-              } ${!track.visible ? "opacity-40" : ""}`}
-              style={{ height: TRACK_HEIGHT }}
-            >
-              {headerWidth >= HEADER_COMPACT_BREAKPOINT ? (
-                <>
+          {tracks.map((track: SpriteTrack) => {
+            const isDropTarget = dragOverTrackId === track.id && draggedTrackId !== null && draggedTrackId !== track.id;
+            const isDragSource = draggedTrackId === track.id;
+
+            return (
+                <div
+                  key={track.id}
+                  onClick={() => setActiveTrackId(track.id)}
+                  className={`flex items-center gap-1 px-2 border-b border-r border-border-default transition-colors ${
+                    isDropTarget
+                      ? "bg-accent-primary/20 ring-1 ring-inset ring-accent-primary"
+                      : track.id === activeTrackId
+                        ? "bg-accent-primary/10"
+                        : "bg-surface-primary hover:bg-surface-secondary/50"
+                  } ${isDragSource ? "opacity-60" : ""} ${!track.visible ? "opacity-40" : ""} ${
+                    editingTrackId === track.id ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+                  }`}
+                  style={{ height: TRACK_HEIGHT }}
+                  draggable={editingTrackId !== track.id}
+                  onDragStart={(event) => handleTrackDragStart(event, track.id)}
+                  onDragOver={(event) => handleTrackDragOver(event, track.id)}
+                  onDragLeave={(event) => handleTrackDragLeave(event, track.id)}
+                  onDrop={(event) => handleTrackDrop(event, track.id)}
+                  onDragEnd={handleTrackDragEnd}
+                >
+                  {headerWidth >= HEADER_COMPACT_BREAKPOINT ? (
+                    <>
                   {/* Visibility toggle */}
                   <button
                     onClick={(e) => {
@@ -608,92 +676,93 @@ export default function TimelineContent() {
                       <DeleteIcon className="w-3.5 h-3.5" />
                     </button>
                   )}
-                </>
-              ) : (
-                /* Compact mode: single menu icon */
-                <Popover
-                  trigger={
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-                      title={track.name}
+                    </>
+                  ) : (
+                    /* Compact mode: single menu icon */
+                    <Popover
+                      trigger={
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
+                          title={track.name}
+                        >
+                          <MenuIcon className="w-3 h-3" />
+                        </button>
+                      }
+                      align="start"
+                      side="bottom"
+                      closeOnScroll={false}
                     >
-                      <MenuIcon className="w-3 h-3" />
-                    </button>
-                  }
-                  align="start"
-                  side="bottom"
-                  closeOnScroll={false}
-                >
-                  <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
-                    <span
-                      className="text-xs font-medium text-text-primary px-2 py-1 truncate cursor-text"
-                      onDoubleClick={() => startEditingName(track)}
-                    >
-                      {track.name}
-                    </span>
-                    <div className="h-px bg-border-default mx-1" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDuplicateTrack(track.id);
-                      }}
-                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
-                    >
-                      <DuplicateIcon className="w-3 h-3" />
-                      Duplicate
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReverseTrackFrames(track.id);
-                      }}
-                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
-                    >
-                      <RotateIcon className="w-3 h-3" />
-                      Reverse Frames
-                    </button>
-                    <div className="h-px bg-border-default mx-1" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateTrack(track.id, { visible: !track.visible });
-                      }}
-                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
-                    >
-                      {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
-                      {track.visible ? "Hide" : "Show"}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateTrack(track.id, { locked: !track.locked });
-                      }}
-                      className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
-                    >
-                      {track.locked ? <LockClosedIcon className="w-3 h-3" /> : <LockOpenIcon className="w-3 h-3" />}
-                      {track.locked ? "Unlock" : "Lock"}
-                    </button>
-                    {tracks.length > 1 && (
-                      <>
+                      <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
+                        <span
+                          className="text-xs font-medium text-text-primary px-2 py-1 truncate cursor-text"
+                          onDoubleClick={() => startEditingName(track)}
+                        >
+                          {track.name}
+                        </span>
                         <div className="h-px bg-border-default mx-1" />
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteTrack(track.id);
+                            handleDuplicateTrack(track.id);
                           }}
-                          className="flex items-center gap-2 px-2 py-1 rounded text-xs text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                          className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
                         >
-                          <DeleteIcon className="w-3 h-3" />
-                          Delete
+                          <DuplicateIcon className="w-3 h-3" />
+                          Duplicate
                         </button>
-                      </>
-                    )}
-                  </div>
-                </Popover>
-              )}
-            </div>
-          ))}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReverseTrackFrames(track.id);
+                          }}
+                          className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                        >
+                          <RotateIcon className="w-3 h-3" />
+                          Reverse Frames
+                        </button>
+                        <div className="h-px bg-border-default mx-1" />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateTrack(track.id, { visible: !track.visible });
+                          }}
+                          className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                        >
+                          {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
+                          {track.visible ? "Hide" : "Show"}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateTrack(track.id, { locked: !track.locked });
+                          }}
+                          className="flex items-center gap-2 px-2 py-1 rounded text-xs text-text-secondary hover:bg-interactive-hover transition-colors"
+                        >
+                          {track.locked ? <LockClosedIcon className="w-3 h-3" /> : <LockOpenIcon className="w-3 h-3" />}
+                          {track.locked ? "Unlock" : "Lock"}
+                        </button>
+                        {tracks.length > 1 && (
+                          <>
+                            <div className="h-px bg-border-default mx-1" />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTrack(track.id);
+                              }}
+                              className="flex items-center gap-2 px-2 py-1 rounded text-xs text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                            >
+                              <DeleteIcon className="w-3 h-3" />
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </Popover>
+                  )}
+                </div>
+            );
+          })}
         </div>
 
         {/* Resize handle */}
