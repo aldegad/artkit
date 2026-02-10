@@ -40,6 +40,7 @@ interface VideoState {
 
   // UI
   showAssetLibrary: boolean;
+  isPanLocked: boolean;
 
   // Crop
   cropArea: { x: number; y: number; width: number; height: number } | null;
@@ -80,6 +81,7 @@ interface VideoStateContextValue extends VideoState {
 
   // UI actions
   setShowAssetLibrary: (show: boolean) => void;
+  setIsPanLocked: (locked: boolean) => void;
 
   // Crop actions
   setCropArea: (area: { x: number; y: number; width: number; height: number } | null) => void;
@@ -111,6 +113,7 @@ const initialState: VideoState = {
   selectedMaskIds: [],
   selectedTrackId: null,
   showAssetLibrary: false,
+  isPanLocked: false,
   cropArea: null,
   canvasExpandMode: false,
   cropAspectRatio: "free" as AspectRatio,
@@ -451,6 +454,10 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, showAssetLibrary: show }));
   }, []);
 
+  const setIsPanLocked = useCallback((locked: boolean) => {
+    setState((prev) => ({ ...prev, isPanLocked: locked }));
+  }, []);
+
   const setCropArea = useCallback((area: { x: number; y: number; width: number; height: number } | null) => {
     setState((prev) => ({ ...prev, cropArea: area }));
   }, []);
@@ -504,6 +511,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     deselectAll,
     selectTrack,
     setShowAssetLibrary,
+    setIsPanLocked,
     setCropArea,
     setCanvasExpandMode,
     setCropAspectRatio,

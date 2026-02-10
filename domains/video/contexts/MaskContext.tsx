@@ -36,6 +36,12 @@ interface MaskContextValue {
   presets: BrushPreset[];
   pressureEnabled: boolean;
   setPressureEnabled: (enabled: boolean) => void;
+  canUndoMask: boolean;
+  canRedoMask: boolean;
+  saveMaskHistoryPoint: () => void;
+  undoMask: () => void;
+  redoMask: () => void;
+  clearMaskHistory: () => void;
 
   // Mask data
   masks: Map<string, MaskData>;
@@ -61,6 +67,14 @@ interface MaskContextValue {
 }
 
 const MaskContext = createContext<MaskContextValue | null>(null);
+const MAX_MASK_HISTORY = 100;
+
+interface MaskHistorySnapshot {
+  masks: Map<string, MaskData>;
+  activeMaskId: string | null;
+  activeTrackId: string | null;
+  isEditingMask: boolean;
+}
 
 function isTimeInsideMask(mask: MaskData, time: number): boolean {
   return time >= mask.startTime && time < mask.startTime + mask.duration;
@@ -96,6 +110,21 @@ function findMaskAtTime(trackMasks: MaskData[], time: number): MaskData | null {
   return null;
 }
 
+function cloneMask(mask: MaskData): MaskData {
+  return {
+    ...mask,
+    size: { ...mask.size },
+  };
+}
+
+function cloneMasksMap(source: Map<string, MaskData>): Map<string, MaskData> {
+  const next = new Map<string, MaskData>();
+  for (const [id, mask] of source.entries()) {
+    next.set(id, cloneMask(mask));
+  }
+  return next;
+}
+
 export function MaskProvider({ children }: { children: ReactNode }) {
   const [masks, setMasks] = useState<Map<string, MaskData>>(new Map());
   const [activeMaskId, setActiveMaskId] = useState<string | null>(null);
@@ -105,8 +134,21 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [presets] = useState<BrushPreset[]>(() => [...DEFAULT_BRUSH_PRESETS]);
   const [activePreset, setActivePresetState] = useState<BrushPreset>(() => DEFAULT_BRUSH_PRESETS[0]);
   const [pressureEnabled, setPressureEnabledState] = useState(true);
+  const [canUndoMask, setCanUndoMask] = useState(false);
+  const [canRedoMask, setCanRedoMask] = useState(false);
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const masksRef = useRef(masks);
+  const activeMaskIdRef = useRef(activeMaskId);
+  const activeTrackIdRef = useRef(activeTrackId);
+  const isEditingMaskRef = useRef(isEditingMask);
+  const historyPastRef = useRef<MaskHistorySnapshot[]>([]);
+  const historyFutureRef = useRef<MaskHistorySnapshot[]>([]);
+
+  masksRef.current = masks;
+  activeMaskIdRef.current = activeMaskId;
+  activeTrackIdRef.current = activeTrackId;
+  isEditingMaskRef.current = isEditingMask;
 
   const masksByTrack = useMemo(() => {
     const index = new Map<string, MaskData[]>();
@@ -123,6 +165,100 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     }
     return index;
   }, [masks]);
+
+  const syncHistoryFlags = useCallback(() => {
+    setCanUndoMask(historyPastRef.current.length > 0);
+    setCanRedoMask(historyFutureRef.current.length > 0);
+  }, []);
+
+  const captureHistorySnapshot = useCallback((): MaskHistorySnapshot => {
+    return {
+      masks: cloneMasksMap(masksRef.current),
+      activeMaskId: activeMaskIdRef.current,
+      activeTrackId: activeTrackIdRef.current,
+      isEditingMask: isEditingMaskRef.current,
+    };
+  }, []);
+
+  const restoreMaskCanvasFromSnapshot = useCallback((snapshot: MaskHistorySnapshot) => {
+    requestAnimationFrame(() => {
+      const canvas = maskCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      if (!snapshot.isEditingMask || !snapshot.activeMaskId) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      const mask = snapshot.masks.get(snapshot.activeMaskId);
+      if (!mask) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      canvas.width = mask.size.width;
+      canvas.height = mask.size.height;
+      ctx.clearRect(0, 0, mask.size.width, mask.size.height);
+
+      if (mask.maskData) {
+        const img = new Image();
+        img.onload = () => {
+          if (!maskCanvasRef.current) return;
+          const drawCtx = maskCanvasRef.current.getContext("2d");
+          if (!drawCtx) return;
+          drawCtx.clearRect(0, 0, mask.size.width, mask.size.height);
+          drawCtx.drawImage(img, 0, 0, mask.size.width, mask.size.height);
+        };
+        img.src = mask.maskData;
+      } else {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, mask.size.width, mask.size.height);
+      }
+    });
+  }, []);
+
+  const saveMaskHistoryPoint = useCallback(() => {
+    historyPastRef.current.push(captureHistorySnapshot());
+    if (historyPastRef.current.length > MAX_MASK_HISTORY) {
+      historyPastRef.current.shift();
+    }
+    historyFutureRef.current = [];
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, syncHistoryFlags]);
+
+  const clearMaskHistory = useCallback(() => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    syncHistoryFlags();
+  }, [syncHistoryFlags]);
+
+  const undoMask = useCallback(() => {
+    const previous = historyPastRef.current.pop();
+    if (!previous) return;
+
+    historyFutureRef.current.push(captureHistorySnapshot());
+    setMasks(cloneMasksMap(previous.masks));
+    setActiveMaskId(previous.activeMaskId);
+    setActiveTrackId(previous.activeTrackId);
+    setIsEditingMask(previous.isEditingMask);
+    restoreMaskCanvasFromSnapshot(previous);
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, restoreMaskCanvasFromSnapshot, syncHistoryFlags]);
+
+  const redoMask = useCallback(() => {
+    const next = historyFutureRef.current.pop();
+    if (!next) return;
+
+    historyPastRef.current.push(captureHistorySnapshot());
+    setMasks(cloneMasksMap(next.masks));
+    setActiveMaskId(next.activeMaskId);
+    setActiveTrackId(next.activeTrackId);
+    setIsEditingMask(next.isEditingMask);
+    restoreMaskCanvasFromSnapshot(next);
+    syncHistoryFlags();
+  }, [captureHistorySnapshot, restoreMaskCanvasFromSnapshot, syncHistoryFlags]);
 
   // Brush settings
   const setBrushSettings = useCallback((settings: Partial<MaskBrushSettings>) => {
@@ -158,10 +294,11 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const restoreMasks = useCallback((savedMasks: MaskData[]) => {
     const map = new Map<string, MaskData>();
     for (const mask of savedMasks) {
-      map.set(mask.id, mask);
+      map.set(mask.id, cloneMask(mask));
     }
     setMasks(map);
-  }, []);
+    clearMaskHistory();
+  }, [clearMaskHistory]);
 
   // Select a mask (highlight without entering edit mode)
   const selectMask = useCallback((maskId: string) => {
@@ -180,6 +317,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   // Create a new mask for a track
   const addMask = useCallback((trackId: string, size: Size, startTime: number, duration: number): string => {
+    saveMaskHistoryPoint();
     const mask = createMaskData(trackId, size, startTime, duration);
     setMasks((prev) => {
       const next = new Map(prev);
@@ -187,12 +325,13 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       return next;
     });
     return mask.id;
-  }, []);
+  }, [saveMaskHistoryPoint]);
 
   // Duplicate a mask
   const duplicateMask = useCallback((maskId: string): string | null => {
     const source = masks.get(maskId);
     if (!source) return null;
+    saveMaskHistoryPoint();
     const newId = crypto.randomUUID();
     setMasks((prev) => {
       const next = new Map(prev);
@@ -200,11 +339,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       return next;
     });
     return newId;
-  }, [masks]);
+  }, [masks, saveMaskHistoryPoint]);
 
   const duplicateMasksToTrack = useCallback((sourceTrackId: string, targetTrackId: string): string[] => {
     if (!sourceTrackId || !targetTrackId || sourceTrackId === targetTrackId) return [];
 
+    saveMaskHistoryPoint();
     const newIds: string[] = [];
     setMasks((prev) => {
       const next = new Map(prev);
@@ -221,10 +361,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       return next;
     });
     return newIds;
-  }, []);
+  }, [saveMaskHistoryPoint]);
 
   // Delete a mask
   const deleteMask = useCallback((maskId: string) => {
+    if (!masks.has(maskId)) return;
+    saveMaskHistoryPoint();
     setMasks((prev) => {
       const next = new Map(prev);
       next.delete(maskId);
@@ -235,10 +377,14 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       setActiveTrackId(null);
       setIsEditingMask(false);
     }
-  }, [activeMaskId]);
+  }, [activeMaskId, masks, saveMaskHistoryPoint]);
 
   // Update mask time range
   const updateMaskTime = useCallback((maskId: string, startTime: number, duration: number) => {
+    const source = masks.get(maskId);
+    if (!source) return;
+    if (source.startTime === startTime && source.duration === duration) return;
+    saveMaskHistoryPoint();
     setMasks((prev) => {
       const mask = prev.get(maskId);
       if (!mask) return prev;
@@ -246,7 +392,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       next.set(maskId, { ...mask, startTime, duration });
       return next;
     });
-  }, []);
+  }, [masks, saveMaskHistoryPoint]);
 
   // Get all masks for a track
   const getMasksForTrack = useCallback(
@@ -446,6 +592,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     presets,
     pressureEnabled,
     setPressureEnabled,
+    canUndoMask,
+    canRedoMask,
+    saveMaskHistoryPoint,
+    undoMask,
+    redoMask,
+    clearMaskHistory,
     masks,
     restoreMasks,
     selectMask,
