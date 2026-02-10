@@ -27,6 +27,7 @@ export interface PreviewViewportAPI {
   applyTransform: () => void;
   cancelTransform: () => void;
   setTransformAspectRatio: (ratio: AspectRatio) => void;
+  nudgeTransform: (dx: number, dy: number) => boolean;
   getTransformState: () => PreviewTransformState;
   onTransformChange: (cb: (state: PreviewTransformState) => void) => () => void;
 }

@@ -1023,6 +1023,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       applyTransform: () => transformTool.applyTransform(),
       cancelTransform: () => transformTool.cancelTransform(),
       setTransformAspectRatio: (ratio) => transformTool.setAspectRatio(ratio),
+      nudgeTransform: (dx, dy) => transformTool.nudgeTransform(dx, dy),
       getTransformState: () => transformPublicStateRef.current,
       onTransformChange: (cb) => {
         transformListenersRef.current.add(cb);

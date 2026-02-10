@@ -1588,6 +1588,10 @@ function VideoEditorContent() {
     previewViewportRef.current?.setTransformAspectRatio(ratio);
   }, [previewViewportRef]);
 
+  const handleNudgeTransform = useCallback((dx: number, dy: number) => {
+    return previewViewportRef.current?.nudgeTransform(dx, dy) ?? false;
+  }, [previewViewportRef]);
+
   const handleAdjustMaskBrushSize = useCallback((delta: number) => {
     if (toolMode !== "mask") return;
     const nextSize = Math.max(
@@ -1639,6 +1643,7 @@ function VideoEditorContent() {
     handleStartTransformShortcut,
     handleApplyTransform,
     handleCancelTransform,
+    handleNudgeTransform,
     activeMaskId,
     deselectMask,
     isEditingMask,
