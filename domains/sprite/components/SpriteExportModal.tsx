@@ -63,6 +63,17 @@ export default function SpriteExportModal({
     [defaultFileName],
   );
 
+  const normalizedDefaultFrameSize = useMemo(() => {
+    if (!defaultFrameSize) return null;
+    if (!Number.isFinite(defaultFrameSize.width) || !Number.isFinite(defaultFrameSize.height)) {
+      return null;
+    }
+    const width = Math.max(1, Math.floor(defaultFrameSize.width));
+    const height = Math.max(1, Math.floor(defaultFrameSize.height));
+    if (width <= 0 || height <= 0) return null;
+    return { width, height };
+  }, [defaultFrameSize]);
+
   const originalAspectRatio = useMemo(() => {
     if (!originalFrameSize) return null;
     if (originalFrameSize.width <= 0 || originalFrameSize.height <= 0) return null;
@@ -78,18 +89,24 @@ export default function SpriteExportModal({
     };
   }, [originalFrameSize]);
 
+  const referenceAspectRatio = useMemo(() => {
+    if (originalAspectRatio) return originalAspectRatio;
+    if (!normalizedDefaultFrameSize) return null;
+    return normalizedDefaultFrameSize.width / normalizedDefaultFrameSize.height;
+  }, [normalizedDefaultFrameSize, originalAspectRatio]);
+
   useEffect(() => {
     if (!isOpen) return;
     setFileName(safeDefaultFileName);
     setAppendFrameCount(true);
     setKeepOriginalAspectRatio(true);
-    const hasCustomFrameSize = Boolean(defaultFrameSize);
+    const hasCustomFrameSize = Boolean(normalizedDefaultFrameSize);
     setUseOriginalFrameSize(!hasCustomFrameSize);
-    setWidthInput(hasCustomFrameSize ? String(defaultFrameSize?.width ?? "") : "");
-    setHeightInput(hasCustomFrameSize ? String(defaultFrameSize?.height ?? "") : "");
+    setWidthInput(hasCustomFrameSize ? String(normalizedDefaultFrameSize?.width ?? "") : "");
+    setHeightInput(hasCustomFrameSize ? String(normalizedDefaultFrameSize?.height ?? "") : "");
     setErrorMessage("");
     setIsSubmitting(false);
-  }, [isOpen, safeDefaultFileName, defaultFrameSize, exportType]);
+  }, [isOpen, safeDefaultFileName, normalizedDefaultFrameSize, exportType]);
 
   const clampDimension = useCallback(
     (value: number): number => {
@@ -105,18 +122,18 @@ export default function SpriteExportModal({
       if (checked) return;
       if (widthInput && heightInput) return;
 
-      const fallbackSize = defaultFrameSize ?? normalizedOriginalFrameSize;
+      const fallbackSize = normalizedDefaultFrameSize ?? normalizedOriginalFrameSize;
       if (!fallbackSize) return;
       setWidthInput(String(fallbackSize.width));
       setHeightInput(String(fallbackSize.height));
     },
-    [defaultFrameSize, heightInput, normalizedOriginalFrameSize, widthInput],
+    [heightInput, normalizedDefaultFrameSize, normalizedOriginalFrameSize, widthInput],
   );
 
   const handleWidthInputChange = useCallback(
     (value: string) => {
       setWidthInput(value);
-      if (!keepOriginalAspectRatio || !originalAspectRatio || useOriginalFrameSize) return;
+      if (!keepOriginalAspectRatio || !referenceAspectRatio || useOriginalFrameSize) return;
 
       const width = Number.parseInt(value, 10);
       if (!Number.isFinite(width) || width <= 0) {
@@ -124,16 +141,16 @@ export default function SpriteExportModal({
         return;
       }
 
-      const nextHeight = clampDimension(width / originalAspectRatio);
+      const nextHeight = clampDimension(width / referenceAspectRatio);
       setHeightInput(String(nextHeight));
     },
-    [clampDimension, keepOriginalAspectRatio, originalAspectRatio, useOriginalFrameSize],
+    [clampDimension, keepOriginalAspectRatio, referenceAspectRatio, useOriginalFrameSize],
   );
 
   const handleHeightInputChange = useCallback(
     (value: string) => {
       setHeightInput(value);
-      if (!keepOriginalAspectRatio || !originalAspectRatio || useOriginalFrameSize) return;
+      if (!keepOriginalAspectRatio || !referenceAspectRatio || useOriginalFrameSize) return;
 
       const height = Number.parseInt(value, 10);
       if (!Number.isFinite(height) || height <= 0) {
@@ -141,37 +158,39 @@ export default function SpriteExportModal({
         return;
       }
 
-      const nextWidth = clampDimension(height * originalAspectRatio);
+      const nextWidth = clampDimension(height * referenceAspectRatio);
       setWidthInput(String(nextWidth));
     },
-    [clampDimension, keepOriginalAspectRatio, originalAspectRatio, useOriginalFrameSize],
+    [clampDimension, keepOriginalAspectRatio, referenceAspectRatio, useOriginalFrameSize],
   );
 
   const handleKeepOriginalAspectRatioChange = useCallback(
     (checked: boolean) => {
       setKeepOriginalAspectRatio(checked);
-      if (!checked || !originalAspectRatio || useOriginalFrameSize) return;
+      if (!checked || !referenceAspectRatio || useOriginalFrameSize) return;
 
       const currentWidth = Number.parseInt(widthInput, 10);
       const currentHeight = Number.parseInt(heightInput, 10);
       if (Number.isFinite(currentWidth) && currentWidth > 0) {
-        setHeightInput(String(clampDimension(currentWidth / originalAspectRatio)));
+        setHeightInput(String(clampDimension(currentWidth / referenceAspectRatio)));
         return;
       }
       if (Number.isFinite(currentHeight) && currentHeight > 0) {
-        setWidthInput(String(clampDimension(currentHeight * originalAspectRatio)));
+        setWidthInput(String(clampDimension(currentHeight * referenceAspectRatio)));
         return;
       }
-      if (normalizedOriginalFrameSize) {
-        setWidthInput(String(normalizedOriginalFrameSize.width));
-        setHeightInput(String(normalizedOriginalFrameSize.height));
+      const fallbackSize = normalizedOriginalFrameSize ?? normalizedDefaultFrameSize;
+      if (fallbackSize) {
+        setWidthInput(String(fallbackSize.width));
+        setHeightInput(String(fallbackSize.height));
       }
     },
     [
       clampDimension,
       heightInput,
+      normalizedDefaultFrameSize,
       normalizedOriginalFrameSize,
-      originalAspectRatio,
+      referenceAspectRatio,
       useOriginalFrameSize,
       widthInput,
     ],
@@ -302,18 +321,16 @@ export default function SpriteExportModal({
         </label>
         {!useOriginalFrameSize && (
           <div className="flex flex-col gap-2">
-            {originalAspectRatio && (
-              <label className="flex items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={keepOriginalAspectRatio}
-                  onChange={(e) => handleKeepOriginalAspectRatioChange(e.target.checked)}
-                  disabled={isSubmitting}
-                  className="accent-accent-primary"
-                />
-                원본 이미지 비율 유지
-              </label>
-            )}
+            <label className="flex items-center gap-2 text-sm text-text-primary">
+              <input
+                type="checkbox"
+                checked={keepOriginalAspectRatio && Boolean(referenceAspectRatio)}
+                onChange={(e) => handleKeepOriginalAspectRatioChange(e.target.checked)}
+                disabled={isSubmitting || !referenceAspectRatio}
+                className="accent-accent-primary"
+              />
+              원본 이미지 비율 유지 {!referenceAspectRatio ? "(원본 크기 정보 없음)" : ""}
+            </label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
