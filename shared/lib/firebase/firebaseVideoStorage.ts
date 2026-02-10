@@ -50,6 +50,8 @@ interface FirestoreClipMeta {
   locked: boolean;
   position: { x: number; y: number };
   scale: number;
+  scaleX?: number;
+  scaleY?: number;
   rotation: number;
   sourceId: string;
   sourceDuration?: number;
@@ -296,6 +298,8 @@ function clipToMeta(clip: Clip, storageRef: string): FirestoreClipMeta {
     locked: clip.locked,
     position: clip.position,
     scale: clip.scale,
+    scaleX: clip.scaleX,
+    scaleY: clip.scaleY,
     rotation: clip.rotation,
     sourceId: clip.sourceId,
     sourceSize: clip.sourceSize,
@@ -333,6 +337,8 @@ function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
     locked: meta.locked,
     position: meta.position,
     scale: meta.scale,
+    scaleX: typeof meta.scaleX === "number" ? meta.scaleX : 1,
+    scaleY: typeof meta.scaleY === "number" ? meta.scaleY : 1,
     rotation: meta.rotation,
     sourceId: meta.sourceId,
     sourceSize: meta.sourceSize,
