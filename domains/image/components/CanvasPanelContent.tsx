@@ -25,15 +25,16 @@ export default function CanvasPanelContent() {
   const {
     state: { showRulers, zoom, pan },
   } = useEditorState();
+  const isEmpty = layers.length === 0;
 
   const canvasContent = (
     <div
       ref={containerRef}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
+      onDrop={isEmpty ? undefined : handleDrop}
+      onDragOver={isEmpty ? undefined : handleDragOver}
       className="w-full h-full overflow-hidden bg-surface-secondary relative"
     >
-      {layers.length === 0 ? (
+      {isEmpty ? (
         <ImageDropZone
           variant="editor"
           onFileSelect={loadImageFiles}
