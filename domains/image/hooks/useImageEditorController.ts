@@ -435,6 +435,7 @@ export function useImageEditorController() {
     canvasExpandMode,
     mousePos,
     brushSize,
+    brushHardness,
     brushColor,
     stampSource,
     selection,

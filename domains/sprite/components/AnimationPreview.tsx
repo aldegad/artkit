@@ -33,6 +33,7 @@ import {
   safeSetPointerCapture,
   zoomAtPoint,
 } from "@/shared/utils";
+import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 
 // ============================================
 // Frame Indicator (editable)
@@ -1017,19 +1018,13 @@ export default function AnimationPreviewContent() {
                   !isHandMode &&
                   isEditMode &&
                   (toolMode === "brush" || toolMode === "eraser") && (
-                    <div
-                      className="pointer-events-none absolute"
-                      style={{
-                        left: cursorPos.x,
-                        top: cursorPos.y,
-                        width: brushSize * viewportSync.zoom,
-                        height: brushSize * viewportSync.zoom,
-                        transform: "translate(-50%, -50%)",
-                        border:
-                          isEraserTool ? "2px solid #f87171" : `2px solid ${brushColor}`,
-                        borderRadius: "2px",
-                        boxShadow: "0 0 0 1px rgba(0,0,0,0.5)",
-                      }}
+                    <BrushCursorOverlay
+                      x={cursorPos.x}
+                      y={cursorPos.y}
+                      size={brushSize * viewportSync.zoom}
+                      hardness={brushHardness}
+                      color={isEraserTool ? "#f87171" : brushColor}
+                      isEraser={isEraserTool}
                     />
                   )}
               </div>

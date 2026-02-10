@@ -149,16 +149,97 @@ export function useMaskTool(): UseMaskToolReturn {
     const width = Math.max(1, Math.abs(to.x - from.x));
     const height = Math.max(1, Math.abs(to.y - from.y));
     const drawMode = mode ?? brushSettings.mode;
+    const opacity = Math.max(0, Math.min(1, brushSettings.opacity / 100));
+    const hardness01 = Math.max(0, Math.min(1, brushSettings.hardness / 100));
+    const edgeSoftnessFromHardness = (1 - hardness01) * (brushSettings.size / 2);
+    const edgeSoftnessFromFeather = Math.max(0, brushSettings.feather);
+    const edgeSoftness = Math.min(
+      Math.max(edgeSoftnessFromHardness, edgeSoftnessFromFeather),
+      Math.min(width, height) / 2
+    );
+    const rectWidth = Math.max(1, Math.ceil(width));
+    const rectHeight = Math.max(1, Math.ceil(height));
+    const rectX = Math.round(left);
+    const rectY = Math.round(top);
+    const edge = Math.max(0, Math.min(edgeSoftness, Math.min(rectWidth, rectHeight) / 2));
 
     ctx.save();
     if (drawMode === "erase") {
       ctx.globalCompositeOperation = "destination-out";
     }
-    ctx.globalAlpha = Math.max(0, Math.min(1, brushSettings.opacity / 100));
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(left, top, width, height);
+    ctx.globalAlpha = opacity;
+
+    if (edge <= 0.5) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+      ctx.restore();
+      return;
+    }
+
+    const shapeCanvas = document.createElement("canvas");
+    shapeCanvas.width = rectWidth;
+    shapeCanvas.height = rectHeight;
+    const shapeCtx = shapeCanvas.getContext("2d");
+    if (!shapeCtx) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+      ctx.restore();
+      return;
+    }
+
+    const innerX = edge;
+    const innerY = edge;
+    const innerW = Math.max(0, rectWidth - edge * 2);
+    const innerH = Math.max(0, rectHeight - edge * 2);
+
+    shapeCtx.fillStyle = "#ffffff";
+    if (innerW > 0 && innerH > 0) {
+      shapeCtx.fillRect(innerX, innerY, innerW, innerH);
+    }
+
+    if (innerW > 0) {
+      const topGradient = shapeCtx.createLinearGradient(0, 0, 0, edge);
+      topGradient.addColorStop(0, "rgba(255,255,255,0)");
+      topGradient.addColorStop(1, "rgba(255,255,255,1)");
+      shapeCtx.fillStyle = topGradient;
+      shapeCtx.fillRect(innerX, 0, innerW, edge);
+
+      const bottomGradient = shapeCtx.createLinearGradient(0, rectHeight - edge, 0, rectHeight);
+      bottomGradient.addColorStop(0, "rgba(255,255,255,1)");
+      bottomGradient.addColorStop(1, "rgba(255,255,255,0)");
+      shapeCtx.fillStyle = bottomGradient;
+      shapeCtx.fillRect(innerX, rectHeight - edge, innerW, edge);
+    }
+
+    if (innerH > 0) {
+      const leftGradient = shapeCtx.createLinearGradient(0, 0, edge, 0);
+      leftGradient.addColorStop(0, "rgba(255,255,255,0)");
+      leftGradient.addColorStop(1, "rgba(255,255,255,1)");
+      shapeCtx.fillStyle = leftGradient;
+      shapeCtx.fillRect(0, innerY, edge, innerH);
+
+      const rightGradient = shapeCtx.createLinearGradient(rectWidth - edge, 0, rectWidth, 0);
+      rightGradient.addColorStop(0, "rgba(255,255,255,1)");
+      rightGradient.addColorStop(1, "rgba(255,255,255,0)");
+      shapeCtx.fillStyle = rightGradient;
+      shapeCtx.fillRect(rectWidth - edge, innerY, edge, innerH);
+    }
+
+    const drawCorner = (cx: number, cy: number, x: number, y: number) => {
+      const cornerGradient = shapeCtx.createRadialGradient(cx, cy, 0, cx, cy, edge);
+      cornerGradient.addColorStop(0, "rgba(255,255,255,1)");
+      cornerGradient.addColorStop(1, "rgba(255,255,255,0)");
+      shapeCtx.fillStyle = cornerGradient;
+      shapeCtx.fillRect(x, y, edge, edge);
+    };
+    drawCorner(edge, edge, 0, 0);
+    drawCorner(rectWidth - edge, edge, rectWidth - edge, 0);
+    drawCorner(edge, rectHeight - edge, 0, rectHeight - edge);
+    drawCorner(rectWidth - edge, rectHeight - edge, rectWidth - edge, rectHeight - edge);
+
+    ctx.drawImage(shapeCanvas, rectX, rectY);
     ctx.restore();
-  }, [isEditingMask, maskCanvasRef, brushSettings.mode, brushSettings.opacity]);
+  }, [isEditingMask, maskCanvasRef, brushSettings.mode, brushSettings.opacity, brushSettings.hardness, brushSettings.size, brushSettings.feather]);
 
   // Get mask as data URL
   const getMaskDataUrl = useCallback((): string | null => {
