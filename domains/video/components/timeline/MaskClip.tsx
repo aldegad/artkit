@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { MaskData } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useMask, useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { safeSetPointerCapture } from "@/shared/utils";
 import { useDeferredPointerGesture } from "@/shared/hooks";
-import { GESTURE, UI, TIMELINE } from "../../constants";
+import { GESTURE, UI, TIMELINE, MASK_LANE_HEIGHT } from "../../constants";
 
 type DragMode = "none" | "move" | "trim-start" | "trim-end";
 
@@ -27,7 +27,9 @@ interface MaskDragPendingState {
   pointerId: number;
   clientX: number;
   clientY: number;
+  primaryMaskId: string;
   mode: Exclude<DragMode, "none">;
+  originalTrackId: string;
   originalStart: number;
   originalDuration: number;
   otherItems: DragItem[];
@@ -47,6 +49,7 @@ export function MaskClip({ mask }: MaskClipProps) {
     startMaskEditById,
     endMaskEdit,
     updateMaskTime,
+    moveMask,
     duplicateMask,
     masks,
   } = useMask();
@@ -106,6 +109,36 @@ export function MaskClip({ mask }: MaskClipProps) {
     },
     [viewState.snapEnabled, zoom, clips, tracks, mask.trackId]
   );
+
+  const hasMasksByTrack = useMemo(() => {
+    const trackIds = new Set<string>();
+    for (const currentMask of masks.values()) {
+      trackIds.add(currentMask.trackId);
+    }
+    return trackIds;
+  }, [masks]);
+
+  const getMaskDropTrackId = useCallback((clientY: number, fallbackTrackId: string): string => {
+    const timelineTracksElement = document.querySelector<HTMLElement>("[data-video-timeline-tracks]");
+    if (!timelineTracksElement || tracks.length === 0) return fallbackTrackId;
+
+    const rect = timelineTracksElement.getBoundingClientRect();
+    const contentY = clientY - rect.top + timelineTracksElement.scrollTop;
+    if (contentY < 0) return fallbackTrackId;
+
+    let offset = 0;
+    for (const track of tracks) {
+      const hasMasks = hasMasksByTrack.has(track.id);
+      const trackHeight = track.height + (hasMasks ? MASK_LANE_HEIGHT : 0);
+      if (contentY >= offset && contentY < offset + trackHeight) {
+        return track.type === "audio" ? fallbackTrackId : track.id;
+      }
+      offset += trackHeight;
+    }
+
+    const lastVisualTrack = [...tracks].reverse().find((track) => track.type !== "audio");
+    return lastVisualTrack?.id || fallbackTrackId;
+  }, [tracks, hasMasksByTrack]);
 
   const splitMaskAtPosition = useCallback((localX: number, widthPx: number) => {
     if (widthPx <= 0) return;
@@ -187,17 +220,55 @@ export function MaskClip({ mask }: MaskClipProps) {
 
     // Build drag items for multi-drag (only for move mode)
     let otherItems: DragItem[] = [];
+    let primaryMaskId = mask.id;
+    let originalTrackId = mask.trackId;
+    let originalStart = mask.startTime;
+    let originalDuration = mask.duration;
     if (mode === "move") {
-      const effectiveClipIds = isAlreadySelected ? selectedClipIds : (e.shiftKey ? selectedClipIds : []);
-      const effectiveMaskIds = isAlreadySelected ? selectedMaskIds : (e.shiftKey ? [...selectedMaskIds, mask.id] : [mask.id]);
+      let effectiveClipIds = isAlreadySelected ? selectedClipIds : (e.shiftKey ? selectedClipIds : []);
+      let effectiveMaskIds = isAlreadySelected ? selectedMaskIds : (e.shiftKey ? [...selectedMaskIds, mask.id] : [mask.id]);
+      const duplicatedMaskSourceById = new Map<string, MaskData>();
+
+      if (e.altKey && toolMode === "select") {
+        const sourceMaskIds = effectiveMaskIds;
+        const duplicatedMaskIds: string[] = [];
+
+        saveToHistory();
+        for (const sourceMaskId of sourceMaskIds) {
+          const sourceMask = masks.get(sourceMaskId);
+          if (!sourceMask) continue;
+          const newId = duplicateMask(sourceMaskId);
+          if (!newId) continue;
+          duplicatedMaskIds.push(newId);
+          duplicatedMaskSourceById.set(newId, sourceMask);
+        }
+
+        if (duplicatedMaskIds.length > 0) {
+          const primaryIndex = sourceMaskIds.indexOf(mask.id);
+          primaryMaskId = primaryIndex >= 0 && primaryIndex < duplicatedMaskIds.length
+            ? duplicatedMaskIds[primaryIndex]
+            : duplicatedMaskIds[0];
+
+          const sourceForPrimary = duplicatedMaskSourceById.get(primaryMaskId) || mask;
+          originalTrackId = sourceForPrimary.trackId;
+          originalStart = sourceForPrimary.startTime;
+          originalDuration = sourceForPrimary.duration;
+
+          effectiveClipIds = [];
+          effectiveMaskIds = duplicatedMaskIds;
+          selectMasksForTimeline(duplicatedMaskIds);
+          selectMask(primaryMaskId);
+        }
+      }
+
       const items: DragItem[] = [];
       for (const cid of effectiveClipIds) {
         const c = clips.find((cl) => cl.id === cid);
         if (c) items.push({ type: "clip", id: cid, originalStartTime: c.startTime });
       }
       for (const mid of effectiveMaskIds) {
-        if (mid === mask.id) continue; // this mask handled separately
-        const m = masks.get(mid);
+        if (mid === primaryMaskId) continue; // this mask handled separately
+        const m = duplicatedMaskSourceById.get(mid) || masks.get(mid);
         if (m) items.push({ type: "mask", id: mid, originalStartTime: m.startTime });
       }
       otherItems = items;
@@ -207,9 +278,11 @@ export function MaskClip({ mask }: MaskClipProps) {
       pointerId: e.pointerId,
       clientX: e.clientX,
       clientY: e.clientY,
+      primaryMaskId,
       mode,
-      originalStart: mask.startTime,
-      originalDuration: mask.duration,
+      originalTrackId,
+      originalStart,
+      originalDuration,
       otherItems,
     });
 
@@ -224,8 +297,24 @@ export function MaskClip({ mask }: MaskClipProps) {
     }
 
     setDragMode(mode);
-  }, [toolMode, splitMaskAtPosition, selectMask, selectMaskForTimeline, deselectAllState, isActive, isEditing, isTimelineSelected,
-      mask.id, mask.startTime, mask.duration, selectedClipIds, selectedMaskIds, clips, masks, startMaskEditById]);
+  }, [
+    toolMode,
+    splitMaskAtPosition,
+    saveToHistory,
+    duplicateMask,
+    selectMask,
+    selectMaskForTimeline,
+    selectMasksForTimeline,
+    deselectAllState,
+    isActive,
+    isEditing,
+    isTimelineSelected,
+    mask,
+    selectedClipIds,
+    selectedMaskIds,
+    clips,
+    masks,
+  ]);
 
   useDeferredPointerGesture<MaskMovePendingState>({
     pending: movePending,
@@ -266,7 +355,8 @@ export function MaskClip({ mask }: MaskClipProps) {
         const finalStart = startDelta <= endDelta
           ? snappedStart
           : Math.max(0, snappedEnd - pending.originalDuration);
-        updateMaskTime(mask.id, finalStart, pending.originalDuration);
+        const targetTrackId = getMaskDropTrackId(event.clientY, pending.originalTrackId);
+        moveMask(pending.primaryMaskId, targetTrackId, finalStart);
 
         // Move other selected items by the same time delta.
         const timeDelta = finalStart - pending.originalStart;
@@ -276,8 +366,7 @@ export function MaskClip({ mask }: MaskClipProps) {
             const c = clips.find((cl) => cl.id === item.id);
             if (c) moveClip(item.id, c.trackId, newStartTime);
           } else if (item.type === "mask") {
-            const m = masks.get(item.id);
-            if (m) updateMaskTime(item.id, newStartTime, m.duration);
+            moveMask(item.id, targetTrackId, newStartTime);
           }
         }
       } else if (pending.mode === "trim-start") {

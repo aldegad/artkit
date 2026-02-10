@@ -1,4 +1,5 @@
 import { Size, Point } from "@/shared/types";
+import type { MaskData } from "./mask";
 
 /**
  * Base clip interface shared by video and image clips
@@ -87,6 +88,7 @@ export function getClipScaleY(clip: Clip): number {
  */
 export interface ClipboardData {
   clips: Clip[];
+  masks?: MaskData[];
   mode: "copy" | "cut";
   sourceTime: number;
 }

@@ -55,10 +55,12 @@ interface MaskContextValue {
   endMaskEdit: () => void;
   saveMaskData: () => void;
   addMask: (trackId: string, size: Size, startTime: number, duration: number) => string;
+  addMasks: (newMasks: MaskData[]) => string[];
   duplicateMask: (maskId: string) => string | null;
   duplicateMasksToTrack: (sourceTrackId: string, targetTrackId: string) => string[];
   deleteMask: (maskId: string) => void;
   updateMaskTime: (maskId: string, startTime: number, duration: number) => void;
+  moveMask: (maskId: string, trackId: string, startTime: number) => void;
   getMasksForTrack: (trackId: string) => MaskData[];
   getMaskAtTimeForTrack: (trackId: string, time: number) => string | null;
 
@@ -327,6 +329,20 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     return mask.id;
   }, [saveMaskHistoryPoint]);
 
+  const addMasks = useCallback((newMasks: MaskData[]): string[] => {
+    if (newMasks.length === 0) return [];
+    saveMaskHistoryPoint();
+    const addedIds = newMasks.map((mask) => mask.id);
+    setMasks((prev) => {
+      const next = new Map(prev);
+      for (const mask of newMasks) {
+        next.set(mask.id, cloneMask(mask));
+      }
+      return next;
+    });
+    return addedIds;
+  }, [saveMaskHistoryPoint]);
+
   // Duplicate a mask
   const duplicateMask = useCallback((maskId: string): string | null => {
     const source = masks.get(maskId);
@@ -393,6 +409,23 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [masks, saveMaskHistoryPoint]);
+
+  const moveMask = useCallback((maskId: string, trackId: string, startTime: number) => {
+    const source = masks.get(maskId);
+    if (!source) return;
+    if (source.trackId === trackId && source.startTime === startTime) return;
+    saveMaskHistoryPoint();
+    setMasks((prev) => {
+      const mask = prev.get(maskId);
+      if (!mask) return prev;
+      const next = new Map(prev);
+      next.set(maskId, { ...mask, trackId, startTime });
+      return next;
+    });
+    if (activeMaskId === maskId) {
+      setActiveTrackId(trackId);
+    }
+  }, [activeMaskId, masks, saveMaskHistoryPoint]);
 
   // Get all masks for a track
   const getMasksForTrack = useCallback(
@@ -607,10 +640,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     endMaskEdit,
     saveMaskData,
     addMask,
+    addMasks,
     duplicateMask,
     duplicateMasksToTrack,
     deleteMask,
     updateMaskTime,
+    moveMask,
     getMasksForTrack,
     getMaskAtTimeForTrack,
     maskCanvasRef,
