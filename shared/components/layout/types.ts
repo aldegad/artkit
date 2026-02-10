@@ -59,6 +59,8 @@ export interface LayoutContextValue {
     position: "left" | "right" | "top" | "bottom"
   ) => void;
   undockPanel: (panelNodeId: string) => void;
+  toggleDockedPanelCollapse: (panelNodeId: string) => void;
+  isDockedPanelCollapsed: (panelNodeId: string) => boolean;
   startDragging: (windowId: string) => void;
   updateDropTarget: (target: DropTarget | null) => void;
   endDragging: () => void;

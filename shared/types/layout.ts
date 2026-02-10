@@ -55,10 +55,16 @@ export interface FloatingWindow {
   minimizedPosition?: { x: number; y: number };
 }
 
+export interface DockedPanelCollapseState {
+  splitId: string;
+  previousSizes: number[];
+}
+
 // Complete layout state
 export interface LayoutState {
   root: SplitNode;
   floatingWindows: FloatingWindow[];
+  dockedPanelCollapseStates: Record<string, DockedPanelCollapseState>;
   activePanelId: string | null;
   isDragging: boolean;
   draggedWindowId: string | null;
