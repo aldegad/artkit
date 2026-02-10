@@ -34,6 +34,10 @@ interface MaskContextValue {
   setBrushMode: (mode: "paint" | "erase") => void;
   maskDrawShape: MaskDrawShape;
   setMaskDrawShape: (shape: MaskDrawShape) => void;
+  hasMaskRegion: boolean;
+  setHasMaskRegion: (hasRegion: boolean) => void;
+  maskRegionClearRequestId: number;
+  requestMaskRegionClear: () => void;
   activePreset: BrushPreset;
   setActivePreset: (preset: BrushPreset) => void;
   presets: BrushPreset[];
@@ -41,6 +45,7 @@ interface MaskContextValue {
   setPressureEnabled: (enabled: boolean) => void;
   canUndoMask: boolean;
   canRedoMask: boolean;
+  maskCanvasVersion: number;
   saveMaskHistoryPoint: () => void;
   undoMask: () => void;
   redoMask: () => void;
@@ -137,11 +142,14 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [isEditingMask, setIsEditingMask] = useState(false);
   const [brushSettings, setBrushSettingsState] = useState<MaskBrushSettings>(DEFAULT_MASK_BRUSH);
   const [maskDrawShape, setMaskDrawShapeState] = useState<MaskDrawShape>("brush");
+  const [hasMaskRegion, setHasMaskRegionState] = useState(false);
+  const [maskRegionClearRequestId, setMaskRegionClearRequestId] = useState(0);
   const [presets] = useState<BrushPreset[]>(() => [...DEFAULT_BRUSH_PRESETS]);
   const [activePreset, setActivePresetState] = useState<BrushPreset>(() => DEFAULT_BRUSH_PRESETS[0]);
   const [pressureEnabled, setPressureEnabledState] = useState(true);
   const [canUndoMask, setCanUndoMask] = useState(false);
   const [canRedoMask, setCanRedoMask] = useState(false);
+  const [maskCanvasVersion, setMaskCanvasVersion] = useState(0);
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const masksRef = useRef(masks);
@@ -177,12 +185,32 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setCanRedoMask(historyFutureRef.current.length > 0);
   }, []);
 
+  const bumpMaskCanvasVersion = useCallback(() => {
+    setMaskCanvasVersion((prev) => prev + 1);
+  }, []);
+
   const captureHistorySnapshot = useCallback((): MaskHistorySnapshot => {
+    const snapshotMasks = cloneMasksMap(masksRef.current);
+    const snapshotActiveMaskId = activeMaskIdRef.current;
+    const snapshotActiveTrackId = activeTrackIdRef.current;
+    const snapshotIsEditingMask = isEditingMaskRef.current;
+
+    // Keep history snapshots aligned with the live edit canvas.
+    if (snapshotIsEditingMask && snapshotActiveMaskId && maskCanvasRef.current) {
+      const snapshotMask = snapshotMasks.get(snapshotActiveMaskId);
+      if (snapshotMask) {
+        snapshotMasks.set(snapshotActiveMaskId, {
+          ...snapshotMask,
+          maskData: maskCanvasRef.current.toDataURL("image/png"),
+        });
+      }
+    }
+
     return {
-      masks: cloneMasksMap(masksRef.current),
-      activeMaskId: activeMaskIdRef.current,
-      activeTrackId: activeTrackIdRef.current,
-      isEditingMask: isEditingMaskRef.current,
+      masks: snapshotMasks,
+      activeMaskId: snapshotActiveMaskId,
+      activeTrackId: snapshotActiveTrackId,
+      isEditingMask: snapshotIsEditingMask,
     };
   }, []);
 
@@ -195,12 +223,14 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
       if (!snapshot.isEditingMask || !snapshot.activeMaskId) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        bumpMaskCanvasVersion();
         return;
       }
 
       const mask = snapshot.masks.get(snapshot.activeMaskId);
       if (!mask) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        bumpMaskCanvasVersion();
         return;
       }
 
@@ -216,14 +246,16 @@ export function MaskProvider({ children }: { children: ReactNode }) {
           if (!drawCtx) return;
           drawCtx.clearRect(0, 0, mask.size.width, mask.size.height);
           drawCtx.drawImage(img, 0, 0, mask.size.width, mask.size.height);
+          bumpMaskCanvasVersion();
         };
         img.src = mask.maskData;
       } else {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, mask.size.width, mask.size.height);
+        bumpMaskCanvasVersion();
       }
     });
-  }, []);
+  }, [bumpMaskCanvasVersion]);
 
   const saveMaskHistoryPoint = useCallback(() => {
     historyPastRef.current.push(captureHistorySnapshot());
@@ -285,6 +317,14 @@ export function MaskProvider({ children }: { children: ReactNode }) {
 
   const setMaskDrawShape = useCallback((shape: MaskDrawShape) => {
     setMaskDrawShapeState(shape);
+  }, []);
+
+  const setHasMaskRegion = useCallback((hasRegion: boolean) => {
+    setHasMaskRegionState(hasRegion);
+  }, []);
+
+  const requestMaskRegionClear = useCallback(() => {
+    setMaskRegionClearRequestId((prev) => prev + 1);
   }, []);
 
   const setActivePreset = useCallback((preset: BrushPreset) => {
@@ -511,6 +551,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       setActiveMaskId(mask.id);
       setActiveTrackId(trackId);
       setIsEditingMask(true);
+      setHasMaskRegionState(false);
 
       // Initialize mask canvas
       if (maskCanvasRef.current) {
@@ -559,6 +600,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       setActiveMaskId(maskId);
       setActiveTrackId(mask.trackId);
       setIsEditingMask(true);
+      setHasMaskRegionState(false);
 
       // Initialize mask canvas
       if (maskCanvasRef.current) {
@@ -597,6 +639,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setActiveMaskId(null);
     setActiveTrackId(null);
     setIsEditingMask(false);
+    setHasMaskRegionState(false);
   }, [activeMaskId]);
 
   // Get mask data for a track at an absolute timeline time
@@ -630,6 +673,10 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setBrushMode,
     maskDrawShape,
     setMaskDrawShape,
+    hasMaskRegion,
+    setHasMaskRegion,
+    maskRegionClearRequestId,
+    requestMaskRegionClear,
     activePreset,
     setActivePreset,
     presets,
@@ -637,6 +684,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setPressureEnabled,
     canUndoMask,
     canRedoMask,
+    maskCanvasVersion,
     saveMaskHistoryPoint,
     undoMask,
     redoMask,
