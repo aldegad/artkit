@@ -153,7 +153,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   }, [vpEndPanDrag]);
 
   const handlePreviewKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.code !== "Space" || e.repeat) return;
+    if (e.code !== "Space") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
     const target = e.target as HTMLElement;
@@ -164,9 +164,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       target.isContentEditable;
     if (isInteractiveElement) return;
 
+    // Always block Space from bubbling to global playback shortcuts.
     e.preventDefault();
     e.stopPropagation();
-    setIsSpacePanning(true);
+    if (!e.repeat) {
+      setIsSpacePanning(true);
+    }
   }, []);
 
   const handlePreviewKeyUp = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
