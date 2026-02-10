@@ -317,7 +317,6 @@ function SpriteEditorMain() {
           break;
         case "sprite-png":
           await downloadCompositedSpriteSheet(tracks, name, {
-            columns: settings.columns || undefined,
             padding: settings.padding,
             backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
           });
@@ -325,7 +324,6 @@ function SpriteEditorMain() {
         case "sprite-webp":
           await downloadCompositedSpriteSheet(tracks, name, {
             format: "webp",
-            columns: settings.columns || undefined,
             padding: settings.padding,
             backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
             quality: settings.webpQuality,
@@ -789,8 +787,6 @@ function SpriteEditorMain() {
           exportTypeSpriteSheetWebp: t.exportTypeSpriteSheetWebp,
           exportTypeMp4: t.exportTypeMp4,
           exportFileName: t.exportFileName,
-          exportColumns: t.exportColumns,
-          exportColumnsAuto: t.exportColumnsAuto,
           exportPadding: t.exportPadding,
           backgroundColor: t.backgroundColor,
           exportBgTransparent: t.exportBgTransparent,
