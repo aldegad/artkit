@@ -24,6 +24,9 @@ export interface BaseClip {
   // Position/scale within frame (for transform)
   position: Point;
   scale: number;
+  // Optional axis-specific scale (defaults to 1 for backward compatibility)
+  scaleX?: number;
+  scaleY?: number;
   rotation: number;
 }
 
@@ -67,6 +70,18 @@ export interface ImageClip extends BaseClip {
 
 export type Clip = VideoClip | AudioClip | ImageClip;
 
+export function getClipScaleX(clip: Clip): number {
+  const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
+  const axisScale = typeof clip.scaleX === "number" ? clip.scaleX : 1;
+  return baseScale * axisScale;
+}
+
+export function getClipScaleY(clip: Clip): number {
+  const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
+  const axisScale = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+  return baseScale * axisScale;
+}
+
 /**
  * Clipboard data for copy/cut operations
  */
@@ -100,6 +115,8 @@ export function createVideoClip(
     locked: false,
     position: { x: 0, y: 0 },
     scale: 1,
+    scaleX: 1,
+    scaleY: 1,
     rotation: 0,
     sourceUrl,
     sourceId: crypto.randomUUID(),
@@ -135,6 +152,8 @@ export function createAudioClip(
     locked: false,
     position: { x: 0, y: 0 },
     scale: 1,
+    scaleX: 1,
+    scaleY: 1,
     rotation: 0,
     sourceUrl,
     sourceId: crypto.randomUUID(),
@@ -169,6 +188,8 @@ export function createImageClip(
     locked: false,
     position: { x: 0, y: 0 },
     scale: 1,
+    scaleX: 1,
+    scaleY: 1,
     rotation: 0,
     sourceUrl,
     sourceId: crypto.randomUUID(),

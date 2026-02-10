@@ -5,6 +5,7 @@ import { useVideoState, useVideoRefs, useTimeline } from "../contexts";
 import { useVideoElements } from "./useVideoElements";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { PREVIEW } from "../constants";
+import { getClipScaleX, getClipScaleY } from "../types";
 import { Clip, VideoClip, ImageClip } from "../types";
 
 /**
@@ -155,10 +156,12 @@ export function usePreviewRendering() {
       if (!frame) continue;
 
       // Calculate clip position within preview
+      const clipScaleX = getClipScaleX(clip);
+      const clipScaleY = getClipScaleY(clip);
       const clipX = offsetX + clip.position.x * scale;
       const clipY = offsetY + clip.position.y * scale;
-      const clipWidth = clip.sourceSize.width * scale * clip.scale;
-      const clipHeight = clip.sourceSize.height * scale * clip.scale;
+      const clipWidth = clip.sourceSize.width * scale * clipScaleX;
+      const clipHeight = clip.sourceSize.height * scale * clipScaleY;
 
       ctx.save();
       ctx.globalAlpha = clip.opacity / 100;

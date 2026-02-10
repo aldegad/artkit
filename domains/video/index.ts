@@ -25,6 +25,8 @@ export {
   createImageClip,
   getSourceTime,
   isTimeInClip,
+  getClipScaleX,
+  getClipScaleY,
   createVideoTrack,
   createAudioTrack,
   DEFAULT_TRACK_HEIGHT,

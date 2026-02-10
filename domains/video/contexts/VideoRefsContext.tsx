@@ -7,6 +7,13 @@ import {
   ReactNode,
   RefObject,
 } from "react";
+import type { AspectRatio } from "@/shared/types/aspectRatio";
+
+export interface PreviewTransformState {
+  isActive: boolean;
+  clipId: string | null;
+  aspectRatio: AspectRatio;
+}
 
 // Imperative API exposed by PreviewCanvas for toolbar zoom controls
 export interface PreviewViewportAPI {
@@ -16,6 +23,12 @@ export interface PreviewViewportAPI {
   getZoom: () => number;
   setZoom: (z: number) => void;
   onZoomChange: (cb: (zoom: number) => void) => () => void;
+  startTransformForSelection: () => boolean;
+  applyTransform: () => void;
+  cancelTransform: () => void;
+  setTransformAspectRatio: (ratio: AspectRatio) => void;
+  getTransformState: () => PreviewTransformState;
+  onTransformChange: (cb: (state: PreviewTransformState) => void) => () => void;
 }
 
 interface VideoRefsContextValue {
