@@ -574,6 +574,22 @@ export default function FrameStrip() {
     [frames],
   );
 
+  // Delete all disabled (skipped) frames
+  const deleteDisabledFrames = useCallback(() => {
+    const currentFrameIndex = getCurrentFrameIndex();
+    if (disabledCount === 0) return;
+    pushHistory();
+    const newFrames = frames.filter((f: SpriteFrame) => !f.disabled);
+    setFrames(newFrames);
+    if (currentFrameIndex >= newFrames.length && newFrames.length > 0) {
+      setCurrentFrameIndex(newFrames.length - 1);
+    } else if (newFrames.length === 0) {
+      setCurrentFrameIndex(0);
+    }
+    setSelectedFrameIds([]);
+    setSelectedFrameId(null);
+  }, [frames, disabledCount, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex, setSelectedFrameIds, setSelectedFrameId]);
+
   // Determine which frames to display
   const displayFrames = useMemo(
     () =>
@@ -656,12 +672,21 @@ export default function FrameStrip() {
                 )}
                 {/* Reset all skips */}
                 {disabledCount > 0 && (
-                  <button
-                    onClick={clearAllDisabled}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-accent-warning hover:bg-interactive-hover transition-colors"
-                  >
-                    Reset all skips ({disabledCount})
-                  </button>
+                  <>
+                    <button
+                      onClick={clearAllDisabled}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-accent-warning hover:bg-interactive-hover transition-colors"
+                    >
+                      Reset all skips ({disabledCount})
+                    </button>
+                    <button
+                      onClick={deleteDisabledFrames}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-accent-danger hover:bg-accent-danger/10 transition-colors"
+                    >
+                      <DeleteIcon className="w-3.5 h-3.5" />
+                      Delete skipped ({disabledCount})
+                    </button>
+                  </>
                 )}
                 {(selectedFrameIds.length > 0 || disabledCount > 0) && (
                   <div className="h-px bg-border-default mx-1" />
@@ -817,13 +842,24 @@ export default function FrameStrip() {
 
               {/* Clear all disabled */}
               {disabledCount > 0 && (
-                <button
-                  onClick={clearAllDisabled}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
-                  title="모든 건너뛰기 해제"
-                >
-                  Reset
-                </button>
+                <>
+                  <button
+                    onClick={clearAllDisabled}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-mono text-accent-warning hover:text-accent-warning/80 transition-colors"
+                    title="모든 건너뛰기 해제"
+                  >
+                    Reset
+                  </button>
+                  <Tooltip content={`스킵된 프레임 일괄 삭제 (${disabledCount})`}>
+                    <button
+                      onClick={deleteDisabledFrames}
+                      className="p-1 rounded text-text-tertiary hover:text-accent-danger transition-colors"
+                      aria-label="Delete skipped frames"
+                    >
+                      <DeleteIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
+                </>
               )}
 
               {/* Show active only toggle */}
