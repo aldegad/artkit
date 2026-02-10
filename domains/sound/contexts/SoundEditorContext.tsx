@@ -80,25 +80,57 @@ export function SoundEditorProvider({ children }: { children: ReactNode }) {
 
   const loadAudio = useCallback(async (file: File) => {
     const audioContext = getAudioContext();
-    const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-    const url = URL.createObjectURL(file);
+    // Stop currently playing source before replacing the loaded media.
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.onended = null;
+        sourceNodeRef.current.stop();
+        sourceNodeRef.current.disconnect();
+      } catch {
+        // Ignore errors if already stopped.
+      }
+      sourceNodeRef.current = null;
+    }
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    let decodedBuffer: AudioBuffer;
+    try {
+      // slice(0) keeps a copy compatible with browser decode implementations.
+      decodedBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    } catch {
+      throw new Error("No decodable audio stream was found in this file.");
+    }
+
+    const nextUrl = URL.createObjectURL(file);
+    let previousUrl: string | null = null;
 
     currentTimeRef.current = 0;
     isPlayingRef.current = false;
-    audioBufferRef.current = audioBuffer;
+    audioBufferRef.current = decodedBuffer;
 
-    setState((prev) => ({
-      ...prev,
-      audioBuffer,
-      audioUrl: url,
-      fileName: file.name,
-      duration: audioBuffer.duration,
-      currentTime: 0,
-      isPlaying: false,
-      trimRegion: null,
-    }));
+    setState((prev) => {
+      previousUrl = prev.audioUrl;
+      return {
+        ...prev,
+        audioBuffer: decodedBuffer,
+        audioUrl: nextUrl,
+        fileName: file.name,
+        duration: decodedBuffer.duration,
+        currentTime: 0,
+        isPlaying: false,
+        trimRegion: null,
+      };
+    });
+
+    if (previousUrl) {
+      URL.revokeObjectURL(previousUrl);
+    }
   }, [getAudioContext]);
 
   const updateCurrentTime = useCallback(() => {
