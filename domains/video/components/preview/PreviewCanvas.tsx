@@ -46,6 +46,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     lockCropAspect,
     previewPreRenderEnabled,
     isPanLocked,
+    isSpacePanning,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -993,8 +994,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   ]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.currentTarget.focus();
+
     // Middle mouse button drag for pan
     if (e.button === 1) {
+      e.preventDefault();
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
+      vpStartPanDrag({ x: e.clientX, y: e.clientY });
+      isPanningRef.current = true;
+      return;
+    }
+
+    const isSpacePanInput = isSpacePanning && e.pointerType !== "touch" && e.button === 0;
+    if (isSpacePanInput) {
       e.preventDefault();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
       vpStartPanDrag({ x: e.clientX, y: e.clientY });
@@ -1116,7 +1128,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [vpStartPanDrag, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, transformTool]);
+  }, [vpStartPanDrag, isSpacePanning, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, transformTool]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button pan
@@ -1456,14 +1468,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   return (
     <div
       ref={containerRefCallback}
+      data-video-preview-root=""
       className={cn("relative w-full h-full overflow-hidden", className)}
     >
       <canvas
         ref={previewCanvasRef}
         className="absolute inset-0"
+        tabIndex={0}
         style={{
           cursor: isPanningRef.current
             ? "grabbing"
+            : isSpacePanning
+              ? "grab"
             : isEditingMask
               ? "none"
               : toolMode === "crop"
