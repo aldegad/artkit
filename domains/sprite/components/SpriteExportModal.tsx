@@ -17,6 +17,7 @@ interface SpriteExportModalProps {
   exportType: SpriteExportType;
   defaultFileName: string;
   defaultFrameSize: SpriteExportFrameSize | null;
+  originalFrameSize?: SpriteExportFrameSize | null;
   estimatedFrameCount: number;
   onClose: () => void;
   onConfirm: (options: SpriteExportOptions) => Promise<void> | void;
@@ -42,6 +43,7 @@ export default function SpriteExportModal({
   exportType,
   defaultFileName,
   defaultFrameSize,
+  originalFrameSize = null,
   estimatedFrameCount,
   onClose,
   onConfirm,
@@ -50,6 +52,7 @@ export default function SpriteExportModal({
   const [fileName, setFileName] = useState("");
   const [appendFrameCount, setAppendFrameCount] = useState(true);
   const [useOriginalFrameSize, setUseOriginalFrameSize] = useState(true);
+  const [keepOriginalAspectRatio, setKeepOriginalAspectRatio] = useState(true);
   const [widthInput, setWidthInput] = useState("");
   const [heightInput, setHeightInput] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -60,10 +63,26 @@ export default function SpriteExportModal({
     [defaultFileName],
   );
 
+  const originalAspectRatio = useMemo(() => {
+    if (!originalFrameSize) return null;
+    if (originalFrameSize.width <= 0 || originalFrameSize.height <= 0) return null;
+    return originalFrameSize.width / originalFrameSize.height;
+  }, [originalFrameSize]);
+
+  const normalizedOriginalFrameSize = useMemo(() => {
+    if (!originalFrameSize) return null;
+    if (originalFrameSize.width <= 0 || originalFrameSize.height <= 0) return null;
+    return {
+      width: Math.max(1, Math.floor(originalFrameSize.width)),
+      height: Math.max(1, Math.floor(originalFrameSize.height)),
+    };
+  }, [originalFrameSize]);
+
   useEffect(() => {
     if (!isOpen) return;
     setFileName(safeDefaultFileName);
     setAppendFrameCount(true);
+    setKeepOriginalAspectRatio(true);
     const hasCustomFrameSize = Boolean(defaultFrameSize);
     setUseOriginalFrameSize(!hasCustomFrameSize);
     setWidthInput(hasCustomFrameSize ? String(defaultFrameSize?.width ?? "") : "");
@@ -71,6 +90,92 @@ export default function SpriteExportModal({
     setErrorMessage("");
     setIsSubmitting(false);
   }, [isOpen, safeDefaultFileName, defaultFrameSize, exportType]);
+
+  const clampDimension = useCallback(
+    (value: number): number => {
+      if (!Number.isFinite(value)) return 1;
+      return Math.min(maxFrameSize, Math.max(1, Math.round(value)));
+    },
+    [maxFrameSize],
+  );
+
+  const handleUseOriginalFrameSizeChange = useCallback(
+    (checked: boolean) => {
+      setUseOriginalFrameSize(checked);
+      if (checked) return;
+      if (widthInput && heightInput) return;
+
+      const fallbackSize = defaultFrameSize ?? normalizedOriginalFrameSize;
+      if (!fallbackSize) return;
+      setWidthInput(String(fallbackSize.width));
+      setHeightInput(String(fallbackSize.height));
+    },
+    [defaultFrameSize, heightInput, normalizedOriginalFrameSize, widthInput],
+  );
+
+  const handleWidthInputChange = useCallback(
+    (value: string) => {
+      setWidthInput(value);
+      if (!keepOriginalAspectRatio || !originalAspectRatio || useOriginalFrameSize) return;
+
+      const width = Number.parseInt(value, 10);
+      if (!Number.isFinite(width) || width <= 0) {
+        setHeightInput("");
+        return;
+      }
+
+      const nextHeight = clampDimension(width / originalAspectRatio);
+      setHeightInput(String(nextHeight));
+    },
+    [clampDimension, keepOriginalAspectRatio, originalAspectRatio, useOriginalFrameSize],
+  );
+
+  const handleHeightInputChange = useCallback(
+    (value: string) => {
+      setHeightInput(value);
+      if (!keepOriginalAspectRatio || !originalAspectRatio || useOriginalFrameSize) return;
+
+      const height = Number.parseInt(value, 10);
+      if (!Number.isFinite(height) || height <= 0) {
+        setWidthInput("");
+        return;
+      }
+
+      const nextWidth = clampDimension(height * originalAspectRatio);
+      setWidthInput(String(nextWidth));
+    },
+    [clampDimension, keepOriginalAspectRatio, originalAspectRatio, useOriginalFrameSize],
+  );
+
+  const handleKeepOriginalAspectRatioChange = useCallback(
+    (checked: boolean) => {
+      setKeepOriginalAspectRatio(checked);
+      if (!checked || !originalAspectRatio || useOriginalFrameSize) return;
+
+      const currentWidth = Number.parseInt(widthInput, 10);
+      const currentHeight = Number.parseInt(heightInput, 10);
+      if (Number.isFinite(currentWidth) && currentWidth > 0) {
+        setHeightInput(String(clampDimension(currentWidth / originalAspectRatio)));
+        return;
+      }
+      if (Number.isFinite(currentHeight) && currentHeight > 0) {
+        setWidthInput(String(clampDimension(currentHeight * originalAspectRatio)));
+        return;
+      }
+      if (normalizedOriginalFrameSize) {
+        setWidthInput(String(normalizedOriginalFrameSize.width));
+        setHeightInput(String(normalizedOriginalFrameSize.height));
+      }
+    },
+    [
+      clampDimension,
+      heightInput,
+      normalizedOriginalFrameSize,
+      originalAspectRatio,
+      useOriginalFrameSize,
+      widthInput,
+    ],
+  );
 
   const previewFileName = useMemo(() => {
     const baseName = fileName.trim() || safeDefaultFileName;
@@ -189,35 +294,49 @@ export default function SpriteExportModal({
           <input
             type="checkbox"
             checked={useOriginalFrameSize}
-            onChange={(e) => setUseOriginalFrameSize(e.target.checked)}
+            onChange={(e) => handleUseOriginalFrameSizeChange(e.target.checked)}
             disabled={isSubmitting}
             className="accent-accent-primary"
           />
-          Original
+          Original {normalizedOriginalFrameSize ? `(${normalizedOriginalFrameSize.width} x ${normalizedOriginalFrameSize.height})` : ""}
         </label>
         {!useOriginalFrameSize && (
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              max={maxFrameSize}
-              value={widthInput}
-              onChange={(e) => setWidthInput(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="Width"
-              className="w-28 px-2 py-1.5 rounded bg-surface-primary border border-border-default text-sm text-center focus:outline-none focus:border-accent-primary"
-            />
-            <span className="text-text-tertiary">x</span>
-            <input
-              type="number"
-              min={1}
-              max={maxFrameSize}
-              value={heightInput}
-              onChange={(e) => setHeightInput(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="Height"
-              className="w-28 px-2 py-1.5 rounded bg-surface-primary border border-border-default text-sm text-center focus:outline-none focus:border-accent-primary"
-            />
+          <div className="flex flex-col gap-2">
+            {originalAspectRatio && (
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={keepOriginalAspectRatio}
+                  onChange={(e) => handleKeepOriginalAspectRatioChange(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="accent-accent-primary"
+                />
+                원본 이미지 비율 유지
+              </label>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={maxFrameSize}
+                value={widthInput}
+                onChange={(e) => handleWidthInputChange(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Width"
+                className="w-28 px-2 py-1.5 rounded bg-surface-primary border border-border-default text-sm text-center focus:outline-none focus:border-accent-primary"
+              />
+              <span className="text-text-tertiary">x</span>
+              <input
+                type="number"
+                min={1}
+                max={maxFrameSize}
+                value={heightInput}
+                onChange={(e) => handleHeightInputChange(e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Height"
+                className="w-28 px-2 py-1.5 rounded bg-surface-primary border border-border-default text-sm text-center focus:outline-none focus:border-accent-primary"
+              />
+            </div>
           </div>
         )}
       </div>

@@ -312,6 +312,13 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
+  const originalExportFrameSize = useMemo<SpriteExportFrameSize | null>(() => {
+    if (imageSize.width <= 0 || imageSize.height <= 0) return null;
+    return {
+      width: Math.floor(imageSize.width),
+      height: Math.floor(imageSize.height),
+    };
+  }, [imageSize.height, imageSize.width]);
   const estimatedExportFrameCount = useMemo(() => {
     const visibleTracks = tracks.filter((track) => track.visible);
     if (visibleTracks.length === 0) return 0;
@@ -851,6 +858,7 @@ function SpriteEditorMain() {
         exportType={pendingExportType}
         defaultFileName={projectName.trim() || "sprite-project"}
         defaultFrameSize={exportFrameSize}
+        originalFrameSize={originalExportFrameSize}
         estimatedFrameCount={estimatedExportFrameCount}
         maxFrameSize={MAX_EXPORT_FRAME_SIZE}
         onClose={() => setIsExportModalOpen(false)}
