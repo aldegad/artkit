@@ -50,6 +50,7 @@ function clearCache() {
   }
   frameCache.clear();
   cachedFrameSet.clear();
+  totalFrameCount = 0;
   cacheVersion++;
   emitCacheStatus();
 }
@@ -110,6 +111,7 @@ interface UsePreRenderCacheParams {
   isPlaying: boolean;
   currentTime: number;
   currentTimeRef: React.RefObject<number>;
+  enabled?: boolean;
 }
 
 export function usePreRenderCache(params: UsePreRenderCacheParams) {
@@ -127,6 +129,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     isPlaying,
     currentTime,
     currentTimeRef,
+    enabled = true,
   } = params;
 
   // Stable fingerprints — only change when actual content changes, not on reference changes.
@@ -181,6 +184,8 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
+    if (!enabled) return;
+
     // If already running, don't interfere — let the existing loop continue
     if (isPreRenderingRef.current) return;
 
@@ -323,7 +328,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     if (myGeneration === renderGeneration) {
       isPreRenderingRef.current = false;
     }
-  }, [currentTimeRef]);
+  }, [currentTimeRef, enabled]);
 
   const stopPreRender = useCallback(() => {
     // Bump generation so any running loop exits at the next check
@@ -331,8 +336,17 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     isPreRenderingRef.current = false;
   }, []);
 
+  // Hard-disable mode (mobile draft mode / experiments)
+  useEffect(() => {
+    if (enabled) return;
+    stopPreRender();
+    clearCache();
+  }, [enabled, stopPreRender]);
+
   // Start/stop pre-rendering based on playback state
   useEffect(() => {
+    if (!enabled) return;
+
     if (isPlaying) {
       stopPreRender();
     } else {
@@ -344,10 +358,12 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isPlaying, startPreRender, stopPreRender]);
+  }, [isPlaying, startPreRender, stopPreRender, enabled]);
 
   // Restart pre-rendering when cache is invalidated
   useEffect(() => {
+    if (!enabled) return;
+
     if (!isPlaying) {
       stopPreRender();
       const timer = setTimeout(() => {
@@ -355,12 +371,13 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [trackFingerprint, clipFingerprint, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender]);
+  }, [trackFingerprint, clipFingerprint, maskFingerprint, projectSize, isPlaying, startPreRender, stopPreRender, enabled]);
 
   // Restart pre-render from new position when user seeks while paused.
   // This stops the pre-render loop from fighting over video elements
   // with the preview canvas, and re-prioritizes caching near the new playhead.
   useEffect(() => {
+    if (!enabled) return;
     if (isPlaying) return;
     // Stop current pre-render (releases video elements for preview canvas)
     stopPreRender();
@@ -369,13 +386,14 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       startPreRender();
     }, 500);
     return () => clearTimeout(timer);
-  }, [currentTime, isPlaying, stopPreRender, startPreRender]);
+  }, [currentTime, isPlaying, stopPreRender, startPreRender, enabled]);
 
   // Get cached frame for a given time
   const getCachedFrame = useCallback((time: number): ImageBitmap | null => {
+    if (!enabled) return null;
     const frameIdx = timeToFrameIndex(time);
     return frameCache.get(frameIdx) || null;
-  }, []);
+  }, [enabled]);
 
   // Cleanup on unmount
   useEffect(() => {
