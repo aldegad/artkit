@@ -45,6 +45,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cropAspectRatio,
     lockCropAspect,
     previewPreRenderEnabled,
+    isPanLocked,
     currentTimeRef: stateTimeRef,
   } = useVideoState();
   const { tracks, clips, getClipAtTime, updateClip, saveToHistory } = useTimeline();
@@ -85,6 +86,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     brushSettings,
     setBrushMode,
     saveMaskData,
+    saveMaskHistoryPoint,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
 
@@ -1000,6 +1002,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
+    const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
+    if (isTouchPanOnlyInput && e.button === 0) {
+      e.preventDefault();
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
+      vpStartPanDrag({ x: e.clientX, y: e.clientY });
+      isPanningRef.current = true;
+      return;
+    }
+
     if (isEditingMask && activeTrackId) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (!maskCoords) return;
@@ -1012,6 +1023,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         setBrushMode("erase");
       }
 
+      saveMaskHistoryPoint();
       const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
       startDraw(maskCoords.x, maskCoords.y, pressure);
       isMaskDrawingRef.current = true;
@@ -1104,7 +1116,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipStart: { ...hitClip.position },
     };
     setIsDraggingClip(true);
-  }, [vpStartPanDrag, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, transformTool]);
+  }, [vpStartPanDrag, isPanLocked, toolMode, screenToProject, canvasExpandMode, clampToCanvas, cropArea, isInsideCropArea, setCropArea, hitTestClipAtPoint, saveToHistory, selectClip, isEditingMask, activeTrackId, screenToMaskCoords, startDraw, brushSettings.mode, setBrushMode, saveMaskHistoryPoint, transformTool]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     // Middle mouse button pan

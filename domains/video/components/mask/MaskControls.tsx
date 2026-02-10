@@ -42,6 +42,7 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
     isEditingMask,
     masks,
     saveMaskData,
+    saveMaskHistoryPoint,
   } = useMask();
 
   const { clearMask, fillMask } = useMaskTool();
@@ -153,12 +154,26 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
 
           {/* Fill / Clear */}
           <Tooltip content={t.fillMask}>
-            <button onClick={() => { fillMask(); saveMaskData(); }} className={actionBtn}>
+            <button
+              onClick={() => {
+                saveMaskHistoryPoint();
+                fillMask();
+                saveMaskData();
+              }}
+              className={actionBtn}
+            >
               <FillBucketIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
           <Tooltip content={t.clearMask}>
-            <button onClick={() => { clearMask(); saveMaskData(); }} className={actionBtn}>
+            <button
+              onClick={() => {
+                saveMaskHistoryPoint();
+                clearMask();
+                saveMaskData();
+              }}
+              className={actionBtn}
+            >
               <DeleteIcon className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
