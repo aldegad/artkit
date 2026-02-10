@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar } from "@/shared/components";
 import {
-  ZoomInIcon,
-  ZoomOutIcon,
   LockAspectIcon,
   UnlockAspectIcon,
   SquareExpandIcon,
@@ -49,7 +47,6 @@ import {
   type Clip,
   type SavedVideoProject,
   type TimelineViewState,
-  type VideoToolMode,
 } from "@/domains/video";
 import { useVideoKeyboardShortcuts } from "@/domains/video/hooks";
 import {
@@ -164,7 +161,7 @@ function VideoEditorContent() {
     previewPreRenderEnabled,
     togglePreviewPreRender,
   } = useVideoState();
-  const { previewCanvasRef, previewViewportRef } = useVideoRefs();
+  const { previewCanvasRef } = useVideoRefs();
   const {
     tracks,
     clips,
@@ -956,26 +953,6 @@ function VideoEditorContent() {
     setScrollX(0);
   }, [project.duration, setZoom, setScrollX]);
 
-  // Preview zoom (synced from PreviewCanvas viewport)
-  const [previewZoom, setPreviewZoom] = useState(1);
-  useEffect(() => {
-    const api = previewViewportRef.current;
-    if (!api) return;
-    return api.onZoomChange((z) => setPreviewZoom(z));
-  }, [previewViewportRef]);
-
-  const handlePreviewZoomIn = useCallback(() => {
-    previewViewportRef.current?.zoomIn();
-  }, [previewViewportRef]);
-
-  const handlePreviewZoomOut = useCallback(() => {
-    previewViewportRef.current?.zoomOut();
-  }, [previewViewportRef]);
-
-  const handlePreviewFit = useCallback(() => {
-    previewViewportRef.current?.fitToContainer();
-  }, [previewViewportRef]);
-
   // Canvas size adjustment
   const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
   const [isEditingCanvasSize, setIsEditingCanvasSize] = useState(false);
@@ -1107,6 +1084,10 @@ function VideoEditorContent() {
   const toolbarTranslations = {
     select: t.select,
     selectDesc: t.selectDesc,
+    hand: t.hand,
+    handDesc: t.handToolTip,
+    zoomInOut: t.zoomInOut,
+    zoomToolTip: t.zoomToolTip,
     trim: t.trim,
     trimDesc: t.trimDesc,
     razor: t.razor,
@@ -1116,8 +1097,6 @@ function VideoEditorContent() {
     mask: t.mask,
     maskDesc: t.maskDesc,
   };
-
-  const supportedToolModes: VideoToolMode[] = ["select", "trim", "razor", "crop", "mask"];
 
   return (
     <div
@@ -1431,32 +1410,6 @@ function VideoEditorContent() {
           )}
         </div>
 
-        <div className="h-4 w-px bg-border-default" />
-
-        {/* Preview zoom controls */}
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button
-            onClick={handlePreviewZoomOut}
-            className="p-1 hover:bg-interactive-hover rounded transition-colors text-text-secondary hover:text-text-primary"
-            title="Zoom out preview"
-          >
-            <ZoomOutIcon className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handlePreviewFit}
-            className="px-1 py-0.5 text-xs text-text-secondary hover:text-text-primary hover:bg-interactive-hover rounded transition-colors min-w-[40px] text-center"
-            title="Fit to screen"
-          >
-            {Math.round(previewZoom * 100)}%
-          </button>
-          <button
-            onClick={handlePreviewZoomIn}
-            className="p-1 hover:bg-interactive-hover rounded transition-colors text-text-secondary hover:text-text-primary"
-            title="Zoom in preview"
-          >
-            <ZoomInIcon className="w-4 h-4" />
-          </button>
-        </div>
       </div>
 
       {toolMode === "mask" && activeMaskId && (
