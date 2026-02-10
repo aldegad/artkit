@@ -55,8 +55,10 @@ interface FirestoreSpriteProject {
   fps: number;
   viewState?: SavedSpriteProject["viewState"];
   thumbnailUrl?: string;
+  thumbnailRef?: string;
   imageSrcFingerprint?: string;
   thumbnailFingerprint?: string;
+  mediaCleanupVersion?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -71,6 +73,7 @@ export interface SpriteSaveLoadProgress {
 const SPRITE_LOAD_TRACK_CONCURRENCY = 3;
 const SPRITE_LOAD_FRAME_CONCURRENCY = 8;
 const SPRITE_DELETE_CONCURRENCY = 8;
+const SPRITE_MEDIA_CLEANUP_VERSION = 1;
 
 function removeUndefined<T>(obj: T): T {
   if (obj === null || obj === undefined || typeof obj !== "object") return obj;
@@ -215,6 +218,118 @@ async function uploadSpriteThumbnail(
   return getDownloadURL(storageRef);
 }
 
+function getSpriteProjectMediaFolderPath(userId: string, projectId: string): string {
+  return `users/${userId}/sprite-media/${projectId}`;
+}
+
+function getSpriteProjectMediaPrefix(userId: string, projectId: string): string {
+  return `${getSpriteProjectMediaFolderPath(userId, projectId)}/`;
+}
+
+function getSpriteThumbnailPath(userId: string, projectId: string): string {
+  return `${getSpriteProjectMediaFolderPath(userId, projectId)}/thumbnail.png`;
+}
+
+function addProjectMediaPath(
+  refs: Set<string>,
+  path: string | undefined,
+  projectMediaPrefix: string
+): void {
+  if (!path) return;
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  if (normalizedPath.startsWith(projectMediaPrefix)) {
+    refs.add(normalizedPath);
+  }
+}
+
+function collectSpriteProjectMediaRefs(
+  projectData: FirestoreSpriteProject | null,
+  projectMediaPrefix: string,
+  fallbackThumbnailPath: string
+): Set<string> {
+  const refs = new Set<string>();
+  if (!projectData) return refs;
+
+  addProjectMediaPath(refs, projectData.imageSrcRef, projectMediaPrefix);
+  addProjectMediaPath(
+    refs,
+    projectData.thumbnailRef || (projectData.thumbnailUrl ? fallbackThumbnailPath : undefined),
+    projectMediaPrefix
+  );
+
+  for (const trackMeta of projectData.tracks) {
+    for (const frameMeta of trackMeta.frames) {
+      addProjectMediaPath(refs, frameMeta.imageRef, projectMediaPrefix);
+    }
+  }
+
+  return refs;
+}
+
+async function listFolderRecursive(folderRef: StorageReference): Promise<StorageReference[]> {
+  const listResult = await listAll(folderRef);
+  const nested = await mapWithConcurrency(
+    listResult.prefixes,
+    SPRITE_DELETE_CONCURRENCY,
+    async (prefixRef) => listFolderRecursive(prefixRef)
+  );
+  return [...listResult.items, ...nested.flat()];
+}
+
+async function deleteStoragePaths(paths: string[]): Promise<boolean> {
+  const uniquePaths = Array.from(new Set(paths));
+  if (uniquePaths.length === 0) return true;
+
+  let hasFailure = false;
+  await mapWithConcurrency(uniquePaths, SPRITE_DELETE_CONCURRENCY, async (path) => {
+    try {
+      await deleteObject(ref(storage, path));
+    } catch (error) {
+      const maybeCode = (error as { code?: string }).code;
+      if (maybeCode !== "storage/object-not-found") {
+        hasFailure = true;
+        console.warn(`[SpriteStorage] Failed to delete media: ${path}`, error);
+      }
+    }
+  });
+
+  return !hasFailure;
+}
+
+async function cleanupRemovedSpriteMediaByRefDiff(
+  existingRefs: Set<string>,
+  nextRefs: Set<string>
+): Promise<boolean> {
+  const stalePaths = Array.from(existingRefs).filter((path) => !nextRefs.has(path));
+  return deleteStoragePaths(stalePaths);
+}
+
+async function cleanupLegacyOrphanSpriteMedia(
+  userId: string,
+  projectId: string,
+  nextRefs: Set<string>
+): Promise<boolean> {
+  const folderRef = ref(storage, getSpriteProjectMediaFolderPath(userId, projectId));
+
+  let allItems: StorageReference[];
+  try {
+    allItems = await listFolderRecursive(folderRef);
+  } catch (error) {
+    const maybeCode = (error as { code?: string }).code;
+    if (maybeCode === "storage/object-not-found") {
+      return true;
+    }
+    console.warn("[SpriteStorage] Failed to list project media for cleanup:", error);
+    return false;
+  }
+
+  const stalePaths = allItems
+    .map((itemRef) => itemRef.fullPath)
+    .filter((path) => !nextRefs.has(path));
+
+  return deleteStoragePaths(stalePaths);
+}
+
 async function deleteFolderRecursive(folderRef: StorageReference): Promise<void> {
   const listResult = await listAll(folderRef);
   await mapWithConcurrency(listResult.items, SPRITE_DELETE_CONCURRENCY, async (itemRef) => {
@@ -226,7 +341,7 @@ async function deleteFolderRecursive(folderRef: StorageReference): Promise<void>
 }
 
 async function deleteProjectMedia(userId: string, projectId: string): Promise<void> {
-  const folderRef = ref(storage, `users/${userId}/sprite-media/${projectId}`);
+  const folderRef = ref(storage, getSpriteProjectMediaFolderPath(userId, projectId));
   try {
     await deleteFolderRecursive(folderRef);
   } catch {
@@ -249,6 +364,16 @@ export async function saveSpriteProjectToFirebase(
     existingCreatedAt && typeof existingCreatedAt.toMillis === "function"
       ? existingCreatedAt
       : Timestamp.fromMillis(project.savedAt || Date.now());
+  const projectMediaPrefix = getSpriteProjectMediaPrefix(userId, project.id);
+  const thumbnailPath = getSpriteThumbnailPath(userId, project.id);
+  const existingReferencedMediaRefs = collectSpriteProjectMediaRefs(
+    existingData,
+    projectMediaPrefix,
+    thumbnailPath
+  );
+  const needsLegacyBackfill =
+    Boolean(existingData) &&
+    (existingData?.mediaCleanupVersion ?? 0) < SPRITE_MEDIA_CLEANUP_VERSION;
 
   const firstFrameImage = project.tracks.flatMap((track) => track.frames).find((frame) => frame.imageData)?.imageData;
 
@@ -296,6 +421,9 @@ export async function saveSpriteProjectToFirebase(
   }
 
   let thumbnailUrl: string | undefined;
+  let thumbnailRef: string | undefined =
+    existingData?.thumbnailRef ||
+    (existingData?.thumbnailUrl ? thumbnailPath : undefined);
   let thumbnailFingerprint: string | undefined;
   let shouldUploadThumbnail = false;
   if (firstFrameImage && firstFrameImage.startsWith("data:")) {
@@ -310,12 +438,14 @@ export async function saveSpriteProjectToFirebase(
       )
     ) {
       thumbnailUrl = existingData?.thumbnailUrl;
+      thumbnailRef = existingData?.thumbnailRef || thumbnailPath;
     } else {
       shouldUploadThumbnail = true;
       uploadStepCount += 1;
     }
   } else {
     thumbnailUrl = existingData?.thumbnailUrl;
+    thumbnailRef = existingData?.thumbnailRef || (thumbnailUrl ? thumbnailPath : undefined);
   }
 
   for (const track of project.tracks) {
@@ -392,9 +522,11 @@ export async function saveSpriteProjectToFirebase(
     });
     try {
       thumbnailUrl = await uploadSpriteThumbnail(userId, project.id, firstFrameImage);
+      thumbnailRef = thumbnailPath;
     } catch (error) {
       console.warn("Failed to upload sprite thumbnail:", error);
       thumbnailUrl = existingData?.thumbnailUrl;
+      thumbnailRef = existingData?.thumbnailRef || (thumbnailUrl ? thumbnailPath : undefined);
     }
   }
 
@@ -461,8 +593,12 @@ export async function saveSpriteProjectToFirebase(
     fps: project.fps,
     viewState: project.viewState,
     thumbnailUrl,
+    thumbnailRef,
     imageSrcFingerprint,
     thumbnailFingerprint,
+    mediaCleanupVersion: needsLegacyBackfill
+      ? (existingData?.mediaCleanupVersion ?? 0)
+      : SPRITE_MEDIA_CLEANUP_VERSION,
     createdAt,
     updatedAt: Timestamp.now(),
   };
@@ -474,6 +610,45 @@ export async function saveSpriteProjectToFirebase(
     itemName: "Saving metadata",
   });
   await setDoc(docRef, removeUndefined(firestoreProject));
+
+  try {
+    const nextReferencedMediaRefs = collectSpriteProjectMediaRefs(
+      firestoreProject,
+      projectMediaPrefix,
+      thumbnailPath
+    );
+
+    const diffCleanupSucceeded = await cleanupRemovedSpriteMediaByRefDiff(
+      existingReferencedMediaRefs,
+      nextReferencedMediaRefs
+    );
+    if (!diffCleanupSucceeded) {
+      console.warn("[SpriteStorage] Some stale media files could not be deleted by ref diff.");
+    }
+
+    if (needsLegacyBackfill) {
+      const legacyCleanupSucceeded = await cleanupLegacyOrphanSpriteMedia(
+        userId,
+        project.id,
+        nextReferencedMediaRefs
+      );
+
+      if (legacyCleanupSucceeded) {
+        await setDoc(
+          docRef,
+          { mediaCleanupVersion: SPRITE_MEDIA_CLEANUP_VERSION },
+          { merge: true }
+        );
+      } else {
+        console.warn(
+          "[SpriteStorage] Legacy orphan cleanup did not complete; will retry on next save."
+        );
+      }
+    }
+  } catch (error) {
+    // Cleanup is best-effort. Save is already committed.
+    console.warn("[SpriteStorage] Media cleanup failed after save:", error);
+  }
 }
 
 export async function getSpriteProjectFromFirebase(
