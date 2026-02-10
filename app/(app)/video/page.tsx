@@ -143,6 +143,7 @@ function VideoEditorContent() {
     deselectAll,
     togglePlay,
     play,
+    pause,
     stop,
     seek,
     setLoopRange,
@@ -1010,6 +1011,30 @@ function VideoEditorContent() {
 
     openFloatingWindow("timeline", { x: 140, y: 140 });
   }, [layoutState, closeFloatingWindow, removePanel, addPanel, openFloatingWindow]);
+
+  // Auto-pause when app/window loses foreground to prevent lingering audio playback.
+  useEffect(() => {
+    const pausePlaybackIfNeeded = () => {
+      if (!playback.isPlaying) return;
+      pause();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        pausePlaybackIfNeeded();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", pausePlaybackIfNeeded);
+    window.addEventListener("pagehide", pausePlaybackIfNeeded);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", pausePlaybackIfNeeded);
+      window.removeEventListener("pagehide", pausePlaybackIfNeeded);
+    };
+  }, [pause, playback.isPlaying]);
 
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
