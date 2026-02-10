@@ -13,6 +13,14 @@ import {
 } from "../types";
 
 export type VideoExportFormat = "mp4" | "mov";
+export type VideoExportCompression = "high" | "balanced" | "small";
+
+export interface VideoExportOptions {
+  format?: VideoExportFormat;
+  includeAudio?: boolean;
+  compression?: VideoExportCompression;
+  backgroundColor?: string;
+}
 
 export interface ExportProgressState {
   stage: string;
@@ -36,13 +44,40 @@ interface UseVideoExportReturn {
   exportProgress: ExportProgressState | null;
   exportVideo: (
     exportFileName?: string,
-    format?: VideoExportFormat,
-    includeAudio?: boolean
+    options?: VideoExportOptions
   ) => Promise<void>;
 }
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
+}
+
+function normalizeHexColor(input?: string): string {
+  if (!input) return "#000000";
+  const value = input.trim();
+  const longHex = /^#([0-9a-fA-F]{6})$/;
+  const shortHex = /^#([0-9a-fA-F]{3})$/;
+  if (longHex.test(value)) return value.toLowerCase();
+  const shortMatch = value.match(shortHex);
+  if (!shortMatch) return "#000000";
+  const [r, g, b] = shortMatch[1].split("");
+  return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+}
+
+function resolveCompression(compression: VideoExportCompression): {
+  crf: number;
+  preset: "medium" | "slow";
+  fallbackQ: number;
+} {
+  switch (compression) {
+    case "high":
+      return { crf: 14, preset: "slow", fallbackQ: 2 };
+    case "small":
+      return { crf: 24, preset: "slow", fallbackQ: 7 };
+    case "balanced":
+    default:
+      return { crf: 18, preset: "medium", fallbackQ: 4 };
+  }
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
@@ -296,10 +331,15 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
 
   const exportVideo = useCallback(async (
     exportFileName?: string,
-    format: VideoExportFormat = "mp4",
-    includeAudio?: boolean
+    exportOptions?: VideoExportOptions
   ) => {
     if (isExporting) return;
+
+    const format = exportOptions?.format ?? "mp4";
+    const includeAudio = exportOptions?.includeAudio ?? true;
+    const compression = exportOptions?.compression ?? "balanced";
+    const backgroundColor = normalizeHexColor(exportOptions?.backgroundColor);
+    const compressionSettings = resolveCompression(compression);
 
     const fullDuration = Math.max(project.duration, 0.1);
     const rangeStart = Math.max(0, Math.min(playback.loopStart, fullDuration));
@@ -422,7 +462,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
         const maxFrameTime = Math.max(exportStart, exportEnd - 0.5 / frameRate);
         const frameTime = Math.min(maxFrameTime, exportStart + frameIndex / frameRate);
-        exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+        exportCtx.fillStyle = backgroundColor;
+        exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
         const sortedTracks = [...tracks].reverse();
         for (const track of sortedTracks) {
@@ -497,7 +538,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         }
       }
 
-      if (includeAudio ?? true) {
+      if (includeAudio) {
         setExportProgress({
           stage: "Rendering audio",
           percent: 70,
@@ -557,9 +598,9 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
           "-c:v",
           "libx264",
           "-preset",
-          "medium",
+          compressionSettings.preset,
           "-crf",
-          "12",
+          String(compressionSettings.crf),
           "-tune",
           "animation",
           "-profile:v",
@@ -582,7 +623,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
             "-c:v",
             "mpeg4",
             "-q:v",
-            "1",
+            String(compressionSettings.fallbackQ),
             "-pix_fmt",
             "yuv420p",
             "-movflags",
@@ -607,9 +648,9 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
           "-c:v",
           "libx264",
           "-preset",
-          "medium",
+          compressionSettings.preset,
           "-crf",
-          "12",
+          String(compressionSettings.crf),
           "-tune",
           "animation",
           "-profile:v",
@@ -632,7 +673,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
             "-c:v",
             "mpeg4",
             "-q:v",
-            "1",
+            String(compressionSettings.fallbackQ),
             "-pix_fmt",
             "yuv420p",
             ...mp4AudioArgs,
