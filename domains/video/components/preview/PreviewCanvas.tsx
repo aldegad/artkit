@@ -13,6 +13,7 @@ import {
 import { cn } from "@/shared/utils/cn";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
+import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
 import { AudioClip, Clip, VideoClip, getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
@@ -1634,17 +1635,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         const scale = vpGetEffectiveScale();
         const displaySize = brushSettings.size * scale;
         return (
-          <div
-            className="absolute pointer-events-none"
-            style={{
-              left: brushCursor.x - displaySize / 2,
-              top: brushCursor.y - displaySize / 2,
-              width: displaySize,
-              height: displaySize,
-              borderRadius: "50%",
-              border: `1.5px solid ${brushSettings.mode === "erase" ? "rgba(255,100,100,0.8)" : "rgba(255,255,255,0.8)"}`,
-              boxShadow: `0 0 0 1px ${brushSettings.mode === "erase" ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.5)"}`,
-            }}
+          <BrushCursorOverlay
+            x={brushCursor.x}
+            y={brushCursor.y}
+            size={displaySize}
+            hardness={brushSettings.hardness}
+            color={brushSettings.mode === "erase" ? "#f87171" : "#ffffff"}
+            isEraser={brushSettings.mode === "erase"}
           />
         );
       })()}

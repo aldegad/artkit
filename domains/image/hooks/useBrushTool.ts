@@ -168,7 +168,7 @@ export function useBrushTool(): UseBrushToolReturn {
         x: cx,
         y: cy,
         radius: params.size / 2,
-        hardness: (brushHardness / 100) * 0.9,
+        hardness: brushHardness / 100,
         color: brushColor,
         alpha: params.opacity * params.flow,
         isEraser,
