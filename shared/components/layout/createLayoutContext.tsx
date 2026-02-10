@@ -12,13 +12,16 @@ import {
 } from "react";
 import {
   LayoutState,
+  LayoutNode,
   SplitNode,
   PanelNode,
   FloatingWindow,
   DropTarget,
   ResizeState,
   SnapInfo,
+  DockedPanelCollapseState,
   findNode,
+  findParent,
   updateNodeSizes,
   addPanelToLayout,
   removePanelFromLayout,
@@ -35,6 +38,60 @@ import { LayoutConfigProvider } from "./LayoutConfigContext";
 interface CreateLayoutContextResult {
   Provider: React.FC<{ children: ReactNode }>;
   useLayoutContext: () => LayoutContextValue;
+}
+
+const DOCKED_PANEL_COLLAPSED_SIZE_PX = 40;
+
+interface NodeSize {
+  width: number;
+  height: number;
+}
+
+function getNodeSizeById(
+  node: LayoutNode,
+  targetId: string,
+  size: NodeSize
+): NodeSize | null {
+  if (node.id === targetId) return size;
+  if (!isSplitNode(node)) return null;
+
+  const splitNode = node as SplitNode;
+  const total = splitNode.sizes.reduce((sum, value) => sum + value, 0) || 1;
+
+  for (let index = 0; index < splitNode.children.length; index++) {
+    const child = splitNode.children[index];
+    const ratio = splitNode.sizes[index] / total;
+    const childSize: NodeSize =
+      splitNode.direction === "horizontal"
+        ? { width: size.width * ratio, height: size.height }
+        : { width: size.width, height: size.height * ratio };
+
+    const found = getNodeSizeById(child, targetId, childSize);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function sanitizeDockedPanelCollapseStates(
+  root: SplitNode,
+  states: Record<string, DockedPanelCollapseState>
+): Record<string, DockedPanelCollapseState> {
+  const sanitized: Record<string, DockedPanelCollapseState> = {};
+
+  for (const [panelNodeId, collapseState] of Object.entries(states)) {
+    const node = findNode(root, panelNodeId);
+    if (!node || isSplitNode(node)) continue;
+
+    const parentInfo = findParent(root, panelNodeId);
+    if (!parentInfo) continue;
+    if (parentInfo.parent.id !== collapseState.splitId) continue;
+    if (collapseState.previousSizes.length !== parentInfo.parent.sizes.length) continue;
+
+    sanitized[panelNodeId] = collapseState;
+  }
+
+  return sanitized;
 }
 
 export function createLayoutContext(config: LayoutConfiguration): CreateLayoutContextResult {
@@ -60,6 +117,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
     const [layoutState, setLayoutState] = useState<LayoutState>({
       root: defaultLayout,
       floatingWindows: [],
+      dockedPanelCollapseStates: {},
       activePanelId: null,
       isDragging: false,
       draggedWindowId: null,
@@ -76,10 +134,16 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
+          const loadedRoot = parsed.root || defaultLayout;
+          const loadedDockedPanelCollapseStates = sanitizeDockedPanelCollapseStates(
+            loadedRoot,
+            parsed.dockedPanelCollapseStates || {}
+          );
           setLayoutState((prev) => ({
             ...prev,
-            root: parsed.root || defaultLayout,
+            root: loadedRoot,
             floatingWindows: parsed.floatingWindows || [],
+            dockedPanelCollapseStates: loadedDockedPanelCollapseStates,
           }));
         } catch (e) {
           console.error("Failed to load layout:", e);
@@ -94,9 +158,10 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
         JSON.stringify({
           root: layoutState.root,
           floatingWindows: layoutState.floatingWindows,
+          dockedPanelCollapseStates: layoutState.dockedPanelCollapseStates,
         })
       );
-    }, [layoutState.root, layoutState.floatingWindows]);
+    }, [layoutState.root, layoutState.floatingWindows, layoutState.dockedPanelCollapseStates]);
 
     // Layout Operations
     const updateSizes = useCallback((splitId: string, newSizes: number[]) => {
@@ -108,19 +173,31 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
 
     const addPanel = useCallback(
       (targetPanelId: string, panelId: string, position: "left" | "right" | "top" | "bottom") => {
-        setLayoutState((prev) => ({
-          ...prev,
-          root: addPanelToLayout(prev.root, targetPanelId, generateId(), panelId, position),
-        }));
+        setLayoutState((prev) => {
+          const newRoot = addPanelToLayout(prev.root, targetPanelId, generateId(), panelId, position);
+          return {
+            ...prev,
+            root: newRoot,
+            dockedPanelCollapseStates: sanitizeDockedPanelCollapseStates(
+              newRoot,
+              prev.dockedPanelCollapseStates
+            ),
+          };
+        });
       },
       []
     );
 
     const removePanel = useCallback((panelNodeId: string) => {
-      setLayoutState((prev) => ({
-        ...prev,
-        root: removePanelFromLayout(prev.root, panelNodeId),
-      }));
+      setLayoutState((prev) => {
+        const newRoot = removePanelFromLayout(prev.root, panelNodeId);
+        const { [panelNodeId]: _removed, ...nextCollapseStates } = prev.dockedPanelCollapseStates;
+        return {
+          ...prev,
+          root: newRoot,
+          dockedPanelCollapseStates: sanitizeDockedPanelCollapseStates(newRoot, nextCollapseStates),
+        };
+      });
     }, []);
 
     // Floating Window Operations
@@ -208,6 +285,10 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
             ...prev,
             root: newRoot,
             floatingWindows: newFloatingWindows,
+            dockedPanelCollapseStates: sanitizeDockedPanelCollapseStates(
+              newRoot,
+              prev.dockedPanelCollapseStates
+            ),
             isDragging: false,
             draggedWindowId: null,
             dropTarget: null,
@@ -237,9 +318,92 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
           ...prev,
           root: newRoot,
           floatingWindows: [...prev.floatingWindows, newWindow],
+          dockedPanelCollapseStates: sanitizeDockedPanelCollapseStates(
+            newRoot,
+            prev.dockedPanelCollapseStates
+          ),
         };
       });
     }, [defaultFloatingWindowSize]);
+
+    const toggleDockedPanelCollapse = useCallback((panelNodeId: string) => {
+      setLayoutState((prev) => {
+        const parentInfo = findParent(prev.root, panelNodeId);
+        if (!parentInfo) return prev;
+
+        const { parent: parentSplit, index } = parentInfo;
+        const currentSizes = [...parentSplit.sizes];
+        const currentCollapseState = prev.dockedPanelCollapseStates[panelNodeId];
+
+        // Expand back to the previous split sizes.
+        if (
+          currentCollapseState &&
+          currentCollapseState.splitId === parentSplit.id &&
+          currentCollapseState.previousSizes.length === currentSizes.length
+        ) {
+          const restoredRoot = updateNodeSizes(prev.root, parentSplit.id, currentCollapseState.previousSizes);
+          const { [panelNodeId]: _removed, ...nextStates } = prev.dockedPanelCollapseStates;
+          return {
+            ...prev,
+            root: restoredRoot,
+            dockedPanelCollapseStates: sanitizeDockedPanelCollapseStates(restoredRoot, nextStates),
+          };
+        }
+
+        // Collapse toward a fixed 40px footprint along the active split direction.
+        if (parentSplit.children.length < 2) return prev;
+        const splitTotal = currentSizes.reduce((sum, value) => sum + value, 0);
+        if (splitTotal <= 0) return prev;
+
+        const containerWidth = containerRef.current?.clientWidth || 1;
+        const containerHeight = containerRef.current?.clientHeight || 1;
+        const parentSize = getNodeSizeById(prev.root, parentSplit.id, {
+          width: containerWidth,
+          height: containerHeight,
+        });
+        if (!parentSize) return prev;
+
+        const splitPixelSize =
+          parentSplit.direction === "horizontal" ? parentSize.width : parentSize.height;
+        if (splitPixelSize <= 0) return prev;
+
+        const currentPanelRatio = currentSizes[index];
+        const collapsedPanelRatio =
+          (DOCKED_PANEL_COLLAPSED_SIZE_PX / splitPixelSize) * splitTotal;
+        const targetPanelRatio = Math.min(currentPanelRatio, collapsedPanelRatio);
+        const delta = currentPanelRatio - targetPanelRatio;
+        if (delta <= 0) return prev;
+
+        const siblingIndices = currentSizes
+          .map((_, siblingIndex) => siblingIndex)
+          .filter((siblingIndex) => siblingIndex !== index);
+        const siblingTotal = siblingIndices.reduce(
+          (sum, siblingIndex) => sum + currentSizes[siblingIndex],
+          0
+        );
+        if (siblingTotal <= 0) return prev;
+
+        const collapsedSizes = [...currentSizes];
+        collapsedSizes[index] = targetPanelRatio;
+        for (const siblingIndex of siblingIndices) {
+          const share = currentSizes[siblingIndex] / siblingTotal;
+          collapsedSizes[siblingIndex] = currentSizes[siblingIndex] + delta * share;
+        }
+
+        const collapsedRoot = updateNodeSizes(prev.root, parentSplit.id, collapsedSizes);
+        return {
+          ...prev,
+          root: collapsedRoot,
+          dockedPanelCollapseStates: sanitizeDockedPanelCollapseStates(collapsedRoot, {
+            ...prev.dockedPanelCollapseStates,
+            [panelNodeId]: {
+              splitId: parentSplit.id,
+              previousSizes: currentSizes,
+            },
+          }),
+        };
+      });
+    }, []);
 
     // Drag Operations
     const startDragging = useCallback((windowId: string) => {
@@ -399,6 +563,11 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       [layoutState]
     );
 
+    const isDockedPanelCollapsed = useCallback(
+      (panelNodeId: string) => Boolean(layoutState.dockedPanelCollapseStates[panelNodeId]),
+      [layoutState.dockedPanelCollapseStates]
+    );
+
     // Panel Ref Registry
     const registerPanelRef = useCallback(
       (panelId: string, ref: RefObject<HTMLDivElement | null>) => {
@@ -459,6 +628,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
         ...prev,
         root: defaultLayout,
         floatingWindows: [],
+        dockedPanelCollapseStates: {},
       }));
     }, []);
 
@@ -474,6 +644,8 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       minimizeFloatingWindow,
       dockWindow,
       undockPanel,
+      toggleDockedPanelCollapse,
+      isDockedPanelCollapsed,
       startDragging,
       updateDropTarget,
       endDragging,

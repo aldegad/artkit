@@ -45,6 +45,7 @@ export function createPanelRegistry(defaultMeta: Record<string, PanelMeta>) {
   // Clear all registered components
   function clearPanelComponents() {
     panelComponents = {};
+    notifyPanelUpdate();
   }
 
   // Get panel content

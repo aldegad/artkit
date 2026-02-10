@@ -19,10 +19,19 @@ type DockPosition = "left" | "right" | "top" | "bottom" | null;
 // ============================================
 
 export default function Panel({ node }: PanelProps) {
-  const { undockPanel, layoutState, updateDropTarget, registerPanelRef, unregisterPanelRef } = useLayout();
+  const {
+    undockPanel,
+    toggleDockedPanelCollapse,
+    isDockedPanelCollapsed,
+    layoutState,
+    updateDropTarget,
+    registerPanelRef,
+    unregisterPanelRef,
+  } = useLayout();
   const config = useLayoutConfig();
   const panelRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<DockPosition>(null);
+  const isCollapsed = isDockedPanelCollapsed(node.id);
 
   const showHeader = config.isPanelHeaderVisible(node.panelId);
   const title = config.getPanelTitle(node.panelId);
@@ -198,10 +207,20 @@ export default function Panel({ node }: PanelProps) {
       ref={panelRef}
       className="h-full w-full flex flex-col overflow-hidden relative bg-surface-primary shadow-sm border border-border-subtle"
     >
-      {showHeader && (
+      {showHeader && !isCollapsed && (
         <div className="panel-header shrink-0">
           <span className="text-sm font-semibold text-text-primary truncate min-w-0">{title}</span>
           <div className="flex items-center gap-1">
+            {/* Docked minimize button */}
+            <button
+              onClick={() => toggleDockedPanelCollapse(node.id)}
+              className="p-1.5 hover:bg-interactive-hover rounded-lg text-text-tertiary hover:text-text-primary transition-all"
+              title="Minimize panel"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14" />
+              </svg>
+            </button>
             {/* Undock button */}
             <button
               onClick={() => undockPanel(node.id)}
@@ -220,7 +239,22 @@ export default function Panel({ node }: PanelProps) {
           </div>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-hidden bg-surface-primary">{content}</div>
+      {isCollapsed && (
+        <div className="flex-1 min-h-0 flex items-center justify-center bg-surface-primary">
+          <button
+            onClick={() => toggleDockedPanelCollapse(node.id)}
+            className="p-2 hover:bg-interactive-hover rounded-lg text-text-tertiary hover:text-text-primary transition-all"
+            title="Expand panel"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            </svg>
+          </button>
+        </div>
+      )}
+      {!isCollapsed && (
+        <div className="flex-1 min-h-0 overflow-hidden bg-surface-primary">{content}</div>
+      )}
 
       {/* Dock zone indicators - only show when dragging */}
       {layoutState.isDragging && (
