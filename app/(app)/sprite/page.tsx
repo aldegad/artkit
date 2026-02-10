@@ -321,6 +321,16 @@ function SpriteEditorMain() {
     }
   }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
 
+  const exportSpriteSheetWebp = useCallback(async () => {
+    if (!hasRenderableFrames) return;
+    try {
+      await downloadCompositedSpriteSheet(tracks, projectName.trim() || "sprite-project", { format: "webp" });
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert(`${t.exportFailed}: ${(error as Error).message}`);
+    }
+  }, [hasRenderableFrames, tracks, projectName, t.exportFailed]);
+
   // Save project (overwrite if existing, create new if not)
   const saveProject = useCallback(async () => {
     if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
@@ -607,6 +617,7 @@ function SpriteEditorMain() {
             onSaveAs={saveProjectAs}
             onExportZip={exportZip}
             onExportSpriteSheet={exportSpriteSheet}
+            onExportSpriteSheetWebp={exportSpriteSheetWebp}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}

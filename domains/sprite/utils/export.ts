@@ -57,10 +57,14 @@ export async function downloadFramesAsZip(
 // Sprite Sheet Export
 // ============================================
 
+export type SpriteSheetFormat = "png" | "webp";
+
 interface SpriteSheetOptions {
   columns?: number; // Number of columns (auto-calculated if not provided)
   padding?: number; // Padding between frames
   backgroundColor?: string; // Background color (transparent by default)
+  format?: SpriteSheetFormat; // Export format (default: png)
+  quality?: number; // WebP quality 0-1 (default: 0.95)
 }
 
 /**
@@ -77,7 +81,7 @@ export function generateSpriteSheet(
       return;
     }
 
-    const { padding = 0, backgroundColor } = options;
+    const { padding = 0, backgroundColor, format = "png", quality = 0.95 } = options;
 
     // Load all images first
     const imagePromises = validFrames.map((frame) => {
@@ -130,13 +134,18 @@ export function generateSpriteSheet(
         ctx.drawImage(img, x, y);
       });
 
-      resolve(canvas.toDataURL("image/png"));
+      const mimeType = format === "webp" ? "image/webp" : "image/png";
+      resolve(
+        format === "webp"
+          ? canvas.toDataURL(mimeType, quality)
+          : canvas.toDataURL(mimeType),
+      );
     });
   });
 }
 
 /**
- * Download sprite sheet as PNG
+ * Download sprite sheet as PNG or WebP
  */
 export async function downloadSpriteSheet(
   frames: SpriteFrame[],
@@ -146,8 +155,9 @@ export async function downloadSpriteSheet(
   const dataUrl = await generateSpriteSheet(frames, options);
   if (!dataUrl) return;
 
+  const ext = options.format === "webp" ? "webp" : "png";
   const link = document.createElement("a");
-  link.download = `${projectName}-spritesheet.png`;
+  link.download = `${projectName}-spritesheet.${ext}`;
   link.href = dataUrl;
   link.click();
 }
@@ -288,7 +298,7 @@ export async function generateCompositedSpriteSheet(
   const compositedFrames = await compositeAllFrames(tracks);
   if (compositedFrames.length === 0) return null;
 
-  const { padding = 0, backgroundColor } = options;
+  const { padding = 0, backgroundColor, format = "png", quality = 0.95 } = options;
 
   const maxWidth = Math.max(...compositedFrames.map((f) => f.width));
   const maxHeight = Math.max(...compositedFrames.map((f) => f.height));
@@ -331,11 +341,14 @@ export async function generateCompositedSpriteSheet(
     ctx.drawImage(img, x, y);
   });
 
-  return canvas.toDataURL("image/png");
+  const mimeType = format === "webp" ? "image/webp" : "image/png";
+  return format === "webp"
+    ? canvas.toDataURL(mimeType, quality)
+    : canvas.toDataURL(mimeType);
 }
 
 /**
- * Download composited sprite sheet as PNG
+ * Download composited sprite sheet as PNG or WebP
  */
 export async function downloadCompositedSpriteSheet(
   tracks: SpriteTrack[],
@@ -345,8 +358,9 @@ export async function downloadCompositedSpriteSheet(
   const dataUrl = await generateCompositedSpriteSheet(tracks, options);
   if (!dataUrl) return;
 
+  const ext = options.format === "webp" ? "webp" : "png";
   const link = document.createElement("a");
-  link.download = `${projectName}-spritesheet.png`;
+  link.download = `${projectName}-spritesheet.${ext}`;
   link.href = dataUrl;
   link.click();
 }
