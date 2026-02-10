@@ -14,7 +14,6 @@ export interface SpriteExportSettings {
   exportType: SpriteExportType;
   fileName: string;
   // Sprite Sheet
-  columns: number;
   padding: number;
   bgTransparent: boolean;
   backgroundColor: string;
@@ -29,7 +28,6 @@ export interface SpriteExportSettings {
 // Settings saved to localStorage (excludes fileName)
 interface SavedExportSettings {
   exportType: SpriteExportType;
-  columns: number;
   padding: number;
   bgTransparent: boolean;
   backgroundColor: string;
@@ -44,7 +42,6 @@ const STORAGE_KEY = "sprite-export-settings";
 
 const DEFAULT_SAVED: SavedExportSettings = {
   exportType: "sprite-png",
-  columns: 0,
   padding: 0,
   bgTransparent: true,
   backgroundColor: "#ffffff",
@@ -108,8 +105,6 @@ interface SpriteExportModalProps {
     exportTypeSpriteSheetWebp: string;
     exportTypeMp4: string;
     exportFileName: string;
-    exportColumns: string;
-    exportColumnsAuto: string;
     exportPadding: string;
     backgroundColor: string;
     exportBgTransparent: string;
@@ -139,7 +134,6 @@ export default function SpriteExportModal({
 }: SpriteExportModalProps) {
   const [fileName, setFileName] = useState(defaultFileName);
   const [exportType, setExportType] = useState<SpriteExportType>("sprite-png");
-  const [columns, setColumns] = useState(0);
   const [padding, setPadding] = useState(0);
   const [bgTransparent, setBgTransparent] = useState(true);
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
@@ -157,7 +151,6 @@ export default function SpriteExportModal({
       const saved = loadSavedSettings();
       setFileName(defaultFileName);
       setExportType(saved.exportType);
-      setColumns(saved.columns);
       setPadding(saved.padding);
       setBgTransparent(saved.bgTransparent);
       setBackgroundColor(saved.backgroundColor);
@@ -175,7 +168,6 @@ export default function SpriteExportModal({
     // Save settings (excluding fileName)
     saveSettings({
       exportType,
-      columns,
       padding,
       bgTransparent,
       backgroundColor,
@@ -189,7 +181,6 @@ export default function SpriteExportModal({
     onExport({
       exportType,
       fileName: fileName.trim(),
-      columns,
       padding,
       bgTransparent,
       backgroundColor,
@@ -202,7 +193,6 @@ export default function SpriteExportModal({
   }, [
     fileName,
     exportType,
-    columns,
     padding,
     bgTransparent,
     backgroundColor,
@@ -246,31 +236,6 @@ export default function SpriteExportModal({
       {/* Sprite Sheet Options */}
       {isSpriteSheet && (
         <>
-          {/* Columns */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-secondary">
-              {t.exportColumns}
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={columns}
-                onChange={(e) =>
-                  setColumns(Math.max(0, Number(e.target.value)))
-                }
-                disabled={isExporting}
-                className="w-20 px-2 py-1.5 bg-surface-secondary border border-border-default rounded text-sm focus:outline-none focus:border-accent-primary disabled:opacity-50"
-              />
-              {columns === 0 && (
-                <span className="text-xs text-text-tertiary">
-                  ({t.exportColumnsAuto})
-                </span>
-              )}
-            </div>
-          </div>
-
           {/* Padding */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">
