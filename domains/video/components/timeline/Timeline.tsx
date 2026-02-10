@@ -111,7 +111,7 @@ export function Timeline({ className }: TimelineProps) {
       <div
         ref={containerRef}
         data-video-timeline-root=""
-        className="flex-1 overflow-hidden focus:outline-none"
+        className="flex-1 overflow-hidden overscroll-x-none focus:outline-none"
         tabIndex={0}
         onPointerDown={(e) => {
           e.currentTarget.focus();
@@ -304,7 +304,7 @@ export function Timeline({ className }: TimelineProps) {
           <div
             ref={tracksContainerRef}
             data-video-timeline-tracks=""
-            className="flex-1 overflow-y-auto overflow-x-hidden relative touch-none"
+            className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none relative touch-none"
             style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
             onPointerDown={handleTimelinePointerDown}
           >

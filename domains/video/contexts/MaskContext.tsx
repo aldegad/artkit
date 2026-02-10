@@ -152,6 +152,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   const [maskCanvasVersion, setMaskCanvasVersion] = useState(0);
 
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskLoadVersionRef = useRef(0);
   const masksRef = useRef(masks);
   const activeMaskIdRef = useRef(activeMaskId);
   const activeTrackIdRef = useRef(activeTrackId);
@@ -190,27 +191,11 @@ export function MaskProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const captureHistorySnapshot = useCallback((): MaskHistorySnapshot => {
-    const snapshotMasks = cloneMasksMap(masksRef.current);
-    const snapshotActiveMaskId = activeMaskIdRef.current;
-    const snapshotActiveTrackId = activeTrackIdRef.current;
-    const snapshotIsEditingMask = isEditingMaskRef.current;
-
-    // Keep history snapshots aligned with the live edit canvas.
-    if (snapshotIsEditingMask && snapshotActiveMaskId && maskCanvasRef.current) {
-      const snapshotMask = snapshotMasks.get(snapshotActiveMaskId);
-      if (snapshotMask) {
-        snapshotMasks.set(snapshotActiveMaskId, {
-          ...snapshotMask,
-          maskData: maskCanvasRef.current.toDataURL("image/png"),
-        });
-      }
-    }
-
     return {
-      masks: snapshotMasks,
-      activeMaskId: snapshotActiveMaskId,
-      activeTrackId: snapshotActiveTrackId,
-      isEditingMask: snapshotIsEditingMask,
+      masks: cloneMasksMap(masksRef.current),
+      activeMaskId: activeMaskIdRef.current,
+      activeTrackId: activeTrackIdRef.current,
+      isEditingMask: isEditingMaskRef.current,
     };
   }, []);
 
@@ -237,10 +222,12 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       canvas.width = mask.size.width;
       canvas.height = mask.size.height;
       ctx.clearRect(0, 0, mask.size.width, mask.size.height);
+      const loadVersion = ++maskLoadVersionRef.current;
 
       if (mask.maskData) {
         const img = new Image();
         img.onload = () => {
+          if (loadVersion !== maskLoadVersionRef.current) return;
           if (!maskCanvasRef.current) return;
           const drawCtx = maskCanvasRef.current.getContext("2d");
           if (!drawCtx) return;
@@ -491,8 +478,10 @@ export function MaskProvider({ children }: { children: ReactNode }) {
       const ctx = maskCanvasRef.current.getContext("2d");
       if (!ctx) return;
 
+      const loadVersion = ++maskLoadVersionRef.current;
       const img = new Image();
       img.onload = () => {
+        if (loadVersion !== maskLoadVersionRef.current) return;
         if (!maskCanvasRef.current) return;
         const c = maskCanvasRef.current.getContext("2d");
         if (!c) return;
@@ -559,6 +548,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         maskCanvasRef.current.height = canvasSize.height;
         const ctx = maskCanvasRef.current.getContext("2d");
         if (ctx) {
+          maskLoadVersionRef.current += 1;
           ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
           if (mask.maskData) {
             // Load existing mask data
@@ -608,6 +598,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
         maskCanvasRef.current.height = mask.size.height;
         const ctx = maskCanvasRef.current.getContext("2d");
         if (ctx) {
+          maskLoadVersionRef.current += 1;
           ctx.clearRect(0, 0, mask.size.width, mask.size.height);
           if (mask.maskData) {
             // Load existing mask data
@@ -640,6 +631,7 @@ export function MaskProvider({ children }: { children: ReactNode }) {
     setActiveTrackId(null);
     setIsEditingMask(false);
     setHasMaskRegionState(false);
+    maskLoadVersionRef.current += 1;
   }, [activeMaskId]);
 
   // Get mask data for a track at an absolute timeline time

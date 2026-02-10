@@ -1568,11 +1568,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
   }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip, updateMaskRegion]);
 
-  // Double-click to fit/reset zoom
-  const handleDoubleClick = useCallback(() => {
-    vpFitToContainer(40);
-  }, [vpFitToContainer]);
-
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick(() => {
     const now = performance.now();
@@ -1729,7 +1724,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           handlePointerUp(e);
           setBrushCursor(null);
         }}
-        onDoubleClick={handleDoubleClick}
       />
       {/* Brush cursor preview */}
       {isEditingMask && maskDrawShape === "brush" && brushCursor && (() => {
