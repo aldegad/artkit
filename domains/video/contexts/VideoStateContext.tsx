@@ -19,6 +19,7 @@ import {
 } from "../types";
 import { PLAYBACK } from "../constants";
 import { playbackTick } from "../utils/playbackTick";
+import { resolvePreRenderEnabledSetting, setPreRenderEnabledSetting } from "../utils/previewPerformance";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 
 interface VideoState {
@@ -85,6 +86,9 @@ interface VideoStateContextValue extends VideoState {
   setCanvasExpandMode: (enabled: boolean) => void;
   setCropAspectRatio: (ratio: AspectRatio) => void;
   setLockCropAspect: (locked: boolean) => void;
+  previewPreRenderEnabled: boolean;
+  setPreviewPreRenderEnabled: (enabled: boolean) => void;
+  togglePreviewPreRender: () => void;
 
   // Refs for high-frequency access
   currentTimeRef: React.RefObject<number>;
@@ -115,6 +119,7 @@ const initialState: VideoState = {
 
 export function VideoStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<VideoState>(initialState);
+  const [previewPreRenderEnabled, setPreviewPreRenderEnabledState] = useState<boolean>(resolvePreRenderEnabledSetting);
 
   // Refs for high-frequency access (playback loop)
   const currentTimeRef = useRef<number>(0);
@@ -130,6 +135,11 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     isPlayingRef.current = state.playback.isPlaying;
   }, [state.playback.isPlaying]);
+
+  // Resolve persisted/query override on mount (safe fallback for SSR hydration)
+  useEffect(() => {
+    setPreviewPreRenderEnabledState(resolvePreRenderEnabledSetting());
+  }, []);
 
   // Playback-rate and loop refs to avoid recreating the RAF callback
   const playbackRateRef = useRef(state.playback.playbackRate);
@@ -457,6 +467,19 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, lockCropAspect: locked }));
   }, []);
 
+  const setPreviewPreRenderEnabled = useCallback((enabled: boolean) => {
+    setPreviewPreRenderEnabledState(enabled);
+    setPreRenderEnabledSetting(enabled);
+  }, []);
+
+  const togglePreviewPreRender = useCallback(() => {
+    setPreviewPreRenderEnabledState((prev) => {
+      const next = !prev;
+      setPreRenderEnabledSetting(next);
+      return next;
+    });
+  }, []);
+
   const value: VideoStateContextValue = {
     ...state,
     setProject,
@@ -485,6 +508,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setCanvasExpandMode,
     setCropAspectRatio,
     setLockCropAspect,
+    previewPreRenderEnabled,
+    setPreviewPreRenderEnabled,
+    togglePreviewPreRender,
     currentTimeRef,
     isPlayingRef,
     clipboardRef,

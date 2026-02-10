@@ -151,6 +151,8 @@ function VideoEditorContent() {
     setCropAspectRatio,
     lockCropAspect,
     setLockCropAspect,
+    previewPreRenderEnabled,
+    togglePreviewPreRender,
   } = useVideoState();
   const { previewCanvasRef, previewViewportRef } = useVideoRefs();
   const {
@@ -185,6 +187,7 @@ function VideoEditorContent() {
     removePanel,
     openFloatingWindow,
     closeFloatingWindow,
+    resetLayout,
   } = useVideoLayout();
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
@@ -1069,6 +1072,8 @@ function VideoEditorContent() {
     file: t.file,
     edit: t.edit,
     view: t.view,
+    window: t.window,
+    settings: t.settings,
     new: t.new,
     load: t.load,
     save: t.save,
@@ -1085,6 +1090,8 @@ function VideoEditorContent() {
     zoomOut: t.zoomOut,
     fitToScreen: t.fitToScreen,
     timeline: t.timeline,
+    previewVideoCache: t.previewVideoCache,
+    resetLayout: t.resetLayout,
   };
 
   const toolbarTranslations = {
@@ -1149,6 +1156,9 @@ function VideoEditorContent() {
             onFitToScreen={handleFitToScreen}
             onToggleTimeline={handleToggleTimeline}
             showTimeline={isTimelineVisible}
+            onResetLayout={resetLayout}
+            onTogglePreviewCache={togglePreviewPreRender}
+            previewCacheEnabled={previewPreRenderEnabled}
             translations={menuTranslations}
           />
         }

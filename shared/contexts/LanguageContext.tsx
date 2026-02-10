@@ -307,6 +307,7 @@ interface Translations {
   dropOrClickToImport: string;
   supportedFormats: string;
   resetLayout: string;
+  previewVideoCache: string;
 
   // Landing page
   landingTagline: string;
@@ -636,6 +637,7 @@ const translations: Record<Language, Translations> = {
     dropOrClickToImport: "클릭하거나 파일을 드래그하세요",
     supportedFormats: "이미지, 영상 파일",
     resetLayout: "기본 레이아웃으로 복원",
+    previewVideoCache: "프리뷰 비디오 캐시",
 
     // Landing page
     landingTagline: "웹 기반 크리에이티브 도구 모음",
@@ -963,6 +965,7 @@ const translations: Record<Language, Translations> = {
     dropOrClickToImport: "Click or drag files here",
     supportedFormats: "Images, video files",
     resetLayout: "Reset to Default Layout",
+    previewVideoCache: "Preview Video Cache",
 
     // Landing page
     landingTagline: "Web-based Creative Toolkit",
