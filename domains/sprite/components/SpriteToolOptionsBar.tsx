@@ -1,9 +1,10 @@
 "use client";
 
-import { Scrollbar, NumberScrubber } from "@/shared/components";
+import { Scrollbar, NumberScrubber, CanvasCropControls } from "@/shared/components";
 import { BrushPresetSelector } from "@/domains/image/components/toolbars/BrushPresetSelector";
 import type { BrushPreset } from "@/domains/image/types/brush";
-import type { SpriteToolMode, SpriteFrame } from "../types";
+import type { AspectRatio } from "@/shared/types/aspectRatio";
+import type { SpriteToolMode, SpriteFrame, SpriteCropArea } from "../types";
 
 interface SpriteToolOptionsBarProps {
   toolMode: SpriteToolMode;
@@ -18,6 +19,20 @@ interface SpriteToolOptionsBarProps {
   presets: BrushPreset[];
   pressureEnabled: boolean;
   setPressureEnabled: (enabled: boolean) => void;
+  cropAspectRatio: AspectRatio;
+  setCropAspectRatio: (ratio: AspectRatio) => void;
+  cropArea: SpriteCropArea | null;
+  lockCropAspect: boolean;
+  setLockCropAspect: (locked: boolean) => void;
+  canvasExpandMode: boolean;
+  setCanvasExpandMode: (enabled: boolean) => void;
+  onSelectAllCrop: () => void;
+  onClearCrop: () => void;
+  onCropWidthChange: (width: number) => void;
+  onCropHeightChange: (height: number) => void;
+  onExpandToSquare: () => void;
+  onFitToSquare: () => void;
+  onApplyCrop: () => void;
   selectedFrameId: number | null;
   selectedPointIndex: number | null;
   frames: SpriteFrame[];
@@ -36,6 +51,7 @@ interface SpriteToolOptionsBarProps {
     pressure: string;
     builtIn: string;
     zoomToolTip: string;
+    cropToolTip: string;
   };
 }
 
@@ -52,15 +68,30 @@ export default function SpriteToolOptionsBar({
   presets,
   pressureEnabled,
   setPressureEnabled,
+  cropAspectRatio,
+  setCropAspectRatio,
+  cropArea,
+  lockCropAspect,
+  setLockCropAspect,
+  canvasExpandMode,
+  setCanvasExpandMode,
+  onSelectAllCrop,
+  onClearCrop,
+  onCropWidthChange,
+  onCropHeightChange,
+  onExpandToSquare,
+  onFitToSquare,
+  onApplyCrop,
   selectedFrameId,
   selectedPointIndex,
   frames,
   labels,
 }: SpriteToolOptionsBarProps) {
   const isBrushTool = toolMode === "brush" || toolMode === "eraser";
+  const isCropTool = toolMode === "crop";
   const isZoomTool = toolMode === "zoom";
   const nonBrushToolLabel = isZoomTool ? labels.zoomInOut : toolMode === "eyedropper" ? labels.eyedropper : null;
-  const nonBrushToolDescription = isZoomTool ? labels.zoomToolTip : toolMode === "eyedropper" ? labels.colorPickerTip : null;
+  const nonBrushToolDescription = isZoomTool ? labels.zoomToolTip : toolMode === "eyedropper" ? labels.colorPickerTip : isCropTool ? labels.cropToolTip : null;
 
   const selectedFrameIndex = selectedFrameId !== null ? frames.findIndex((f) => f.id === selectedFrameId) : -1;
 
@@ -137,6 +168,23 @@ export default function SpriteToolOptionsBar({
               editable
             />
           </>
+        ) : isCropTool ? (
+          <CanvasCropControls
+            cropAspectRatio={cropAspectRatio}
+            onCropAspectRatioChange={setCropAspectRatio}
+            cropArea={cropArea}
+            onCropWidthChange={onCropWidthChange}
+            onCropHeightChange={onCropHeightChange}
+            lockCropAspect={lockCropAspect}
+            onToggleLockCropAspect={() => setLockCropAspect(!lockCropAspect)}
+            onExpandToSquare={onExpandToSquare}
+            onFitToSquare={onFitToSquare}
+            canvasExpandMode={canvasExpandMode}
+            onToggleCanvasExpandMode={() => setCanvasExpandMode(!canvasExpandMode)}
+            onSelectAllCrop={onSelectAllCrop}
+            onApplyCrop={onApplyCrop}
+            onClearCrop={onClearCrop}
+          />
         ) : nonBrushToolDescription ? (
           <span className="text-xs text-text-tertiary">{nonBrushToolDescription}</span>
         ) : null}

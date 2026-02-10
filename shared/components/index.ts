@@ -12,6 +12,8 @@ export type { SelectProps, SelectOption } from "./Select";
 export { Scrollbar } from "./Scrollbar";
 export type { ScrollbarProps } from "./Scrollbar";
 export { NumberScrubber } from "./NumberScrubber";
+export { CanvasCropControls } from "./CanvasCropControls";
+export type { CanvasCropArea } from "./CanvasCropControls";
 
 // Layout Components
 export * from "./layout";
@@ -32,6 +34,8 @@ export type { ModalProps } from "./Modal";
 export { ExportModal } from "./ExportModal";
 export type { ExportModalProps, ExportProgress } from "./ExportModal";
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
+export { ExportCanvasSizeControls } from "./ExportCanvasSizeControls";
+export type { ExportCanvasSize } from "./ExportCanvasSizeControls";
 
 // Feedback
 export { SaveToast } from "./SaveToast";
