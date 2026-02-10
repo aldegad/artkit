@@ -96,7 +96,7 @@ export default function VideoMenuBar({
   previewCacheEnabled,
   translations: t,
 }: VideoMenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | "settings" | null>(null);
 
   const d = shortcutToDisplayString;
   const db = bindingToDisplayString;
@@ -130,10 +130,11 @@ export default function VideoMenuBar({
   const windowMenuItems: MenuItem[] = [
     { label: t.timeline, onClick: onToggleTimeline, checked: showTimeline },
     { divider: true },
-    { label: t.settings, disabled: true },
-    { label: t.previewVideoCache, onClick: onTogglePreviewCache, checked: previewCacheEnabled },
-    { divider: true },
     { label: t.resetLayout, onClick: onResetLayout },
+  ];
+
+  const settingsMenuItems: MenuItem[] = [
+    { label: t.previewVideoCache, onClick: onTogglePreviewCache, checked: previewCacheEnabled },
   ];
 
   return (
@@ -166,6 +167,12 @@ export default function VideoMenuBar({
         items={windowMenuItems}
         isOpen={openMenu === "window"}
         onOpenChange={(open) => setOpenMenu(open ? "window" : null)}
+      />
+      <MenuDropdown
+        label={t.settings}
+        items={settingsMenuItems}
+        isOpen={openMenu === "settings"}
+        onOpenChange={(open) => setOpenMenu(open ? "settings" : null)}
       />
     </div>
   );
