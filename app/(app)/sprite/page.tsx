@@ -546,7 +546,8 @@ function SpriteEditorMain() {
   });
 
   useEffect(() => {
-    if (toolMode !== "select") {
+    // Legacy "pen" mode can surface from older persisted states.
+    if (toolMode === "pen") {
       setSpriteToolMode("select");
     }
   }, [toolMode, setSpriteToolMode]);
@@ -686,12 +687,14 @@ function SpriteEditorMain() {
           brush: t.brush,
           eraser: t.eraser,
           eyedropper: t.eyedropper,
+          zoomInOut: t.zoomInOut,
           frame: t.frame,
           selected: t.selected,
           point: t.point,
           presets: t.presets,
           pressure: t.pressure,
           builtIn: t.builtIn,
+          zoomToolTip: t.zoomToolTip,
         }}
       />
 
