@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect } from "react";
-import type { SpriteToolMode, FrameEditToolMode } from "../types";
+import type { SpriteToolMode } from "../types";
 
 interface UseSpriteKeyboardShortcutsOptions {
   setIsSpacePressed: (pressed: boolean) => void;
   setSpriteToolMode: (mode: SpriteToolMode) => void;
-  setFrameEditToolMode: (mode: FrameEditToolMode) => void;
   canUndo: boolean;
   canRedo: boolean;
   undo: () => void;
@@ -20,7 +19,6 @@ interface UseSpriteKeyboardShortcutsOptions {
 export function useSpriteKeyboardShortcuts({
   setIsSpacePressed,
   setSpriteToolMode,
-  setFrameEditToolMode,
   canUndo,
   canRedo,
   undo,
@@ -54,22 +52,10 @@ export function useSpriteKeyboardShortcuts({
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === "v") setSpriteToolMode("select");
         if (e.key === "h") setSpriteToolMode("hand");
-        if (e.key === "b") {
-          setSpriteToolMode("select");
-          setFrameEditToolMode("brush");
-        }
-        if (e.key === "e") {
-          setSpriteToolMode("select");
-          setFrameEditToolMode("eraser");
-        }
-        if (e.key === "i") {
-          setSpriteToolMode("select");
-          setFrameEditToolMode("eyedropper");
-        }
-        if (e.key === "z") {
-          setSpriteToolMode("select");
-          setFrameEditToolMode("zoom");
-        }
+        if (e.key === "b") setSpriteToolMode("brush");
+        if (e.key === "e") setSpriteToolMode("eraser");
+        if (e.key === "i") setSpriteToolMode("eyedropper");
+        if (e.key === "z") setSpriteToolMode("zoom");
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -124,7 +110,6 @@ export function useSpriteKeyboardShortcuts({
   }, [
     setIsSpacePressed,
     setSpriteToolMode,
-    setFrameEditToolMode,
     canUndo,
     canRedo,
     undo,

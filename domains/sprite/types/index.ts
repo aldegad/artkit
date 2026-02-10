@@ -34,7 +34,7 @@ export interface SpriteTrack {
   loop: boolean; // loop when shorter than longest track
 }
 
-export type SpriteToolMode = "pen" | "select" | "hand";
+export type SpriteToolMode = "pen" | "select" | "hand" | "brush" | "eraser" | "eyedropper" | "zoom";
 export type FrameEditToolMode = "brush" | "eraser" | "eyedropper" | "zoom";
 
 export type TimelineMode = "reorder" | "offset";

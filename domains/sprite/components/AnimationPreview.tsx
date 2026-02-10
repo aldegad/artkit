@@ -107,7 +107,7 @@ export default function AnimationPreviewContent() {
   const setStoreFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const activeTrackId = useSpriteTrackStore((s) => s.activeTrackId);
   const { frames: activeTrackFrames } = useEditorFramesMeta();
-  const { toolMode, frameEditToolMode, isPanLocked } = useEditorTools();
+  const { toolMode, isPanLocked } = useEditorTools();
   const {
     brushColor,
     setBrushColor,
@@ -186,8 +186,10 @@ export default function AnimationPreviewContent() {
   );
 
   const hasContent = tracks.some((track) => track.frames.length > 0);
-  const isEditMode = frameEditToolMode === "brush" || frameEditToolMode === "eraser";
-  const isZoomTool = frameEditToolMode === "zoom";
+  const isEditMode = toolMode === "brush" || toolMode === "eraser";
+  const isEraserTool = toolMode === "eraser";
+  const isZoomTool = toolMode === "zoom";
+  const isEyedropperTool = toolMode === "eyedropper";
 
   // ---- Viewport (ref-based zoom/pan, no React re-renders for viewport changes) ----
   const viewport = useCanvasViewport({
@@ -803,7 +805,7 @@ export default function AnimationPreviewContent() {
         return;
       }
 
-      if (frameEditToolMode === "eyedropper") {
+      if (isEyedropperTool) {
         pickColorFromComposited(e.clientX, e.clientY);
         return;
       }
@@ -828,7 +830,7 @@ export default function AnimationPreviewContent() {
       setIsDrawing(true);
       const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
 
-      if (drawPixel(coords.x, coords.y, brushColor, frameEditToolMode === "eraser", pressure)) {
+      if (drawPixel(coords.x, coords.y, brushColor, isEraserTool, pressure)) {
         requestRender();
       }
       lastMousePosRef.current = { x: coords.x, y: coords.y };
@@ -840,7 +842,7 @@ export default function AnimationPreviewContent() {
       isHandMode,
       isZoomTool,
       zoomAtCursor,
-      frameEditToolMode,
+      isEyedropperTool,
       pickColorFromComposited,
       isEditMode,
       editableFrame,
@@ -851,6 +853,7 @@ export default function AnimationPreviewContent() {
       setIsPlaying,
       drawPixel,
       brushColor,
+      isEraserTool,
       requestRender,
     ],
   );
@@ -883,14 +886,14 @@ export default function AnimationPreviewContent() {
         for (let i = 1; i <= steps; i++) {
           const x = Math.round(lastMousePosRef.current.x + (lineDx * i) / steps);
           const y = Math.round(lastMousePosRef.current.y + (lineDy * i) / steps);
-          drawPixel(x, y, brushColor, frameEditToolMode === "eraser", pressure);
+          drawPixel(x, y, brushColor, isEraserTool, pressure);
         }
         requestRender();
       }
 
       lastMousePosRef.current = { x: coords.x, y: coords.y };
     },
-    [isEditMode, isDrawing, editableFrame, getPixelCoordinates, drawPixel, brushColor, frameEditToolMode, requestRender],
+    [isEditMode, isDrawing, editableFrame, getPixelCoordinates, drawPixel, brushColor, isEraserTool, requestRender],
   );
 
   const handlePreviewCanvasPointerUp = useCallback(
@@ -941,7 +944,7 @@ export default function AnimationPreviewContent() {
     if (isZoomTool) {
       return "zoom-in";
     }
-    if (frameEditToolMode === "eyedropper") {
+    if (isEyedropperTool) {
       return "crosshair";
     }
     return "default";
@@ -1013,7 +1016,7 @@ export default function AnimationPreviewContent() {
                   cursorPos &&
                   !isHandMode &&
                   isEditMode &&
-                  (frameEditToolMode === "brush" || frameEditToolMode === "eraser") && (
+                  (toolMode === "brush" || toolMode === "eraser") && (
                     <div
                       className="pointer-events-none absolute"
                       style={{
@@ -1023,7 +1026,7 @@ export default function AnimationPreviewContent() {
                         height: brushSize * viewportSync.zoom,
                         transform: "translate(-50%, -50%)",
                         border:
-                          frameEditToolMode === "eraser" ? "2px solid #f87171" : `2px solid ${brushColor}`,
+                          isEraserTool ? "2px solid #f87171" : `2px solid ${brushColor}`,
                         borderRadius: "2px",
                         boxShadow: "0 0 0 1px rgba(0,0,0,0.5)",
                       }}

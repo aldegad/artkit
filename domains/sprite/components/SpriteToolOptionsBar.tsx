@@ -3,11 +3,10 @@
 import { Scrollbar, NumberScrubber } from "@/shared/components";
 import { BrushPresetSelector } from "@/domains/image/components/toolbars/BrushPresetSelector";
 import type { BrushPreset } from "@/domains/image/types/brush";
-import type { FrameEditToolMode, SpriteToolMode, SpriteFrame } from "../types";
+import type { SpriteToolMode, SpriteFrame } from "../types";
 
 interface SpriteToolOptionsBarProps {
   toolMode: SpriteToolMode;
-  frameEditToolMode: FrameEditToolMode;
   brushColor: string;
   setBrushColor: (color: string) => void;
   brushSize: number;
@@ -42,7 +41,6 @@ interface SpriteToolOptionsBarProps {
 
 export default function SpriteToolOptionsBar({
   toolMode,
-  frameEditToolMode,
   brushColor,
   setBrushColor,
   brushSize,
@@ -59,8 +57,10 @@ export default function SpriteToolOptionsBar({
   frames,
   labels,
 }: SpriteToolOptionsBarProps) {
-  const isBrushTool = frameEditToolMode === "brush" || frameEditToolMode === "eraser";
-  const isZoomTool = frameEditToolMode === "zoom";
+  const isBrushTool = toolMode === "brush" || toolMode === "eraser";
+  const isZoomTool = toolMode === "zoom";
+  const nonBrushToolLabel = isZoomTool ? labels.zoomInOut : toolMode === "eyedropper" ? labels.eyedropper : null;
+  const nonBrushToolDescription = isZoomTool ? labels.zoomToolTip : toolMode === "eyedropper" ? labels.colorPickerTip : null;
 
   const selectedFrameIndex = selectedFrameId !== null ? frames.findIndex((f) => f.id === selectedFrameId) : -1;
 
@@ -70,7 +70,7 @@ export default function SpriteToolOptionsBar({
       overflow={{ x: "scroll", y: "hidden" }}
     >
       <div className="flex items-center gap-2 px-3.5 py-1 whitespace-nowrap">
-        {toolMode === "select" && selectedFrameIndex >= 0 && (
+        {(toolMode === "select" || toolMode === "pen") && selectedFrameIndex >= 0 && (
           <>
             <span className="text-xs text-accent-primary">
               {labels.frame} {selectedFrameIndex + 1} {labels.selected}
@@ -80,9 +80,9 @@ export default function SpriteToolOptionsBar({
           </>
         )}
 
-        {!isBrushTool && (
+        {!isBrushTool && nonBrushToolLabel && (
           <span className="text-xs text-text-secondary min-w-[72px]">
-            {isZoomTool ? labels.zoomInOut : labels.eyedropper}
+            {nonBrushToolLabel}
           </span>
         )}
 
@@ -101,7 +101,7 @@ export default function SpriteToolOptionsBar({
               }}
             />
 
-            {frameEditToolMode === "brush" && (
+            {toolMode === "brush" && (
               <div className="flex items-center gap-1.5">
                 <input
                   type="color"
@@ -137,9 +137,9 @@ export default function SpriteToolOptionsBar({
               editable
             />
           </>
-        ) : (
-          <span className="text-xs text-text-tertiary">{isZoomTool ? labels.zoomToolTip : labels.colorPickerTip}</span>
-        )}
+        ) : nonBrushToolDescription ? (
+          <span className="text-xs text-text-tertiary">{nonBrushToolDescription}</span>
+        ) : null}
 
         <div className="flex-1 min-w-0" />
       </div>

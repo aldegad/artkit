@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useRef, useState, DragEvent } from "react";
 import { useEditorImage, useEditorFramesMeta, useEditorTools, useEditorViewport, useEditorDrag, useEditorRefs } from "../contexts/SpriteEditorContext";
 import { useTheme } from "../../../shared/contexts";
-import { Point, SpriteFrame } from "../types";
+import { Point, SpriteFrame, SpriteToolMode } from "../types";
 import { isPointInPolygon } from "../utils/geometry";
 import { extractFrameImageFromSource } from "../utils";
 import { ImageDropZone } from "../../../shared/components";
@@ -19,6 +19,10 @@ import { SPRITE_CANVAS_VIEWPORT } from "../constants";
 // ============================================
 // Component
 // ============================================
+
+function isCanvasSelectionTool(mode: SpriteToolMode): boolean {
+  return mode !== "hand" && mode !== "pen";
+}
 
 export default function CanvasContent() {
   const { imageSrc, setImageSrc, imageSize, setImageSize, imageRef } = useEditorImage();
@@ -324,7 +328,7 @@ export default function CanvasContent() {
         ctx.fillText(String(idx + 1), centerScreen.x, centerScreen.y);
 
         // Selected frame points
-        if (isSelected && _toolMode === "select") {
+        if (isSelected && isCanvasSelectionTool(_toolMode)) {
           frame.points.forEach((p, pIdx) => {
             const screen = toScreen(p.x, p.y);
             ctx.beginPath();
@@ -491,7 +495,7 @@ export default function CanvasContent() {
         return;
       }
 
-      if (toolMode === "select" && e.button === 0) {
+      if (isCanvasSelectionTool(toolMode) && e.button === 0) {
         const point = screenToImage(e.clientX, e.clientY);
 
         if (selectedFrameId !== null && selectedPointIndex !== null) {
