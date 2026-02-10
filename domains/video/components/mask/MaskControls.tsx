@@ -37,6 +37,7 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
     setBrushMode,
     maskDrawShape,
     setMaskDrawShape,
+    requestMaskRegionClear,
     activePreset,
     setActivePreset,
     presets,
@@ -122,7 +123,14 @@ export function MaskControls({ className, variant = "floating" }: MaskControlsPr
           </Tooltip>
           <Tooltip content={t.rectangleMask}>
             <button
-              onClick={() => setMaskDrawShape(maskDrawShape === "rectangle" ? "brush" : "rectangle")}
+              onClick={() => {
+                if (maskDrawShape === "rectangle") {
+                  setMaskDrawShape("brush");
+                  requestMaskRegionClear();
+                  return;
+                }
+                setMaskDrawShape("rectangle");
+              }}
               className={modeBtn(maskDrawShape === "rectangle")}
             >
               <MarqueeIcon className="w-3.5 h-3.5" />
