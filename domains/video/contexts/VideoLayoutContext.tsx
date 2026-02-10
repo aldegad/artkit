@@ -29,7 +29,7 @@ const { Provider, useLayoutContext } = createLayoutContext({
   isPanelHeaderVisible: isVideoPanelHeaderVisible,
   getPanelDefaultSize: getVideoPanelDefaultSize,
   defaultFloatingWindowSize: { width: 820, height: 520 },
-  containerClassName: "contents",
+  containerClassName: "h-full w-full",
   subscribeToPanelUpdates: subscribeToVideoPanelUpdates,
 });
 

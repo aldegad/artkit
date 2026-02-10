@@ -37,7 +37,7 @@ const { Provider, useLayoutContext } = createLayoutContext({
   isPanelHeaderVisible: isEditorPanelHeaderVisible,
   getPanelDefaultSize: getEditorPanelDefaultSize,
   defaultFloatingWindowSize: { width: 300, height: 400 },
-  containerClassName: "contents", // Use 'contents' to not affect layout
+  containerClassName: "h-full w-full",
   subscribeToPanelUpdates: subscribeToPanelUpdates,
 });
 
