@@ -46,6 +46,7 @@ interface UseVideoKeyboardShortcutsOptions {
   handleStartTransformShortcut: () => void;
   handleApplyTransform: () => void;
   handleCancelTransform: () => void;
+  handleNudgeTransform: (dx: number, dy: number) => boolean;
 
   // Mask
   activeMaskId: string | null;
@@ -85,6 +86,7 @@ export function useVideoKeyboardShortcuts(
     handleStartTransformShortcut,
     handleApplyTransform,
     handleCancelTransform,
+    handleNudgeTransform,
     activeMaskId,
     deselectMask,
     isEditingMask,
@@ -221,6 +223,21 @@ export function useVideoKeyboardShortcuts(
       }
 
       // --- Playback & context shortcuts (e.code based) ---
+      if (toolMode === "transform" && isTransformActive) {
+        let dx = 0;
+        let dy = 0;
+        if (e.code === "ArrowLeft") dx = -1;
+        if (e.code === "ArrowRight") dx = 1;
+        if (e.code === "ArrowUp") dy = -1;
+        if (e.code === "ArrowDown") dy = 1;
+        if (dx !== 0 || dy !== 0) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1;
+          handleNudgeTransform(dx * step, dy * step);
+          return;
+        }
+      }
+
       if (e.code === PLAYBACK_SHORTCUTS.togglePlay) {
         e.preventDefault();
         togglePlay();
@@ -313,5 +330,6 @@ export function useVideoKeyboardShortcuts(
     handleStartTransformShortcut,
     handleApplyTransform,
     handleCancelTransform,
+    handleNudgeTransform,
   ]);
 }
