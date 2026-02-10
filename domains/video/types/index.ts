@@ -5,6 +5,9 @@ export type {
   AudioClip,
   ImageClip,
   Clip,
+  PositionKeyframeInterpolation,
+  PositionKeyframe,
+  ClipTransformKeyframes,
   ClipboardData,
 } from "./clip";
 export {

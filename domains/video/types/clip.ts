@@ -1,6 +1,20 @@
 import { Size, Point } from "@/shared/types";
 import type { MaskData } from "./mask";
 
+export type PositionKeyframeInterpolation = "linear";
+
+export interface PositionKeyframe {
+  id: string;
+  time: number; // Local clip time in seconds
+  value: Point;
+  interpolation: PositionKeyframeInterpolation;
+}
+
+export interface ClipTransformKeyframes {
+  // Position keyframes (linear interpolation in v1)
+  position?: PositionKeyframe[];
+}
+
 /**
  * Base clip interface shared by video and image clips
  */
@@ -29,6 +43,7 @@ export interface BaseClip {
   scaleX?: number;
   scaleY?: number;
   rotation: number;
+  transformKeyframes?: ClipTransformKeyframes;
 }
 
 /**
