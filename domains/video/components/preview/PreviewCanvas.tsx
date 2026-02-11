@@ -4,7 +4,6 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import {
   useVideoElements,
-  usePlaybackTick,
   usePreRenderCache,
   useAudioBufferCache,
   useWebAudioPlayback,
@@ -14,7 +13,7 @@ import { cn } from "@/shared/utils/cn";
 import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
-import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
+import { PREVIEW, PRE_RENDER } from "../../constants";
 import { Clip, VideoTrack, getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
@@ -31,6 +30,7 @@ import { useMaskInteractionSession } from "./useMaskInteractionSession";
 import { useCropInteractionSession } from "./useCropInteractionSession";
 import { usePreviewMediaPlaybackSync } from "./usePreviewMediaPlaybackSync";
 import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
+import { usePreviewPlaybackRenderTick } from "./usePreviewPlaybackRenderTick";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -390,6 +390,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     getClipAtTime,
     currentTimeRef,
   ]);
+
+  const resetPlaybackPerfStats = useCallback(() => {
+    playbackPerfRef.current = createPlaybackPerfStats();
+  }, []);
 
   usePreviewMediaPlaybackSync({
     clips,
@@ -1203,49 +1207,16 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     handleCropPointerUp();
   }, [stopPanDrag, handleMaskPointerUp, transformTool, handleCropPointerUp]);
 
-  // Render on playback tick (driven by RAF, not React state) — no re-renders
-  usePlaybackTick((tickTime) => {
-    const now = performance.now();
-    const stats = playbackPerfRef.current;
-    const previousTickTime = lastPlaybackTickTimeRef.current;
-    lastPlaybackTickTimeRef.current = tickTime;
-
-    // Loop wrap / playback seek can jump timeline backward between ticks.
-    // Force immediate media sync instead of waiting for interval drift correction.
-    if (
-      playback.isPlaying &&
-      previousTickTime !== null &&
-      tickTime < previousTickTime - PLAYBACK.FRAME_STEP
-    ) {
-      syncMediaRef.current?.();
-    }
-
-    if (stats.lastTickMs > 0) {
-      const tickDelta = now - stats.lastTickMs;
-      const idealFrameMs = 1000 / Math.max(1, previewPerf.playbackRenderFpsCap);
-      if (tickDelta > idealFrameMs * 1.75) {
-        stats.longTickCount += 1;
-      }
-    }
-    stats.lastTickMs = now;
-
-    const minRenderIntervalMs = 1000 / Math.max(1, previewPerf.playbackRenderFpsCap);
-    if (playback.isPlaying && now - stats.lastRenderMs < minRenderIntervalMs) {
-      stats.skippedByCap += 1;
-      maybeReportPlaybackStats(now);
-      return;
-    }
-
-    stats.lastRenderMs = now;
-    stats.renderedFrames += 1;
-    renderRef.current();
-    maybeReportPlaybackStats(now);
+  usePreviewPlaybackRenderTick({
+    playbackIsPlaying: playback.isPlaying,
+    playbackRenderFpsCap: previewPerf.playbackRenderFpsCap,
+    playbackPerfRef,
+    lastPlaybackTickTimeRef,
+    syncMediaRef,
+    renderRef,
+    maybeReportPlaybackStats,
+    resetPlaybackPerfStats,
   });
-
-  useEffect(() => {
-    if (playback.isPlaying) return;
-    playbackPerfRef.current = createPlaybackPerfStats();
-  }, [playback.isPlaying]);
 
   // Render on structural changes (tracks, clips, selection, etc.)
   useEffect(() => {
