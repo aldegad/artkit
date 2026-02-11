@@ -29,6 +29,7 @@ import {
   SpriteExportModal,
   useSpriteExport,
   useSpriteProjectFileActions,
+  useSpriteProjectSync,
 } from "@/domains/sprite";
 import type { SpriteTrack } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
@@ -50,11 +51,6 @@ import {
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
   getSpriteStorageProvider,
-  hasLocalProjects,
-  checkCloudProjects,
-  uploadLocalProjectsToCloud,
-  clearLocalProjects,
-  clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
 import {
   downloadCompositedFramesAsZip,
@@ -347,38 +343,6 @@ function SpriteEditorMain() {
       interpolationProgress: t.interpolationProgress,
     },
   });
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
-  const [localProjectCount, setLocalProjectCount] = useState(0);
-  const [cloudProjectCount, setCloudProjectCount] = useState(0);
-
-  // Check local/cloud conflicts when user logs in
-  useEffect(() => {
-    const checkSyncConflicts = async () => {
-      if (!user) return;
-
-      try {
-        const hasLocal = await hasLocalProjects();
-        const hasCloud = await checkCloudProjects(user.uid);
-
-        if (hasLocal && hasCloud) {
-          const localProjects = await (await import("@/shared/utils/storage")).getAllProjects();
-          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseSpriteStorage")).getAllSpriteProjectsFromFirebase(user.uid);
-
-          setLocalProjectCount(localProjects.length);
-          setCloudProjectCount(cloudProjects.length);
-          setShowSyncDialog(true);
-        } else if (hasLocal && !hasCloud) {
-          await uploadLocalProjectsToCloud(user);
-          const projects = await storageProvider.getAllProjects();
-          setSavedSpriteProjects(projects);
-        }
-      } catch (error) {
-        console.error("Failed to check sync conflicts:", error);
-      }
-    };
-
-    checkSyncConflicts();
-  }, [user, storageProvider, setSavedSpriteProjects]);
 
   // Image upload handler - sets as main sprite image
   const handleImageUpload = useCallback(
@@ -504,6 +468,17 @@ function SpriteEditorMain() {
       newProjectConfirm: t.newProjectConfirm,
       cancelLabel: t.cancel || "Cancel",
     },
+  });
+  const {
+    showSyncDialog,
+    localProjectCount,
+    cloudProjectCount,
+    handleKeepCloud,
+    handleKeepLocal,
+    handleCancelSync,
+  } = useSpriteProjectSync({
+    user,
+    refreshProjects,
   });
 
   useEffect(() => {
@@ -1130,22 +1105,9 @@ function SpriteEditorMain() {
         isOpen={showSyncDialog}
         localCount={localProjectCount}
         cloudCount={cloudProjectCount}
-        onKeepCloud={async () => {
-          await clearLocalProjects();
-          setShowSyncDialog(false);
-          await refreshProjects();
-        }}
-        onKeepLocal={async () => {
-          if (user) {
-            await clearCloudProjects(user);
-            await uploadLocalProjectsToCloud(user);
-            await refreshProjects();
-          }
-          setShowSyncDialog(false);
-        }}
-        onCancel={() => {
-          setShowSyncDialog(false);
-        }}
+        onKeepCloud={handleKeepCloud}
+        onKeepLocal={handleKeepLocal}
+        onCancel={handleCancelSync}
       />
 
       {/* Export Modal */}
