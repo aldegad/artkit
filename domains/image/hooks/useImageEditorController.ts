@@ -756,8 +756,6 @@ export function useImageEditorController() {
       toolButtons,
       toolMode,
       onToolModeChange: handleToolModeChange,
-      isPanLocked,
-      onTogglePanLock: togglePanLock,
       onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
       isRemovingBackground,
       onUndo: handleUndo,
@@ -775,8 +773,6 @@ export function useImageEditorController() {
       toolButtons,
       toolMode,
       handleToolModeChange,
-      isPanLocked,
-      togglePanLock,
       openBackgroundRemovalConfirm,
       isRemovingBackground,
       handleUndo,
@@ -938,5 +934,7 @@ export function useImageEditorController() {
     actionToolbarProps: toolbarModels.actionToolbarProps,
     toolOptionsBarProps: toolbarModels.toolOptionsBarProps,
     overlaysProps,
+    isPanLocked,
+    togglePanLock,
   };
 }
