@@ -9,7 +9,7 @@ import { extractFrameImageFromSource } from "../utils";
 import { ImageDropZone } from "../../../shared/components";
 import { ImageIcon } from "../../../shared/components/icons";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture, type CanvasScaleScratch } from "@/shared/utils";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useCanvasViewportBridge, type CanvasViewportState } from "@/shared/hooks/useCanvasViewportBridge";
@@ -46,6 +46,7 @@ export default function CanvasContent() {
   const [isDragOver, setIsDragOver] = useState(false);
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
   const lastPointerTypeRef = useRef<"mouse" | "touch" | "pen" | null>(null);
+  const scaleScratchRef = useRef<CanvasScaleScratch>({ primary: null, secondary: null });
 
   // ---- Shared viewport hook ----
   const viewport = useCanvasViewport({
@@ -274,7 +275,12 @@ export default function CanvasContent() {
       }
 
       // Draw main sprite image
-      ctx.drawImage(img, pan.x, pan.y, displayWidth, displayHeight);
+      drawScaledImage(
+        ctx,
+        img,
+        { x: pan.x, y: pan.y, width: displayWidth, height: displayHeight },
+        { mode: "pixel-art", scratch: scaleScratchRef.current },
+      );
 
       // Helper: content -> canvas coordinates (using ref-backed viewport)
       const toScreen = (imgX: number, imgY: number): Point => {

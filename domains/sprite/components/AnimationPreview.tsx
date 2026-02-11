@@ -35,9 +35,11 @@ import {
   type RectHandle,
 } from "@/shared/utils/rectTransform";
 import {
+  drawScaledImage,
   clampZoom,
   safeReleasePointerCapture,
   safeSetPointerCapture,
+  type CanvasScaleScratch,
   zoomAtPoint,
 } from "@/shared/utils";
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
@@ -176,6 +178,7 @@ export default function AnimationPreviewContent() {
   // Editable frame buffer used when brush/eraser is active.
   const editFrameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const editFrameCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const scaleScratchRef = useRef<CanvasScaleScratch>({ primary: null, secondary: null });
   const currentEditTrackIdRef = useRef<string | null>(null);
   const currentEditFrameIdRef = useRef<number | null>(null);
   const isEditFrameDirtyRef = useRef(false);
@@ -316,8 +319,12 @@ export default function AnimationPreviewContent() {
       if (!ctx) return;
 
       ctx.clearRect(0, 0, w, h);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sourceCanvas, 0, 0, w, h);
+      drawScaledImage(
+        ctx,
+        sourceCanvas,
+        { x: 0, y: 0, width: w, height: h },
+        { mode: "pixel-art", scratch: scaleScratchRef.current },
+      );
 
       if (toolMode === "crop") {
         const activeCrop = cropArea || {
@@ -1311,6 +1318,9 @@ export default function AnimationPreviewContent() {
   );
 
   const hasVisibleCanvas = isEditMode ? Boolean(editFrameCanvasRef.current) : hasCompositedFrame;
+  const previewPan = viewportSync.zoom >= 1
+    ? { x: Math.round(viewportSync.pan.x), y: Math.round(viewportSync.pan.y) }
+    : viewportSync.pan;
 
   // Cursor selection
   const getCursor = () => {
@@ -1369,7 +1379,7 @@ export default function AnimationPreviewContent() {
                 style={{
                   left: "50%",
                   top: "50%",
-                  transform: `translate(calc(-50% + ${viewportSync.pan.x}px), calc(-50% + ${viewportSync.pan.y}px))`,
+                  transform: `translate(calc(-50% + ${previewPan.x}px), calc(-50% + ${previewPan.y}px))`,
                   backgroundColor: bgType === "solid" ? bgColor : undefined,
                 }}
               >

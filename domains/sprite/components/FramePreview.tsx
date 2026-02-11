@@ -10,7 +10,7 @@ import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
-import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture, type CanvasScaleScratch } from "@/shared/utils";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
@@ -37,6 +37,7 @@ export default function FramePreviewContent() {
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const scaleScratchRef = useRef<CanvasScaleScratch>({ primary: null, secondary: null });
   const currentFrameIdRef = useRef<number | null>(null);
   const isFrameDirtyRef = useRef(false);
   const drawingPointerIdRef = useRef<number | null>(null);
@@ -113,8 +114,12 @@ export default function FramePreviewContent() {
       if (!ctx) return;
 
       ctx.clearRect(0, 0, w, h);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sourceCanvas, 0, 0, w, h);
+      drawScaledImage(
+        ctx,
+        sourceCanvas,
+        { x: 0, y: 0, width: w, height: h },
+        { mode: "pixel-art", scratch: scaleScratchRef.current },
+      );
     });
   }, [setRenderFn, getFrameVpZoom]);
 
@@ -502,6 +507,9 @@ export default function FramePreviewContent() {
   };
 
   const currentZoom = viewportSync.zoom;
+  const snappedPan = currentZoom >= 1
+    ? { x: Math.round(viewportSync.pan.x), y: Math.round(viewportSync.pan.y) }
+    : viewportSync.pan;
 
   return (
     <div className="flex flex-col h-full bg-surface-primary">
@@ -525,7 +533,7 @@ export default function FramePreviewContent() {
             style={{
               left: "50%",
               top: "50%",
-              transform: `translate(calc(-50% + ${viewportSync.pan.x}px), calc(-50% + ${viewportSync.pan.y}px))`,
+              transform: `translate(calc(-50% + ${snappedPan.x}px), calc(-50% + ${snappedPan.y}px))`,
             }}
           >
             <canvas
