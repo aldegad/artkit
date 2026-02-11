@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../contexts";
 import { useVideoElements } from "./useVideoElements";
 import { getCanvasColorsSync } from "@/shared/hooks";
+import { drawScaledImage } from "@/shared/utils";
 import { PREVIEW } from "../constants";
 import { getClipScaleX, getClipScaleY } from "../types";
 import { Clip, VideoClip, ImageClip } from "../types";
@@ -180,7 +181,12 @@ export function usePreviewRendering() {
       }
 
       // Draw frame
-      ctx.drawImage(frame, clipX, clipY, clipWidth, clipHeight);
+      drawScaledImage(
+        ctx,
+        frame,
+        { x: clipX, y: clipY, width: clipWidth, height: clipHeight },
+        { mode: "continuous", progressiveMinify: !playback.isPlaying },
+      );
 
       ctx.restore();
     }
@@ -194,6 +200,7 @@ export function usePreviewRendering() {
     previewContainerRef,
     project.canvasSize,
     playback.currentTime,
+    playback.isPlaying,
     tracks,
     getClipAtTime,
     getClipFrame,

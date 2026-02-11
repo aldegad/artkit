@@ -1,6 +1,7 @@
 import { VideoTrack, Clip, getClipScaleX, getClipScaleY } from "../types";
 import { Size } from "@/shared/types";
 import { resolveClipPositionAtTimelineTime } from "./clipTransformKeyframes";
+import { drawScaledImage } from "@/shared/utils";
 
 export interface CompositeRenderParams {
   time: number;
@@ -144,24 +145,43 @@ export function renderCompositeFrame(
         tmpCtx.clearRect(0, 0, maskW, maskH);
         tmpCtx.globalCompositeOperation = "source-over";
         tmpCtx.globalAlpha = 1;
-        tmpCtx.drawImage(
+        drawScaledImage(
+          tmpCtx,
           sourceEl,
-          clipPosition.x,
-          clipPosition.y,
-          clip.sourceSize.width * clipScaleX,
-          clip.sourceSize.height * clipScaleY,
+          {
+            x: clipPosition.x,
+            y: clipPosition.y,
+            width: clip.sourceSize.width * clipScaleX,
+            height: clip.sourceSize.height * clipScaleY,
+          },
+          { mode: "continuous", progressiveMinify: !isPlaying },
         );
         tmpCtx.globalCompositeOperation = "destination-in";
-        tmpCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
+        drawScaledImage(
+          tmpCtx,
+          clipMaskSource,
+          { x: 0, y: 0, width: maskW, height: maskH },
+          { mode: "continuous" },
+        );
         tmpCtx.globalCompositeOperation = "source-over";
 
         ctx.globalAlpha = clip.opacity / 100;
-        ctx.drawImage(maskTempCanvas, offsetX, offsetY, previewWidth, previewHeight);
+        drawScaledImage(
+          ctx,
+          maskTempCanvas,
+          { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+          { mode: "continuous", progressiveMinify: !isPlaying },
+        );
         ctx.globalAlpha = 1;
       }
     } else {
       ctx.globalAlpha = clip.opacity / 100;
-      ctx.drawImage(sourceEl, drawX, drawY, drawW, drawH);
+      drawScaledImage(
+        ctx,
+        sourceEl,
+        { x: drawX, y: drawY, width: drawW, height: drawH },
+        { mode: "continuous", progressiveMinify: !isPlaying },
+      );
       ctx.globalAlpha = 1;
     }
   }
