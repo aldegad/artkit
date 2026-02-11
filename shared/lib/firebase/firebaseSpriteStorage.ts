@@ -20,6 +20,10 @@ import {
 } from "firebase/storage";
 import type { SavedSpriteProject, SpriteFrame, SpriteTrack } from "@/domains/sprite/types";
 import { db, storage } from "./config";
+import {
+  removeUndefinedValues,
+  readTimestampMillis,
+} from "./firestoreValueUtils";
 
 interface FirestoreSpriteFrameMeta {
   id: number;
@@ -74,29 +78,6 @@ const SPRITE_LOAD_TRACK_CONCURRENCY = 3;
 const SPRITE_LOAD_FRAME_CONCURRENCY = 8;
 const SPRITE_DELETE_CONCURRENCY = 8;
 const SPRITE_MEDIA_CLEANUP_VERSION = 1;
-
-function removeUndefined<T>(obj: T): T {
-  if (obj === null || obj === undefined || typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map(removeUndefined) as T;
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (value !== undefined) {
-      result[key] = removeUndefined(value);
-    }
-  }
-  return result as T;
-}
-
-function readTimestampMillis(value: Timestamp | number | undefined): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  const maybeTimestamp = value as { toMillis?: () => number } | undefined;
-  if (maybeTimestamp && typeof maybeTimestamp.toMillis === "function") {
-    return maybeTimestamp.toMillis();
-  }
-  return Date.now();
-}
 
 async function uploadDataUrl(path: string, dataUrl: string): Promise<string> {
   const storageRef = ref(storage, path);
@@ -609,7 +590,7 @@ export async function saveSpriteProjectToFirebase(
     total: totalSteps,
     itemName: "Saving metadata",
   });
-  await setDoc(docRef, removeUndefined(firestoreProject));
+  await setDoc(docRef, removeUndefinedValues(firestoreProject));
 
   try {
     const nextReferencedMediaRefs = collectSpriteProjectMediaRefs(

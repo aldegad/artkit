@@ -21,6 +21,10 @@ import {
 } from "firebase/storage";
 import { db, storage } from "./config";
 import {
+  removeUndefinedValues,
+  readTimestampMillis,
+} from "./firestoreValueUtils";
+import {
   SavedVideoProject,
   VideoProject,
   VideoTrack,
@@ -97,54 +101,6 @@ interface FirestoreVideoProject {
   thumbnailUrl?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-}
-
-// ============================================
-// Utility: Remove undefined values (Firestore rejects undefined)
-// ============================================
-
-function removeUndefined<T>(obj: T): T {
-  if (obj === null || obj === undefined || typeof obj !== "object") return obj;
-  if (obj instanceof Timestamp || obj instanceof Date) return obj;
-  if (Array.isArray(obj)) return obj.map(removeUndefined) as T;
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (value !== undefined) {
-      result[key] = removeUndefined(value);
-    }
-  }
-  return result as T;
-}
-
-function readTimestampMillis(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  const maybeTimestamp = value as { toMillis?: () => number } | undefined;
-  if (maybeTimestamp && typeof maybeTimestamp.toMillis === "function") {
-    return maybeTimestamp.toMillis();
-  }
-
-  // Backward-compat for legacy records where Timestamp may have been serialized
-  // into a plain object ({seconds, nanoseconds} or {_seconds, _nanoseconds}).
-  const asRecord = value as
-    | { seconds?: unknown; nanoseconds?: unknown; _seconds?: unknown; _nanoseconds?: unknown }
-    | undefined;
-  const seconds = typeof asRecord?.seconds === "number"
-    ? asRecord.seconds
-    : typeof asRecord?._seconds === "number"
-      ? asRecord._seconds
-      : null;
-  const nanoseconds = typeof asRecord?.nanoseconds === "number"
-    ? asRecord.nanoseconds
-    : typeof asRecord?._nanoseconds === "number"
-      ? asRecord._nanoseconds
-      : 0;
-  if (seconds !== null && Number.isFinite(seconds) && Number.isFinite(nanoseconds)) {
-    return Math.floor(seconds * 1000 + nanoseconds / 1_000_000);
-  }
-
-  return Date.now();
 }
 
 const VIDEO_LIST_PREFIX_CONCURRENCY = 4;
@@ -571,7 +527,7 @@ export async function saveVideoProjectToFirebase(
     updatedAt: Timestamp.now(),
   };
 
-  await setDoc(docRef, removeUndefined(firestoreProject));
+  await setDoc(docRef, removeUndefinedValues(firestoreProject));
 }
 
 /**
