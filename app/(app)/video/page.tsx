@@ -65,6 +65,7 @@ import {
   useVideoProjectLibrary,
   useVideoClipboardActions,
   useVideoCropActions,
+  usePreviewViewportState,
 } from "@/domains/video/hooks";
 import {
   getClipPositionKeyframes,
@@ -972,69 +973,13 @@ function VideoEditorContent() {
     setScrollX(0);
   }, [project.duration, setZoom, setScrollX]);
 
-  // Preview transform state (synced from PreviewCanvas viewport)
-  const [previewTransformState, setPreviewTransformState] = useState<{
-    isActive: boolean;
-    clipId: string | null;
-    aspectRatio: AspectRatio;
-  }>({
-    isActive: false,
-    clipId: null,
-    aspectRatio: "free",
-  });
   const previousToolModeRef = useRef<VideoToolMode | null>(null);
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let rafId: number | null = null;
-
-    const attach = () => {
-      const api = previewViewportRef.current;
-      if (!api) {
-        rafId = requestAnimationFrame(attach);
-        return;
-      }
-      unsubscribe = api.onTransformChange((next) => setPreviewTransformState(next));
-    };
-
-    attach();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      unsubscribe?.();
-    };
-  }, [previewViewportRef]);
-
-  // Preview zoom state (synced from PreviewCanvas viewport)
-  const [previewZoom, setPreviewZoomState] = useState(1);
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let rafId: number | null = null;
-
-    const attach = () => {
-      const api = previewViewportRef.current;
-      if (!api) {
-        rafId = requestAnimationFrame(attach);
-        return;
-      }
-      unsubscribe = api.onZoomChange((z) => setPreviewZoomState(z));
-    };
-
-    attach();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      unsubscribe?.();
-    };
-  }, [previewViewportRef]);
-
-  const setPreviewZoom = useCallback((zoomOrFn: number | ((z: number) => number)) => {
-    const api = previewViewportRef.current;
-    if (!api) return;
-    const next = typeof zoomOrFn === "function" ? zoomOrFn(api.getZoom()) : zoomOrFn;
-    api.setZoom(next);
-  }, [previewViewportRef]);
-
-  const handlePreviewFit = useCallback(() => {
-    previewViewportRef.current?.fitToContainer();
-  }, [previewViewportRef]);
+  const {
+    previewTransformState,
+    previewZoom,
+    setPreviewZoom,
+    handlePreviewFit,
+  } = usePreviewViewportState(previewViewportRef);
 
   const clearSelectedMasks = useCallback(() => {
     selectMasksForTimeline([]);
@@ -1172,25 +1117,24 @@ function VideoEditorContent() {
     previewViewportRef.current?.startTransformForSelection();
   }, [selectedVisualClip, toolMode, handleToolModeChange, previewViewportRef]);
 
-  const handleApplyTransform = useCallback(() => {
-    previewViewportRef.current?.applyTransform();
+  const restoreToolModeAfterTransform = useCallback(() => {
     if (previousToolModeRef.current) {
       setToolMode(previousToolModeRef.current);
       previousToolModeRef.current = null;
-    } else {
-      setToolMode("select");
+      return;
     }
-  }, [previewViewportRef, setToolMode]);
+    setToolMode("select");
+  }, [setToolMode]);
+
+  const handleApplyTransform = useCallback(() => {
+    previewViewportRef.current?.applyTransform();
+    restoreToolModeAfterTransform();
+  }, [previewViewportRef, restoreToolModeAfterTransform]);
 
   const handleCancelTransform = useCallback(() => {
     previewViewportRef.current?.cancelTransform();
-    if (previousToolModeRef.current) {
-      setToolMode(previousToolModeRef.current);
-      previousToolModeRef.current = null;
-    } else {
-      setToolMode("select");
-    }
-  }, [previewViewportRef, setToolMode]);
+    restoreToolModeAfterTransform();
+  }, [previewViewportRef, restoreToolModeAfterTransform]);
 
   const handleSetTransformAspectRatio = useCallback((ratio: AspectRatio) => {
     previewViewportRef.current?.setTransformAspectRatio(ratio);

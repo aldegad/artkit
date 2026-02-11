@@ -18,6 +18,7 @@ export { useAudioBufferCache, getAudioBuffer, isAudioBufferReady, getSharedAudio
 export { useWebAudioPlayback } from "./useWebAudioPlayback";
 export { useVideoExport } from "./useVideoExport";
 export { useClipTransformTool } from "./useClipTransformTool";
+export { usePreviewViewportState } from "./usePreviewViewportState";
 export type {
   ExportProgressState,
   VideoExportFormat,
