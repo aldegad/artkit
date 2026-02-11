@@ -16,10 +16,11 @@ import {
   UndoIcon,
   RedoIcon,
 } from "@/shared/components/icons";
-import type { SpriteToolMode } from "../types";
+import type { MagicWandSelectionMode, SpriteToolMode } from "../types";
 
 interface SpriteTopToolbarProps {
   toolMode: SpriteToolMode;
+  magicWandSelectionMode: MagicWandSelectionMode;
   setSpriteToolMode: (mode: SpriteToolMode) => void;
   isRemovingBackground: boolean;
   isInterpolating: boolean;
@@ -29,6 +30,7 @@ interface SpriteTopToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  onRequestAISelection: () => void;
   onRequestBackgroundRemoval: () => void;
   onRequestFrameInterpolation: () => void;
   zoom: number;
@@ -38,6 +40,7 @@ interface SpriteTopToolbarProps {
 
 export default function SpriteTopToolbar({
   toolMode,
+  magicWandSelectionMode,
   setSpriteToolMode,
   isRemovingBackground,
   isInterpolating,
@@ -47,6 +50,7 @@ export default function SpriteTopToolbar({
   canRedo,
   onUndo,
   onRedo,
+  onRequestAISelection,
   onRequestBackgroundRemoval,
   onRequestFrameInterpolation,
   zoom,
@@ -187,7 +191,7 @@ export default function SpriteTopToolbar({
             <button
               onClick={() => setSpriteToolMode("magicwand")}
               className={`p-1.5 rounded transition-colors ${
-                toolMode === "magicwand"
+                toolMode === "magicwand" && magicWandSelectionMode !== "ai"
                   ? "bg-accent-primary text-white"
                   : "hover:bg-interactive-hover"
               }`}
@@ -237,6 +241,28 @@ export default function SpriteTopToolbar({
           </Tooltip>
 
           <div className="w-px bg-border-default mx-0.5" />
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.aiSelection}</span>
+                <span className="text-text-tertiary text-[11px]">{t.aiSelectionDescription}</span>
+                <span className="text-[10px] text-text-tertiary">{t.firstRunDownload}</span>
+              </div>
+            }
+          >
+            <button
+              onClick={onRequestAISelection}
+              disabled={isRemovingBackground || isInterpolating || !hasFramesWithImage}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                toolMode === "magicwand" && magicWandSelectionMode === "ai"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <MagicWandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
 
           <Tooltip
             content={

@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import { SpriteToolMode, TimelineMode, FrameEditToolMode, SpriteCropArea, SpriteCropAspectRatio } from "../types";
+import {
+  SpriteToolMode,
+  TimelineMode,
+  FrameEditToolMode,
+  SpriteCropArea,
+  SpriteCropAspectRatio,
+  MagicWandSelectionMode,
+} from "../types";
 import type { BrushPreset } from "@/domains/image/types/brush";
 import { DEFAULT_BRUSH_PRESETS } from "@/domains/image/constants/brushPresets";
 
@@ -27,6 +34,7 @@ interface SpriteToolStore {
   brushHardness: number;
   magicWandTolerance: number;
   magicWandFeather: number;
+  magicWandSelectionMode: MagicWandSelectionMode;
   activePreset: BrushPreset;
   presets: BrushPreset[];
   pressureEnabled: boolean;
@@ -50,6 +58,7 @@ interface SpriteToolStore {
   setBrushHardness: (hardness: number) => void;
   setMagicWandTolerance: (tolerance: number) => void;
   setMagicWandFeather: (feather: number) => void;
+  setMagicWandSelectionMode: (mode: MagicWandSelectionMode) => void;
   setActivePreset: (preset: BrushPreset) => void;
   setPressureEnabled: (enabled: boolean) => void;
 
@@ -82,6 +91,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
   magicWandTolerance: 24,
   magicWandFeather: 0,
+  magicWandSelectionMode: "color",
   activePreset: DEFAULT_BRUSH_PRESETS[0],
   presets: [...DEFAULT_BRUSH_PRESETS],
   pressureEnabled: true,
@@ -89,7 +99,14 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   // Tool Actions
   setSpriteToolMode: (mode) =>
     set(() => {
-      if (mode === "brush" || mode === "eraser" || mode === "magicwand" || mode === "eyedropper" || mode === "zoom") {
+      if (mode === "magicwand") {
+        return {
+          toolMode: mode,
+          frameEditToolMode: mode,
+          magicWandSelectionMode: "color",
+        };
+      }
+      if (mode === "brush" || mode === "eraser" || mode === "eyedropper" || mode === "zoom") {
         return {
           toolMode: mode,
           frameEditToolMode: mode,
@@ -103,7 +120,10 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       }
       return { toolMode: mode };
     }),
-  setFrameEditToolMode: (mode) => set({ frameEditToolMode: mode, toolMode: mode }),
+  setFrameEditToolMode: (mode) =>
+    set(mode === "magicwand"
+      ? { frameEditToolMode: mode, toolMode: mode, magicWandSelectionMode: "color" }
+      : { frameEditToolMode: mode, toolMode: mode }),
   setIsSpacePressed: (pressed) => set({ isSpacePressed: pressed }),
   setIsPanLocked: (locked) => set({ isPanLocked: locked }),
   setCropArea: (area) => set({ cropArea: area }),
@@ -122,6 +142,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
     set({ magicWandTolerance: Math.max(0, Math.min(255, Math.round(tolerance))) }),
   setMagicWandFeather: (feather) =>
     set({ magicWandFeather: normalizeMagicWandFeather(feather) }),
+  setMagicWandSelectionMode: (mode) => set({ magicWandSelectionMode: mode }),
   setActivePreset: (preset) =>
     set({
       activePreset: preset,
@@ -147,6 +168,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
       magicWandTolerance: 24,
       magicWandFeather: 0,
+      magicWandSelectionMode: "color",
       activePreset: DEFAULT_BRUSH_PRESETS[0],
       presets: [...DEFAULT_BRUSH_PRESETS],
       pressureEnabled: true,
