@@ -6,6 +6,7 @@ import {
   removeBackground,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
+import { showErrorToast, showInfoToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -63,14 +64,14 @@ export function useBackgroundRemoval(
     // Get active layer
     const activeLayer = activeLayerId ? layers.find((l) => l.id === activeLayerId) : null;
     if (!activeLayer) {
-      alert(t.selectLayerForBgRemoval || "Please select a layer to remove background.");
+      showInfoToast(t.selectLayerForBgRemoval || "Please select a layer to remove background.");
       return;
     }
 
     // Get layer canvas
     const layerCanvas = layerCanvasesRef.current?.get(activeLayer.id);
     if (!layerCanvas) {
-      alert(t.layerCanvasNotFound || "Layer canvas not found.");
+      showInfoToast(t.layerCanvasNotFound || "Layer canvas not found.");
       return;
     }
 
@@ -153,7 +154,7 @@ export function useBackgroundRemoval(
     } catch (error) {
       console.error("Background removal failed:", error);
       setBgRemovalStatus("Failed");
-      alert(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
+      showErrorToast(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
     } finally {
       setIsRemovingBackground(false);
       // Clear status after a delay

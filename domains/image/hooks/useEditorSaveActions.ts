@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { showErrorToast } from "@/shared/components";
 
 interface UseEditorSaveActionsOptions {
   saveProject: () => Promise<void>;
@@ -44,7 +45,7 @@ export function useEditorSaveActions(
           await handleSaveProjectAction();
         }
       } catch (error) {
-        alert(`${saveFailedMessage}: ${(error as Error).message}`);
+        showErrorToast(`${saveFailedMessage}: ${(error as Error).message}`);
       }
     };
 

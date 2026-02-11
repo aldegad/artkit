@@ -28,7 +28,7 @@ export interface PopoverProps {
   /** Horizontal alignment relative to trigger */
   align?: "start" | "center" | "end";
   /** Preferred side to show popover */
-  side?: "top" | "bottom";
+  side?: "top" | "bottom" | "left" | "right";
   /** Offset from trigger element */
   sideOffset?: number;
   /** Additional class name for popover container */
@@ -40,7 +40,7 @@ export interface PopoverProps {
 interface Position {
   top: number;
   left: number;
-  side: "top" | "bottom";
+  side: "top" | "bottom" | "left" | "right";
 }
 
 // ============================================
@@ -95,37 +95,58 @@ export function Popover({
     const viewportWidth = window.innerWidth;
     const padding = 8;
 
-    // Determine vertical position
+    // Determine side
     let actualSide = side;
-    let top: number;
-
     const spaceBelow = viewportHeight - triggerRect.bottom;
     const spaceAbove = triggerRect.top;
+    const spaceLeft = triggerRect.left;
+    const spaceRight = viewportWidth - triggerRect.right;
 
     if (side === "bottom" && spaceBelow < contentRect.height + padding && spaceAbove > spaceBelow) {
       actualSide = "top";
     } else if (side === "top" && spaceAbove < contentRect.height + padding && spaceBelow > spaceAbove) {
       actualSide = "bottom";
+    } else if (side === "right" && spaceRight < contentRect.width + padding && spaceLeft > spaceRight) {
+      actualSide = "left";
+    } else if (side === "left" && spaceLeft < contentRect.width + padding && spaceRight > spaceLeft) {
+      actualSide = "right";
     }
 
-    if (actualSide === "bottom") {
-      top = triggerRect.bottom + sideOffset;
+    // Determine base position
+    let top = 0;
+    let left = 0;
+    if (actualSide === "top" || actualSide === "bottom") {
+      top = actualSide === "bottom"
+        ? triggerRect.bottom + sideOffset
+        : triggerRect.top - contentRect.height - sideOffset;
+
+      switch (align) {
+        case "start":
+          left = triggerRect.left;
+          break;
+        case "center":
+          left = triggerRect.left + triggerRect.width / 2 - contentRect.width / 2;
+          break;
+        case "end":
+          left = triggerRect.right - contentRect.width;
+          break;
+      }
     } else {
-      top = triggerRect.top - contentRect.height - sideOffset;
-    }
+      left = actualSide === "right"
+        ? triggerRect.right + sideOffset
+        : triggerRect.left - contentRect.width - sideOffset;
 
-    // Determine horizontal position
-    let left: number;
-    switch (align) {
-      case "start":
-        left = triggerRect.left;
-        break;
-      case "center":
-        left = triggerRect.left + triggerRect.width / 2 - contentRect.width / 2;
-        break;
-      case "end":
-        left = triggerRect.right - contentRect.width;
-        break;
+      switch (align) {
+        case "start":
+          top = triggerRect.top;
+          break;
+        case "center":
+          top = triggerRect.top + triggerRect.height / 2 - contentRect.height / 2;
+          break;
+        case "end":
+          top = triggerRect.bottom - contentRect.height;
+          break;
+      }
     }
 
     // Keep within viewport
@@ -133,6 +154,11 @@ export function Popover({
       left = padding;
     } else if (left + contentRect.width > viewportWidth - padding) {
       left = viewportWidth - contentRect.width - padding;
+    }
+    if (top < padding) {
+      top = padding;
+    } else if (top + contentRect.height > viewportHeight - padding) {
+      top = viewportHeight - contentRect.height - padding;
     }
 
     setPosition({ top, left, side: actualSide });

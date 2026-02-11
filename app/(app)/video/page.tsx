@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar, CanvasCropControls, PanLockFloatingButton } from "@/shared/components";
+import {
+  HeaderContent,
+  SaveToast,
+  LoadingOverlay,
+  Select,
+  Scrollbar,
+  CanvasCropControls,
+  PanLockFloatingButton,
+  confirmDialog,
+  showErrorToast,
+  showInfoToast,
+} from "@/shared/components";
 import {
   VolumeOnIcon,
   VolumeMutedIcon,
@@ -615,10 +626,15 @@ function VideoEditorContent() {
 
   // Menu handlers
   const handleNew = useCallback(async () => {
-    if (window.confirm(t.newProjectConfirm)) {
-      await clearVideoAutosave();
-      window.location.reload();
-    }
+    const shouldCreate = await confirmDialog({
+      title: t.new || "New Project",
+      message: t.newProjectConfirm,
+      confirmLabel: t.new || "New",
+      cancelLabel: t.cancel || "Cancel",
+    });
+    if (!shouldCreate) return;
+    await clearVideoAutosave();
+    window.location.reload();
   }, [t]);
 
   const handleOpen = useCallback(() => {
@@ -631,7 +647,7 @@ function VideoEditorContent() {
       setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Failed to save project:", error);
-      alert(`Save failed: ${(error as Error).message}`);
+      showErrorToast(`Save failed: ${(error as Error).message}`);
     }
   }, [saveProject]);
 
@@ -646,7 +662,7 @@ function VideoEditorContent() {
       setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Failed to save project:", error);
-      alert(`Save failed: ${(error as Error).message}`);
+      showErrorToast(`Save failed: ${(error as Error).message}`);
     }
   }, [projectName, setProjectName, saveAsProject]);
 
@@ -756,16 +772,16 @@ function VideoEditorContent() {
     if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) {
       switch (gapInterpolationAnalysis.issue) {
         case "same_track_required":
-          alert("Select 2 clips on the same track.");
+          showInfoToast("Select 2 clips on the same track.");
           break;
         case "gap_required":
-          alert("No empty gap between selected clips.");
+          showInfoToast("No empty gap between selected clips.");
           break;
         case "gap_blocked":
-          alert("The gap is occupied by another clip.");
+          showInfoToast("The gap is occupied by another clip.");
           break;
         default:
-          alert("Select exactly 2 visual clips for interpolation.");
+          showInfoToast("Select exactly 2 visual clips for interpolation.");
           break;
       }
       return;
@@ -861,7 +877,7 @@ function VideoEditorContent() {
     } catch (error) {
       console.error("Video gap interpolation failed:", error);
       setGapInterpolationStatus("Failed");
-      alert(t.interpolationFailed || "Frame interpolation failed. Please try again.");
+      showErrorToast(t.interpolationFailed || "Frame interpolation failed. Please try again.");
     } finally {
       setIsInterpolatingGap(false);
       window.setTimeout(() => {
@@ -1332,15 +1348,21 @@ function VideoEditorContent() {
       {/* Loading overlay during autosave restore */}
       <LoadingOverlay isLoading={!isAutosaveInitialized} message={t.loading || "Loading..."} />
 
-      {/* Save toast notification (for non-cloud saves without progress indicator) */}
-      {!saveProgress && (
-        <SaveToast
-          isSaving={isSaving}
-          saveCount={saveCount}
-          savingLabel={t.saving || "Saving…"}
-          savedLabel={t.saved || "Saved"}
-        />
-      )}
+      <SaveToast
+        isSaving={isSaving}
+        saveCount={saveCount}
+        savingLabel={
+          saveProgress
+            ? `${t.saving || "Saving…"} (${saveProgress.current}/${Math.max(1, saveProgress.total)})`
+            : (t.saving || "Saving…")
+        }
+        savedLabel={t.saved || "Saved"}
+        progress={saveProgress ? {
+          current: saveProgress.current,
+          total: Math.max(1, saveProgress.total),
+          detail: saveProgress.clipName,
+        } : null}
+      />
 
       {/* Header Slot - Menu Bar + Project Info */}
       <HeaderContent
@@ -1603,7 +1625,7 @@ function VideoEditorContent() {
               await importMediaFiles(files);
             } catch (error) {
               console.error("Media import failed:", error);
-              alert(`${t.importFailed}: ${(error as Error).message}`);
+              showErrorToast(`${t.importFailed}: ${(error as Error).message}`);
             }
           }
           e.target.value = "";
@@ -1638,23 +1660,6 @@ function VideoEditorContent() {
           generate: t.confirm,
         }}
       />
-
-      {/* Save progress indicator */}
-      {isSaving && saveProgress && (
-        <div className="fixed bottom-4 right-4 z-50 bg-surface-primary border border-border-default rounded-lg shadow-lg p-3 min-w-[200px]">
-          <div className="flex items-center gap-2 text-sm text-text-secondary mb-1">
-            <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
-            <span>Saving ({saveProgress.current}/{saveProgress.total})</span>
-          </div>
-          <div className="text-xs text-text-tertiary truncate">{saveProgress.clipName}</div>
-          <div className="mt-1 w-full h-1 bg-surface-tertiary rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent-primary rounded-full transition-all"
-              style={{ width: `${(saveProgress.current / saveProgress.total) * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Video Project List Modal */}
       <VideoProjectListModal

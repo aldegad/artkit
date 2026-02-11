@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, MutableRefObject } from "react";
 import { UnifiedLayer, createPaintLayer } from "../types";
+import { showInfoToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -224,7 +225,7 @@ export function useLayerManagement(
   const deleteLayerInternal = useCallback(
     (layerId: string, withHistory: boolean) => {
       if (layers.length <= 1) {
-        alert(t.minOneLayerRequired);
+        showInfoToast(t.minOneLayerRequired);
         return;
       }
 
