@@ -208,7 +208,7 @@ export async function downloadSpriteSheet(
   const appendFrameCount = options.appendFrameCount ?? true;
   const frameSuffix = appendFrameCount ? `-${validCount}f` : "";
   const link = document.createElement("a");
-  link.download = `${projectName}${frameSuffix}-spritesheet.${ext}`;
+  link.download = `${projectName}${frameSuffix}.${ext}`;
   link.href = dataUrl;
   link.click();
 }
@@ -412,7 +412,7 @@ export async function downloadCompositedSpriteSheet(
   const appendFrameCount = options.appendFrameCount ?? true;
   const frameSuffix = appendFrameCount ? `-${maxFrameCount}f` : "";
   const link = document.createElement("a");
-  link.download = `${projectName}${frameSuffix}-spritesheet.${ext}`;
+  link.download = `${projectName}${frameSuffix}.${ext}`;
   link.href = dataUrl;
   link.click();
 }
