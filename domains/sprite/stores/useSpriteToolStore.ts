@@ -27,6 +27,8 @@ interface SpriteToolStore {
   brushHardness: number;
   magicWandTolerance: number;
   magicWandFeather: number;
+  magicWandSelectionActiveBySource: Record<string, boolean>;
+  hasMagicWandSelection: boolean;
   activePreset: BrushPreset;
   presets: BrushPreset[];
   pressureEnabled: boolean;
@@ -50,6 +52,7 @@ interface SpriteToolStore {
   setBrushHardness: (hardness: number) => void;
   setMagicWandTolerance: (tolerance: number) => void;
   setMagicWandFeather: (feather: number) => void;
+  setMagicWandSelectionActive: (source: string, active: boolean) => void;
   setActivePreset: (preset: BrushPreset) => void;
   setPressureEnabled: (enabled: boolean) => void;
 
@@ -77,6 +80,8 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
   magicWandTolerance: 24,
   magicWandFeather: 0,
+  magicWandSelectionActiveBySource: {},
+  hasMagicWandSelection: false,
   activePreset: DEFAULT_BRUSH_PRESETS[0],
   presets: [...DEFAULT_BRUSH_PRESETS],
   pressureEnabled: true,
@@ -117,6 +122,19 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
     set({ magicWandTolerance: Math.max(0, Math.min(255, Math.round(tolerance))) }),
   setMagicWandFeather: (feather) =>
     set({ magicWandFeather: Math.max(0, Math.min(32, Math.round(feather))) }),
+  setMagicWandSelectionActive: (source, active) =>
+    set((state) => {
+      const nextBySource = { ...state.magicWandSelectionActiveBySource };
+      if (active) {
+        nextBySource[source] = true;
+      } else {
+        delete nextBySource[source];
+      }
+      return {
+        magicWandSelectionActiveBySource: nextBySource,
+        hasMagicWandSelection: Object.keys(nextBySource).length > 0,
+      };
+    }),
   setActivePreset: (preset) =>
     set({
       activePreset: preset,
@@ -142,6 +160,8 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
       magicWandTolerance: 24,
       magicWandFeather: 0,
+      magicWandSelectionActiveBySource: {},
+      hasMagicWandSelection: false,
       activePreset: DEFAULT_BRUSH_PRESETS[0],
       presets: [...DEFAULT_BRUSH_PRESETS],
       pressureEnabled: true,
