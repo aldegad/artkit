@@ -14,6 +14,10 @@ interface SpriteToolOptionsBarProps {
   setBrushSize: (size: number) => void;
   brushHardness: number;
   setBrushHardness: (hardness: number) => void;
+  magicWandTolerance: number;
+  setMagicWandTolerance: (tolerance: number) => void;
+  magicWandFeather: number;
+  setMagicWandFeather: (feather: number) => void;
   activePreset: BrushPreset;
   setActivePreset: (preset: BrushPreset) => void;
   presets: BrushPreset[];
@@ -39,6 +43,8 @@ interface SpriteToolOptionsBarProps {
   labels: {
     size: string;
     hardness: string;
+    tolerance: string;
+    feather: string;
     colorPickerTip: string;
     brush: string;
     eraser: string;
@@ -65,6 +71,10 @@ export default function SpriteToolOptionsBar({
   setBrushSize,
   brushHardness,
   setBrushHardness,
+  magicWandTolerance,
+  setMagicWandTolerance,
+  magicWandFeather,
+  setMagicWandFeather,
   activePreset,
   setActivePreset,
   presets,
@@ -181,6 +191,31 @@ export default function SpriteToolOptionsBar({
               max={200}
               step={1}
               label={`${labels.size}:`}
+              size="sm"
+              editable
+            />
+          </>
+        ) : isMagicWandTool ? (
+          <>
+            <NumberScrubber
+              value={magicWandTolerance}
+              onChange={(value) => setMagicWandTolerance(Math.round(value))}
+              min={0}
+              max={255}
+              step={1}
+              label={`${labels.tolerance}:`}
+              size="sm"
+              editable
+            />
+
+            <NumberScrubber
+              value={magicWandFeather}
+              onChange={(value) => setMagicWandFeather(Math.round(value))}
+              min={0}
+              max={32}
+              step={1}
+              label={`${labels.feather}:`}
+              format={(value) => `${Math.round(value)}px`}
               size="sm"
               editable
             />

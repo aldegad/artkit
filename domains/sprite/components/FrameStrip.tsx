@@ -114,7 +114,7 @@ export default function FrameStrip() {
   } = useEditorFramesMeta();
   const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const { isPlaying, setIsPlaying } = useEditorAnimation();
-  const { timelineMode, setTimelineMode } = useEditorTools();
+  const { timelineMode, setTimelineMode, toolMode } = useEditorTools();
   const { pushHistory } = useEditorHistory();
   const { addTrack, activeTrackId, insertEmptyFrameToTrack } = useEditorTracks();
   const {
@@ -465,6 +465,7 @@ export default function FrameStrip() {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isInteractiveElement(e.target)) return;
+      if (toolMode !== "select" && toolMode !== "hand") return;
       if (frames.length === 0) return;
 
       e.preventDefault();
@@ -473,7 +474,7 @@ export default function FrameStrip() {
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [deleteActiveFrame, frames.length]);
+  }, [deleteActiveFrame, frames.length, toolMode]);
 
   const addEmptyFrame = useCallback(() => {
     if (!activeTrackId) return;
