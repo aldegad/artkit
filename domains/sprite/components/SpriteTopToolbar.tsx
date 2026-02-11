@@ -1,6 +1,6 @@
 "use client";
 
-import { Scrollbar, Tooltip, PanZoomToolbarButtons } from "@/shared/components";
+import { Scrollbar, Tooltip, NumberScrubber } from "@/shared/components";
 import { useLanguage } from "@/shared/contexts";
 import {
   BrushIcon,
@@ -21,8 +21,6 @@ import type { SpriteToolMode } from "../types";
 interface SpriteTopToolbarProps {
   toolMode: SpriteToolMode;
   setSpriteToolMode: (mode: SpriteToolMode) => void;
-  isPanLocked: boolean;
-  onTogglePanLock: () => void;
   isRemovingBackground: boolean;
   isInterpolating: boolean;
   hasFramesWithImage: boolean;
@@ -33,13 +31,14 @@ interface SpriteTopToolbarProps {
   onRedo: () => void;
   onRequestBackgroundRemoval: () => void;
   onRequestFrameInterpolation: () => void;
+  zoom: number;
+  setZoom: (zoom: number | ((z: number) => number)) => void;
+  onFitToScreen: () => void;
 }
 
 export default function SpriteTopToolbar({
   toolMode,
   setSpriteToolMode,
-  isPanLocked,
-  onTogglePanLock,
   isRemovingBackground,
   isInterpolating,
   hasFramesWithImage,
@@ -50,6 +49,9 @@ export default function SpriteTopToolbar({
   onRedo,
   onRequestBackgroundRemoval,
   onRequestFrameInterpolation,
+  zoom,
+  setZoom,
+  onFitToScreen,
 }: SpriteTopToolbarProps) {
   const { t } = useLanguage();
 
@@ -236,14 +238,6 @@ export default function SpriteTopToolbar({
 
           <div className="w-px bg-border-default mx-0.5" />
 
-          <PanZoomToolbarButtons
-            isPanLocked={isPanLocked}
-            onTogglePanLock={onTogglePanLock}
-            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff }}
-          />
-
-          <div className="w-px bg-border-default mx-0.5" />
-
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
@@ -305,6 +299,28 @@ export default function SpriteTopToolbar({
               <RedoIcon className="w-4 h-4" />
             </button>
           </Tooltip>
+        </div>
+
+        <div className="h-4 w-px bg-border-default mx-1" />
+
+        <div className="flex items-center gap-1">
+          <NumberScrubber
+            value={zoom}
+            onChange={setZoom}
+            min={0.1}
+            max={10}
+            step={{ multiply: 1.25 }}
+            format={(value) => `${Math.round(value * 100)}%`}
+            size="sm"
+            variant="zoom"
+          />
+          <button
+            onClick={onFitToScreen}
+            className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+            title={t.fitToScreen}
+          >
+            Fit
+          </button>
         </div>
 
         <div className="flex-1 min-w-0" />
