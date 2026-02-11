@@ -375,6 +375,61 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     return secondClip;
   }, [snapToPoints, saveToHistory, removeClip, addClips]);
 
+  const duplicateSelectionForDrag = useCallback((options: {
+    activeClipIds: string[];
+    activeMaskIds: string[];
+    primaryClipId: string;
+  }): { primaryClipId: string; items: DragItem[] } => {
+    const newClipIds: string[] = [];
+    const newMaskIds: string[] = [];
+
+    for (const clipId of options.activeClipIds) {
+      const clip = clips.find((candidate) => candidate.id === clipId);
+      const duplicatedClipId = duplicateClip(clipId, clip?.trackId);
+      if (duplicatedClipId) {
+        newClipIds.push(duplicatedClipId);
+      }
+    }
+
+    for (const maskId of options.activeMaskIds) {
+      const duplicatedMaskId = duplicateMask(maskId);
+      if (duplicatedMaskId) {
+        newMaskIds.push(duplicatedMaskId);
+      }
+    }
+
+    if (newClipIds.length > 0) {
+      selectClips(newClipIds);
+    }
+    if (newMaskIds.length > 0) {
+      selectMasksForTimeline(newMaskIds);
+    }
+
+    const primaryIndex = options.activeClipIds.indexOf(options.primaryClipId);
+    const resolvedPrimaryClipId = primaryIndex >= 0 && primaryIndex < newClipIds.length
+      ? newClipIds[primaryIndex]
+      : newClipIds[0] || options.primaryClipId;
+
+    const items: DragItem[] = [];
+    for (let i = 0; i < newClipIds.length; i++) {
+      const originalClip = clips.find((clip) => clip.id === options.activeClipIds[i]);
+      if (originalClip) {
+        items.push({ type: "clip", id: newClipIds[i], originalStartTime: originalClip.startTime });
+      }
+    }
+    for (let i = 0; i < newMaskIds.length; i++) {
+      const originalMask = masks.get(options.activeMaskIds[i]);
+      if (originalMask) {
+        items.push({ type: "mask", id: newMaskIds[i], originalStartTime: originalMask.startTime });
+      }
+    }
+
+    return {
+      primaryClipId: resolvedPrimaryClipId,
+      items,
+    };
+  }, [clips, duplicateClip, duplicateMask, masks, selectClips, selectMasksForTimeline]);
+
   /** Cancel any pending long-press timer */
   const cancelLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -623,48 +678,19 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
               if (e.altKey && toolMode === "select") {
                 // Alt+Drag: duplicate ALL selected items and drag the copies
-                const newClipIds: string[] = [];
-                const newMaskIds: string[] = [];
-
-                for (const cid of activeClipIds) {
-                  const c = clips.find((cl) => cl.id === cid);
-                  const newId = duplicateClip(cid, c?.trackId);
-                  if (newId) newClipIds.push(newId);
-                }
-
-                for (const mid of activeMaskIds) {
-                  const newId = duplicateMask(mid);
-                  if (newId) newMaskIds.push(newId);
-                }
-
-                const primaryIndex = activeClipIds.indexOf(clip.id);
-                primaryClipId = primaryIndex >= 0 && primaryIndex < newClipIds.length
-                  ? newClipIds[primaryIndex]
-                  : newClipIds[0] || clip.id;
-
-                if (newClipIds.length > 0) selectClips(newClipIds);
-                if (newMaskIds.length > 0) selectMasksForTimeline(newMaskIds);
-
-                const items: DragItem[] = [];
-                for (let i = 0; i < newClipIds.length; i++) {
-                  const origClip = clips.find((c) => c.id === activeClipIds[i]);
-                  if (origClip) {
-                    items.push({ type: "clip", id: newClipIds[i], originalStartTime: origClip.startTime });
-                  }
-                }
-                for (let i = 0; i < newMaskIds.length; i++) {
-                  const origMask = masks.get(activeMaskIds[i]);
-                  if (origMask) {
-                    items.push({ type: "mask", id: newMaskIds[i], originalStartTime: origMask.startTime });
-                  }
-                }
+                const duplicated = duplicateSelectionForDrag({
+                  activeClipIds,
+                  activeMaskIds,
+                  primaryClipId: clip.id,
+                });
+                primaryClipId = duplicated.primaryClipId;
 
                 startClipMoveDrag({
                   pointerId: e.pointerId,
                   clientX: e.clientX,
                   clientY: e.clientY,
                   clipId: primaryClipId,
-                  items,
+                  items: duplicated.items,
                   x,
                   contentY,
                   time,
@@ -727,14 +753,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       selectedMaskIds,
       seek,
       deselectAll,
-      duplicateClip,
-      duplicateMask,
       saveToHistory,
-      clips,
-      masks,
       buildDragItems,
       capturePointer,
       clearMaskSelectionState,
+      duplicateSelectionForDrag,
       ensureTimeVisibleOnLeft,
       splitClipWithRazor,
       startClipMoveDrag,
