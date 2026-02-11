@@ -1170,20 +1170,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   });
 
   useEffect(() => {
-    if (isEditingMask) return;
+    const shouldClearMaskRegion = !isEditingMask || maskRegionClearRequestId > 0 || Boolean(activeMaskId);
+    if (!shouldClearMaskRegion) return;
     clearMaskRegionSelection();
-  }, [isEditingMask, clearMaskRegionSelection]);
-
-  useEffect(() => {
-    if (!isEditingMask) return;
-    if (maskRegionClearRequestId <= 0) return;
-    clearMaskRegionSelection();
-  }, [isEditingMask, maskRegionClearRequestId, clearMaskRegionSelection]);
-
-  useEffect(() => {
-    if (!isEditingMask || !activeMaskId) return;
-    clearMaskRegionSelection();
-  }, [isEditingMask, activeMaskId, clearMaskRegionSelection]);
+  }, [isEditingMask, maskRegionClearRequestId, activeMaskId, clearMaskRegionSelection]);
 
   const {
     cropCursor,
