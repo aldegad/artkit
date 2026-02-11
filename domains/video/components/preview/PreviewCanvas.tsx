@@ -11,7 +11,7 @@ import {
   useClipTransformTool,
 } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
@@ -776,7 +776,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         playbackPerfRef.current.cacheFrames += 1;
       }
       // Use pre-rendered cached frame — skip per-track compositing
-      ctx.drawImage(cachedBitmap, offsetX, offsetY, previewWidth, previewHeight);
+      drawScaledImage(
+        ctx,
+        cachedBitmap,
+        { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+        { mode: "continuous", progressiveMinify: !playback.isPlaying },
+      );
     } else {
       if (playback.isPlaying) {
         playbackPerfRef.current.liveFrames += 1;
@@ -881,19 +886,33 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               tmpCtx.globalCompositeOperation = "source-over";
               tmpCtx.globalAlpha = 1;
               // Draw clip at its position within the project canvas
-              tmpCtx.drawImage(
+              drawScaledImage(
+                tmpCtx,
                 sourceEl,
-                clipPosition.x,
-                clipPosition.y,
-                clip.sourceSize.width * getClipScaleX(clip),
-                clip.sourceSize.height * getClipScaleY(clip)
+                {
+                  x: clipPosition.x,
+                  y: clipPosition.y,
+                  width: clip.sourceSize.width * getClipScaleX(clip),
+                  height: clip.sourceSize.height * getClipScaleY(clip),
+                },
+                { mode: "continuous", progressiveMinify: !playback.isPlaying },
               );
               tmpCtx.globalCompositeOperation = "destination-in";
-              tmpCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
+              drawScaledImage(
+                tmpCtx,
+                clipMaskSource,
+                { x: 0, y: 0, width: maskW, height: maskH },
+                { mode: "continuous" },
+              );
               tmpCtx.globalCompositeOperation = "source-over";
 
               ctx.globalAlpha = clip.opacity / 100;
-              ctx.drawImage(tmpCanvas, offsetX, offsetY, previewWidth, previewHeight);
+              drawScaledImage(
+                ctx,
+                tmpCanvas,
+                { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+                { mode: "continuous", progressiveMinify: !playback.isPlaying },
+              );
               ctx.globalAlpha = 1;
             }
 
@@ -914,7 +933,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
                 overlayCtx.imageSmoothingQuality = "high";
                 overlayCtx.clearRect(0, 0, maskW, maskH);
                 overlayCtx.globalCompositeOperation = "source-over";
-                overlayCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);
+                drawScaledImage(
+                  overlayCtx,
+                  clipMaskSource,
+                  { x: 0, y: 0, width: maskW, height: maskH },
+                  { mode: "continuous" },
+                );
                 // Tint: red when editing, purple when selected
                 overlayCtx.globalCompositeOperation = "source-in";
                 overlayCtx.fillStyle = isEditingMask
@@ -922,12 +946,22 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
                   : "rgba(168, 85, 247, 0.3)";
                 overlayCtx.fillRect(0, 0, maskW, maskH);
 
-                ctx.drawImage(overlayCanvas, offsetX, offsetY, previewWidth, previewHeight);
+                drawScaledImage(
+                  ctx,
+                  overlayCanvas,
+                  { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+                  { mode: "continuous", progressiveMinify: !playback.isPlaying },
+                );
               }
             }
           } else {
             ctx.globalAlpha = clip.opacity / 100;
-            ctx.drawImage(sourceEl, drawX, drawY, drawW, drawH);
+            drawScaledImage(
+              ctx,
+              sourceEl,
+              { x: drawX, y: drawY, width: drawW, height: drawH },
+              { mode: "continuous", progressiveMinify: !playback.isPlaying },
+            );
             ctx.globalAlpha = 1;
           }
         }

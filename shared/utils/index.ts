@@ -2,6 +2,8 @@ export { cn } from "./cn";
 export { generateId } from "./generateId";
 export { downloadDataUrl, downloadBlob, downloadJson, downloadText } from "./download";
 export { safeSetPointerCapture, safeReleasePointerCapture } from "./pointerCapture";
+export { drawScaledImage } from "./canvasScaling";
+export type { CanvasScaleMode, CanvasScaleScratch, DrawScaledImageOptions } from "./canvasScaling";
 export {
   interpolateFramesWithRife,
   preloadRifeModel,
