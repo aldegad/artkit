@@ -12,7 +12,6 @@ import {
 import { cn } from "@/shared/utils/cn";
 import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
-import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { PREVIEW, PRE_RENDER } from "../../constants";
 import { Clip, VideoTrack, getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
@@ -33,6 +32,7 @@ import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 import { usePreviewPlaybackRenderTick } from "./usePreviewPlaybackRenderTick";
 import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
 import { resolvePreviewCanvasCursor } from "./previewCanvasCursor";
+import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -1275,6 +1275,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     transformCursor: transformTool.cursor,
     isDraggingClip,
   });
+  const brushDisplaySize = brushSettings.size * vpGetEffectiveScale();
 
   return (
     <div
@@ -1303,32 +1304,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           setBrushCursor(null);
         }}
       />
-      {/* Brush cursor preview */}
-      {isEditingMask && maskDrawShape === "brush" && brushCursor && (() => {
-        const scale = vpGetEffectiveScale();
-        const displaySize = brushSettings.size * scale;
-        return (
-          <BrushCursorOverlay
-            x={brushCursor.x}
-            y={brushCursor.y}
-            size={displaySize}
-            hardness={brushSettings.hardness}
-            color={brushSettings.mode === "erase" ? "#f87171" : "#ffffff"}
-            isEraser={brushSettings.mode === "erase"}
-          />
-        );
-      })()}
-      {(previewPerf.draftMode || !previewPerf.preRenderEnabled) && (
-        <div className="absolute bottom-2 left-2 rounded bg-surface-primary/80 px-2 py-1 text-[11px] text-text-secondary backdrop-blur-sm pointer-events-none">
-          {previewPerf.draftMode ? "Draft" : "Full"} · PR {previewPerf.preRenderEnabled ? "On" : "Off"}
-        </div>
-      )}
-      {/* Zoom indicator — shown when zoomed in/out */}
-      {zoomPercent !== 100 && (
-        <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-surface-primary/80 backdrop-blur-sm rounded px-2 py-1 text-[11px] text-text-secondary pointer-events-auto">
-          <span>{zoomPercent}%</span>
-        </div>
-      )}
+      <PreviewCanvasOverlays
+        isEditingMask={isEditingMask}
+        maskDrawShape={maskDrawShape}
+        brushCursor={brushCursor}
+        brushDisplaySize={brushDisplaySize}
+        brushHardness={brushSettings.hardness}
+        brushMode={brushSettings.mode}
+        draftMode={previewPerf.draftMode}
+        preRenderEnabled={previewPerf.preRenderEnabled}
+        zoomPercent={zoomPercent}
+      />
     </div>
   );
 }
