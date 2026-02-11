@@ -341,6 +341,61 @@ function findClipAtTime(trackClips: Clip[], time: number): Clip | null {
   return null;
 }
 
+async function restoreAutosavedClips(savedClips: Clip[]): Promise<{ restoredClips: Clip[]; durationHint: number }> {
+  const restoredClips: Clip[] = [];
+  const normalizedClips = savedClips.map((clip) => normalizeClip(clip));
+  let durationHint = calculateClipsDuration(normalizedClips);
+  const clipIdsBySourceId = new Map<string, string[]>();
+
+  for (const clip of normalizedClips) {
+    if (!clip.sourceId) continue;
+    const ids = clipIdsBySourceId.get(clip.sourceId) || [];
+    ids.push(clip.id);
+    clipIdsBySourceId.set(clip.sourceId, ids);
+  }
+
+  const sourceBlobCache = new Map<string, Blob>();
+
+  for (const normalizedClip of normalizedClips) {
+    let blob = await loadMediaBlob(normalizedClip.id);
+    if (!blob && normalizedClip.sourceId) {
+      blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
+      if (!blob) {
+        const candidateIds = clipIdsBySourceId.get(normalizedClip.sourceId) || [];
+        for (const candidateId of candidateIds) {
+          if (candidateId === normalizedClip.id) continue;
+          const candidateBlob = await loadMediaBlob(candidateId);
+          if (candidateBlob) {
+            blob = candidateBlob;
+            sourceBlobCache.set(normalizedClip.sourceId, candidateBlob);
+            break;
+          }
+        }
+      }
+    }
+
+    if (blob) {
+      if (normalizedClip.sourceId && !sourceBlobCache.has(normalizedClip.sourceId)) {
+        sourceBlobCache.set(normalizedClip.sourceId, blob);
+      }
+      restoredClips.push({ ...normalizedClip, sourceUrl: URL.createObjectURL(blob) });
+      continue;
+    }
+
+    // Non-blob URL (e.g., remote URL), keep as is.
+    if (!normalizedClip.sourceUrl.startsWith("blob:")) {
+      restoredClips.push(normalizedClip);
+    }
+    // If blob URL but no stored blob, skip (invalid).
+  }
+
+  if (restoredClips.length > 0) {
+    durationHint = Math.max(durationHint, calculateClipsDuration(restoredClips));
+  }
+
+  return { restoredClips, durationHint };
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
     updateProjectDuration,
@@ -503,56 +558,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             setTracks(data.tracks);
           }
           if (data.clips && data.clips.length > 0) {
-            // Restore clips with blobs from IndexedDB
-            const restoredClips: Clip[] = [];
-            const normalizedClips = data.clips.map((clip) => normalizeClip(clip as Clip));
-            durationHint = Math.max(durationHint, calculateClipsDuration(normalizedClips));
-            const clipIdsBySourceId = new Map<string, string[]>();
-            for (const clip of normalizedClips) {
-              if (!clip.sourceId) continue;
-              const ids = clipIdsBySourceId.get(clip.sourceId) || [];
-              ids.push(clip.id);
-              clipIdsBySourceId.set(clip.sourceId, ids);
-            }
-            const sourceBlobCache = new Map<string, Blob>();
-
-            for (const normalizedClip of normalizedClips) {
-              // Try to load blob from IndexedDB using clipId
-              let blob = await loadMediaBlob(normalizedClip.id);
-              if (!blob && normalizedClip.sourceId) {
-                blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
-                if (!blob) {
-                  const candidateIds = clipIdsBySourceId.get(normalizedClip.sourceId) || [];
-                  for (const candidateId of candidateIds) {
-                    if (candidateId === normalizedClip.id) continue;
-                    const candidateBlob = await loadMediaBlob(candidateId);
-                    if (candidateBlob) {
-                      blob = candidateBlob;
-                      sourceBlobCache.set(normalizedClip.sourceId, candidateBlob);
-                      break;
-                    }
-                  }
-                }
-              }
-
-              if (blob) {
-                if (normalizedClip.sourceId && !sourceBlobCache.has(normalizedClip.sourceId)) {
-                  sourceBlobCache.set(normalizedClip.sourceId, blob);
-                }
-                // Create new blob URL from stored blob
-                const newUrl = URL.createObjectURL(blob);
-                restoredClips.push({ ...normalizedClip, sourceUrl: newUrl });
-              } else if (!normalizedClip.sourceUrl.startsWith("blob:")) {
-                // Non-blob URL (e.g., remote URL), keep as is
-                restoredClips.push(normalizedClip);
-              }
-              // If blob URL but no stored blob, skip (invalid)
-            }
-
+            const { restoredClips, durationHint: clipDurationHint } = await restoreAutosavedClips(data.clips as Clip[]);
+            durationHint = Math.max(durationHint, clipDurationHint);
             setClips(restoredClips);
-            if (restoredClips.length > 0) {
-              durationHint = Math.max(durationHint, calculateClipsDuration(restoredClips));
-            }
           }
           if (data.timelineView) {
             setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
