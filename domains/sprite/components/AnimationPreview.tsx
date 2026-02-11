@@ -15,8 +15,6 @@ import {
   StepForwardIcon,
   PlayIcon,
   PauseIcon,
-  PlusIcon,
-  MinusIcon,
   BackgroundPatternIcon,
 } from "../../../shared/components/icons";
 import { compositeFrame } from "../utils/compositor";
@@ -279,6 +277,25 @@ export default function AnimationPreviewContent() {
     wheelRef: animWheelRef,
     pinchRef: animPinchRef,
   } = viewport;
+
+  // ---- Register viewport API to store (for toolbar zoom/fit control) ----
+  useEffect(() => {
+    const store = useSpriteViewportStore.getState();
+    store.registerAnimPreviewVpApi({
+      setZoom: setAnimVpZoom,
+      setPan: setAnimVpPan,
+      getZoom: getAnimVpZoom,
+    });
+    return () => store.unregisterAnimPreviewVpApi();
+  }, [setAnimVpZoom, setAnimVpPan, getAnimVpZoom]);
+
+  // ---- Real-time zoom sync to store (for toolbar NumberScrubber display) ----
+  useEffect(() => {
+    const unsub = onAnimViewportChange((state) => {
+      useSpriteViewportStore.getState().setAnimPreviewZoom(state.zoom);
+    });
+    return unsub;
+  }, [onAnimViewportChange]);
 
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
@@ -1795,36 +1812,7 @@ export default function AnimationPreviewContent() {
                 </button>
               </div>
 
-              {/* Right: Zoom controls */}
-              <div className="ml-auto flex items-center gap-1">
-                <button
-                  onClick={() =>
-                    setAnimVpZoom(
-                      Math.max(
-                        SPRITE_PREVIEW_VIEWPORT.MIN_ZOOM,
-                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_OUT,
-                      ),
-                    )
-                  }
-                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                >
-                  <MinusIcon className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-xs w-10 text-center text-text-primary">{Math.round(viewportSync.zoom * 100)}%</span>
-                <button
-                  onClick={() =>
-                    setAnimVpZoom(
-                      Math.min(
-                        SPRITE_PREVIEW_VIEWPORT.MAX_ZOOM,
-                        getAnimVpZoom() * SPRITE_PREVIEW_VIEWPORT.ZOOM_STEP_IN,
-                      ),
-                    )
-                  }
-                  className="p-1 hover:bg-interactive-hover rounded transition-colors"
-                >
-                  <PlusIcon className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <div className="ml-auto" />
             </div>
           </div>
         </div>

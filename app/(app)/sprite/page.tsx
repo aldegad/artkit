@@ -30,7 +30,8 @@ import {
   useSpriteExport,
 } from "@/domains/sprite";
 import type { SavedSpriteProject, SpriteTrack } from "@/domains/sprite";
-import { useSpriteTrackStore } from "@/domains/sprite/stores";
+import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
+import { SPRITE_PREVIEW_VIEWPORT } from "@/domains/sprite/constants";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
@@ -245,8 +246,10 @@ function SpriteEditorMain() {
     pressureEnabled,
     setPressureEnabled,
   } = useEditorBrush();
-  const { zoom, setScale, setZoom, setPan } = useEditorViewport();
+  const { setScale, setZoom, setPan } = useEditorViewport();
   const { fps } = useEditorAnimation();
+  const animPreviewZoom = useSpriteViewportStore((s) => s.animPreviewZoom);
+  const animPreviewVpApi = useSpriteViewportStore((s) => s._animPreviewVpApi);
   const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
   const { projectName, setProjectName, savedProjects, setSavedSpriteProjects, currentProjectId, setCurrentProjectId, newProject, isAutosaveLoading } = useEditorProject();
   const {
@@ -1218,9 +1221,17 @@ function SpriteEditorMain() {
         onRedo={redo}
         onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
         onRequestFrameInterpolation={() => setShowFrameInterpolationConfirm(true)}
-        zoom={zoom}
-        setZoom={setZoom}
-        onFitToScreen={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+        zoom={animPreviewZoom || 1}
+        setZoom={(z) => {
+          if (!animPreviewVpApi) return;
+          const next = typeof z === "function" ? z(animPreviewVpApi.getZoom()) : z;
+          animPreviewVpApi.setZoom(next);
+        }}
+        onFitToScreen={() => {
+          if (!animPreviewVpApi) return;
+          animPreviewVpApi.setZoom(SPRITE_PREVIEW_VIEWPORT.INITIAL_ANIM_ZOOM);
+          animPreviewVpApi.setPan({ x: 0, y: 0 });
+        }}
       />
 
       <SpriteToolOptionsBar

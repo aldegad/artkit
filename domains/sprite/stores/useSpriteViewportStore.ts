@@ -5,6 +5,12 @@ import { Point } from "../types";
 // Types
 // ============================================
 
+interface AnimPreviewVpApi {
+  setZoom: (zoom: number) => void;
+  setPan: (pan: Point) => void;
+  getZoom: () => number;
+}
+
 interface SpriteViewportStore {
   // State (zoom/pan/scale synced from useCanvasViewport for autosave)
   zoom: number;
@@ -16,6 +22,7 @@ interface SpriteViewportStore {
   // Animation preview viewport
   animPreviewZoom: number;
   animPreviewPan: Point;
+  _animPreviewVpApi: AnimPreviewVpApi | null;
 
   // Frame edit viewport
   frameEditZoom: number;
@@ -31,6 +38,8 @@ interface SpriteViewportStore {
   setAnimPreviewPan: (pan: Point) => void;
   setFrameEditZoom: (zoom: number) => void;
   setFrameEditPan: (pan: Point) => void;
+  registerAnimPreviewVpApi: (api: AnimPreviewVpApi) => void;
+  unregisterAnimPreviewVpApi: () => void;
 
   // Computed
   getTransformParams: () => { scale: number; zoom: number; pan: Point };
@@ -52,6 +61,7 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
   isCanvasCollapsed: false,
   animPreviewZoom: 0,
   animPreviewPan: { x: 0, y: 0 },
+  _animPreviewVpApi: null,
   frameEditZoom: 0,
   frameEditPan: { x: 0, y: 0 },
 
@@ -79,6 +89,8 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
   setAnimPreviewPan: (pan) => set({ animPreviewPan: pan }),
   setFrameEditZoom: (zoom) => set({ frameEditZoom: zoom }),
   setFrameEditPan: (pan) => set({ frameEditPan: pan }),
+  registerAnimPreviewVpApi: (api) => set({ _animPreviewVpApi: api }),
+  unregisterAnimPreviewVpApi: () => set({ _animPreviewVpApi: null }),
 
   // Computed
   getTransformParams: () => {
