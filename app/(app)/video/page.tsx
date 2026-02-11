@@ -123,6 +123,19 @@ interface FrameSnapshot {
   size: { width: number; height: number };
 }
 
+interface GapInterpolationClipBuildOptions {
+  generatedFrames: string[];
+  firstClip: Clip;
+  secondClip: Clip;
+  gapDuration: number;
+  outputSize: { width: number; height: number };
+}
+
+interface GapInterpolationClipBuildResult {
+  createdClips: Clip[];
+  persistTasks: Promise<void>[];
+}
+
 interface VideoEditorTranslationSource {
   file?: string;
   edit?: string;
@@ -248,6 +261,58 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
     throw new Error("Failed to convert generated frame to blob.");
   }
   return response.blob();
+}
+
+function getGapInterpolationIssueMessage(issue?: GapInterpolationIssue): string {
+  switch (issue) {
+    case "same_track_required":
+      return "Select 2 clips on the same track.";
+    case "gap_required":
+      return "No empty gap between selected clips.";
+    case "gap_blocked":
+      return "The gap is occupied by another clip.";
+    default:
+      return "Select exactly 2 visual clips for interpolation.";
+  }
+}
+
+async function buildGapInterpolationClips(
+  options: GapInterpolationClipBuildOptions
+): Promise<GapInterpolationClipBuildResult> {
+  const { generatedFrames, firstClip, secondClip, gapDuration, outputSize } = options;
+  const createdClips: Clip[] = [];
+  const persistTasks: Promise<void>[] = [];
+  const frameDuration = gapDuration / generatedFrames.length;
+  let nextStart = firstClip.startTime + firstClip.duration;
+
+  for (let i = 0; i < generatedFrames.length; i++) {
+    const imageData = generatedFrames[i];
+    const blob = await dataUrlToBlob(imageData);
+    const sourceUrl = URL.createObjectURL(blob);
+    const duration = i === generatedFrames.length - 1
+      ? Math.max(VIDEO_GAP_INTERPOLATION_MIN_GAP, secondClip.startTime - nextStart)
+      : frameDuration;
+
+    const clip = createImageClip(
+      firstClip.trackId,
+      sourceUrl,
+      outputSize,
+      nextStart,
+      duration,
+    );
+    clip.name = `${firstClip.name} • AI ${i + 1}/${generatedFrames.length}`;
+    clip.imageData = imageData;
+    createdClips.push(clip);
+    nextStart += duration;
+
+    persistTasks.push(
+      saveMediaBlob(clip.id, blob).catch((error) => {
+        console.error("Failed to save interpolated media blob:", error);
+      })
+    );
+  }
+
+  return { createdClips, persistTasks };
 }
 
 async function captureVideoFrame(sourceUrl: string, sourceTime: number): Promise<FrameSnapshot> {
@@ -863,20 +928,7 @@ function VideoEditorContent() {
     if (isInterpolatingGap) return;
 
     if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) {
-      switch (gapInterpolationAnalysis.issue) {
-        case "same_track_required":
-          showInfoToast("Select 2 clips on the same track.");
-          break;
-        case "gap_required":
-          showInfoToast("No empty gap between selected clips.");
-          break;
-        case "gap_blocked":
-          showInfoToast("The gap is occupied by another clip.");
-          break;
-        default:
-          showInfoToast("Select exactly 2 visual clips for interpolation.");
-          break;
-      }
+      showInfoToast(getGapInterpolationIssueMessage(gapInterpolationAnalysis.issue));
       return;
     }
 
@@ -926,38 +978,13 @@ function VideoEditorContent() {
 
       setGapInterpolationProgress(92);
       setGapInterpolationStatus(t.saving || "Saving...");
-
-      const createdClips: Clip[] = [];
-      const persistTasks: Promise<void>[] = [];
-      const frameDuration = gapDuration / generatedFrames.length;
-      let nextStart = firstClip.startTime + firstClip.duration;
-
-      for (let i = 0; i < generatedFrames.length; i++) {
-        const imageData = generatedFrames[i];
-        const blob = await dataUrlToBlob(imageData);
-        const sourceUrl = URL.createObjectURL(blob);
-        const duration = i === generatedFrames.length - 1
-          ? Math.max(VIDEO_GAP_INTERPOLATION_MIN_GAP, secondClip.startTime - nextStart)
-          : frameDuration;
-
-        const clip = createImageClip(
-          firstClip.trackId,
-          sourceUrl,
-          outputSize,
-          nextStart,
-          duration,
-        );
-        clip.name = `${firstClip.name} • AI ${i + 1}/${generatedFrames.length}`;
-        clip.imageData = imageData;
-        createdClips.push(clip);
-        nextStart += duration;
-
-        persistTasks.push(
-          saveMediaBlob(clip.id, blob).catch((error) => {
-            console.error("Failed to save interpolated media blob:", error);
-          })
-        );
-      }
+      const { createdClips, persistTasks } = await buildGapInterpolationClips({
+        generatedFrames,
+        firstClip,
+        secondClip,
+        gapDuration,
+        outputSize,
+      });
 
       saveToHistory();
       addClips(createdClips);
