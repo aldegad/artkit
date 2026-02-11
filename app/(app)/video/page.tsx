@@ -141,6 +141,20 @@ interface VideoEditorTranslationSource {
   frameInterpolationDescription?: string;
 }
 
+function findValidPositionKeyframeClip(
+  clips: Clip[],
+  selection: { clipId: string; keyframeId: string } | null
+): Clip | null {
+  if (!selection) return null;
+  const clip = clips.find((candidate) => candidate.id === selection.clipId);
+  if (!clip || clip.type === "audio") return null;
+
+  const hasKeyframe = getClipPositionKeyframes(clip).some(
+    (keyframe) => keyframe.id === selection.keyframeId
+  );
+  return hasKeyframe ? clip : null;
+}
+
 
 function createVideoMenuTranslations(t: VideoEditorTranslationSource) {
   return {
@@ -448,21 +462,16 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const selectedPositionKeyframeClip = useMemo(
+    () => findValidPositionKeyframeClip(clips, selectedPositionKeyframe),
+    [clips, selectedPositionKeyframe]
+  );
 
   useEffect(() => {
-    if (!selectedPositionKeyframe) return;
-    const clip = clips.find((candidate) => candidate.id === selectedPositionKeyframe.clipId);
-    if (!clip || clip.type === "audio") {
-      setSelectedPositionKeyframe(null);
-      return;
-    }
-    const hasKeyframe = getClipPositionKeyframes(clip).some(
-      (keyframe) => keyframe.id === selectedPositionKeyframe.keyframeId
-    );
-    if (!hasKeyframe) {
+    if (selectedPositionKeyframe && !selectedPositionKeyframeClip) {
       setSelectedPositionKeyframe(null);
     }
-  }, [clips, selectedPositionKeyframe, setSelectedPositionKeyframe]);
+  }, [selectedPositionKeyframe, selectedPositionKeyframeClip, setSelectedPositionKeyframe]);
 
   const gapInterpolationAnalysis = useMemo(
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
@@ -579,29 +588,28 @@ function VideoEditorContent() {
 
   const handleDeleteSelectedPositionKeyframe = useCallback((): boolean => {
     if (!selectedPositionKeyframe) return false;
-
-    const clip = clips.find((candidate) => candidate.id === selectedPositionKeyframe.clipId);
-    if (!clip || clip.type === "audio") {
-      setSelectedPositionKeyframe(null);
-      return true;
-    }
-
-    const hasKeyframe = getClipPositionKeyframes(clip).some(
-      (keyframe) => keyframe.id === selectedPositionKeyframe.keyframeId
-    );
-    if (!hasKeyframe) {
+    if (!selectedPositionKeyframeClip) {
       setSelectedPositionKeyframe(null);
       return true;
     }
 
     saveToHistory();
-    const result = removeClipPositionKeyframeById(clip, selectedPositionKeyframe.keyframeId);
+    const result = removeClipPositionKeyframeById(
+      selectedPositionKeyframeClip,
+      selectedPositionKeyframe.keyframeId
+    );
     if (result.removed) {
-      updateClip(clip.id, result.updates);
+      updateClip(selectedPositionKeyframeClip.id, result.updates);
     }
     setSelectedPositionKeyframe(null);
     return result.removed;
-  }, [clips, saveToHistory, selectedPositionKeyframe, setSelectedPositionKeyframe, updateClip]);
+  }, [
+    saveToHistory,
+    selectedPositionKeyframe,
+    selectedPositionKeyframeClip,
+    setSelectedPositionKeyframe,
+    updateClip,
+  ]);
 
   const {
     handleCopy,
