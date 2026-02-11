@@ -21,15 +21,20 @@ import {
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
-const MAGIC_WAND_TOLERANCE = 24;
 const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
 const MAGIC_WAND_OUTLINE_DASH = [4, 4];
+const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
   const { brushColor, setBrushColor, brushSize, brushHardness, activePreset, pressureEnabled } = useEditorBrush();
   const { pushHistory } = useEditorHistory();
-  const { toolMode, isPanLocked } = useEditorTools();
+  const {
+    toolMode,
+    isPanLocked,
+    magicWandTolerance,
+    magicWandFeather,
+  } = useEditorTools();
   const { t } = useLanguage();
 
   const isBrushTool = toolMode === "brush" || toolMode === "eraser";
@@ -57,6 +62,7 @@ export default function FramePreviewContent() {
   const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dabBufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dabBufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
 
   const validFrames = frames.filter((f) => f.imageData);
   const editFrameIndex = editFrameId !== null ? validFrames.findIndex((f) => f.id === editFrameId) : -1;
@@ -115,6 +121,7 @@ export default function FramePreviewContent() {
   const clearMagicWandSelection = useCallback(() => {
     magicWandSelectionRef.current = null;
     magicWandMaskCanvasRef.current = null;
+    magicWandSeedRef.current = null;
     requestRender();
   }, [requestRender]);
 
@@ -171,6 +178,11 @@ export default function FramePreviewContent() {
         && selection.width === sourceCanvas.width
         && selection.height === sourceCanvas.height
       ) {
+        const dashCycle = MAGIC_WAND_OUTLINE_DASH.reduce((sum, value) => sum + value, 0);
+        const antsOffset = dashCycle > 0
+          ? -((performance.now() / MAGIC_WAND_OUTLINE_SPEED_MS) % dashCycle)
+          : 0;
+
         ctx.save();
         ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
         ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
@@ -181,14 +193,14 @@ export default function FramePreviewContent() {
           color: "rgba(0, 0, 0, 0.9)",
           lineWidth: 2,
           dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: 0,
+          dashOffset: antsOffset,
         });
         drawMagicWandSelectionOutline(ctx, selection, {
           zoom,
           color: "rgba(255, 255, 255, 0.95)",
           lineWidth: 1,
           dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: 4,
+          dashOffset: antsOffset + (dashCycle / 2),
         });
       }
     });
@@ -199,6 +211,20 @@ export default function FramePreviewContent() {
       requestRender();
     });
   }, [onFrameViewportChange, requestRender]);
+
+  useEffect(() => {
+    let rafId = 0;
+    const animateSelectionOutline = () => {
+      if (magicWandSelectionRef.current) {
+        requestRender();
+      }
+      rafId = window.requestAnimationFrame(animateSelectionOutline);
+    };
+    rafId = window.requestAnimationFrame(animateSelectionOutline);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [requestRender]);
 
   useEffect(() => {
     setFrameVpPan({ x: 0, y: 0 });
@@ -313,7 +339,39 @@ export default function FramePreviewContent() {
 
     const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
     const selection = computeMagicWandSelection(imageData, x, y, {
-      tolerance: MAGIC_WAND_TOLERANCE,
+      tolerance: magicWandTolerance,
+      connectedOnly: true,
+    });
+
+    if (!selection) {
+      clearMagicWandSelection();
+      return;
+    }
+
+    magicWandSeedRef.current = { x, y };
+    magicWandSelectionRef.current = selection;
+    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
+      feather: magicWandFeather,
+    });
+    requestRender();
+  }, [clearMagicWandSelection, magicWandFeather, magicWandTolerance, requestRender]);
+
+  useEffect(() => {
+    const seed = magicWandSeedRef.current;
+    const frameCtx = frameCtxRef.current;
+    const frameCanvas = frameCanvasRef.current;
+    if (!seed || !frameCtx || !frameCanvas) {
+      return;
+    }
+
+    if (seed.x < 0 || seed.y < 0 || seed.x >= frameCanvas.width || seed.y >= frameCanvas.height) {
+      clearMagicWandSelection();
+      return;
+    }
+
+    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
+    const selection = computeMagicWandSelection(imageData, seed.x, seed.y, {
+      tolerance: magicWandTolerance,
       connectedOnly: true,
     });
 
@@ -323,9 +381,11 @@ export default function FramePreviewContent() {
     }
 
     magicWandSelectionRef.current = selection;
-    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection);
+    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
+      feather: magicWandFeather,
+    });
     requestRender();
-  }, [clearMagicWandSelection, requestRender]);
+  }, [clearMagicWandSelection, magicWandFeather, magicWandTolerance, requestRender]);
 
   const clearSelectedPixels = useCallback(() => {
     const frameCtx = frameCtxRef.current;
@@ -450,6 +510,7 @@ export default function FramePreviewContent() {
       if (!isInteractiveElement && !e.repeat && (e.key === "Delete" || e.key === "Backspace")) {
         if (magicWandSelectionRef.current && magicWandMaskCanvasRef.current) {
           e.preventDefault();
+          e.stopPropagation();
           pushHistory();
           if (clearSelectedPixels()) {
             requestRender();
@@ -471,11 +532,11 @@ export default function FramePreviewContent() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyUp);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, [clearMagicWandSelection, clearSelectedPixels, commitFrameEdits, frameEndPanDrag, pushHistory, requestRender]);
