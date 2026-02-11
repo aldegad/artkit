@@ -9,6 +9,7 @@ interface AnimPreviewVpApi {
   setZoom: (zoom: number) => void;
   setPan: (pan: Point) => void;
   getZoom: () => number;
+  fitToContainer: (padding?: number, maxScale?: number) => void;
 }
 
 interface SpriteViewportStore {
