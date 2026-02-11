@@ -13,6 +13,7 @@ import {
   clearCloudProjects,
 } from "../services/projectStorage";
 import { loadEditorAutosaveData, clearEditorAutosaveData } from "../utils/autosave";
+import { confirmDialog, showErrorToast } from "@/shared/components";
 
 interface UseImageProjectIOOptions {
   user: User | null;
@@ -214,7 +215,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     try {
       const project = await storageProvider.getProject(projectMeta.id);
       if (!project) {
-        alert(t.loadFailed || "Failed to load project");
+        showErrorToast(t.loadFailed || "Failed to load project");
         return;
       }
 
@@ -268,7 +269,8 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
   ]);
 
   const handleDeleteProject = useCallback(async (id: string) => {
-    if (!confirm(t.deleteConfirm)) return;
+    const shouldDelete = await confirmDialog(t.deleteConfirm);
+    if (!shouldDelete) return;
 
     setIsLoading(true);
     try {
@@ -280,14 +282,17 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
       }
     } catch (error) {
       console.error("Failed to delete project:", error);
-      alert(`${t.deleteFailed}: ${(error as Error).message}`);
+      showErrorToast(`${t.deleteFailed}: ${(error as Error).message}`);
     } finally {
       setIsLoading(false);
     }
   }, [t.deleteConfirm, t.deleteFailed, storageProvider, refreshProjects, currentProjectId, setCurrentProjectId]);
 
-  const handleNewCanvas = useCallback(() => {
-    if (layers.length > 0 && !confirm(t.unsavedChangesConfirm)) return;
+  const handleNewCanvas = useCallback(async () => {
+    if (layers.length > 0) {
+      const shouldReset = await confirmDialog(t.unsavedChangesConfirm);
+      if (!shouldReset) return;
+    }
 
     clearEditorAutosaveData();
 

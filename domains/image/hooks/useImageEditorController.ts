@@ -558,7 +558,12 @@ export function useImageEditorController() {
     setPan,
   });
 
-  const { showRotateMenu, toggleRotateMenu, handleRotateLeft, handleRotateRight } = useRotateMenu({ rotate });
+  const {
+    showRotateMenu,
+    setRotateMenuOpen,
+    handleRotateLeft,
+    handleRotateRight,
+  } = useRotateMenu({ rotate });
 
   const { handleExportFromModal } = useImageExport({
     layers,
@@ -761,7 +766,7 @@ export function useImageEditorController() {
       onUndo: handleUndo,
       onRedo: handleRedo,
       showRotateMenu,
-      onToggleRotateMenu: toggleRotateMenu,
+      onRotateMenuOpenChange: setRotateMenuOpen,
       onRotateLeft: handleRotateLeft,
       onRotateRight: handleRotateRight,
       zoom,
@@ -778,7 +783,7 @@ export function useImageEditorController() {
       handleUndo,
       handleRedo,
       showRotateMenu,
-      toggleRotateMenu,
+      setRotateMenuOpen,
       handleRotateLeft,
       handleRotateRight,
       zoom,

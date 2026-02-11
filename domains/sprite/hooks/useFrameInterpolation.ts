@@ -6,6 +6,7 @@ import {
   interpolateFramesWithAI,
   type RifeInterpolationQuality,
 } from "@/shared/ai/frameInterpolation";
+import { showErrorToast, showInfoToast } from "@/shared/components";
 
 interface UseFrameInterpolationOptions {
   frames: SpriteFrame[];
@@ -106,13 +107,13 @@ export function useFrameInterpolation(
     const selectedFrames = sortSelectedFrames(frames, selectedFrameIds);
 
     if (selectedFrames.length < 2) {
-      alert(t.selectFramesForInterpolation || "Select at least 2 frames.");
+      showInfoToast(t.selectFramesForInterpolation || "Select at least 2 frames.");
       return;
     }
 
     const selectedFramesWithoutImage = selectedFrames.filter(({ frame }) => !frame.imageData);
     if (selectedFramesWithoutImage.length > 0) {
-      alert(t.frameImageNotFound || "One or more selected frames do not have an image.");
+      showInfoToast(t.frameImageNotFound || "One or more selected frames do not have an image.");
       return;
     }
 
@@ -186,7 +187,7 @@ export function useFrameInterpolation(
     } catch (error) {
       console.error("Frame interpolation failed:", error);
       setInterpolationStatus("Failed");
-      alert(t.interpolationFailed || "Frame interpolation failed. Please try again.");
+      showErrorToast(t.interpolationFailed || "Frame interpolation failed. Please try again.");
     } finally {
       setIsInterpolating(false);
       setTimeout(() => {

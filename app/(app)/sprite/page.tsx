@@ -39,7 +39,15 @@ import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay, PanLockFloatingButton } from "@/shared/components";
+import {
+  HeaderContent,
+  SaveToast,
+  LoadingOverlay,
+  PanLockFloatingButton,
+  confirmDialog,
+  showErrorToast,
+  showInfoToast,
+} from "@/shared/components";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
   getSpriteStorageProvider,
@@ -643,7 +651,7 @@ function SpriteEditorMain() {
       track.frames.some((frame) => Boolean(frame.imageData)),
     );
     if (!hasImageFrames) {
-      alert(t.noFramesToSave || "No frames to resample.");
+      showInfoToast(t.noFramesToSave || "No frames to resample.");
       return;
     }
 
@@ -663,7 +671,7 @@ function SpriteEditorMain() {
       );
 
     if (!currentCanvasSize) {
-      alert("리샘플 기준 해상도를 찾지 못했습니다.");
+      showInfoToast("리샘플 기준 해상도를 찾지 못했습니다.");
       return;
     }
 
@@ -687,9 +695,12 @@ function SpriteEditorMain() {
       const currentAspect = currentCanvasSize.width / currentCanvasSize.height;
       const nextAspect = nextCanvasSize.width / nextCanvasSize.height;
       if (Math.abs(currentAspect - nextAspect) > 0.0001) {
-        const keepGoing = window.confirm(
-          "비율이 달라 프레임이 왜곡될 수 있습니다. 계속 진행할까요?",
-        );
+        const keepGoing = await confirmDialog({
+          title: "비율 확인",
+          message: "비율이 달라 프레임이 왜곡될 수 있습니다. 계속 진행할까요?",
+          confirmLabel: "계속",
+          cancelLabel: "취소",
+        });
         if (!keepGoing) return;
       }
 
@@ -785,7 +796,7 @@ function SpriteEditorMain() {
       setCanvasExpandMode(false);
     } catch (error) {
       console.error("Failed to resample sprite project:", error);
-      alert((error as Error).message || "전체 해상도 리샘플에 실패했습니다.");
+      showErrorToast((error as Error).message || "전체 해상도 리샘플에 실패했습니다.");
     } finally {
       setIsResampling(false);
     }
@@ -862,7 +873,7 @@ function SpriteEditorMain() {
       setIsExportModalOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
-      alert(`${t.exportFailed}: ${(error as Error).message}`);
+      showErrorToast(`${t.exportFailed}: ${(error as Error).message}`);
     }
   }, [hasRenderableFrames, tracks, projectName, fps, t.exportFailed, exportMp4, startProgress, endProgress]);
 
@@ -909,7 +920,7 @@ function SpriteEditorMain() {
       setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Save failed:", error);
-      alert(`${t.saveFailed}: ${(error as Error).message}`);
+      showErrorToast(`${t.saveFailed}: ${(error as Error).message}`);
     } finally {
       saveInFlightRef.current = false;
       setIsSaving(false);
@@ -976,7 +987,7 @@ function SpriteEditorMain() {
       setSaveCount((c) => c + 1);
     } catch (error) {
       console.error("Save failed:", error);
-      alert(`${t.saveFailed}: ${(error as Error).message}`);
+      showErrorToast(`${t.saveFailed}: ${(error as Error).message}`);
     } finally {
       saveInFlightRef.current = false;
       setIsSaving(false);
@@ -1039,7 +1050,7 @@ function SpriteEditorMain() {
         setIsProjectListOpen(false);
       } catch (error) {
         console.error("Load failed:", error);
-        alert((error as Error).message);
+        showErrorToast((error as Error).message);
       } finally {
         setIsProjectLoading(false);
         setLoadProgress(null);
@@ -1063,7 +1074,8 @@ function SpriteEditorMain() {
   // Delete project
   const deleteProject = useCallback(
     async (projectId: string) => {
-      if (!confirm(t.deleteConfirm)) return;
+      const shouldDelete = await confirmDialog(t.deleteConfirm);
+      if (!shouldDelete) return;
 
       setIsProjectLoading(true);
       setLoadProgress(null);
@@ -1076,7 +1088,7 @@ function SpriteEditorMain() {
         setStorageInfo(info);
       } catch (error) {
         console.error("Delete failed:", error);
-        alert(`${t.deleteFailed}: ${(error as Error).message}`);
+        showErrorToast(`${t.deleteFailed}: ${(error as Error).message}`);
       } finally {
         setIsProjectLoading(false);
         setLoadProgress(null);
@@ -1108,17 +1120,19 @@ function SpriteEditorMain() {
   }, [toolMode, setSpriteToolMode]);
 
   // Handle new project with confirmation
-  const handleNew = useCallback(() => {
+  const handleNew = useCallback(async () => {
     if (frames.length > 0 || imageSrc) {
-      if (window.confirm(t.newProjectConfirm)) {
-        setCanvasSize(null);
-        newProject();
-      }
-    } else {
-      setCanvasSize(null);
-      newProject();
+      const shouldCreate = await confirmDialog({
+        title: t.new || "New Project",
+        message: t.newProjectConfirm,
+        confirmLabel: t.new || "New",
+        cancelLabel: t.cancel || "Cancel",
+      });
+      if (!shouldCreate) return;
     }
-  }, [frames.length, imageSrc, t.newProjectConfirm, newProject, setCanvasSize]);
+    setCanvasSize(null);
+    newProject();
+  }, [frames.length, imageSrc, t.cancel, t.new, t.newProjectConfirm, newProject, setCanvasSize]);
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
@@ -1142,6 +1156,11 @@ function SpriteEditorMain() {
             : (t.saving || "Saving…")
         }
         savedLabel={t.saved || "Saved"}
+        progress={saveProgress ? {
+          current: saveProgress.current,
+          total: Math.max(1, saveProgress.total),
+          detail: saveProgress.itemName,
+        } : null}
       />
 
       {/* Hidden file input for menu-triggered image import */}

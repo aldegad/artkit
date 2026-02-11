@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 interface UseRotateMenuOptions {
   rotate: (degrees: number) => void;
@@ -8,7 +8,7 @@ interface UseRotateMenuOptions {
 
 interface UseRotateMenuReturn {
   showRotateMenu: boolean;
-  toggleRotateMenu: () => void;
+  setRotateMenuOpen: (open: boolean) => void;
   handleRotateLeft: () => void;
   handleRotateRight: () => void;
 }
@@ -16,10 +16,6 @@ interface UseRotateMenuReturn {
 export function useRotateMenu(options: UseRotateMenuOptions): UseRotateMenuReturn {
   const { rotate } = options;
   const [showRotateMenu, setShowRotateMenu] = useState(false);
-
-  const toggleRotateMenu = useCallback(() => {
-    setShowRotateMenu((prev) => !prev);
-  }, []);
 
   const handleRotateLeft = useCallback(() => {
     rotate(-90);
@@ -31,16 +27,9 @@ export function useRotateMenu(options: UseRotateMenuOptions): UseRotateMenuRetur
     setShowRotateMenu(false);
   }, [rotate]);
 
-  useEffect(() => {
-    if (!showRotateMenu) return;
-    const handleClickOutside = () => setShowRotateMenu(false);
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, [showRotateMenu]);
-
   return {
     showRotateMenu,
-    toggleRotateMenu,
+    setRotateMenuOpen: setShowRotateMenu,
     handleRotateLeft,
     handleRotateRight,
   };

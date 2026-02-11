@@ -6,6 +6,7 @@ import {
   removeBackground,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
+import { showErrorToast, showInfoToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -66,7 +67,7 @@ export function useFrameBackgroundRemoval(
       const frameIndex = getCurrentFrameIndex ? getCurrentFrameIndex() : (currentFrameIndex ?? 0);
       const currentFrame = frames[frameIndex];
       if (!currentFrame?.imageData) {
-        alert(t.selectFrameForBgRemoval || "No frame available.");
+        showInfoToast(t.selectFrameForBgRemoval || "No frame available.");
         return;
       }
       framesToProcess.push(currentFrame);
@@ -78,7 +79,7 @@ export function useFrameBackgroundRemoval(
         }
       }
       if (framesToProcess.length === 0) {
-        alert(t.selectFrameForBgRemoval || "No selected frames with images found.");
+        showInfoToast(t.selectFrameForBgRemoval || "No selected frames with images found.");
         return;
       }
     } else {
@@ -88,7 +89,7 @@ export function useFrameBackgroundRemoval(
         }
       }
       if (framesToProcess.length === 0) {
-        alert(t.frameImageNotFound || "No frames with images found.");
+        showInfoToast(t.frameImageNotFound || "No frames with images found.");
         return;
       }
     }
@@ -133,7 +134,7 @@ export function useFrameBackgroundRemoval(
     } catch (error) {
       console.error("Background removal failed:", error);
       setBgRemovalStatus("Failed");
-      alert(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
+      showErrorToast(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
     } finally {
       setIsRemovingBackground(false);
       setTimeout(() => {

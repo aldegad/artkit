@@ -4,6 +4,7 @@
 
 import { useCallback } from "react";
 import type { MouseEventContext, HandlerResult, BrushHandlerOptions } from "./types";
+import { showInfoToast } from "@/shared/components";
 
 export interface UseBrushHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
@@ -26,7 +27,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
         }
 
         if (!stampSource) {
-          alert("Alt+클릭으로 복제 소스를 먼저 지정하세요");
+          showInfoToast("Alt+클릭으로 복제 소스를 먼저 지정하세요");
           return { handled: true };
         }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { confirmDialog, showErrorToast } from "@/shared/components";
 import {
   Clip,
   INITIAL_TIMELINE_VIEW,
@@ -158,7 +159,7 @@ export function useVideoProjectLibrary(
     try {
       const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
       if (!loaded) {
-        alert("Failed to load project");
+        showErrorToast("Failed to load project");
         return;
       }
 
@@ -278,7 +279,7 @@ export function useVideoProjectLibrary(
       setIsProjectListOpen(false);
     } catch (error) {
       console.error("Failed to load project:", error);
-      alert(`Load failed: ${(error as Error).message}`);
+      showErrorToast(`Load failed: ${(error as Error).message}`);
     } finally {
       setIsLoadingProject(false);
       setLoadProgress(null);
@@ -303,7 +304,14 @@ export function useVideoProjectLibrary(
   ]);
 
   const deleteProject = useCallback(async (projectId: string) => {
-    if (!window.confirm(deleteConfirmLabel || "Delete this project?")) return;
+    const shouldDelete = await confirmDialog({
+      title: "Delete Project",
+      message: deleteConfirmLabel || "Delete this project?",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+    });
+    if (!shouldDelete) return;
     setIsLoadingProject(true);
     setProjectListOperation("delete");
     setLoadProgress(null);

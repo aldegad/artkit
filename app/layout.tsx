@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider, LanguageProvider, AuthProvider } from "../shared/contexts";
+import { ToastProvider } from "../shared/components/ToastProvider";
+import { ConfirmDialogProvider } from "../shared/components/ConfirmDialogProvider";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -51,7 +53,11 @@ export default function RootLayout({
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>
-              {children}
+              <ToastProvider>
+                <ConfirmDialogProvider>
+                  {children}
+                </ConfirmDialogProvider>
+              </ToastProvider>
             </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
