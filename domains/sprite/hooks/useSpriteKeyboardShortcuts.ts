@@ -15,6 +15,10 @@ interface UseSpriteKeyboardShortcutsOptions {
   saveProject: () => void;
   saveProjectAs: () => void;
   toolMode: SpriteToolMode;
+  brushSize: number;
+  setBrushSize: (value: number) => void;
+  magicWandTolerance: number;
+  setMagicWandTolerance: (value: number) => void;
   applyCrop?: () => void;
   clearCrop?: () => void;
 }
@@ -31,10 +35,26 @@ export function useSpriteKeyboardShortcuts({
   saveProject,
   saveProjectAs,
   toolMode,
+  brushSize,
+  setBrushSize,
+  magicWandTolerance,
+  setMagicWandTolerance,
   applyCrop,
   clearCrop,
 }: UseSpriteKeyboardShortcutsOptions) {
   useEffect(() => {
+    const BRUSH_SIZE_MIN = 1;
+    const BRUSH_SIZE_MAX = 200;
+    const WAND_TOLERANCE_MIN = 0;
+    const WAND_TOLERANCE_MAX = 255;
+    const isDecreaseKey = (event: KeyboardEvent) =>
+      event.code === "Minus" || event.code === "NumpadSubtract" || event.key === "-";
+    const isIncreaseKey = (event: KeyboardEvent) =>
+      event.code === "Equal"
+      || event.code === "NumpadAdd"
+      || event.key === "="
+      || event.key === "+";
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInteractiveElement =
@@ -57,6 +77,24 @@ export function useSpriteKeyboardShortcuts({
 
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         if (isInteractiveElement) {
+          return;
+        }
+
+        if (isDecreaseKey(e) || isIncreaseKey(e)) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1;
+          const delta = isIncreaseKey(e) ? step : -step;
+
+          if (toolMode === "brush" || toolMode === "eraser") {
+            setBrushSize(Math.max(BRUSH_SIZE_MIN, Math.min(BRUSH_SIZE_MAX, brushSize + delta)));
+          } else if (toolMode === "magicwand") {
+            setMagicWandTolerance(
+              Math.max(
+                WAND_TOLERANCE_MIN,
+                Math.min(WAND_TOLERANCE_MAX, magicWandTolerance + delta),
+              ),
+            );
+          }
           return;
         }
 
@@ -141,6 +179,10 @@ export function useSpriteKeyboardShortcuts({
     saveProject,
     saveProjectAs,
     toolMode,
+    brushSize,
+    setBrushSize,
+    magicWandTolerance,
+    setMagicWandTolerance,
     applyCrop,
     clearCrop,
   ]);
