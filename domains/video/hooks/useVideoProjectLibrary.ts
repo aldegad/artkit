@@ -28,8 +28,7 @@ interface UseVideoProjectLibraryOptions {
   restoreMasks: (masks: MaskData[]) => void;
   setViewState: (next: TimelineViewState) => void;
   seek: (time: number) => void;
-  setLoopRange: (start: number, end: number, enableLoop?: boolean) => void;
-  toggleLoop: () => void;
+  setLoopRange: (start: number, end: number, enableLoop?: boolean, durationHint?: number) => void;
   toolMode: VideoToolMode;
   autoKeyframeEnabled: boolean;
   selectClips: (clipIds: string[]) => void;
@@ -128,7 +127,6 @@ export function useVideoProjectLibrary(
     setViewState,
     seek,
     setLoopRange,
-    toggleLoop,
     toolMode,
     autoKeyframeEnabled,
     selectClips,
@@ -245,40 +243,33 @@ export function useVideoProjectLibrary(
           }
         : undefined;
 
-      await new Promise<void>((resolve) => {
-        window.setTimeout(() => {
-          setLoopRange(targetStart, targetEnd, true);
-          if (!targetLoop) {
-            toggleLoop();
-          }
-          seek(persistedCurrentTime);
+      setLoopRange(targetStart, targetEnd, targetLoop, duration);
+      seek(persistedCurrentTime);
 
-          void saveVideoAutosave({
-            project: {
-              ...loadedProject,
-              name: loaded.name,
-              tracks: loadedProject.tracks,
-              clips: restoredClips,
-              duration: loadedDuration,
-            },
-            projectName: loaded.name,
+      try {
+        await saveVideoAutosave({
+          project: {
+            ...loadedProject,
+            name: loaded.name,
             tracks: loadedProject.tracks,
             clips: restoredClips,
-            masks: loadedProject.masks || [],
-            timelineView: normalizedTimelineView,
-            currentTime: persistedCurrentTime,
-            playbackRange: normalizedPlaybackRange,
-            toolMode,
-            autoKeyframeEnabled,
-            selectedClipIds: [],
-            selectedMaskIds: [],
-          })
-            .catch((error) => {
-              console.error("Failed to persist autosave after project load:", error);
-            })
-            .finally(resolve);
-        }, 0);
-      });
+            duration: loadedDuration,
+          },
+          projectName: loaded.name,
+          tracks: loadedProject.tracks,
+          clips: restoredClips,
+          masks: loadedProject.masks || [],
+          timelineView: normalizedTimelineView,
+          currentTime: persistedCurrentTime,
+          playbackRange: normalizedPlaybackRange,
+          toolMode,
+          autoKeyframeEnabled,
+          selectedClipIds: [],
+          selectedMaskIds: [],
+        });
+      } catch (error) {
+        console.error("Failed to persist autosave after project load:", error);
+      }
 
       setCurrentProjectId(loaded.id);
       selectClips([]);
@@ -309,7 +300,6 @@ export function useVideoProjectLibrary(
     storageProvider,
     toolMode,
     autoKeyframeEnabled,
-    toggleLoop,
   ]);
 
   const deleteProject = useCallback(async (projectId: string) => {
