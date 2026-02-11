@@ -1238,8 +1238,13 @@ export default function AnimationPreviewContent() {
         target.tagName === "SELECT" ||
         target.tagName === "TEXTAREA" ||
         target.isContentEditable;
+      const isTextInputElement =
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
 
-      if (e.code === "Space" && !e.repeat && !isInteractiveElement) {
+      if (e.code === "Space" && !e.repeat && !isTextInputElement) {
         e.preventDefault();
         setIsPanning(true);
       }
