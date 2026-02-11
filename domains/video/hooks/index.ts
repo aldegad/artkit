@@ -19,6 +19,7 @@ export { useWebAudioPlayback } from "./useWebAudioPlayback";
 export { useVideoExport } from "./useVideoExport";
 export { useClipTransformTool } from "./useClipTransformTool";
 export { usePreviewViewportState } from "./usePreviewViewportState";
+export { useVideoToolModeHandlers } from "./useVideoToolModeHandlers";
 export type {
   ExportProgressState,
   VideoExportFormat,
