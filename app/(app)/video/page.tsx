@@ -642,15 +642,19 @@ function VideoEditorContent() {
     openProjectList();
   }, [openProjectList]);
 
-  const handleSave = useCallback(async () => {
+  const runProjectSaveAction = useCallback(async (action: () => Promise<void>) => {
     try {
-      await saveProject();
-      setSaveCount((c) => c + 1);
+      await action();
+      setSaveCount((count) => count + 1);
     } catch (error) {
       console.error("Failed to save project:", error);
       showErrorToast(`Save failed: ${(error as Error).message}`);
     }
-  }, [saveProject]);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    await runProjectSaveAction(saveProject);
+  }, [runProjectSaveAction, saveProject]);
 
   const handleSaveAs = useCallback(async () => {
     const suggestedName = projectName || "Untitled Project";
@@ -658,14 +662,8 @@ function VideoEditorContent() {
     if (!nextName) return;
 
     setProjectName(nextName);
-    try {
-      await saveAsProject(nextName);
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      showErrorToast(`Save failed: ${(error as Error).message}`);
-    }
-  }, [projectName, setProjectName, saveAsProject]);
+    await runProjectSaveAction(() => saveAsProject(nextName));
+  }, [projectName, runProjectSaveAction, saveAsProject, setProjectName]);
 
   const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
     await loadProject(projectMeta);
