@@ -223,6 +223,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isPanningRef.current = false;
   }, [vpEndPanDrag]);
 
+  const startPanDragFromPointer = useCallback((target: EventTarget | null, pointerId: number, clientX: number, clientY: number) => {
+    safeSetPointerCapture(target, pointerId);
+    vpStartPanDrag({ x: clientX, y: clientY });
+    isPanningRef.current = true;
+  }, [vpStartPanDrag]);
+
   const dragStateRef = useRef<{
     clipId: string | null;
     pointerStart: { x: number; y: number };
@@ -1205,18 +1211,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Middle mouse button drag for pan
     if (e.button === 1) {
       e.preventDefault();
-      safeSetPointerCapture(e.currentTarget, e.pointerId);
-      vpStartPanDrag({ x: e.clientX, y: e.clientY });
-      isPanningRef.current = true;
+      startPanDragFromPointer(e.currentTarget, e.pointerId, e.clientX, e.clientY);
       return;
     }
 
     const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
     if (isTouchPanOnlyInput && e.button === 0) {
       e.preventDefault();
-      safeSetPointerCapture(e.currentTarget, e.pointerId);
-      vpStartPanDrag({ x: e.clientX, y: e.clientY });
-      isPanningRef.current = true;
+      startPanDragFromPointer(e.currentTarget, e.pointerId, e.clientX, e.clientY);
       return;
     }
 
@@ -1229,9 +1231,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     if (isHandMode && e.button === 0) {
       e.preventDefault();
-      safeSetPointerCapture(e.currentTarget, e.pointerId);
-      vpStartPanDrag({ x: e.clientX, y: e.clientY });
-      isPanningRef.current = true;
+      startPanDragFromPointer(e.currentTarget, e.pointerId, e.clientX, e.clientY);
       return;
     }
 
@@ -1279,7 +1279,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     };
     setIsDraggingClip(true);
   }, [
-    vpStartPanDrag,
+    startPanDragFromPointer,
     isPanLocked,
     isZoomTool,
     zoomAtClientPoint,
@@ -1355,10 +1355,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           nextPosition
         )
       );
-      scheduleRender();
-      return;
+    } else {
+      updateClip(clipId, { position: nextPosition });
     }
-    updateClip(clipId, { position: nextPosition });
     scheduleRender();
   }, [vpUpdatePanDrag, screenToProject, isDraggingClip, updateClip, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender, autoKeyframeEnabled, currentTimeRef, handleMaskPointerMove, handleCropPointerMove]);
 
