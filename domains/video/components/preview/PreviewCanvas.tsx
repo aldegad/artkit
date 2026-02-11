@@ -32,6 +32,7 @@ import { usePreviewMediaPlaybackSync } from "./usePreviewMediaPlaybackSync";
 import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 import { usePreviewPlaybackRenderTick } from "./usePreviewPlaybackRenderTick";
 import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
+import { resolvePreviewCanvasCursor } from "./previewCanvasCursor";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -112,37 +113,6 @@ function countActiveVisualLayersAtTime(
     activeVisualLayers += 1;
   }
   return activeVisualLayers;
-}
-
-function resolvePreviewCanvasCursor(options: {
-  isPanning: boolean;
-  isHandMode: boolean;
-  isEditingMask: boolean;
-  maskDrawShape: "brush" | "rectangle";
-  isZoomTool: boolean;
-  toolMode: string;
-  isDraggingCrop: boolean;
-  cropDragMode: string;
-  cropCursor: string;
-  transformCursor: string;
-  isDraggingClip: boolean;
-}): string {
-  if (options.isPanning) return "grabbing";
-  if (options.isHandMode) return "grab";
-  if (options.isEditingMask) {
-    return options.maskDrawShape === "rectangle" ? "crosshair" : "none";
-  }
-  if (options.isZoomTool) return "zoom-in";
-  if (options.toolMode === "crop") {
-    if (options.isDraggingCrop) {
-      return options.cropDragMode === "move" ? "grabbing" : options.cropCursor;
-    }
-    return options.cropCursor;
-  }
-  if (options.toolMode === "transform") return options.transformCursor;
-  if (options.isDraggingClip) return "grabbing";
-  if (options.toolMode === "select") return "grab";
-  return "default";
 }
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
