@@ -96,6 +96,7 @@ export function useImageEditorController() {
       showGuides,
       lockGuides,
       snapToGuides,
+      isPanLocked,
     },
     setCanvasSize,
     setRotation,
@@ -112,6 +113,7 @@ export function useImageEditorController() {
     setShowGuides,
     setLockGuides,
     setSnapToGuides,
+    setIsPanLocked,
   } = useEditorState();
 
   const { canvasRef, containerRef, imageRef, fileInputRef, editCanvasRef } = useEditorRefs();
@@ -745,11 +747,17 @@ export function useImageEditorController() {
     translations: uiText.menu,
   });
 
+  const togglePanLock = useCallback(() => {
+    setIsPanLocked(!isPanLocked);
+  }, [isPanLocked, setIsPanLocked]);
+
   const actionToolbarProps = useMemo(
     () => ({
       toolButtons,
       toolMode,
       onToolModeChange: handleToolModeChange,
+      isPanLocked,
+      onTogglePanLock: togglePanLock,
       onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
       isRemovingBackground,
       onUndo: handleUndo,
@@ -767,6 +775,8 @@ export function useImageEditorController() {
       toolButtons,
       toolMode,
       handleToolModeChange,
+      isPanLocked,
+      togglePanLock,
       openBackgroundRemovalConfirm,
       isRemovingBackground,
       handleUndo,
@@ -927,7 +937,6 @@ export function useImageEditorController() {
     showToolbars: toolbarModels.showToolbars,
     actionToolbarProps: toolbarModels.actionToolbarProps,
     toolOptionsBarProps: toolbarModels.toolOptionsBarProps,
-    showPanModeToggle: toolbarModels.showPanModeToggle,
     overlaysProps,
   };
 }

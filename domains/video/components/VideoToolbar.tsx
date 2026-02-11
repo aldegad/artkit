@@ -1,6 +1,7 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
+import { PanZoomToolbarButtons } from "@/shared/components";
 import {
   MoveIcon,
   TransformIcon,
@@ -27,6 +28,9 @@ interface ToolButton {
 interface VideoToolbarProps {
   toolMode: VideoToolMode;
   onToolModeChange: (mode: VideoToolMode) => void;
+  isPanLocked: boolean;
+  onTogglePanLock: () => void;
+  onFitToScreen?: () => void;
   onInterpolateGap?: () => void;
   canInterpolateGap?: boolean;
   isInterpolatingGap?: boolean;
@@ -52,12 +56,18 @@ interface VideoToolbarProps {
     frameInterpolation: string;
     frameInterpolationDescription: string;
     delete: string;
+    panLockOn: string;
+    panLockOff: string;
+    fitToScreen: string;
   };
 }
 
 export default function VideoToolbar({
   toolMode,
   onToolModeChange,
+  isPanLocked,
+  onTogglePanLock,
+  onFitToScreen,
   onInterpolateGap,
   canInterpolateGap,
   isInterpolatingGap,
@@ -166,6 +176,16 @@ export default function VideoToolbar({
           </button>
         </Tooltip>
       ))}
+
+      {/* Separator */}
+      <div className="w-px bg-border-default mx-0.5" />
+
+      <PanZoomToolbarButtons
+        isPanLocked={isPanLocked}
+        onTogglePanLock={onTogglePanLock}
+        onFitToScreen={onFitToScreen}
+        translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff, fitToScreen: t.fitToScreen }}
+      />
 
       {/* Separator */}
       <div className="w-px bg-border-default mx-0.5" />

@@ -11,6 +11,7 @@ import { ImageIcon } from "../../../shared/components/icons";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
+import { useSpriteViewportStore } from "../stores/useSpriteViewportStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useCanvasViewportBridge, type CanvasViewportState } from "@/shared/hooks/useCanvasViewportBridge";
 import { useRenderScheduler } from "@/shared/hooks/useRenderScheduler";
@@ -61,6 +62,12 @@ export default function CanvasContent() {
     enableWheel: true,
     enablePinch: true,
   });
+
+  // Subscribe to external fit requests
+  const fitTrigger = useSpriteViewportStore((s) => s.fitTrigger);
+  useEffect(() => {
+    if (fitTrigger > 0) viewport.fitToContainer();
+  }, [fitTrigger, viewport]);
 
   // Extract stable references from viewport (useCallback-backed, won't change on re-render)
   const {
