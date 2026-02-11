@@ -72,6 +72,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
   // UI store actions (selector-based)
   const setProjectName = useSpriteUIStore((s) => s.setProjectName);
   const setCurrentProjectId = useSpriteUIStore((s) => s.setCurrentProjectId);
+  const setCanvasSize = useSpriteUIStore((s) => s.setCanvasSize);
   const setIsAutosaveLoading = useSpriteUIStore((s) => s.setIsAutosaveLoading);
 
   // Autosave: Load saved data on mount
@@ -110,6 +111,9 @@ export function EditorProvider({ children }: EditorProviderProps) {
         if (data.currentProjectId !== undefined) {
           setCurrentProjectId(data.currentProjectId);
         }
+        if (data.canvasSize) {
+          setCanvasSize(data.canvasSize);
+        }
       }
       isInitializedRef.current = true;
       setIsAutosaveLoading(false);
@@ -135,6 +139,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         nextFrameId: ts.nextFrameId,
         fps: ts.fps,
         currentProjectId: us.currentProjectId,
+        canvasSize: us.canvasSize ?? undefined,
         zoom: vs.zoom,
         pan: vs.pan,
         scale: vs.scale,
@@ -183,7 +188,9 @@ export function EditorProvider({ children }: EditorProviderProps) {
     const unsubUI = useSpriteUIStore.subscribe((state, prev) => {
       if (
         state.projectName === prev.projectName &&
-        state.currentProjectId === prev.currentProjectId
+        state.currentProjectId === prev.currentProjectId &&
+        state.canvasSize?.width === prev.canvasSize?.width &&
+        state.canvasSize?.height === prev.canvasSize?.height
       ) {
         return;
       }
@@ -455,8 +462,8 @@ export function useEditorWindows() {
   const setIsVideoImportOpen = useSpriteUIStore((s) => s.setIsVideoImportOpen);
   const pendingVideoFile = useSpriteUIStore((s) => s.pendingVideoFile);
   const setPendingVideoFile = useSpriteUIStore((s) => s.setPendingVideoFile);
-  const exportFrameSize = useSpriteUIStore((s) => s.exportFrameSize);
-  const setExportFrameSize = useSpriteUIStore((s) => s.setExportFrameSize);
+  const canvasSize = useSpriteUIStore((s) => s.canvasSize);
+  const setCanvasSize = useSpriteUIStore((s) => s.setCanvasSize);
 
   return {
     isPreviewWindowOpen,
@@ -471,8 +478,8 @@ export function useEditorWindows() {
     setIsVideoImportOpen,
     pendingVideoFile,
     setPendingVideoFile,
-    exportFrameSize,
-    setExportFrameSize,
+    canvasSize,
+    setCanvasSize,
   };
 }
 

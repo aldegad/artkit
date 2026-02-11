@@ -20,7 +20,7 @@ interface SpriteUIStore {
   projectName: string;
   savedProjects: SavedSpriteProject[];
   currentProjectId: string | null;
-  exportFrameSize: Size | null;
+  canvasSize: Size | null;
 
   // Clipboard
   clipboardFrame: SpriteFrame | null;
@@ -44,7 +44,7 @@ interface SpriteUIStore {
   setProjectName: (name: string) => void;
   setSavedSpriteProjects: (projects: SavedSpriteProject[] | ((prev: SavedSpriteProject[]) => SavedSpriteProject[])) => void;
   setCurrentProjectId: (id: string | null) => void;
-  setExportFrameSize: (size: Size | null) => void;
+  setCanvasSize: (size: Size | null) => void;
 
   // Actions - Clipboard
   copyFrame: (frame: SpriteFrame) => void;
@@ -78,7 +78,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   projectName: "",
   savedProjects: [],
   currentProjectId: null,
-  exportFrameSize: null,
+  canvasSize: null,
   clipboardFrame: null,
   clipboardFrames: null,
   clipboardTrack: null,
@@ -99,7 +99,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
       savedProjects: typeof projectsOrFn === "function" ? projectsOrFn(state.savedProjects) : projectsOrFn,
     })),
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
-  setExportFrameSize: (size) => set({ exportFrameSize: size }),
+  setCanvasSize: (size) => set({ canvasSize: size }),
 
   // Video Import Actions
   setPendingVideoFile: (file) => set({ pendingVideoFile: file }),
@@ -166,7 +166,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
       isVideoImportOpen: false,
       projectName: "",
       currentProjectId: null,
-      exportFrameSize: null,
+      canvasSize: null,
       pendingVideoFile: null,
       // Note: savedProjects and clipboard data are not reset
     }),

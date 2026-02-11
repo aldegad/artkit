@@ -49,6 +49,8 @@ interface FirestoreSpriteProject {
   imageSrcRef?: string;
   imageSrc?: string;
   imageSize: SavedSpriteProject["imageSize"];
+  canvasSize?: SavedSpriteProject["canvasSize"];
+  // Legacy field kept for backward compatibility.
   exportFrameSize?: SavedSpriteProject["exportFrameSize"];
   tracks: FirestoreSpriteTrackMeta[];
   nextFrameId: number;
@@ -587,6 +589,7 @@ export async function saveSpriteProjectToFirebase(
     imageSrcRef,
     imageSrc: inlineImageSrc,
     imageSize: project.imageSize,
+    canvasSize: project.canvasSize,
     exportFrameSize: project.exportFrameSize,
     tracks: trackMetas,
     nextFrameId: project.nextFrameId,
@@ -734,6 +737,7 @@ export async function getSpriteProjectFromFirebase(
     name: data.name,
     imageSrc,
     imageSize: data.imageSize,
+    canvasSize: data.canvasSize ?? data.exportFrameSize,
     exportFrameSize: data.exportFrameSize,
     tracks,
     nextFrameId: data.nextFrameId,
@@ -760,6 +764,7 @@ export async function getAllSpriteProjectsFromFirebase(
       name: data.name,
       imageSrc: "",
       imageSize: data.imageSize,
+      canvasSize: data.canvasSize ?? data.exportFrameSize,
       exportFrameSize: data.exportFrameSize,
       tracks: data.tracks.map((trackMeta) => ({
         id: trackMeta.id,
