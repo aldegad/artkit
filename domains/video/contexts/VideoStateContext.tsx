@@ -75,7 +75,7 @@ interface VideoStateContextValue extends VideoState {
   stepBackward: () => void;
   setPlaybackRate: (rate: number) => void;
   toggleLoop: () => void;
-  setLoopRange: (start: number, end: number, enableLoop?: boolean) => void;
+  setLoopRange: (start: number, end: number, enableLoop?: boolean, durationHint?: number) => void;
   clearLoopRange: (durationHint?: number) => void;
 
   // Tool actions
@@ -376,18 +376,46 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleLoop = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      playback: { ...prev.playback, loop: !prev.playback.loop },
-    }));
+    setState((prev) => {
+      const nextLoop = !prev.playback.loop;
+      loopRef.current = nextLoop;
+      return {
+        ...prev,
+        playback: { ...prev.playback, loop: nextLoop },
+      };
+    });
   }, []);
 
-  const setLoopRange = useCallback((start: number, end: number, enableLoop: boolean = true) => {
-    const duration = projectDurationRef.current;
+  const setLoopRange = useCallback((
+    start: number,
+    end: number,
+    enableLoop?: boolean,
+    durationHint?: number
+  ) => {
+    const hintedDuration =
+      typeof durationHint === "number" && Number.isFinite(durationHint)
+        ? Math.max(0.001, durationHint)
+        : null;
+    const duration = hintedDuration ?? Math.max(0.001, projectDurationRef.current);
     const clampedStart = Math.max(0, Math.min(start, duration));
     const clampedEnd = Math.max(0, Math.min(end, duration));
-    const normalizedStart = Math.min(clampedStart, clampedEnd);
-    const normalizedEnd = Math.max(normalizedStart + 0.001, clampedEnd);
+    let normalizedStart = Math.min(clampedStart, clampedEnd);
+    let normalizedEnd = Math.max(clampedStart, clampedEnd);
+
+    if (normalizedEnd - normalizedStart < 0.001) {
+      if (normalizedStart + 0.001 <= duration) {
+        normalizedEnd = normalizedStart + 0.001;
+      } else {
+        normalizedStart = Math.max(0, duration - 0.001);
+        normalizedEnd = duration;
+      }
+    }
+
+    const nextLoop = typeof enableLoop === "boolean" ? enableLoop : loopRef.current;
+    loopRef.current = nextLoop;
+    loopStartRef.current = normalizedStart;
+    loopEndRef.current = normalizedEnd;
+
     const current = Math.max(normalizedStart, Math.min(currentTimeRef.current, normalizedEnd));
     currentTimeRef.current = current;
 
@@ -397,7 +425,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         ...prev.playback,
         loopStart: normalizedStart,
         loopEnd: normalizedEnd,
-        loop: enableLoop ? true : prev.playback.loop,
+        loop: nextLoop,
         currentTime: current,
       },
     }));
@@ -411,6 +439,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         : null;
     const duration = hintedDuration ?? projectDurationRef.current;
     const current = Math.max(0, Math.min(currentTimeRef.current, duration));
+    loopRef.current = false;
+    loopStartRef.current = 0;
+    loopEndRef.current = duration;
     currentTimeRef.current = current;
 
     setState((prev) => ({

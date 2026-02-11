@@ -327,7 +327,6 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     seek,
     setLoopRange,
     clearLoopRange,
-    toggleLoop,
   } = useVideoState();
 
   const [viewState, setViewStateInternal] = useState<TimelineViewState>(sanitizeTimelineViewState(INITIAL_TIMELINE_VIEW));
@@ -547,26 +546,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             selectMasksForTimeline(data.selectedMaskIds);
           }
           const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
+          if (data.playbackRange) {
+            setLoopRange(
+              data.playbackRange.loopStart,
+              data.playbackRange.loopEnd,
+              Boolean(data.playbackRange.loop),
+              normalizedDurationHint
+            );
+          } else {
+            // Autosave can omit playbackRange when user cleared IN/OUT.
+            // In that case, explicitly restore a cleared range.
+            clearLoopRange(normalizedDurationHint);
+          }
           seek(restoredTime);
-          window.setTimeout(() => {
-            if (data.playbackRange) {
-              const rangeStart = Math.max(0, Math.min(data.playbackRange.loopStart, normalizedDurationHint));
-              const rangeEnd = Math.max(
-                rangeStart + 0.001,
-                Math.min(data.playbackRange.loopEnd, normalizedDurationHint)
-              );
-              setLoopRange(rangeStart, rangeEnd, true);
-              if (!data.playbackRange?.loop) {
-                toggleLoop();
-                seek(restoredTime);
-              }
-            } else {
-              // Autosave can omit playbackRange when user cleared IN/OUT.
-              // In that case, explicitly restore a cleared range.
-              clearLoopRange(normalizedDurationHint);
-              seek(restoredTime);
-            }
-          }, 0);
         }
       } catch (error) {
         console.error("Failed to load autosave:", error);
@@ -580,7 +572,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, setAutoKeyframeEnabled, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, toggleLoop, syncHistoryFlags]);
+  }, [setProject, setProjectName, setToolMode, setAutoKeyframeEnabled, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, syncHistoryFlags]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles
