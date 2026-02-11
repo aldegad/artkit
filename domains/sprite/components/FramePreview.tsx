@@ -14,6 +14,7 @@ import { safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils
 import {
   computeMagicWandSelection,
   createMagicWandMaskCanvas,
+  drawMagicWandSelectionOutline,
   isMagicWandPixelSelected,
   type MagicWandSelection,
 } from "@/shared/utils/magicWand";
@@ -21,7 +22,7 @@ import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
 const MAGIC_WAND_TOLERANCE = 24;
-const MAGIC_WAND_OVERLAY_ALPHA = 0.18;
+const MAGIC_WAND_OVERLAY_COLOR = "rgba(34, 197, 94, 0.22)";
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
@@ -170,22 +171,18 @@ export default function FramePreviewContent() {
         && selection.height === sourceCanvas.height
       ) {
         ctx.save();
-        ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
+        ctx.fillStyle = MAGIC_WAND_OVERLAY_COLOR;
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = "destination-in";
         ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
         ctx.restore();
 
-        const { bounds } = selection;
-        ctx.save();
-        ctx.strokeStyle = "rgba(34, 197, 94, 0.95)";
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(
-          bounds.x * zoom,
-          bounds.y * zoom,
-          Math.max(1, bounds.width * zoom),
-          Math.max(1, bounds.height * zoom),
-        );
-        ctx.restore();
+        drawMagicWandSelectionOutline(ctx, selection, {
+          zoom,
+          color: "rgba(34, 197, 94, 0.95)",
+          lineWidth: 1.5,
+          dash: [4, 4],
+        });
       }
     });
   }, [setRenderFn, getFrameVpZoom]);
