@@ -56,7 +56,6 @@ import {
   MASK_BRUSH,
   type Clip,
   type SavedVideoProject,
-  type VideoToolMode,
 } from "@/domains/video";
 import {
   useVideoKeyboardShortcuts,
@@ -66,6 +65,7 @@ import {
   useVideoClipboardActions,
   useVideoCropActions,
   usePreviewViewportState,
+  useVideoToolModeHandlers,
 } from "@/domains/video/hooks";
 import {
   getClipPositionKeyframes,
@@ -968,7 +968,6 @@ function VideoEditorContent() {
     setScrollX(0);
   }, [project.duration, setZoom, setScrollX]);
 
-  const previousToolModeRef = useRef<VideoToolMode | null>(null);
   const {
     previewTransformState,
     previewZoom,
@@ -1056,96 +1055,32 @@ function VideoEditorContent() {
     };
   }, [pause, playback.isPlaying]);
 
-  const tryStartMaskEditFromSelection = useCallback((): boolean => {
-    if (selectedClipIds.length === 0) return false;
-    const selected = clips.filter((clip) => selectedClipIds.includes(clip.id) && clip.type !== "audio");
-    if (selected.length === 0) return false;
-
-    const maskStart = Math.min(...selected.map((clip) => clip.startTime));
-    const maskEnd = Math.max(...selected.map((clip) => clip.startTime + clip.duration));
-    startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
-    return true;
-  }, [clips, playback.currentTime, project.canvasSize, selectedClipIds, startMaskEdit]);
-
-  const syncTransformToolModeMemory = useCallback((nextMode: typeof toolMode) => {
-    if (nextMode === "transform" && toolMode !== "transform" && previousToolModeRef.current === null) {
-      previousToolModeRef.current = toolMode;
-      return;
-    }
-    if (nextMode !== "transform" && toolMode === "transform") {
-      previousToolModeRef.current = null;
-    }
-  }, [toolMode]);
-
-  const syncMaskEditingForToolMode = useCallback((nextMode: typeof toolMode) => {
-    if (nextMode === "mask") {
-      tryStartMaskEditFromSelection();
-      return;
-    }
-    if (isEditingMask) {
-      endMaskEdit();
-    }
-  }, [endMaskEdit, isEditingMask, tryStartMaskEditFromSelection]);
-
-  const ensureCropAreaForToolMode = useCallback((nextMode: typeof toolMode) => {
-    if (nextMode !== "crop" || cropArea) return;
-    setCropArea({
-      x: 0,
-      y: 0,
-      width: project.canvasSize.width,
-      height: project.canvasSize.height,
-    });
-  }, [cropArea, project.canvasSize.height, project.canvasSize.width, setCropArea]);
-
-  // Handle mask tool toggle
-  const handleToolModeChange = useCallback((mode: typeof toolMode) => {
-    syncTransformToolModeMemory(mode);
-    syncMaskEditingForToolMode(mode);
-    ensureCropAreaForToolMode(mode);
-    setToolMode(mode);
-  }, [
-    syncTransformToolModeMemory,
-    syncMaskEditingForToolMode,
-    ensureCropAreaForToolMode,
+  const {
+    tryStartMaskEditFromSelection,
+    handleToolModeChange,
+    handleStartTransformShortcut,
+    handleApplyTransform,
+    handleCancelTransform,
+    handleSetTransformAspectRatio,
+    handleNudgeTransform,
+  } = useVideoToolModeHandlers({
+    toolMode,
     setToolMode,
-  ]);
+    selectedClipIds,
+    clips,
+    projectCanvasSize: project.canvasSize,
+    playbackCurrentTime: playback.currentTime,
+    startMaskEdit,
+    isEditingMask,
+    endMaskEdit,
+    cropArea,
+    setCropArea,
+    previewViewportRef,
+  });
 
-  const handleStartTransformShortcut = useCallback(() => {
-    if (!selectedVisualClip) return;
-    if (toolMode !== "transform") {
-      previousToolModeRef.current = toolMode;
-      handleToolModeChange("transform");
-      return;
-    }
-    previewViewportRef.current?.startTransformForSelection();
-  }, [selectedVisualClip, toolMode, handleToolModeChange, previewViewportRef]);
-
-  const restoreToolModeAfterTransform = useCallback(() => {
-    if (previousToolModeRef.current) {
-      setToolMode(previousToolModeRef.current);
-      previousToolModeRef.current = null;
-      return;
-    }
-    setToolMode("select");
-  }, [setToolMode]);
-
-  const handleApplyTransform = useCallback(() => {
-    previewViewportRef.current?.applyTransform();
-    restoreToolModeAfterTransform();
-  }, [previewViewportRef, restoreToolModeAfterTransform]);
-
-  const handleCancelTransform = useCallback(() => {
-    previewViewportRef.current?.cancelTransform();
-    restoreToolModeAfterTransform();
-  }, [previewViewportRef, restoreToolModeAfterTransform]);
-
-  const handleSetTransformAspectRatio = useCallback((ratio: AspectRatio) => {
-    previewViewportRef.current?.setTransformAspectRatio(ratio);
-  }, [previewViewportRef]);
-
-  const handleNudgeTransform = useCallback((dx: number, dy: number) => {
-    return previewViewportRef.current?.nudgeTransform(dx, dy) ?? false;
-  }, [previewViewportRef]);
+  const handleStartTransformShortcutAction = useCallback(() => {
+    handleStartTransformShortcut(Boolean(selectedVisualClip));
+  }, [handleStartTransformShortcut, selectedVisualClip]);
 
   const handleAdjustMaskBrushSize = useCallback((delta: number) => {
     if (toolMode !== "mask") return;
@@ -1188,7 +1123,7 @@ function VideoEditorContent() {
     handleFitToScreen,
     handleApplyCrop,
     isTransformActive: previewTransformState.isActive,
-    handleStartTransformShortcut,
+    handleStartTransformShortcut: handleStartTransformShortcutAction,
     handleApplyTransform,
     handleCancelTransform,
     handleNudgeTransform,
