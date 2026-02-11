@@ -27,6 +27,7 @@ interface UseVideoClipboardActionsOptions {
   activeMaskId: string | null;
   isEditingMask: boolean;
   endMaskEdit: () => void;
+  deleteSelectedPositionKeyframe?: () => boolean;
 }
 
 interface UseVideoClipboardActionsReturn {
@@ -78,6 +79,7 @@ export function useVideoClipboardActions(
     activeMaskId,
     isEditingMask,
     endMaskEdit,
+    deleteSelectedPositionKeyframe,
   } = options;
 
   const handleCopy = useCallback(() => {
@@ -202,6 +204,10 @@ export function useVideoClipboardActions(
   ]);
 
   const handleDelete = useCallback(() => {
+    if (deleteSelectedPositionKeyframe?.()) {
+      return;
+    }
+
     if (activeMaskId && isEditingMask) {
       endMaskEdit();
       deleteMask(activeMaskId);
@@ -225,6 +231,7 @@ export function useVideoClipboardActions(
   }, [
     activeMaskId,
     deleteMask,
+    deleteSelectedPositionKeyframe,
     deselectAll,
     endMaskEdit,
     isEditingMask,

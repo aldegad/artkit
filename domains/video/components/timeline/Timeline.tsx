@@ -13,9 +13,58 @@ import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIco
 import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { MASK_LANE_HEIGHT, TIMELINE, TRANSFORM_LANE_HEIGHT } from "../../constants";
+import {
+  hasClipPositionKeyframeAtTimelineTime,
+  removeClipPositionKeyframeAtTimelineTime,
+  removeClipPositionKeyframeById,
+  resolveClipPositionAtTimelineTime,
+  upsertClipPositionKeyframeAtTimelineTime,
+} from "../../utils/clipTransformKeyframes";
 
 interface TimelineProps {
   className?: string;
+}
+
+interface OffsetNumberInputProps {
+  value: number;
+  onCommit: (value: number) => void;
+}
+
+function OffsetNumberInput({ value, onCommit }: OffsetNumberInputProps) {
+  const [draft, setDraft] = useState<string>(() => String(Math.round(value)));
+
+  useEffect(() => {
+    setDraft(String(Math.round(value)));
+  }, [value]);
+
+  const commit = useCallback(() => {
+    const next = Number(draft);
+    if (!Number.isFinite(next)) {
+      setDraft(String(Math.round(value)));
+      return;
+    }
+    onCommit(next);
+  }, [draft, onCommit, value]);
+
+  return (
+    <input
+      type="number"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") {
+          setDraft(String(Math.round(value)));
+          e.currentTarget.blur();
+        }
+      }}
+      className="w-12 px-1 py-0.5 rounded border border-border-default bg-surface-primary text-[10px] text-text-primary focus:outline-none focus:border-accent-primary"
+    />
+  );
 }
 
 export function Timeline({ className }: TimelineProps) {
@@ -27,12 +76,19 @@ export function Timeline({ className }: TimelineProps) {
     getClipsInTrack,
     viewState,
     updateTrack,
+    updateClip,
     duplicateTrack,
     removeTrack,
     reorderTracks,
     saveToHistory,
   } = useTimeline();
-  const { project, playback } = useVideoState();
+  const {
+    project,
+    playback,
+    selectedClipIds,
+    selectedPositionKeyframe,
+    setSelectedPositionKeyframe,
+  } = useVideoState();
   const { getMasksForTrack, duplicateMasksToTrack } = useMask();
   const { timeToPixel, durationToWidth } = useVideoCoordinates();
   const [transformLaneOpenByTrack, setTransformLaneOpenByTrack] = useState<Record<string, boolean>>({});
@@ -187,18 +243,88 @@ export function Timeline({ className }: TimelineProps) {
           {/* Track headers */}
           <div ref={trackHeadersRef} className="flex-shrink-0 bg-surface-secondary border-r border-border-default overflow-y-hidden" style={headerWidthStyle}>
             {tracks.map((track) => {
+              const trackClips = getClipsInTrack(track.id);
               const trackMasks = getMasksForTrack(track.id);
+              const visualTrackClips = trackClips.filter((clip) => clip.type !== "audio");
               const transformLaneOpen = isTransformLaneOpen(track.id);
               const transformLaneHeight = transformLaneOpen ? TRANSFORM_LANE_HEIGHT : 0;
               const headerHeight = TIMELINE.TRACK_DEFAULT_HEIGHT + transformLaneHeight + (trackMasks.length > 0 ? MASK_LANE_HEIGHT : 0);
+              const selectedVisualClipInTrack =
+                selectedClipIds
+                  .map((selectedClipId) => visualTrackClips.find((clip) => clip.id === selectedClipId))
+                  .find((clip): clip is (typeof visualTrackClips)[number] => !!clip) ?? null;
+              const selectedPositionAtPlayhead = selectedVisualClipInTrack
+                ? resolveClipPositionAtTimelineTime(selectedVisualClipInTrack, playback.currentTime)
+                : null;
+              const hasKeyframeAtPlayhead = selectedVisualClipInTrack
+                ? hasClipPositionKeyframeAtTimelineTime(selectedVisualClipInTrack, playback.currentTime)
+                : false;
+              const selectedKeyframeInTrack = selectedPositionKeyframe?.trackId === track.id
+                ? selectedPositionKeyframe
+                : null;
               const isLiftDropTarget = !!liftedClipId && liftedClipTrackId !== track.id;
               const isLiftSource = !!liftedClipId && liftedClipTrackId === track.id;
+
+              const handleSetSelectedOffsetAtPlayhead = (nextPosition: { x: number; y: number }) => {
+                if (!selectedVisualClipInTrack) return;
+                saveToHistory();
+                updateClip(
+                  selectedVisualClipInTrack.id,
+                  upsertClipPositionKeyframeAtTimelineTime(
+                    selectedVisualClipInTrack,
+                    playback.currentTime,
+                    nextPosition,
+                    { ensureInitialKeyframe: true }
+                  )
+                );
+              };
+
+              const handleToggleKeyframeAtPlayhead = () => {
+                if (!selectedVisualClipInTrack || !selectedPositionAtPlayhead) return;
+                saveToHistory();
+                if (hasKeyframeAtPlayhead) {
+                  const result = removeClipPositionKeyframeAtTimelineTime(
+                    selectedVisualClipInTrack,
+                    playback.currentTime
+                  );
+                  if (result.removed) {
+                    updateClip(selectedVisualClipInTrack.id, result.updates);
+                  }
+                  setSelectedPositionKeyframe(null);
+                  return;
+                }
+                updateClip(
+                  selectedVisualClipInTrack.id,
+                  upsertClipPositionKeyframeAtTimelineTime(
+                    selectedVisualClipInTrack,
+                    playback.currentTime,
+                    selectedPositionAtPlayhead,
+                    { ensureInitialKeyframe: true }
+                  )
+                );
+                setSelectedPositionKeyframe(null);
+              };
+
+              const handleDeleteSelectedKeyframeInTrack = () => {
+                if (!selectedKeyframeInTrack) return;
+                const targetClip = visualTrackClips.find((clip) => clip.id === selectedKeyframeInTrack.clipId);
+                if (!targetClip) {
+                  setSelectedPositionKeyframe(null);
+                  return;
+                }
+                saveToHistory();
+                const result = removeClipPositionKeyframeById(targetClip, selectedKeyframeInTrack.keyframeId);
+                if (result.removed) {
+                  updateClip(targetClip.id, result.updates);
+                }
+                setSelectedPositionKeyframe(null);
+              };
+
               return (
                 <div
                   key={track.id}
                   className={cn(
-                    "flex items-center border-b border-border-default transition-colors",
-                    trackHeaderWidth >= 120 ? "px-2" : "px-1 justify-center",
+                    "border-b border-border-default transition-colors",
                     isLiftDropTarget && "bg-accent/20 cursor-pointer ring-1 ring-inset ring-accent",
                     isLiftSource && "opacity-50"
                   )}
@@ -219,130 +345,213 @@ export function Timeline({ className }: TimelineProps) {
                     handleTrackDrop(fromTrackId, track.id);
                   }}
                 >
-                  {trackHeaderWidth >= 120 ? (
-                  <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
-                    <button
-                      onClick={() => toggleTransformLane(track.id)}
-                      className={cn(
-                        "shrink-0 p-1 rounded hover:bg-surface-tertiary transition-colors",
-                        transformLaneOpen ? "text-accent-primary" : "text-text-tertiary"
-                      )}
-                      title={transformLaneOpen ? "Hide transform lane" : "Show transform lane"}
-                    >
-                      <ChevronDownIcon className={cn("w-3 h-3 transition-transform", !transformLaneOpen && "-rotate-90")} />
-                    </button>
-                    <button
-                      onClick={() => updateTrack(track.id, { visible: !track.visible })}
-                      className={cn(
-                        "shrink-0 p-1 rounded hover:bg-surface-tertiary",
-                        track.visible ? "text-text-primary" : "text-text-tertiary"
-                      )}
-                      title={track.visible ? "Hide track" : "Show track"}
-                    >
-                      {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
-                    </button>
-                    <button
-                      onClick={() => updateTrack(track.id, { muted: !track.muted })}
-                      className={cn(
-                        "shrink-0 p-1 rounded hover:bg-surface-tertiary",
-                        track.muted ? "text-text-tertiary" : "text-text-primary"
-                      )}
-                      title={track.muted ? "Unmute track" : "Mute track"}
-                    >
-                      {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
-                    </button>
-                    <button
-                      onClick={() => handleDuplicateTrack(track.id)}
-                      className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
-                      title="Duplicate track"
-                    >
-                      <DuplicateIcon className="w-3 h-3" />
-                    </button>
-                    <span className="text-xs text-text-secondary truncate">{track.name}</span>
-                    <button
-                      onClick={() => { saveToHistory(); removeTrack(track.id); }}
-                      className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
-                      title="Delete track"
-                    >
-                      <DeleteIcon className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  /* Compact mode: single menu icon → Popover with all controls */
-                  <Popover
-                    trigger={
-                      <button className="p-1 rounded hover:bg-surface-tertiary text-text-secondary" title={track.name}>
-                        <MenuIcon className="w-3 h-3" />
-                      </button>
-                    }
-                    align="start"
-                    side="bottom"
-                    closeOnScroll={false}
+                  <div
+                    className={cn(
+                      "flex items-center",
+                      trackHeaderWidth >= 120 ? "px-2" : "px-1 justify-center"
+                    )}
+                    style={{ height: TIMELINE.TRACK_DEFAULT_HEIGHT }}
                   >
-                    <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
-                      <span className="text-xs font-medium text-text-primary px-2 py-1 truncate">{track.name}</span>
-                      <button
-                        onClick={() => toggleTransformLane(track.id)}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                    {trackHeaderWidth >= 120 ? (
+                      <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
+                        <button
+                          onClick={() => toggleTransformLane(track.id)}
+                          className={cn(
+                            "shrink-0 p-1 rounded hover:bg-surface-tertiary transition-colors",
+                            transformLaneOpen ? "text-accent-primary" : "text-text-tertiary"
+                          )}
+                          title={transformLaneOpen ? "Hide transform lane" : "Show transform lane"}
+                        >
+                          <ChevronDownIcon className={cn("w-3 h-3 transition-transform", !transformLaneOpen && "-rotate-90")} />
+                        </button>
+                        <button
+                          onClick={() => updateTrack(track.id, { visible: !track.visible })}
+                          className={cn(
+                            "shrink-0 p-1 rounded hover:bg-surface-tertiary",
+                            track.visible ? "text-text-primary" : "text-text-tertiary"
+                          )}
+                          title={track.visible ? "Hide track" : "Show track"}
+                        >
+                          {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => updateTrack(track.id, { muted: !track.muted })}
+                          className={cn(
+                            "shrink-0 p-1 rounded hover:bg-surface-tertiary",
+                            track.muted ? "text-text-tertiary" : "text-text-primary"
+                          )}
+                          title={track.muted ? "Unmute track" : "Mute track"}
+                        >
+                          {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => handleDuplicateTrack(track.id)}
+                          className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                          title="Duplicate track"
+                        >
+                          <DuplicateIcon className="w-3 h-3" />
+                        </button>
+                        <span className="text-xs text-text-secondary truncate">{track.name}</span>
+                        <button
+                          onClick={() => { saveToHistory(); removeTrack(track.id); }}
+                          className="shrink-0 p-1 rounded hover:bg-surface-tertiary text-text-tertiary hover:text-text-primary transition-colors"
+                          title="Delete track"
+                        >
+                          <DeleteIcon className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <Popover
+                        trigger={
+                          <button className="p-1 rounded hover:bg-surface-tertiary text-text-secondary" title={track.name}>
+                            <MenuIcon className="w-3 h-3" />
+                          </button>
+                        }
+                        align="start"
+                        side="bottom"
+                        closeOnScroll={false}
                       >
-                        <ChevronDownIcon className={cn("w-3 h-3 transition-transform", !transformLaneOpen && "-rotate-90")} />
-                        {transformLaneOpen ? "Hide Transform Lane" : "Show Transform Lane"}
-                      </button>
+                        <div className="flex flex-col gap-0.5 p-1.5 min-w-[140px]">
+                          <span className="text-xs font-medium text-text-primary px-2 py-1 truncate">{track.name}</span>
+                          <button
+                            onClick={() => toggleTransformLane(track.id)}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                          >
+                            <ChevronDownIcon className={cn("w-3 h-3 transition-transform", !transformLaneOpen && "-rotate-90")} />
+                            {transformLaneOpen ? "Hide Transform Lane" : "Show Transform Lane"}
+                          </button>
+                          <button
+                            onClick={() => updateTrack(track.id, { visible: !track.visible })}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                          >
+                            {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
+                            {track.visible ? "Hide" : "Show"}
+                          </button>
+                          <button
+                            onClick={() => updateTrack(track.id, { muted: !track.muted })}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                          >
+                            {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
+                            {track.muted ? "Unmute" : "Mute"}
+                          </button>
+                          <button
+                            onClick={() => handleDuplicateTrack(track.id)}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
+                          >
+                            <DuplicateIcon className="w-3 h-3" />
+                            Duplicate
+                          </button>
+                          <div className="h-px bg-border-default mx-1" />
+                          <button
+                            onClick={() => {
+                              const idx = tracks.findIndex(t => t.id === track.id);
+                              if (idx > 0) { saveToHistory(); reorderTracks(idx, idx - 1); }
+                            }}
+                            disabled={tracks.findIndex(t => t.id === track.id) === 0}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
+                          >
+                            <ChevronDownIcon className="w-3 h-3 rotate-180" />
+                            Move Up
+                          </button>
+                          <button
+                            onClick={() => {
+                              const idx = tracks.findIndex(t => t.id === track.id);
+                              if (idx < tracks.length - 1) { saveToHistory(); reorderTracks(idx, idx + 1); }
+                            }}
+                            disabled={tracks.findIndex(t => t.id === track.id) === tracks.length - 1}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
+                          >
+                            <ChevronDownIcon className="w-3 h-3" />
+                            Move Down
+                          </button>
+                          <div className="h-px bg-border-default mx-1" />
+                          <button
+                            onClick={() => { saveToHistory(); removeTrack(track.id); }}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-red-400"
+                          >
+                            <DeleteIcon className="w-3 h-3" />
+                            Delete
+                          </button>
+                        </div>
+                      </Popover>
+                    )}
+                  </div>
+
+                  {transformLaneOpen && (
+                    <div
+                      className="border-t border-border-default/50 bg-surface-primary/50 px-1.5 flex items-center gap-1 overflow-hidden"
+                      style={{ height: TRANSFORM_LANE_HEIGHT }}
+                    >
+                      <span className="text-[10px] uppercase tracking-wide text-text-secondary font-medium shrink-0">
+                        Transform
+                      </span>
                       <button
-                        onClick={() => updateTrack(track.id, { visible: !track.visible })}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
-                      >
-                        {track.visible ? <EyeOpenIcon className="w-3 h-3" /> : <EyeClosedIcon className="w-3 h-3" />}
-                        {track.visible ? "Hide" : "Show"}
-                      </button>
-                      <button
-                        onClick={() => updateTrack(track.id, { muted: !track.muted })}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
-                      >
-                        {track.muted ? <TrackMutedIcon className="w-3 h-3" /> : <TrackUnmutedIcon className="w-3 h-3" />}
-                        {track.muted ? "Unmute" : "Mute"}
-                      </button>
-                      <button
-                        onClick={() => handleDuplicateTrack(track.id)}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary"
-                      >
-                        <DuplicateIcon className="w-3 h-3" />
-                        Duplicate
-                      </button>
-                      <div className="h-px bg-border-default mx-1" />
-                      <button
-                        onClick={() => {
-                          const idx = tracks.findIndex(t => t.id === track.id);
-                          if (idx > 0) { saveToHistory(); reorderTracks(idx, idx - 1); }
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleKeyframeAtPlayhead();
                         }}
-                        disabled={tracks.findIndex(t => t.id === track.id) === 0}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
-                      >
-                        <ChevronDownIcon className="w-3 h-3 rotate-180" />
-                        Move Up
-                      </button>
+                        disabled={!selectedVisualClipInTrack}
+                        title={hasKeyframeAtPlayhead ? "Remove keyframe at playhead" : "Add keyframe at playhead"}
+                        className={cn(
+                          "w-3 h-3 rotate-45 border shrink-0",
+                          selectedVisualClipInTrack
+                            ? hasKeyframeAtPlayhead
+                              ? "bg-accent-primary border-accent-primary"
+                              : "border-border-default hover:border-accent-primary"
+                            : "border-border-default opacity-40 cursor-not-allowed"
+                        )}
+                      />
+
+                      {selectedPositionAtPlayhead ? (
+                        <>
+                          <span className="text-[10px] text-cyan-300 shrink-0">X</span>
+                          <OffsetNumberInput
+                            value={selectedPositionAtPlayhead.x}
+                            onCommit={(x) => handleSetSelectedOffsetAtPlayhead({
+                              x,
+                              y: selectedPositionAtPlayhead.y,
+                            })}
+                          />
+                          <span className="text-[10px] text-orange-300 shrink-0">Y</span>
+                          <OffsetNumberInput
+                            value={selectedPositionAtPlayhead.y}
+                            onCommit={(y) => handleSetSelectedOffsetAtPlayhead({
+                              x: selectedPositionAtPlayhead.x,
+                              y,
+                            })}
+                          />
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-text-quaternary truncate">Select visual clip</span>
+                      )}
+
                       <button
-                        onClick={() => {
-                          const idx = tracks.findIndex(t => t.id === track.id);
-                          if (idx < tracks.length - 1) { saveToHistory(); reorderTracks(idx, idx + 1); }
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSelectedKeyframeInTrack();
                         }}
-                        disabled={tracks.findIndex(t => t.id === track.id) === tracks.length - 1}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-text-secondary disabled:opacity-30"
-                      >
-                        <ChevronDownIcon className="w-3 h-3" />
-                        Move Down
-                      </button>
-                      <div className="h-px bg-border-default mx-1" />
-                      <button
-                        onClick={() => { saveToHistory(); removeTrack(track.id); }}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-xs text-red-400"
+                        disabled={!selectedKeyframeInTrack}
+                        className={cn(
+                          "ml-auto p-1 rounded transition-colors",
+                          selectedKeyframeInTrack
+                            ? "text-text-secondary hover:text-red-400 hover:bg-red-500/15"
+                            : "text-text-quaternary cursor-not-allowed"
+                        )}
+                        title="Delete selected keyframe"
                       >
                         <DeleteIcon className="w-3 h-3" />
-                        Delete
                       </button>
                     </div>
-                  </Popover>
-                )}
+                  )}
+
+                  {trackMasks.length > 0 && (
+                    <div
+                      className="border-t border-border-default/50 bg-surface-tertiary/30"
+                      style={{ height: MASK_LANE_HEIGHT }}
+                    />
+                  )}
                 </div>
               );
             })}

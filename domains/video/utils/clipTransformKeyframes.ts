@@ -249,6 +249,59 @@ export function removeClipPositionKeyframeAtTimelineTime(
   };
 }
 
+export function removeClipPositionKeyframeById(
+  clip: Clip,
+  keyframeId: string
+): { removed: boolean; updates: Partial<Clip> } {
+  const current = getClipPositionKeyframes(clip);
+  const idx = current.findIndex((keyframe) => keyframe.id === keyframeId);
+  if (idx < 0) {
+    return { removed: false, updates: {} };
+  }
+
+  const removed = current[idx];
+  const next = current.filter((_, index) => index !== idx);
+  const normalized = normalizePositionKeyframes(next, clip.duration);
+  const fallbackPosition = normalized.length > 0
+    ? resolvePositionFromKeyframes(normalized, removed.time, clip.position)
+    : clonePoint(removed.value);
+
+  return {
+    removed: true,
+    updates: {
+      position: fallbackPosition,
+      transformKeyframes: buildTransformKeyframes(clip, normalized.length > 0 ? normalized : undefined),
+    },
+  };
+}
+
+export function moveClipPositionKeyframeToTimelineTime(
+  clip: Clip,
+  keyframeId: string,
+  timelineTime: number
+): { moved: boolean; updates: Partial<Clip> } {
+  const localTime = getClipLocalTime(clip, timelineTime);
+  const current = getClipPositionKeyframes(clip);
+  const idx = current.findIndex((keyframe) => keyframe.id === keyframeId);
+  if (idx < 0) {
+    return { moved: false, updates: {} };
+  }
+
+  const next = current.map((keyframe) =>
+    createPositionKeyframe(keyframe.time, keyframe.value, keyframe.id)
+  );
+  next[idx] = createPositionKeyframe(localTime, next[idx].value, next[idx].id);
+  const normalized = normalizePositionKeyframes(next, clip.duration);
+
+  return {
+    moved: true,
+    updates: {
+      position: normalized[0] ? clonePoint(normalized[0].value) : clonePoint(clip.position),
+      transformKeyframes: buildTransformKeyframes(clip, normalized.length > 0 ? normalized : undefined),
+    },
+  };
+}
+
 export function offsetClipPositionValues(
   clip: Clip,
   dx: number,
