@@ -392,6 +392,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateClipsWithDuration = useCallback((action: React.SetStateAction<Clip[]>) => {
+    setClips(action);
+    updateProjectDuration();
+  }, [setClips, updateProjectDuration]);
+
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
@@ -470,9 +475,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const restoreClips = useCallback((savedClips: Clip[]) => {
-    setClips(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
-    updateProjectDuration();
-  }, [updateProjectDuration]);
+    updateClipsWithDuration(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
+  }, [updateClipsWithDuration]);
 
   // Load autosave on mount
   useEffect(() => {
@@ -688,19 +692,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           })
         )
       );
-      setClips((prev) => [...prev, ...duplicatedClips]);
-      updateProjectDuration();
+      updateClipsWithDuration((prev) => [...prev, ...duplicatedClips]);
     }
 
     return duplicatedTrack.id;
-  }, [tracks, clips, updateProjectDuration]);
+  }, [tracks, clips, updateClipsWithDuration]);
 
   const removeTrack = useCallback((trackId: string) => {
     // Don't remove the last track
     if (tracks.length <= 1) return;
 
     // Remove all clips in the track first
-    setClips((prev) => prev.filter((clip) => clip.trackId !== trackId));
+    updateClipsWithDuration((prev) => prev.filter((clip) => clip.trackId !== trackId));
 
     // Remove the track
     setTracks((prev) => {
@@ -708,8 +711,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       return reindexTracksForZOrder(filtered);
     });
 
-    updateProjectDuration();
-  }, [tracks.length, updateProjectDuration]);
+  }, [tracks.length, updateClipsWithDuration]);
 
   const updateTrack = useCallback((trackId: string, updates: Partial<VideoTrack>) => {
     setTracks((prev) =>
@@ -752,11 +754,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         position: fitted.position,
         scale: fitted.scale,
       };
-      setClips((prev) => [...prev, clip]);
-      updateProjectDuration();
+      updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, updateProjectDuration]
+    [tracks, updateClipsWithDuration]
   );
 
   const addAudioClip = useCallback(
@@ -780,11 +781,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         ...clip,
         startTime: safeStartTime,
       };
-      setClips((prev) => [...prev, normalizedClip]);
-      updateProjectDuration();
+      updateClipsWithDuration((prev) => [...prev, normalizedClip]);
       return normalizedClip.id;
     },
-    [tracks, updateProjectDuration]
+    [tracks, updateClipsWithDuration]
   );
 
   const addImageClip = useCallback(
@@ -812,20 +812,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         position: fitted.position,
         scale: fitted.scale,
       };
-      setClips((prev) => [...prev, clip]);
-      updateProjectDuration();
+      updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, updateProjectDuration]
+    [tracks, updateClipsWithDuration]
   );
 
   const removeClip = useCallback((clipId: string) => {
-    setClips((prev) => prev.filter((c) => c.id !== clipId));
-    updateProjectDuration();
-  }, [updateProjectDuration]);
+    updateClipsWithDuration((prev) => prev.filter((c) => c.id !== clipId));
+  }, [updateClipsWithDuration]);
 
   const updateClip = useCallback((clipId: string, updates: Partial<Clip>) => {
-    setClips((prev) =>
+    updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
         const next = { ...c, ...updates } as Clip;
@@ -836,14 +834,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         } as Clip;
       })
     );
-    updateProjectDuration();
-  }, [updateProjectDuration]);
+  }, [updateClipsWithDuration]);
 
   const moveClip = useCallback((clipId: string, trackId: string, startTime: number, ignoreClipIds: string[] = []) => {
     const targetTrack = tracks.find((t) => t.id === trackId) || null;
     if (!targetTrack) return;
 
-    setClips((prev) =>
+    updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
         if (!fitsTrackType(targetTrack, c)) return c;
@@ -858,11 +855,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         return { ...c, trackId, startTime: candidateStart };
       })
     );
-    updateProjectDuration();
-  }, [tracks, updateProjectDuration]);
+  }, [tracks, updateClipsWithDuration]);
 
   const trimClipStart = useCallback((clipId: string, newStartTime: number) => {
-    setClips((prev) =>
+    updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
 
@@ -899,11 +895,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         };
       })
     );
-    updateProjectDuration();
-  }, [updateProjectDuration]);
+  }, [updateClipsWithDuration]);
 
   const trimClipEnd = useCallback((clipId: string, newEndTime: number) => {
-    setClips((prev) =>
+    updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
 
@@ -939,8 +934,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         };
       })
     );
-    updateProjectDuration();
-  }, [updateProjectDuration]);
+  }, [updateClipsWithDuration]);
 
   // Duplicate a clip to a target track (or new track if not specified)
   const duplicateClip = useCallback((clipId: string, targetTrackId?: string): string | null => {
@@ -991,14 +985,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       console.error("Failed to copy media blob on timeline duplicate:", error);
     });
 
-    setClips((prev) => [...prev, newClip]);
-    updateProjectDuration();
+    updateClipsWithDuration((prev) => [...prev, newClip]);
     return newClip.id;
-  }, [clips, tracks, updateProjectDuration]);
+  }, [clips, tracks, updateClipsWithDuration]);
 
   // Add pre-formed clips (for paste)
   const addClips = useCallback((newClips: Clip[]) => {
-    setClips((prev) => {
+    updateClipsWithDuration((prev) => {
       const next = [...prev];
       const normalized: Clip[] = [];
 
@@ -1020,8 +1013,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       return [...prev, ...normalized];
     });
-    updateProjectDuration();
-  }, [updateProjectDuration]);
+  }, [updateClipsWithDuration]);
 
   // Queries
   const getClipAtTime = useCallback(
