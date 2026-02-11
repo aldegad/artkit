@@ -18,11 +18,7 @@ import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
-import {
-  getClipPositionKeyframes,
-  resolveClipPositionAtTimelineTime,
-  upsertClipPositionKeyframeAtTimelineTime,
-} from "../../utils/clipTransformKeyframes";
+import { resolveClipPositionAtTimelineTime } from "../../utils/clipTransformKeyframes";
 import { usePreviewFrameCapture } from "./usePreviewFrameCapture";
 import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
 import { useMaskInteractionSession } from "./useMaskInteractionSession";
@@ -33,6 +29,7 @@ import { usePreviewPlaybackRenderTick } from "./usePreviewPlaybackRenderTick";
 import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
 import { resolvePreviewCanvasCursor } from "./previewCanvasCursor";
 import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
+import { usePreviewClipDragSession } from "./usePreviewClipDragSession";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -142,7 +139,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
-  const [isDraggingClip, setIsDraggingClip] = useState(false);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
@@ -259,18 +255,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     vpStartPanDrag({ x: e.clientX, y: e.clientY });
     isPanningRef.current = true;
   }, [preventAndCapturePointer, vpStartPanDrag]);
-
-  const dragStateRef = useRef<{
-    clipId: string | null;
-    pointerStart: { x: number; y: number };
-    clipStart: { x: number; y: number };
-    clipSnapshot: Clip | null;
-  }>({
-    clipId: null,
-    pointerStart: { x: 0, y: 0 },
-    clipStart: { x: 0, y: 0 },
-    clipSnapshot: null,
-  });
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
@@ -1041,6 +1025,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     clampToCanvas,
   });
 
+  const { isDraggingClip, handleClipPointerDown, handleClipPointerMove, handleClipPointerUp } = usePreviewClipDragSession({
+    toolMode,
+    autoKeyframeEnabled,
+    currentTimeRef,
+    screenToProject,
+    hitTestClipAtPoint,
+    saveToHistory,
+    selectClip,
+    updateClip,
+    scheduleRender,
+  });
+
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.focus();
 
@@ -1089,24 +1085,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
-    if (toolMode !== "select") return;
-
-    const point = screenToProject(e.clientX, e.clientY);
-    if (!point) return;
-
-    const hitClip = hitTestClipAtPoint(point);
-    if (!hitClip || hitClip.type === "audio") return;
-
-    preventAndCapturePointer(e);
-    saveToHistory();
-    selectClip(hitClip.id, false);
-    dragStateRef.current = {
-      clipId: hitClip.id,
-      pointerStart: point,
-      clipStart: resolveClipPositionAtTimelineTime(hitClip, currentTimeRef.current),
-      clipSnapshot: hitClip,
-    };
-    setIsDraggingClip(true);
+    if (handleClipPointerDown(e)) {
+      preventAndCapturePointer(e);
+    }
   }, [
     startPanDragFromPointer,
     isPanLocked,
@@ -1118,11 +1099,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     handleMaskPointerDown,
     toolMode,
     handleCropPointerDown,
-    screenToProject,
-    hitTestClipAtPoint,
+    handleClipPointerDown,
     preventAndCapturePointer,
-    saveToHistory,
-    selectClip,
     transformTool,
   ]);
 
@@ -1158,38 +1136,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
-    if (!isDraggingClip || !dragStateRef.current.clipId) return;
-
-    const point = screenToProject(e.clientX, e.clientY);
-    if (!point) return;
-
-    const dragState = dragStateRef.current;
-    const clipId = dragState.clipId;
-    if (!clipId) return;
-    const dx = point.x - dragState.pointerStart.x;
-    const dy = point.y - dragState.pointerStart.y;
-    const clipSnapshot = dragState.clipSnapshot;
-    if (!clipSnapshot) return;
-    const nextPosition = {
-      x: dragState.clipStart.x + dx,
-      y: dragState.clipStart.y + dy,
-    };
-    const hasPositionAnimation = getClipPositionKeyframes(clipSnapshot).length > 0;
-    const shouldUsePositionKeyframe = autoKeyframeEnabled || hasPositionAnimation;
-    if (shouldUsePositionKeyframe) {
-      updateClip(
-        clipId,
-        upsertClipPositionKeyframeAtTimelineTime(
-          clipSnapshot,
-          currentTimeRef.current,
-          nextPosition
-        )
-      );
-    } else {
-      updateClip(clipId, { position: nextPosition });
-    }
-    scheduleRender();
-  }, [vpUpdatePanDrag, screenToProject, isDraggingClip, updateClip, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender, autoKeyframeEnabled, currentTimeRef, handleMaskPointerMove, handleCropPointerMove]);
+    handleClipPointerMove(e);
+  }, [vpUpdatePanDrag, toolMode, isEditingMask, previewContainerRef, transformTool, handleMaskPointerMove, handleCropPointerMove, handleClipPointerMove]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     stopPanDrag();
@@ -1199,15 +1147,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       safeReleasePointerCapture(e.currentTarget, e.pointerId);
     }
     transformTool.handlePointerUp();
-    dragStateRef.current = {
-      clipId: null,
-      pointerStart: { x: 0, y: 0 },
-      clipStart: { x: 0, y: 0 },
-      clipSnapshot: null,
-    };
-    setIsDraggingClip(false);
+    handleClipPointerUp();
     handleCropPointerUp();
-  }, [stopPanDrag, handleMaskPointerUp, transformTool, handleCropPointerUp]);
+  }, [stopPanDrag, handleMaskPointerUp, transformTool, handleClipPointerUp, handleCropPointerUp]);
 
   usePreviewPlaybackRenderTick({
     playbackIsPlaying: playback.isPlaying,
