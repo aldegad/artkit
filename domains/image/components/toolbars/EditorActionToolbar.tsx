@@ -113,7 +113,7 @@ export function EditorActionToolbar({
           <PanZoomToolbarButtons
             isPanLocked={isPanLocked}
             onTogglePanLock={onTogglePanLock}
-            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff, fitToScreen: t.fitToScreen }}
+            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff }}
           />
 
           <div className="w-px bg-border-default mx-0.5" />

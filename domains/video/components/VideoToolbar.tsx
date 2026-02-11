@@ -30,7 +30,6 @@ interface VideoToolbarProps {
   onToolModeChange: (mode: VideoToolMode) => void;
   isPanLocked: boolean;
   onTogglePanLock: () => void;
-  onFitToScreen?: () => void;
   onInterpolateGap?: () => void;
   canInterpolateGap?: boolean;
   isInterpolatingGap?: boolean;
@@ -58,7 +57,6 @@ interface VideoToolbarProps {
     delete: string;
     panLockOn: string;
     panLockOff: string;
-    fitToScreen: string;
   };
 }
 
@@ -67,7 +65,6 @@ export default function VideoToolbar({
   onToolModeChange,
   isPanLocked,
   onTogglePanLock,
-  onFitToScreen,
   onInterpolateGap,
   canInterpolateGap,
   isInterpolatingGap,
@@ -183,8 +180,7 @@ export default function VideoToolbar({
       <PanZoomToolbarButtons
         isPanLocked={isPanLocked}
         onTogglePanLock={onTogglePanLock}
-        onFitToScreen={onFitToScreen}
-        translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff, fitToScreen: t.fitToScreen }}
+        translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff }}
       />
 
       {/* Separator */}

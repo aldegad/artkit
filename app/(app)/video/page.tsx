@@ -1300,7 +1300,6 @@ function VideoEditorContent() {
     delete: t.delete,
     panLockOn: t.panLockOn,
     panLockOff: t.panLockOff,
-    fitToScreen: t.fitToScreen,
   };
 
   return (
@@ -1379,7 +1378,6 @@ function VideoEditorContent() {
           onToolModeChange={handleToolModeChange}
           isPanLocked={isPanLocked}
           onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
-          onFitToScreen={handleFitToScreen}
           onInterpolateGap={handleInterpolateClipGap}
           canInterpolateGap={gapInterpolationAnalysis.ready}
           isInterpolatingGap={isInterpolatingGap}
