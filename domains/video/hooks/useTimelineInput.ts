@@ -633,6 +633,144 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     });
   }, [capturePointer, findClipAtPosition, getTrackAtY, seekAndKeepVisible, timelineViewportRef, tracksContainerRef]);
 
+  const startPlayheadDrag = useCallback((options: {
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    x: number;
+    contentY: number;
+    time: number;
+  }) => {
+    seekAndKeepVisible(options.time);
+    deselectAll();
+    clearMaskSelectionState();
+    capturePointer(options.pointerId, options.clientX, options.clientY);
+    setDragState({
+      type: "playhead",
+      clipId: null,
+      items: [],
+      startX: options.x,
+      startY: options.contentY,
+      startTime: options.time,
+      originalClipStart: 0,
+      originalClipDuration: 0,
+      originalTrimIn: 0,
+    });
+  }, [seekAndKeepVisible, deselectAll, clearMaskSelectionState, capturePointer]);
+
+  const startTrimDrag = useCallback((options: {
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    handle: "start" | "end";
+    clip: Clip;
+    x: number;
+    contentY: number;
+    time: number;
+    shiftKey: boolean;
+  }) => {
+    capturePointer(options.pointerId, options.clientX, options.clientY);
+    saveToHistory();
+    setDragState({
+      type: options.handle === "start" ? "clip-trim-start" : "clip-trim-end",
+      clipId: options.clip.id,
+      items: [],
+      startX: options.x,
+      startY: options.contentY,
+      startTime: options.time,
+      originalClipStart: options.clip.startTime,
+      originalClipDuration: options.clip.duration,
+      originalTrimIn: options.clip.trimIn,
+    });
+    selectClip(options.clip.id, options.shiftKey);
+  }, [capturePointer, saveToHistory, selectClip]);
+
+  const handleClipBodyPointerDown = useCallback((options: {
+    event: React.PointerEvent;
+    clip: Clip;
+    x: number;
+    contentY: number;
+    time: number;
+  }) => {
+    const { event, clip, x, contentY, time } = options;
+    if (toolMode === "razor") {
+      const splitResult = splitClipWithRazor(clip, time);
+      if (splitResult) {
+        selectClip(splitResult.id, false);
+      }
+      return;
+    }
+
+    saveToHistory();
+    const resolvedSelection = resolveTimelineClipSelection({
+      clipId: clip.id,
+      selectedClipIds,
+      selectedMaskIds,
+      shiftKey: event.shiftKey,
+    });
+    const { activeClipIds, activeMaskIds } = resolvedSelection;
+    if (resolvedSelection.shouldSelectClip) {
+      selectClip(clip.id, resolvedSelection.selectAppend);
+    }
+    if (resolvedSelection.shouldClearMaskSelection) {
+      clearMaskSelectionState();
+    }
+
+    let primaryClipId = clip.id;
+
+    if (event.altKey && toolMode === "select") {
+      // Alt+Drag: duplicate ALL selected items and drag the copies
+      const duplicated = duplicateSelectionForDrag({
+        activeClipIds,
+        activeMaskIds,
+        primaryClipId: clip.id,
+      });
+      primaryClipId = duplicated.primaryClipId;
+
+      startClipMoveDrag({
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        clipId: primaryClipId,
+        items: duplicated.items,
+        x,
+        contentY,
+        time,
+        clipStart: clip.startTime,
+        clipDuration: clip.duration,
+        clipTrimIn: clip.trimIn,
+      });
+      return;
+    }
+
+    // Normal drag: move all selected items
+    const items = buildDragItems(activeClipIds, activeMaskIds);
+    startClipMoveDrag({
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      clipId: primaryClipId,
+      items,
+      x,
+      contentY,
+      time,
+      clipStart: clip.startTime,
+      clipDuration: clip.duration,
+      clipTrimIn: clip.trimIn,
+    });
+  }, [
+    toolMode,
+    splitClipWithRazor,
+    selectClip,
+    saveToHistory,
+    selectedClipIds,
+    selectedMaskIds,
+    clearMaskSelectionState,
+    duplicateSelectionForDrag,
+    startClipMoveDrag,
+    buildDragItems,
+  ]);
+
   const handlePrimaryPointerDown = useCallback((
     e: React.PointerEvent,
     x: number,
@@ -649,21 +787,13 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
     const result = findClipAtPosition(x, contentY);
     if (!result) {
-      // Click on empty area - seek and deselect
-      seekAndKeepVisible(time);
-      deselectAll();
-      clearMaskSelectionState();
-      capturePointer(e.pointerId, e.clientX, e.clientY);
-      setDragState({
-        type: "playhead",
-        clipId: null,
-        items: [],
-        startX: x,
-        startY: contentY,
-        startTime: time,
-        originalClipStart: 0,
-        originalClipDuration: 0,
-        originalTrimIn: 0,
+      startPlayheadDrag({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        x,
+        contentY,
+        time,
       });
       return;
     }
@@ -674,106 +804,30 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       (handle === "start" || handle === "end")
       && (toolMode === "select" || toolMode === "trim")
     ) {
-      capturePointer(e.pointerId, e.clientX, e.clientY);
-      saveToHistory();
-      setDragState({
-        type: handle === "start" ? "clip-trim-start" : "clip-trim-end",
-        clipId: clip.id,
-        items: [],
-        startX: x,
-        startY: contentY,
-        startTime: time,
-        originalClipStart: clip.startTime,
-        originalClipDuration: clip.duration,
-        originalTrimIn: clip.trimIn,
+      startTrimDrag({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        handle,
+        clip,
+        x,
+        contentY,
+        time,
+        shiftKey: e.shiftKey,
       });
-      selectClip(clip.id, e.shiftKey);
       return;
     }
 
     if (handle !== "body") return;
-
-    if (toolMode === "razor") {
-      const splitResult = splitClipWithRazor(clip, time);
-      if (splitResult) {
-        selectClip(splitResult.id, false);
-      }
-      return;
-    }
-
-    saveToHistory();
-    const resolvedSelection = resolveTimelineClipSelection({
-      clipId: clip.id,
-      selectedClipIds,
-      selectedMaskIds,
-      shiftKey: e.shiftKey,
-    });
-    const { activeClipIds, activeMaskIds } = resolvedSelection;
-    if (resolvedSelection.shouldSelectClip) {
-      selectClip(clip.id, resolvedSelection.selectAppend);
-    }
-    if (resolvedSelection.shouldClearMaskSelection) {
-      clearMaskSelectionState();
-    }
-
-    let primaryClipId = clip.id;
-
-    if (e.altKey && toolMode === "select") {
-      // Alt+Drag: duplicate ALL selected items and drag the copies
-      const duplicated = duplicateSelectionForDrag({
-        activeClipIds,
-        activeMaskIds,
-        primaryClipId: clip.id,
-      });
-      primaryClipId = duplicated.primaryClipId;
-
-      startClipMoveDrag({
-        pointerId: e.pointerId,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        clipId: primaryClipId,
-        items: duplicated.items,
-        x,
-        contentY,
-        time,
-        clipStart: clip.startTime,
-        clipDuration: clip.duration,
-        clipTrimIn: clip.trimIn,
-      });
-      return;
-    }
-
-    // Normal drag: move all selected items
-    const items = buildDragItems(activeClipIds, activeMaskIds);
-    startClipMoveDrag({
-      pointerId: e.pointerId,
-      clientX: e.clientX,
-      clientY: e.clientY,
-      clipId: primaryClipId,
-      items,
-      x,
-      contentY,
-      time,
-      clipStart: clip.startTime,
-      clipDuration: clip.duration,
-      clipTrimIn: clip.trimIn,
-    });
+    handleClipBodyPointerDown({ event: e, clip, x, contentY, time });
   }, [
     getTrackAtY,
     seekAndKeepVisible,
     findClipAtPosition,
-    deselectAll,
-    clearMaskSelectionState,
-    capturePointer,
+    startPlayheadDrag,
     toolMode,
-    saveToHistory,
-    selectClip,
-    splitClipWithRazor,
-    selectedClipIds,
-    selectedMaskIds,
-    duplicateSelectionForDrag,
-    startClipMoveDrag,
-    buildDragItems,
+    startTrimDrag,
+    handleClipBodyPointerDown,
   ]);
 
   // Handle pointer down (supports mouse, touch, pen)
