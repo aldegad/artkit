@@ -30,6 +30,7 @@ import {
   useSpriteExport,
   useSpriteProjectFileActions,
   useSpriteProjectSync,
+  useSpriteExportActions,
 } from "@/domains/sprite";
 import type { SpriteTrack } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
@@ -52,12 +53,7 @@ import { SyncDialog } from "@/shared/components/app/auth";
 import {
   getSpriteStorageProvider,
 } from "@/domains/sprite/services/projectStorage";
-import {
-  downloadCompositedFramesAsZip,
-  downloadCompositedSpriteSheet,
-  downloadOptimizedSpriteZip,
-  type SpriteExportFrameSize,
-} from "@/domains/sprite/utils/export";
+import { type SpriteExportFrameSize } from "@/domains/sprite/utils/export";
 
 const MAX_RESAMPLE_DIMENSION = 16384;
 const RESAMPLE_SIZE_PATTERN = /^(\d+)\s*[x×]\s*(\d+)$/;
@@ -807,69 +803,17 @@ function SpriteEditorMain() {
     t.noFramesToSave,
   ]);
 
-  // Unified export handler
-  const handleExport = useCallback(async (settings: import("@/domains/sprite/components/SpriteExportModal").SpriteExportSettings) => {
-    if (!hasRenderableFrames) return;
-    const name = settings.fileName.trim() || projectName.trim() || "sprite-project";
-    const resolvedFrameSize = settings.frameSize ?? undefined;
-    try {
-      switch (settings.exportType) {
-        case "zip":
-          await downloadCompositedFramesAsZip(tracks, name, {
-            frameSize: resolvedFrameSize,
-          });
-          break;
-        case "sprite-png":
-          await downloadCompositedSpriteSheet(tracks, name, {
-            frameSize: resolvedFrameSize,
-            padding: settings.padding,
-            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
-          });
-          break;
-        case "sprite-webp":
-          await downloadCompositedSpriteSheet(tracks, name, {
-            format: "webp",
-            frameSize: resolvedFrameSize,
-            padding: settings.padding,
-            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
-            quality: settings.webpQuality,
-          });
-          break;
-        case "mp4":
-          await exportMp4(tracks, name, {
-            fps: settings.mp4Fps,
-            compression: settings.mp4Compression,
-            backgroundColor: settings.mp4BackgroundColor,
-            loopCount: settings.mp4LoopCount,
-            frameSize: resolvedFrameSize,
-          });
-          break;
-        case "optimized-zip":
-          try {
-            startProgress("Preparing...", 0);
-            await downloadOptimizedSpriteZip(tracks, name, {
-              threshold: settings.optimizedThreshold,
-              target: settings.optimizedTarget,
-              includeGuide: settings.optimizedIncludeGuide,
-              imageFormat: settings.optimizedImageFormat,
-              imageQuality: settings.optimizedWebpQuality,
-              tileSize: settings.optimizedTileSize,
-              fps,
-              frameSize: resolvedFrameSize,
-            }, (p) => {
-              startProgress(p.stage, p.percent, p.detail);
-            });
-          } finally {
-            endProgress();
-          }
-          break;
-      }
-      setIsExportModalOpen(false);
-    } catch (error) {
-      console.error("Export failed:", error);
-      showErrorToast(`${t.exportFailed}: ${(error as Error).message}`);
-    }
-  }, [hasRenderableFrames, tracks, projectName, fps, t.exportFailed, exportMp4, startProgress, endProgress]);
+  const { handleExport } = useSpriteExportActions({
+    hasRenderableFrames,
+    tracks,
+    projectName,
+    fps,
+    exportMp4,
+    startProgress,
+    endProgress,
+    closeExportModal: () => setIsExportModalOpen(false),
+    exportFailedLabel: t.exportFailed,
+  });
 
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
