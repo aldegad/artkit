@@ -71,6 +71,7 @@ interface Translations {
   noSavedProjects: string;
   storage: string;
   export: string;
+  resampleAllResolution: string;
   exportLayers: string;
   import: string;
   importComplete: string;
@@ -440,6 +441,7 @@ const translations: Record<Language, Translations> = {
     noSavedProjects: "저장된 프로젝트가 없습니다",
     storage: "저장소",
     export: "내보내기",
+    resampleAllResolution: "전체 해상도 리샘플",
     exportLayers: "레이어 개별 내보내기",
     import: "가져오기",
     importComplete: "가져오기 완료!",
@@ -807,6 +809,7 @@ const translations: Record<Language, Translations> = {
     noSavedProjects: "No saved projects",
     storage: "Storage",
     export: "Export",
+    resampleAllResolution: "Resample All Resolution",
     exportLayers: "Export Layers",
     import: "Import",
     importComplete: "Import complete!",

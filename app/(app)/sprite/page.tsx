@@ -29,8 +29,9 @@ import {
   SpriteExportModal,
   useSpriteExport,
 } from "@/domains/sprite";
-import type { SavedSpriteProject } from "@/domains/sprite";
+import type { SavedSpriteProject, SpriteTrack } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
+
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
@@ -55,6 +56,144 @@ import {
   downloadOptimizedSpriteZip,
   type SpriteExportFrameSize,
 } from "@/domains/sprite/utils/export";
+
+const MAX_RESAMPLE_DIMENSION = 16384;
+const RESAMPLE_SIZE_PATTERN = /^(\d+)\s*[x×]\s*(\d+)$/;
+const RESAMPLE_PERCENT_PATTERN = /^(\d+(?:\.\d+)?)\s*%$/;
+
+function clampResampleDimension(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.min(MAX_RESAMPLE_DIMENSION, Math.round(value)));
+}
+
+function parseResampleInput(
+  input: string,
+  sourceSize: SpriteExportFrameSize,
+): SpriteExportFrameSize {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) {
+    throw new Error("형식을 입력하세요. 예: 512x512 또는 50%");
+  }
+
+  const percentMatch = trimmed.match(RESAMPLE_PERCENT_PATTERN);
+  if (percentMatch) {
+    const percent = Number.parseFloat(percentMatch[1]);
+    if (!Number.isFinite(percent) || percent <= 0) {
+      throw new Error("퍼센트는 0보다 큰 숫자여야 합니다.");
+    }
+    return {
+      width: clampResampleDimension((sourceSize.width * percent) / 100),
+      height: clampResampleDimension((sourceSize.height * percent) / 100),
+    };
+  }
+
+  const sizeMatch = trimmed.match(RESAMPLE_SIZE_PATTERN);
+  if (sizeMatch) {
+    const width = Number.parseInt(sizeMatch[1], 10);
+    const height = Number.parseInt(sizeMatch[2], 10);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      throw new Error("가로/세로 값은 1 이상의 숫자여야 합니다.");
+    }
+    if (width > MAX_RESAMPLE_DIMENSION || height > MAX_RESAMPLE_DIMENSION) {
+      throw new Error(`최대 해상도는 ${MAX_RESAMPLE_DIMENSION}x${MAX_RESAMPLE_DIMENSION} 입니다.`);
+    }
+    return { width, height };
+  }
+
+  const widthOnly = Number.parseInt(trimmed, 10);
+  if (Number.isFinite(widthOnly) && widthOnly > 0) {
+    const ratio = sourceSize.height / sourceSize.width;
+    const width = clampResampleDimension(widthOnly);
+    return {
+      width,
+      height: clampResampleDimension(width * ratio),
+    };
+  }
+
+  throw new Error("형식은 512x512 또는 50% 입니다.");
+}
+
+function loadImageFromSource(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load image."));
+    image.src = src;
+  });
+}
+
+async function resampleImageDataByScale(
+  imageData: string,
+  scaleX: number,
+  scaleY: number,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const image = await loadImageFromSource(imageData);
+  const width = clampResampleDimension(image.width * scaleX);
+  const height = clampResampleDimension(image.height * scaleY);
+
+  if (width === image.width && height === image.height) {
+    return { dataUrl: imageData, width, height };
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Failed to get 2d context for resampling.");
+  }
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    width,
+    height,
+  };
+}
+
+async function estimateCanvasSizeFromTracks(
+  tracks: SpriteTrack[],
+): Promise<SpriteExportFrameSize | null> {
+  const frames = tracks.flatMap((track) => track.frames).filter((frame) => Boolean(frame.imageData));
+  if (frames.length === 0) return null;
+
+  const sizeCache = new Map<string, Promise<{ width: number; height: number } | null>>();
+  const getImageSize = (dataUrl: string) => {
+    const cached = sizeCache.get(dataUrl);
+    if (cached) return cached;
+
+    const promise = loadImageFromSource(dataUrl)
+      .then((image) => ({ width: image.width, height: image.height }))
+      .catch(() => null);
+    sizeCache.set(dataUrl, promise);
+    return promise;
+  };
+
+  let maxRight = 0;
+  let maxBottom = 0;
+
+  await Promise.all(
+    frames.map(async (frame) => {
+      if (!frame.imageData) return;
+      const size = await getImageSize(frame.imageData);
+      if (!size) return;
+      const ox = frame.offset?.x ?? 0;
+      const oy = frame.offset?.y ?? 0;
+      maxRight = Math.max(maxRight, ox + size.width);
+      maxBottom = Math.max(maxBottom, oy + size.height);
+    }),
+  );
+
+  if (maxRight <= 0 || maxBottom <= 0) return null;
+  return {
+    width: clampResampleDimension(maxRight),
+    height: clampResampleDimension(maxBottom),
+  };
+}
 
 // ============================================
 // Main Editor Component
@@ -120,8 +259,8 @@ function SpriteEditorMain() {
     setIsVideoImportOpen,
     pendingVideoFile,
     setPendingVideoFile,
-    exportFrameSize,
-    setExportFrameSize,
+    canvasSize,
+    setCanvasSize,
   } = useEditorWindows();
   const { tracks, addTrack, restoreTracks } = useEditorTracks();
   const { copyFrame, pasteFrame } = useEditorClipboard();
@@ -137,6 +276,7 @@ function SpriteEditorMain() {
 
   // Save feedback state
   const [isSaving, setIsSaving] = useState(false);
+  const [isResampling, setIsResampling] = useState(false);
   const [saveCount, setSaveCount] = useState(0);
   const [saveProgress, setSaveProgress] = useState<SpriteSaveLoadProgress | null>(null);
   const [isProjectLoading, setIsProjectLoading] = useState(false);
@@ -374,7 +514,7 @@ function SpriteEditorMain() {
   }, [imageSize.width, imageSize.height, firstFrameImage]);
 
   const cropBaseSize = useMemo(() => {
-    if (exportFrameSize) return exportFrameSize;
+    if (canvasSize) return canvasSize;
     if (detectedSourceFrameSize) return detectedSourceFrameSize;
     if (imageSize.width > 0 && imageSize.height > 0) {
       return {
@@ -383,7 +523,7 @@ function SpriteEditorMain() {
       };
     }
     return null;
-  }, [exportFrameSize, detectedSourceFrameSize, imageSize.width, imageSize.height]);
+  }, [canvasSize, detectedSourceFrameSize, imageSize.width, imageSize.height]);
 
   const handleSelectAllCrop = useCallback(() => {
     if (!cropBaseSize) return;
@@ -474,10 +614,10 @@ function SpriteEditorMain() {
       isPlaying: false,
     }));
 
-    setExportFrameSize({ width, height });
+    setCanvasSize({ width, height });
     setCropArea(null);
     setCanvasExpandMode(false);
-  }, [cropArea, pushHistory, setCropArea, setCanvasExpandMode, setExportFrameSize]);
+  }, [cropArea, pushHistory, setCropArea, setCanvasExpandMode, setCanvasSize]);
 
   useEffect(() => {
     if (toolMode !== "crop") return;
@@ -491,6 +631,173 @@ function SpriteEditorMain() {
       height: cropBaseSize.height,
     });
   }, [toolMode, cropArea, cropBaseSize, setCropArea]);
+
+  const handleResampleAllResolution = useCallback(async () => {
+    if (isResampling) return;
+
+    const sourceTracks = useSpriteTrackStore.getState().tracks;
+    const hasImageFrames = sourceTracks.some((track) =>
+      track.frames.some((frame) => Boolean(frame.imageData)),
+    );
+    if (!hasImageFrames) {
+      alert(t.noFramesToSave || "No frames to resample.");
+      return;
+    }
+
+    const estimatedCanvasSize = await estimateCanvasSizeFromTracks(sourceTracks);
+    const currentCanvasSize = canvasSize
+      ? {
+          width: clampResampleDimension(canvasSize.width),
+          height: clampResampleDimension(canvasSize.height),
+        }
+      : estimatedCanvasSize ?? (
+        imageSize.width > 0 && imageSize.height > 0
+          ? {
+              width: clampResampleDimension(imageSize.width),
+              height: clampResampleDimension(imageSize.height),
+            }
+          : null
+      );
+
+    if (!currentCanvasSize) {
+      alert("리샘플 기준 해상도를 찾지 못했습니다.");
+      return;
+    }
+
+    const defaultInput = `${currentCanvasSize.width}x${currentCanvasSize.height}`;
+    const input = window.prompt(
+      "전체 해상도 리샘플: 새 크기를 입력하세요 (예: 512x512 또는 50%)",
+      defaultInput,
+    );
+    if (input === null) return;
+
+    setIsResampling(true);
+    try {
+      const nextCanvasSize = parseResampleInput(input, currentCanvasSize);
+      if (
+        nextCanvasSize.width === currentCanvasSize.width
+        && nextCanvasSize.height === currentCanvasSize.height
+      ) {
+        return;
+      }
+
+      const currentAspect = currentCanvasSize.width / currentCanvasSize.height;
+      const nextAspect = nextCanvasSize.width / nextCanvasSize.height;
+      if (Math.abs(currentAspect - nextAspect) > 0.0001) {
+        const keepGoing = window.confirm(
+          "비율이 달라 프레임이 왜곡될 수 있습니다. 계속 진행할까요?",
+        );
+        if (!keepGoing) return;
+      }
+
+      const scaleX = nextCanvasSize.width / currentCanvasSize.width;
+      const scaleY = nextCanvasSize.height / currentCanvasSize.height;
+
+      const frameResampleCache = new Map<string, Promise<string>>();
+      const resampleFrameImage = (frameImageData: string): Promise<string> => {
+        const cached = frameResampleCache.get(frameImageData);
+        if (cached) return cached;
+
+        const promise = resampleImageDataByScale(frameImageData, scaleX, scaleY)
+          .then((result) => result.dataUrl)
+          .catch((error) => {
+            console.error("Failed to resample frame image:", error);
+            return frameImageData;
+          });
+        frameResampleCache.set(frameImageData, promise);
+        return promise;
+      };
+
+      const resampledTracks: SpriteTrack[] = await Promise.all(
+        sourceTracks.map(async (track) => ({
+          ...track,
+          frames: await Promise.all(
+            track.frames.map(async (frame) => {
+              const nextImageData = frame.imageData
+                ? await resampleFrameImage(frame.imageData)
+                : frame.imageData;
+
+              return {
+                ...frame,
+                imageData: nextImageData,
+                points: frame.points.map((point) => ({
+                  x: Math.round(point.x * scaleX),
+                  y: Math.round(point.y * scaleY),
+                })),
+                offset: {
+                  x: Math.round((frame.offset?.x ?? 0) * scaleX),
+                  y: Math.round((frame.offset?.y ?? 0) * scaleY),
+                },
+              };
+            }),
+          ),
+        })),
+      );
+
+      let nextImageSrc = imageSrc;
+      let nextImageSize = { ...imageSize };
+
+      if (imageSrc) {
+        try {
+          const resampledSource = await resampleImageDataByScale(imageSrc, scaleX, scaleY);
+          nextImageSrc = resampledSource.dataUrl;
+          nextImageSize = {
+            width: resampledSource.width,
+            height: resampledSource.height,
+          };
+        } catch (error) {
+          console.error("Failed to resample source image:", error);
+        }
+      } else if (imageSize.width > 0 && imageSize.height > 0) {
+        nextImageSize = {
+          width: clampResampleDimension(imageSize.width * scaleX),
+          height: clampResampleDimension(imageSize.height * scaleY),
+        };
+      }
+
+      pushHistory();
+      useSpriteTrackStore.setState((state) => ({
+        tracks: resampledTracks,
+        imageSrc: nextImageSrc,
+        imageSize: nextImageSize,
+        currentPoints: state.currentPoints.map((point) => ({
+          x: Math.round(point.x * scaleX),
+          y: Math.round(point.y * scaleY),
+        })),
+        isPlaying: false,
+      }));
+
+      if (nextImageSrc) {
+        const img = new Image();
+        img.onload = () => {
+          imageRef.current = img;
+        };
+        img.src = nextImageSrc;
+      } else {
+        imageRef.current = null;
+      }
+
+      setCanvasSize(nextCanvasSize);
+      setCropArea(null);
+      setCanvasExpandMode(false);
+    } catch (error) {
+      console.error("Failed to resample sprite project:", error);
+      alert((error as Error).message || "전체 해상도 리샘플에 실패했습니다.");
+    } finally {
+      setIsResampling(false);
+    }
+  }, [
+    canvasSize,
+    imageRef,
+    imageSize,
+    imageSrc,
+    isResampling,
+    pushHistory,
+    setCanvasExpandMode,
+    setCropArea,
+    setCanvasSize,
+    t.noFramesToSave,
+  ]);
 
   // Unified export handler
   const handleExport = useCallback(async (settings: import("@/domains/sprite/components/SpriteExportModal").SpriteExportSettings) => {
@@ -549,7 +856,6 @@ function SpriteEditorMain() {
           }
           break;
       }
-      setExportFrameSize(settings.frameSize ?? null);
       setIsExportModalOpen(false);
     } catch (error) {
       console.error("Export failed:", error);
@@ -575,7 +881,8 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
-      exportFrameSize: exportFrameSize ?? undefined,
+      canvasSize: canvasSize ?? undefined,
+      exportFrameSize: canvasSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -613,7 +920,7 @@ function SpriteEditorMain() {
     allFrames,
     firstFrameImage,
     projectName,
-    exportFrameSize,
+    canvasSize,
     nextFrameId,
     fps,
     storageProvider,
@@ -644,7 +951,8 @@ function SpriteEditorMain() {
       name,
       imageSrc: saveImageSrc,
       imageSize: imageSize,
-      exportFrameSize: exportFrameSize ?? undefined,
+      canvasSize: canvasSize ?? undefined,
+      exportFrameSize: canvasSize ?? undefined,
       tracks,
       nextFrameId,
       fps,
@@ -678,7 +986,7 @@ function SpriteEditorMain() {
     allFrames,
     firstFrameImage,
     projectName,
-    exportFrameSize,
+    canvasSize,
     nextFrameId,
     fps,
     storageProvider,
@@ -704,7 +1012,7 @@ function SpriteEditorMain() {
 
         setImageSrc(project.imageSrc);
         setImageSize(project.imageSize);
-        setExportFrameSize(project.exportFrameSize ?? null);
+        setCanvasSize(project.canvasSize ?? project.exportFrameSize ?? null);
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw = project as any;
@@ -738,7 +1046,7 @@ function SpriteEditorMain() {
       storageProvider,
       setImageSrc,
       setImageSize,
-      setExportFrameSize,
+      setCanvasSize,
       restoreTracks,
       setProjectName,
       setCurrentProjectId,
@@ -800,14 +1108,14 @@ function SpriteEditorMain() {
   const handleNew = useCallback(() => {
     if (frames.length > 0 || imageSrc) {
       if (window.confirm(t.newProjectConfirm)) {
-        setExportFrameSize(null);
+        setCanvasSize(null);
         newProject();
       }
     } else {
-      setExportFrameSize(null);
+      setCanvasSize(null);
       newProject();
     }
-  }, [frames.length, imageSrc, t.newProjectConfirm, newProject, setExportFrameSize]);
+  }, [frames.length, imageSrc, t.newProjectConfirm, newProject, setCanvasSize]);
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
@@ -852,6 +1160,7 @@ function SpriteEditorMain() {
             onSave={saveProject}
             onSaveAs={saveProjectAs}
             onExport={() => setIsExportModalOpen(true)}
+            onResampleAllResolution={() => void handleResampleAllResolution()}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -860,9 +1169,10 @@ function SpriteEditorMain() {
             isPreviewOpen={isPreviewOpen}
             panelHeadersVisible={panelHeadersVisible}
             onTogglePanelHeaders={togglePanelHeaders}
-            canSave={hasRenderableFrames && !isSaving}
-            canExport={hasRenderableFrames}
-            isLoading={isSaving}
+            canSave={hasRenderableFrames && !isSaving && !isResampling}
+            canExport={hasRenderableFrames && !isResampling}
+            canResample={hasRenderableFrames && !isResampling}
+            isLoading={isSaving || isResampling}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}
@@ -877,6 +1187,7 @@ function SpriteEditorMain() {
               save: t.save,
               saveAs: t.saveAs,
               export: t.export,
+              resampleAllResolution: t.resampleAllResolution,
               importImage: t.importImage,
               importSheet: t.importSheet,
               importVideo: t.importVideo,
@@ -1028,7 +1339,7 @@ function SpriteEditorMain() {
         onExport={handleExport}
         defaultFileName={projectName.trim() || "sprite-project"}
         currentFps={fps}
-        defaultFrameSize={exportFrameSize}
+        defaultFrameSize={canvasSize}
         sourceFrameSize={detectedSourceFrameSize}
         isExporting={isExporting}
         exportProgress={exportProgress}

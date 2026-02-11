@@ -64,6 +64,8 @@ export interface SavedSpriteProject {
   name: string;
   imageSrc: string;
   imageSize: Size;
+  canvasSize?: Size;
+  // Legacy field kept for backward compatibility with older saved data.
   exportFrameSize?: Size;
   thumbnailUrl?: string;
   tracks: SpriteTrack[];

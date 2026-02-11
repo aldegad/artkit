@@ -138,7 +138,7 @@ export default function AnimationPreviewContent() {
     magicWandTolerance,
     magicWandFeather,
   } = useEditorTools();
-  const exportFrameSize = useSpriteUIStore((s) => s.exportFrameSize);
+  const canvasSize = useSpriteUIStore((s) => s.canvasSize);
   const {
     brushColor,
     setBrushColor,
@@ -620,7 +620,7 @@ export default function AnimationPreviewContent() {
     }
 
     const visualIndex = currentVisualIndex >= 0 ? currentVisualIndex : 0;
-    const outputSize = exportFrameSize ?? undefined;
+    const outputSize = canvasSize ?? undefined;
     let cancelled = false;
     compositeFrame(enabledTracks, visualIndex, outputSize, { includeDataUrl: false }).then((result) => {
       if (!cancelled) {
@@ -646,7 +646,7 @@ export default function AnimationPreviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [isAutosaveLoading, enabledTracks, currentVisualIndex, maxEnabledCount, requestRender, exportFrameSize]);
+  }, [isAutosaveLoading, enabledTracks, currentVisualIndex, maxEnabledCount, requestRender, canvasSize]);
 
   // Keep editable frame canvas in sync with active frame.
   useEffect(() => {
@@ -808,14 +808,14 @@ export default function AnimationPreviewContent() {
         height: sourceCanvas.height,
       };
     }
-    if (exportFrameSize) {
+    if (canvasSize) {
       return {
-        width: exportFrameSize.width,
-        height: exportFrameSize.height,
+        width: canvasSize.width,
+        height: canvasSize.height,
       };
     }
     return null;
-  }, [exportFrameSize]);
+  }, [canvasSize]);
 
   const clampToCropCanvas = useCallback((point: { x: number; y: number }) => {
     const bounds = getCropCanvasBounds();
