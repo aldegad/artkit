@@ -535,6 +535,9 @@ function SpriteEditorMain() {
               threshold: settings.optimizedThreshold,
               target: settings.optimizedTarget,
               includeGuide: settings.optimizedIncludeGuide,
+              imageFormat: settings.optimizedImageFormat,
+              imageQuality: settings.optimizedWebpQuality,
+              tileSize: settings.optimizedTileSize,
               fps,
               frameSize: resolvedFrameSize,
             }, (p) => {
@@ -1052,6 +1055,10 @@ function SpriteEditorMain() {
           exportOptimizedThreshold: t.exportOptimizedThreshold,
           exportOptimizedThresholdHint: t.exportOptimizedThresholdHint,
           exportOptimizedIncludeGuide: t.exportOptimizedIncludeGuide,
+          exportOptimizedImageFormat: t.exportOptimizedImageFormat,
+          exportOptimizedFormatPng: t.exportOptimizedFormatPng,
+          exportOptimizedFormatWebp: t.exportOptimizedFormatWebp,
+          exportOptimizedTileSize: t.exportOptimizedTileSize,
         }}
       />
 
