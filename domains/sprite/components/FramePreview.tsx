@@ -11,10 +11,10 @@ import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKeys";
 import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
 import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelection";
-import { drawInterpolatedStroke, drawSpriteBrushPixel } from "../utils/brushDrawing";
+import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
+import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import {
   drawScaledImage,
-  getPointerPressure,
   safeReleasePointerCapture,
   safeSetPointerCapture,
   type CanvasScaleScratch,
@@ -48,21 +48,17 @@ export default function FramePreviewContent() {
   const isEyedropperTool = toolMode === "eyedropper";
 
   const [isPanning, setIsPanning] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
   const [editFrameId, setEditFrameId] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastMousePosRef = useRef({ x: 0, y: 0 });
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const scaleScratchRef = useRef<CanvasScaleScratch>({ primary: null, secondary: null });
   const currentFrameIdRef = useRef<number | null>(null);
   const isFrameDirtyRef = useRef(false);
-  const drawingPointerIdRef = useRef<number | null>(null);
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
   const { ensureDabBufferCanvas, resetDabBufferCanvas } = useDabBufferCanvas();
 
@@ -218,11 +214,6 @@ export default function FramePreviewContent() {
     };
   }, [requestRender]);
 
-  useEffect(() => {
-    setFrameVpPan({ x: 0, y: 0 });
-    setHasDrawn(false);
-  }, [editFrameId, setFrameVpPan]);
-
   const commitFrameEdits = useCallback(() => {
     const frameId = currentFrameIdRef.current;
     const frameCanvas = frameCanvasRef.current;
@@ -347,6 +338,25 @@ export default function FramePreviewContent() {
     [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
   );
 
+  const {
+    isDrawing,
+    resetHasDrawn,
+    startBrushStroke,
+    continueBrushStroke,
+    endBrushStroke,
+    cancelBrushStroke,
+  } = useSpriteBrushStrokeSession({
+    pushHistory,
+    drawAt: (x, y, pressure) => drawPixel(x, y, brushColor, isEraserTool, pressure),
+    requestRender,
+    commitStroke: commitFrameEdits,
+  });
+
+  useEffect(() => {
+    setFrameVpPan({ x: 0, y: 0 });
+    resetHasDrawn();
+  }, [editFrameId, setFrameVpPan, resetHasDrawn]);
+
   const pickColor = useCallback(
     (x: number, y: number) => {
       const frameCtx = frameCtxRef.current;
@@ -428,13 +438,9 @@ export default function FramePreviewContent() {
       if (activeTouchPointerIdsRef.current.size <= 1) {
         frameEndPanDrag();
       }
-      if (drawingPointerIdRef.current === e.pointerId) {
-        drawingPointerIdRef.current = null;
-        setIsDrawing(false);
-        commitFrameEdits();
-      }
+      endBrushStroke(e.pointerId);
     },
-    [frameEndPanDrag, commitFrameEdits]
+    [frameEndPanDrag, endBrushStroke]
   );
 
   const handleCanvasPointerDown = useCallback(
@@ -446,7 +452,7 @@ export default function FramePreviewContent() {
       }
 
       if (activeTouchPointerIdsRef.current.size > 1) {
-        setIsDrawing(false);
+        cancelBrushStroke();
         return;
       }
 
@@ -472,19 +478,7 @@ export default function FramePreviewContent() {
       }
 
       if (isBrushTool) {
-        if (!hasDrawn) {
-          pushHistory();
-          setHasDrawn(true);
-        }
-
-        drawingPointerIdRef.current = e.pointerId;
-        setIsDrawing(true);
-        const pressure = getPointerPressure(e);
-        if (drawPixel(coords.x, coords.y, brushColor, isEraserTool, pressure)) {
-          requestRender();
-        }
-        lastMousePosRef.current = { x: coords.x, y: coords.y };
-
+        startBrushStroke(e, coords);
         safeSetPointerCapture(e.currentTarget, e.pointerId);
       }
     },
@@ -497,15 +491,11 @@ export default function FramePreviewContent() {
       isMagicWandTool,
       isAiSelecting,
       isBrushTool,
-      hasDrawn,
       getPixelCoordinates,
       applyMagicWandSelection,
       pickColor,
-      pushHistory,
-      drawPixel,
-      brushColor,
-      isEraserTool,
-      requestRender,
+      startBrushStroke,
+      cancelBrushStroke,
     ]
   );
 
@@ -521,27 +511,14 @@ export default function FramePreviewContent() {
         return;
       }
 
-      if (!isDrawing || drawingPointerIdRef.current !== e.pointerId || !currentFrame) return;
+      if (!isDrawing || !currentFrame) return;
       if (!isBrushTool) return;
 
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (!coords) return;
-
-      const pressure = getPointerPressure(e);
-      const didInterpolate = drawInterpolatedStroke({
-        from: lastMousePosRef.current,
-        to: coords,
-        drawAt: (x, y) => {
-          drawPixel(x, y, brushColor, isEraserTool, pressure);
-        },
-      });
-      if (didInterpolate) {
-        requestRender();
-      }
-
-      lastMousePosRef.current = { x: coords.x, y: coords.y };
+      continueBrushStroke(e, coords);
     },
-    [isDrawing, currentFrame, isBrushTool, getPixelCoordinates, drawPixel, brushColor, isEraserTool, requestRender]
+    [isDrawing, currentFrame, isBrushTool, getPixelCoordinates, continueBrushStroke]
   );
 
   const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -551,12 +528,8 @@ export default function FramePreviewContent() {
 
     safeReleasePointerCapture(e.currentTarget, e.pointerId);
 
-    if (drawingPointerIdRef.current === e.pointerId) {
-      drawingPointerIdRef.current = null;
-      setIsDrawing(false);
-      commitFrameEdits();
-    }
-  }, [commitFrameEdits]);
+    endBrushStroke(e.pointerId);
+  }, [endBrushStroke]);
 
   const handleCanvasPointerEnter = useCallback(() => {
     setIsOverCanvas(true);
@@ -568,12 +541,8 @@ export default function FramePreviewContent() {
     }
     setIsOverCanvas(false);
     setCursorPos(null);
-    if (drawingPointerIdRef.current === e.pointerId) {
-      drawingPointerIdRef.current = null;
-      setIsDrawing(false);
-      commitFrameEdits();
-    }
-  }, [commitFrameEdits]);
+    endBrushStroke(e.pointerId);
+  }, [endBrushStroke]);
 
   const isHandMode = toolMode === "hand" || isPanning;
 
