@@ -50,9 +50,9 @@ import {
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 
-const MAGIC_WAND_TOLERANCE = 24;
 const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
 const MAGIC_WAND_OUTLINE_DASH = [4, 4];
+const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
 
 // ============================================
 // Frame Indicator (editable)
@@ -135,6 +135,8 @@ export default function AnimationPreviewContent() {
     cropAspectRatio,
     lockCropAspect,
     canvasExpandMode,
+    magicWandTolerance,
+    magicWandFeather,
   } = useEditorTools();
   const exportFrameSize = useSpriteUIStore((s) => s.exportFrameSize);
   const {
@@ -170,6 +172,7 @@ export default function AnimationPreviewContent() {
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const magicWandSelectionRef = useRef<MagicWandSelection | null>(null);
   const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
   const dabBufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dabBufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const cropDragRef = useRef<{
@@ -299,6 +302,7 @@ export default function AnimationPreviewContent() {
   const clearMagicWandSelection = useCallback(() => {
     magicWandSelectionRef.current = null;
     magicWandMaskCanvasRef.current = null;
+    magicWandSeedRef.current = null;
     requestRender();
   }, [requestRender]);
 
@@ -376,6 +380,11 @@ export default function AnimationPreviewContent() {
         && selection.width === sourceCanvas.width
         && selection.height === sourceCanvas.height
       ) {
+        const dashCycle = MAGIC_WAND_OUTLINE_DASH.reduce((sum, value) => sum + value, 0);
+        const antsOffset = dashCycle > 0
+          ? -((performance.now() / MAGIC_WAND_OUTLINE_SPEED_MS) % dashCycle)
+          : 0;
+
         ctx.save();
         ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
         ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
@@ -386,14 +395,14 @@ export default function AnimationPreviewContent() {
           color: "rgba(0, 0, 0, 0.9)",
           lineWidth: 2,
           dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: 0,
+          dashOffset: antsOffset,
         });
         drawMagicWandSelectionOutline(ctx, selection, {
           zoom,
           color: "rgba(255, 255, 255, 0.95)",
           lineWidth: 1,
           dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: 4,
+          dashOffset: antsOffset + (dashCycle / 2),
         });
       }
 
@@ -468,6 +477,20 @@ export default function AnimationPreviewContent() {
       requestRender();
     });
   }, [onAnimViewportChange, requestRender]);
+
+  useEffect(() => {
+    let rafId = 0;
+    const animateSelectionOutline = () => {
+      if (magicWandSelectionRef.current) {
+        requestRender();
+      }
+      rafId = window.requestAnimationFrame(animateSelectionOutline);
+    };
+    rafId = window.requestAnimationFrame(animateSelectionOutline);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [requestRender]);
 
   // Preset colors for quick selection
   const presetColors = [
@@ -839,7 +862,39 @@ export default function AnimationPreviewContent() {
 
     const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
     const selection = computeMagicWandSelection(imageData, x, y, {
-      tolerance: MAGIC_WAND_TOLERANCE,
+      tolerance: magicWandTolerance,
+      connectedOnly: true,
+    });
+
+    if (!selection) {
+      clearMagicWandSelection();
+      return;
+    }
+
+    magicWandSeedRef.current = { x, y };
+    magicWandSelectionRef.current = selection;
+    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
+      feather: magicWandFeather,
+    });
+    requestRender();
+  }, [clearMagicWandSelection, magicWandFeather, magicWandTolerance, requestRender]);
+
+  useEffect(() => {
+    const seed = magicWandSeedRef.current;
+    const frameCtx = editFrameCtxRef.current;
+    const frameCanvas = editFrameCanvasRef.current;
+    if (!seed || !frameCtx || !frameCanvas) {
+      return;
+    }
+
+    if (seed.x < 0 || seed.y < 0 || seed.x >= frameCanvas.width || seed.y >= frameCanvas.height) {
+      clearMagicWandSelection();
+      return;
+    }
+
+    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
+    const selection = computeMagicWandSelection(imageData, seed.x, seed.y, {
+      tolerance: magicWandTolerance,
       connectedOnly: true,
     });
 
@@ -849,9 +904,11 @@ export default function AnimationPreviewContent() {
     }
 
     magicWandSelectionRef.current = selection;
-    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection);
+    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
+      feather: magicWandFeather,
+    });
     requestRender();
-  }, [clearMagicWandSelection, requestRender]);
+  }, [clearMagicWandSelection, magicWandFeather, magicWandTolerance, requestRender]);
 
   const clearSelectedPixels = useCallback(() => {
     const frameCtx = editFrameCtxRef.current;
@@ -1023,6 +1080,7 @@ export default function AnimationPreviewContent() {
       if (!isInteractiveElement && !e.repeat && (e.key === "Delete" || e.key === "Backspace")) {
         if (magicWandSelectionRef.current && magicWandMaskCanvasRef.current) {
           e.preventDefault();
+          e.stopPropagation();
           pushHistory();
           if (clearSelectedPixels()) {
             requestRender();
@@ -1044,11 +1102,11 @@ export default function AnimationPreviewContent() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyUp);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, [animEndPanDrag, clearMagicWandSelection, clearSelectedPixels, commitFrameEdits, pushHistory, requestRender]);
