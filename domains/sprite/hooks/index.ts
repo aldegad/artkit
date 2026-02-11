@@ -15,3 +15,4 @@ export { useSpritePreviewImportHandlers } from "./useSpritePreviewImportHandlers
 export { useSpritePreviewPointerHandlers } from "./useSpritePreviewPointerHandlers";
 export { useSpriteProjectSync } from "./useSpriteProjectSync";
 export { useSpriteExportActions } from "./useSpriteExportActions";
+export { useSpriteCropActions } from "./useSpriteCropActions";
