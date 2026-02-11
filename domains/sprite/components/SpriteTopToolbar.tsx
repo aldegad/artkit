@@ -12,6 +12,7 @@ import {
   CropIcon,
   BackgroundRemovalIcon,
   MagicWandIcon,
+  FilmStripIcon,
   UndoIcon,
   RedoIcon,
 } from "@/shared/components/icons";
@@ -142,6 +143,27 @@ export default function SpriteTopToolbar({
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.magicWand}</span>
+                <span className="text-text-tertiary text-[11px]">{t.magicWandToolTip}</span>
+              </div>
+            }
+            shortcut="W"
+          >
+            <button
+              onClick={() => setSpriteToolMode("magicwand")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "magicwand"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <MagicWandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
                 <span className="font-medium">{t.eyedropper}</span>
                 <span className="text-text-tertiary text-[11px]">{t.eyedropperToolTip}</span>
               </div>
@@ -226,7 +248,7 @@ export default function SpriteTopToolbar({
                 isInterpolating ? "bg-accent-primary text-white cursor-wait" : "hover:bg-interactive-hover"
               }`}
             >
-              <MagicWandIcon className="w-4 h-4" />
+              <FilmStripIcon className="w-4 h-4" />
             </button>
           </Tooltip>
 

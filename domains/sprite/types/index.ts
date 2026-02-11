@@ -42,8 +42,8 @@ export interface SpriteCropArea {
   height: number;
 }
 
-export type SpriteToolMode = "pen" | "select" | "hand" | "brush" | "eraser" | "eyedropper" | "zoom" | "crop";
-export type FrameEditToolMode = "brush" | "eraser" | "eyedropper" | "zoom" | "crop";
+export type SpriteToolMode = "pen" | "select" | "hand" | "brush" | "eraser" | "magicwand" | "eyedropper" | "zoom" | "crop";
+export type FrameEditToolMode = "brush" | "eraser" | "magicwand" | "eyedropper" | "zoom" | "crop";
 export type SpriteCropAspectRatio = AspectRatio;
 
 export type TimelineMode = "reorder" | "offset";
