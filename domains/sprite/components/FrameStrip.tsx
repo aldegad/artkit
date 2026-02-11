@@ -6,7 +6,7 @@ import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
 import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, PlusIcon, FlipIcon, RotateIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
-import { useSpriteTrackStore } from "../stores";
+import { useSpriteTrackStore, useSpriteToolStore } from "../stores";
 import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
 
 interface FrameCardProps {
@@ -115,6 +115,7 @@ export default function FrameStrip() {
   const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const { isPlaying, setIsPlaying } = useEditorAnimation();
   const { timelineMode, setTimelineMode, toolMode } = useEditorTools();
+  const hasMagicWandSelection = useSpriteToolStore((s) => s.hasMagicWandSelection);
   const { pushHistory } = useEditorHistory();
   const { addTrack, activeTrackId, insertEmptyFrameToTrack } = useEditorTracks();
   const {
@@ -465,8 +466,8 @@ export default function FrameStrip() {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isInteractiveElement(e.target)) return;
-      // Keep wand delete behavior for pixel-mask clearing in preview components.
-      if (toolMode === "magicwand") return;
+      // In wand mode, only block frame deletion while an active wand selection exists.
+      if (toolMode === "magicwand" && hasMagicWandSelection) return;
       if (frames.length === 0) return;
 
       e.preventDefault();
@@ -475,7 +476,7 @@ export default function FrameStrip() {
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [deleteActiveFrame, frames.length, toolMode]);
+  }, [deleteActiveFrame, frames.length, hasMagicWandSelection, toolMode]);
 
   const addEmptyFrame = useCallback(() => {
     if (!activeTrackId) return;
