@@ -483,6 +483,20 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     });
   }, [setTracks]);
 
+  const createSafeFittedVisualClip = useCallback((options: {
+    baseClip: Clip;
+    sourceSize: Size;
+    startTime: number;
+    canvasSize?: Size;
+  }): Clip => {
+    const fitted = getFittedVisualTransform(options.sourceSize, options.canvasSize ?? projectRef.current.canvasSize);
+    return withSafeClipStart(clipsRef.current, {
+      ...options.baseClip,
+      position: fitted.position,
+      scale: fitted.scale,
+    }, options.startTime);
+  }, []);
+
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
@@ -773,18 +787,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       canvasSize?: Size
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "video", tracks);
-
       const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
-      const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
-      const clip: Clip = withSafeClipStart(clipsRef.current, {
-        ...baseClip,
-        position: fitted.position,
-        scale: fitted.scale,
-      }, startTime);
+      const clip = createSafeFittedVisualClip({
+        baseClip,
+        sourceSize,
+        startTime,
+        canvasSize,
+      });
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, updateClipsWithDuration]
   );
 
   const addAudioClip = useCallback(
@@ -815,18 +828,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       canvasSize?: Size
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
-
       const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
-      const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
-      const clip: Clip = withSafeClipStart(clipsRef.current, {
-        ...baseClip,
-        position: fitted.position,
-        scale: fitted.scale,
-      }, startTime);
+      const clip = createSafeFittedVisualClip({
+        baseClip,
+        sourceSize,
+        startTime,
+        canvasSize,
+      });
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, updateClipsWithDuration]
   );
 
   const removeClip = useCallback((clipId: string) => {
