@@ -20,9 +20,15 @@ export { useVideoExport } from "./useVideoExport";
 export { useClipTransformTool } from "./useClipTransformTool";
 export { usePreviewViewportState } from "./usePreviewViewportState";
 export { useVideoToolModeHandlers } from "./useVideoToolModeHandlers";
+export { useGapInterpolationActions, analyzeGapInterpolationSelection } from "./useGapInterpolationActions";
+export { useMaskRestoreSync } from "./useMaskRestoreSync";
 export type {
   ExportProgressState,
   VideoExportFormat,
   VideoExportCompression,
   VideoExportOptions,
 } from "./useVideoExport";
+export type {
+  GapInterpolationAnalysis,
+  GapInterpolationIssue,
+} from "./useGapInterpolationActions";
