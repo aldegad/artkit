@@ -18,6 +18,10 @@ import {
   listAll,
 } from "firebase/storage";
 import { db, storage } from "./config";
+import {
+  removeUndefinedValues,
+  readTimestampMillis,
+} from "./firestoreValueUtils";
 import { SavedImageProject, UnifiedLayer } from "@/domains/image/types";
 import { generateThumbnailFromLayers } from "@/shared/utils/thumbnail";
 
@@ -257,7 +261,7 @@ export async function saveImageProjectToFirebase(
     updatedAt: Timestamp.now(),
   };
 
-  await setDoc(docRef, firestoreProject);
+  await setDoc(docRef, removeUndefinedValues(firestoreProject));
 }
 
 /**
@@ -315,7 +319,7 @@ export async function getImageProjectFromFirebase(
     rotation: data.rotation,
     unifiedLayers,
     activeLayerId: data.activeLayerId || undefined,
-    savedAt: data.updatedAt.toMillis(),
+    savedAt: readTimestampMillis(data.updatedAt),
   };
 }
 
@@ -357,7 +361,7 @@ export async function getAllImageProjectsFromFirebase(
         paintData: "", // Don't load images for list
       })),
       activeLayerId: data.activeLayerId || undefined,
-      savedAt: data.updatedAt.toMillis(),
+      savedAt: readTimestampMillis(data.updatedAt),
     });
   }
 
