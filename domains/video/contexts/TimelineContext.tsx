@@ -28,6 +28,7 @@ import {
 } from "../utils/videoAutosave";
 import { loadMediaBlob, copyMediaBlob } from "../utils/mediaStorage";
 import { normalizeClipTransformKeyframes, sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
+import { useTimelineHistory } from "./useTimelineHistory";
 
 interface TimelineContextValue {
   // View state
@@ -97,13 +98,6 @@ interface TimelineContextValue {
 }
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
-
-interface TimelineHistorySnapshot {
-  tracks: VideoTrack[];
-  clips: Clip[];
-}
-
-const MAX_HISTORY = 100;
 
 function cloneTrack(track: VideoTrack): VideoTrack {
   return { ...track };
@@ -437,13 +431,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   });
   const [clips, _setClips] = useState<Clip[]>([]);
   const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
-
   // Refs for autosave
-  const isInitializedRef = useRef(false);
-  const historyPastRef = useRef<TimelineHistorySnapshot[]>([]);
-  const historyFutureRef = useRef<TimelineHistorySnapshot[]>([]);
   const projectRef = useRef(project);
 
   // Refs for latest tracks/clips — kept in sync even during React batched updates
@@ -523,52 +511,22 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return index;
   }, [clips]);
 
-  const syncHistoryFlags = useCallback(() => {
-    setCanUndo(historyPastRef.current.length > 0);
-    setCanRedo(historyFutureRef.current.length > 0);
-  }, []);
-
-  const captureHistorySnapshot = useCallback((): TimelineHistorySnapshot => {
-    return {
-      tracks: tracksRef.current.map(cloneTrack),
-      clips: clipsRef.current.map(cloneClip),
-    };
-  }, []);
-
-  const saveToHistory = useCallback(() => {
-    historyPastRef.current.push(captureHistorySnapshot());
-    if (historyPastRef.current.length > MAX_HISTORY) {
-      historyPastRef.current.shift();
-    }
-    historyFutureRef.current = [];
-    syncHistoryFlags();
-  }, [captureHistorySnapshot, syncHistoryFlags]);
-
-  const clearHistory = useCallback(() => {
-    historyPastRef.current = [];
-    historyFutureRef.current = [];
-    syncHistoryFlags();
-  }, [syncHistoryFlags]);
-
-  const undo = useCallback(() => {
-    const previous = historyPastRef.current.pop();
-    if (!previous) return;
-
-    historyFutureRef.current.push(captureHistorySnapshot());
-    setTracks(previous.tracks.map(cloneTrack));
-    setClips(previous.clips.map(cloneClip));
-    syncHistoryFlags();
-  }, [captureHistorySnapshot, syncHistoryFlags]);
-
-  const redo = useCallback(() => {
-    const next = historyFutureRef.current.pop();
-    if (!next) return;
-
-    historyPastRef.current.push(captureHistorySnapshot());
-    setTracks(next.tracks.map(cloneTrack));
-    setClips(next.clips.map(cloneClip));
-    syncHistoryFlags();
-  }, [captureHistorySnapshot, syncHistoryFlags]);
+  const {
+    canUndo,
+    canRedo,
+    saveToHistory,
+    clearHistory,
+    undo,
+    redo,
+  } = useTimelineHistory({
+    tracksRef,
+    clipsRef,
+    setTracks,
+    setClips,
+    cloneTrack,
+    cloneClip,
+    maxHistory: 100,
+  });
 
   // Set view state
   const setViewState = useCallback((newViewState: TimelineViewState) => {
@@ -648,16 +606,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Failed to load autosave:", error);
       } finally {
-        isInitializedRef.current = true;
-        historyPastRef.current = [];
-        historyFutureRef.current = [];
-        syncHistoryFlags();
+        clearHistory();
         setIsAutosaveInitialized(true);
       }
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, setAutoKeyframeEnabled, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, syncHistoryFlags]);
+  }, [setProject, setProjectName, setToolMode, setAutoKeyframeEnabled, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, clearHistory]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles
