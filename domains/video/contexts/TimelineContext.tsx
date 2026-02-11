@@ -326,7 +326,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     toggleLoop,
   } = useVideoState();
 
-  const [viewState, setViewStateInternal] = useState<TimelineViewState>(INITIAL_TIMELINE_VIEW);
+  const [viewState, setViewStateInternal] = useState<TimelineViewState>(sanitizeTimelineViewState(INITIAL_TIMELINE_VIEW));
   const [tracks, _setTracks] = useState<VideoTrack[]>(() => {
     // Start with one default track
     return [createVideoTrack("Video 1", 0)];
@@ -589,16 +589,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // View state actions
   const setZoom = useCallback((zoom: number) => {
-    const clampedZoom = Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, zoom));
+    const safeZoom = Number.isFinite(zoom) ? zoom : TIMELINE.DEFAULT_ZOOM;
+    const clampedZoom = Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, safeZoom));
     setViewStateInternal((prev) => ({ ...prev, zoom: clampedZoom }));
   }, []);
 
   const setScrollX = useCallback((scrollX: number) => {
-    setViewStateInternal((prev) => ({ ...prev, scrollX: Math.max(0, scrollX) }));
+    const safeScrollX = Math.max(0, Number.isFinite(scrollX) ? scrollX : 0);
+    setViewStateInternal((prev) => ({ ...prev, scrollX: safeScrollX }));
   }, []);
 
   const setScrollY = useCallback((scrollY: number) => {
-    setViewStateInternal((prev) => ({ ...prev, scrollY: Math.max(0, scrollY) }));
+    const safeScrollY = Math.max(0, Number.isFinite(scrollY) ? scrollY : 0);
+    setViewStateInternal((prev) => ({ ...prev, scrollY: safeScrollY }));
   }, []);
 
   const toggleSnap = useCallback(() => {
