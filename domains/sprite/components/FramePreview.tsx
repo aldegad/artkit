@@ -10,6 +10,7 @@ import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKeys";
 import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
+import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelection";
 import { drawInterpolatedStroke, drawSpriteBrushPixel } from "../utils/brushDrawing";
 import {
   drawScaledImage,
@@ -19,13 +20,8 @@ import {
   type CanvasScaleScratch,
 } from "@/shared/utils";
 import {
-  computeMagicWandSelection,
-  computeMagicWandSelectionFromAlphaMask,
-  createMagicWandMaskCanvas,
   drawMagicWandSelectionOutline,
-  type MagicWandSelection,
 } from "@/shared/utils/magicWand";
-import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
@@ -57,7 +53,6 @@ export default function FramePreviewContent() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
   const [editFrameId, setEditFrameId] = useState<number | null>(null);
-  const [isAiSelecting, setIsAiSelecting] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,12 +64,6 @@ export default function FramePreviewContent() {
   const isFrameDirtyRef = useRef(false);
   const drawingPointerIdRef = useRef<number | null>(null);
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
-  const magicWandSelectionRef = useRef<MagicWandSelection | null>(null);
-  const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
-  const aiSelectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const aiSelectionFrameIdRef = useRef<number | null>(null);
-  const aiSelectionTaskIdRef = useRef(0);
   const { ensureDabBufferCanvas, resetDabBufferCanvas } = useDabBufferCanvas();
 
   const validFrames = frames.filter((f) => f.imageData);
@@ -130,18 +119,24 @@ export default function FramePreviewContent() {
   });
 
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
-
-  const clearMagicWandSelection = useCallback(() => {
-    magicWandSelectionRef.current = null;
-    magicWandMaskCanvasRef.current = null;
-    magicWandSeedRef.current = null;
-    requestRender();
-  }, [requestRender]);
-
-  const invalidateAiSelectionCache = useCallback(() => {
-    aiSelectionCanvasRef.current = null;
-    aiSelectionFrameIdRef.current = null;
-  }, []);
+  const {
+    magicWandSelectionRef,
+    magicWandMaskCanvasRef,
+    isAiSelecting,
+    clearMagicWandSelection,
+    invalidateAiSelectionCache,
+    applyMagicWandSelection,
+    clearSelectedPixels,
+    hasMagicWandSelection,
+  } = useSpriteMagicWandSelection({
+    frameCanvasRef,
+    frameCtxRef,
+    mode: magicWandSelectionMode,
+    tolerance: magicWandTolerance,
+    feather: magicWandFeather,
+    requestRender,
+    getAiCacheKey: () => currentFrameIdRef.current,
+  });
 
   useEffect(() => {
     setRenderFn(() => {
@@ -246,8 +241,6 @@ export default function FramePreviewContent() {
   }, [selectedFrameId, commitFrameEdits]);
 
   useEffect(() => {
-    aiSelectionTaskIdRef.current += 1;
-    setIsAiSelecting(false);
     invalidateAiSelectionCache();
 
     if (!currentFrame?.imageData) {
@@ -327,160 +320,6 @@ export default function FramePreviewContent() {
     [getFrameVpZoom]
   );
 
-  const applyMagicWandSelection = useCallback(async (x: number, y: number) => {
-    const frameCtx = frameCtxRef.current;
-    const frameCanvas = frameCanvasRef.current;
-    if (!frameCtx || !frameCanvas) return;
-
-    if (x < 0 || y < 0 || x >= frameCanvas.width || y >= frameCanvas.height) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    if (magicWandSelectionMode === "ai") {
-      const taskId = aiSelectionTaskIdRef.current + 1;
-      aiSelectionTaskIdRef.current = taskId;
-      setIsAiSelecting(true);
-
-      try {
-        const frameId = currentFrameIdRef.current;
-        let aiCanvas = aiSelectionCanvasRef.current;
-        if (
-          !aiCanvas
-          || aiSelectionFrameIdRef.current !== frameId
-          || aiCanvas.width !== frameCanvas.width
-          || aiCanvas.height !== frameCanvas.height
-        ) {
-          aiCanvas = await removeBackgroundFromCanvas(frameCanvas);
-          if (aiSelectionTaskIdRef.current !== taskId) {
-            return;
-          }
-          aiSelectionCanvasRef.current = aiCanvas;
-          aiSelectionFrameIdRef.current = frameId;
-        }
-
-        const aiCtx = aiCanvas.getContext("2d");
-        if (!aiCtx) {
-          clearMagicWandSelection();
-          return;
-        }
-
-        const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
-        const selection = computeMagicWandSelectionFromAlphaMask(alphaImage, x, y, {
-          connectedOnly: true,
-        });
-
-        if (!selection) {
-          clearMagicWandSelection();
-          return;
-        }
-
-        magicWandSeedRef.current = { x, y };
-        magicWandSelectionRef.current = selection;
-        magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
-          feather: magicWandFeather,
-        });
-        requestRender();
-      } catch (error) {
-        console.error("AI selection failed:", error);
-        clearMagicWandSelection();
-      } finally {
-        if (aiSelectionTaskIdRef.current === taskId) {
-          setIsAiSelecting(false);
-        }
-      }
-      return;
-    }
-
-    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-    const selection = computeMagicWandSelection(imageData, x, y, {
-      tolerance: magicWandTolerance,
-      connectedOnly: true,
-      ignoreAlpha: true,
-      colorMetric: "hsv",
-    });
-
-    if (!selection) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    magicWandSeedRef.current = { x, y };
-    magicWandSelectionRef.current = selection;
-    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
-      feather: magicWandFeather,
-    });
-    requestRender();
-  }, [clearMagicWandSelection, magicWandFeather, magicWandSelectionMode, magicWandTolerance, requestRender]);
-
-  useEffect(() => {
-    const seed = magicWandSeedRef.current;
-    const frameCtx = frameCtxRef.current;
-    const frameCanvas = frameCanvasRef.current;
-    if (!seed || !frameCtx || !frameCanvas) {
-      return;
-    }
-
-    if (seed.x < 0 || seed.y < 0 || seed.x >= frameCanvas.width || seed.y >= frameCanvas.height) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    const selection = magicWandSelectionMode === "ai"
-      ? (() => {
-          const aiCanvas = aiSelectionCanvasRef.current;
-          if (
-            !aiCanvas
-            || aiCanvas.width !== frameCanvas.width
-            || aiCanvas.height !== frameCanvas.height
-          ) {
-            return null;
-          }
-          const aiCtx = aiCanvas.getContext("2d");
-          if (!aiCtx) {
-            return null;
-          }
-          const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
-          return computeMagicWandSelectionFromAlphaMask(alphaImage, seed.x, seed.y, {
-            connectedOnly: true,
-          });
-        })()
-      : (() => {
-          const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-          return computeMagicWandSelection(imageData, seed.x, seed.y, {
-            tolerance: magicWandTolerance,
-            connectedOnly: true,
-            ignoreAlpha: true,
-            colorMetric: "hsv",
-          });
-        })();
-
-    if (!selection) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    magicWandSelectionRef.current = selection;
-    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
-      feather: magicWandFeather,
-    });
-    requestRender();
-  }, [clearMagicWandSelection, magicWandFeather, magicWandSelectionMode, magicWandTolerance, requestRender]);
-
-  const clearSelectedPixels = useCallback(() => {
-    const frameCtx = frameCtxRef.current;
-    const maskCanvas = magicWandMaskCanvasRef.current;
-    if (!frameCtx || !maskCanvas) return false;
-
-    frameCtx.save();
-    frameCtx.globalCompositeOperation = "destination-out";
-    frameCtx.drawImage(maskCanvas, 0, 0);
-    frameCtx.restore();
-    isFrameDirtyRef.current = true;
-    invalidateAiSelectionCache();
-    return true;
-  }, [invalidateAiSelectionCache]);
-
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure: number = 1) => {
       const didDraw = drawSpriteBrushPixel({
@@ -526,14 +365,10 @@ export default function FramePreviewContent() {
     [setBrushColor]
   );
 
-  const hasMagicWandSelection = useCallback(
-    () => Boolean(magicWandSelectionRef.current && magicWandMaskCanvasRef.current),
-    [],
-  );
-
   const deleteMagicWandSelection = useCallback(() => {
     pushHistory();
     if (clearSelectedPixels()) {
+      isFrameDirtyRef.current = true;
       requestRender();
       commitFrameEdits();
     }
