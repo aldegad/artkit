@@ -25,14 +25,9 @@ import { getCanvasColorsSync } from "@/shared/hooks";
 import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
 import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKeys";
 import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
+import { useSpriteCropInteractionSession } from "../hooks/useSpriteCropInteractionSession";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { drawInterpolatedStroke, drawSpriteBrushPixel } from "../utils/brushDrawing";
-import {
-  createRectFromDrag,
-  getRectHandleAtPosition,
-  resizeRectByHandle,
-  type RectHandle,
-} from "@/shared/utils/rectTransform";
 import {
   drawScaledImage,
   clampZoom,
@@ -49,7 +44,6 @@ import {
   drawMagicWandSelectionOutline,
   type MagicWandSelection,
 } from "@/shared/utils/magicWand";
-import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
 
@@ -166,8 +160,6 @@ export default function AnimationPreviewContent() {
   const [hasDrawn, setHasDrawn] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
-  const [cropCursor, setCropCursor] = useState<string>("crosshair");
-  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
   const [isAiSelecting, setIsAiSelecting] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -179,18 +171,6 @@ export default function AnimationPreviewContent() {
   const magicWandSelectionRef = useRef<MagicWandSelection | null>(null);
   const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
-  const cropDragRef = useRef<{
-    mode: "none" | "create" | "move" | "resize";
-    pointerStart: { x: number; y: number };
-    cropStart: { x: number; y: number; width: number; height: number } | null;
-    resizeHandle: RectHandle | null;
-  }>({
-    mode: "none",
-    pointerStart: { x: 0, y: 0 },
-    cropStart: null,
-    resizeHandle: null,
-  });
-  const originalCropAreaRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // Keep the latest composited frame as a canvas to avoid image re-decoding per frame.
   const compositedCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -774,20 +754,7 @@ export default function AnimationPreviewContent() {
   useEffect(() => {
     if (toolMode !== "crop") return;
     requestRender();
-  }, [toolMode, cropArea, cropCursor, isDraggingCrop, requestRender]);
-
-  useEffect(() => {
-    if (toolMode === "crop") return;
-    cropDragRef.current = {
-      mode: "none",
-      pointerStart: { x: 0, y: 0 },
-      cropStart: null,
-      resizeHandle: null,
-    };
-    originalCropAreaRef.current = null;
-    setIsDraggingCrop(false);
-    setCropCursor("crosshair");
-  }, [toolMode]);
+  }, [toolMode, cropArea, requestRender]);
 
   const handlePrev = useCallback(() => {
     if (activeEnabledIndices.length === 0) return;
@@ -879,6 +846,26 @@ export default function AnimationPreviewContent() {
       height: bounds.height,
     });
   }, [toolMode, cropArea, getCropCanvasBounds, setCropArea, hasCompositedFrame, currentVisualIndex]);
+
+  const {
+    cropCursor,
+    cropDragMode,
+    isDraggingCrop,
+    handleCropPointerDown,
+    handleCropPointerMove,
+    handleCropPointerUp,
+    cancelCropDrag,
+  } = useSpriteCropInteractionSession({
+    isCropMode: toolMode === "crop",
+    cropArea,
+    setCropArea,
+    cropAspectRatio,
+    lockCropAspect,
+    canvasExpandMode,
+    getPixelCoordinates,
+    getCropCanvasBounds,
+    clampToCropCanvas,
+  });
 
   const applyMagicWandSelection = useCallback(async (x: number, y: number) => {
     const frameCtx = editFrameCtxRef.current;
@@ -1230,61 +1217,9 @@ export default function AnimationPreviewContent() {
         return;
       }
 
-      if (toolMode === "crop") {
-        const rawPoint = getPixelCoordinates(e.clientX, e.clientY);
-        if (!rawPoint) return;
-
-        const bounds = getCropCanvasBounds();
-        if (!bounds) return;
-        const point = canvasExpandMode ? rawPoint : clampToCropCanvas(rawPoint);
-
+      if (handleCropPointerDown(e)) {
         e.preventDefault();
         safeSetPointerCapture(e.currentTarget, e.pointerId);
-
-        if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
-          const hit = getRectHandleAtPosition(point, cropArea, {
-            handleSize: 12,
-            includeMove: true,
-          });
-
-          if (hit && hit !== "move") {
-            originalCropAreaRef.current = { ...cropArea };
-            cropDragRef.current = {
-              mode: "resize",
-              pointerStart: point,
-              cropStart: { ...cropArea },
-              resizeHandle: hit as RectHandle,
-            };
-            setIsDraggingCrop(true);
-            return;
-          }
-
-          if (hit === "move") {
-            cropDragRef.current = {
-              mode: "move",
-              pointerStart: point,
-              cropStart: { ...cropArea },
-              resizeHandle: null,
-            };
-            setIsDraggingCrop(true);
-            return;
-          }
-        }
-
-        const nextArea = {
-          x: Math.round(point.x),
-          y: Math.round(point.y),
-          width: 0,
-          height: 0,
-        };
-        setCropArea(nextArea);
-        cropDragRef.current = {
-          mode: "create",
-          pointerStart: point,
-          cropStart: nextArea,
-          resizeHandle: null,
-        };
-        setIsDraggingCrop(true);
         return;
       }
 
@@ -1334,12 +1269,7 @@ export default function AnimationPreviewContent() {
       zoomAtCursor,
       isEyedropperTool,
       pickColorFromComposited,
-      toolMode,
-      getCropCanvasBounds,
-      canvasExpandMode,
-      clampToCropCanvas,
-      cropArea,
-      setCropArea,
+      handleCropPointerDown,
       isEditMode,
       isBrushEditMode,
       isMagicWandTool,
@@ -1370,126 +1300,8 @@ export default function AnimationPreviewContent() {
         return;
       }
 
-      if (toolMode === "crop" && cropDragRef.current.mode === "none") {
-        const hoverPoint = getPixelCoordinates(e.clientX, e.clientY);
-        if (hoverPoint && cropArea && cropArea.width > 0 && cropArea.height > 0) {
-          const hit = getRectHandleAtPosition(hoverPoint, cropArea, {
-            handleSize: 12,
-            includeMove: true,
-          });
-          if (hit && hit !== "move") {
-            const cursorMap: Record<string, string> = {
-              nw: "nwse-resize",
-              se: "nwse-resize",
-              ne: "nesw-resize",
-              sw: "nesw-resize",
-              n: "ns-resize",
-              s: "ns-resize",
-              e: "ew-resize",
-              w: "ew-resize",
-            };
-            setCropCursor(cursorMap[hit] || "crosshair");
-          } else if (hit === "move") {
-            setCropCursor("move");
-          } else {
-            setCropCursor("crosshair");
-          }
-        } else {
-          setCropCursor("crosshair");
-        }
-      }
-
-      if (cropDragRef.current.mode !== "none") {
-        const rawPoint = getPixelCoordinates(e.clientX, e.clientY);
-        if (!rawPoint) return;
-        const point = canvasExpandMode ? rawPoint : clampToCropCanvas(rawPoint);
-        const bounds = getCropCanvasBounds();
-        if (!bounds) return;
-
-        if (cropDragRef.current.mode === "create") {
-          const start = cropDragRef.current.pointerStart;
-          const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
-          const clampedPos = canvasExpandMode
-            ? point
-            : {
-                x: Math.max(0, Math.min(Math.round(point.x), bounds.width)),
-                y: Math.max(0, Math.min(Math.round(point.y), bounds.height)),
-              };
-          const nextArea = createRectFromDrag(start, clampedPos, {
-            keepAspect: Boolean(ratioValue),
-            targetAspect: ratioValue ?? undefined,
-            round: true,
-            bounds: canvasExpandMode
-              ? undefined
-              : {
-                  minX: 0,
-                  minY: 0,
-                  maxX: bounds.width,
-                  maxY: bounds.height,
-                },
-          });
-          setCropArea(nextArea);
-          return;
-        }
-
-        if (cropDragRef.current.mode === "move" && cropDragRef.current.cropStart) {
-          const start = cropDragRef.current.cropStart;
-          const dx = point.x - cropDragRef.current.pointerStart.x;
-          const dy = point.y - cropDragRef.current.pointerStart.y;
-          let nextX = start.x + dx;
-          let nextY = start.y + dy;
-
-          if (!canvasExpandMode) {
-            nextX = Math.max(0, Math.min(bounds.width - start.width, nextX));
-            nextY = Math.max(0, Math.min(bounds.height - start.height, nextY));
-          }
-
-          setCropArea({
-            x: Math.round(nextX),
-            y: Math.round(nextY),
-            width: Math.round(start.width),
-            height: Math.round(start.height),
-          });
-          return;
-        }
-
-        if (cropDragRef.current.mode === "resize" && originalCropAreaRef.current && cropDragRef.current.resizeHandle) {
-          const orig = originalCropAreaRef.current;
-          const dx = point.x - cropDragRef.current.pointerStart.x;
-          const dy = point.y - cropDragRef.current.pointerStart.y;
-          const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
-          const originalAspect = orig.width / Math.max(1, orig.height);
-          const effectiveRatio = ratioValue || (lockCropAspect ? originalAspect : null);
-
-          let newArea = resizeRectByHandle(
-            orig,
-            cropDragRef.current.resizeHandle,
-            { dx, dy },
-            {
-              minWidth: 10,
-              minHeight: 10,
-              keepAspect: Boolean(effectiveRatio),
-              targetAspect: effectiveRatio ?? undefined,
-            },
-          );
-
-          if (!canvasExpandMode) {
-            newArea = {
-              x: Math.max(0, newArea.x),
-              y: Math.max(0, newArea.y),
-              width: Math.min(newArea.width, bounds.width - Math.max(0, newArea.x)),
-              height: Math.min(newArea.height, bounds.height - Math.max(0, newArea.y)),
-            };
-          }
-
-          setCropArea({
-            x: Math.round(newArea.x),
-            y: Math.round(newArea.y),
-            width: Math.round(newArea.width),
-            height: Math.round(newArea.height),
-          });
-          return;
-        }
+      if (handleCropPointerMove(e)) {
+        return;
       }
 
       if (!isEditMode || !isDrawing || drawingPointerIdRef.current !== e.pointerId || !editableFrame) {
@@ -1514,14 +1326,7 @@ export default function AnimationPreviewContent() {
       lastMousePosRef.current = { x: coords.x, y: coords.y };
     },
     [
-      toolMode,
-      cropArea,
-      setCropArea,
-      cropAspectRatio,
-      lockCropAspect,
-      canvasExpandMode,
-      clampToCropCanvas,
-      getCropCanvasBounds,
+      handleCropPointerMove,
       isEditMode,
       isDrawing,
       editableFrame,
@@ -1546,21 +1351,9 @@ export default function AnimationPreviewContent() {
         setIsDrawing(false);
         commitFrameEdits();
       }
-
-      originalCropAreaRef.current = null;
-      cropDragRef.current = {
-        mode: "none",
-        pointerStart: { x: 0, y: 0 },
-        cropStart: null,
-        resizeHandle: null,
-      };
-      setIsDraggingCrop(false);
-
-      if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
-        setCropArea(null);
-      }
+      handleCropPointerUp();
     },
-    [commitFrameEdits, cropArea, setCropArea],
+    [commitFrameEdits, handleCropPointerUp],
   );
 
   const handlePreviewCanvasPointerEnter = useCallback(() => {
@@ -1580,18 +1373,11 @@ export default function AnimationPreviewContent() {
         setIsDrawing(false);
         commitFrameEdits();
       }
-      if (cropDragRef.current.mode !== "none" && e.pointerId !== drawingPointerIdRef.current) {
-        cropDragRef.current = {
-          mode: "none",
-          pointerStart: { x: 0, y: 0 },
-          cropStart: null,
-          resizeHandle: null,
-        };
-        originalCropAreaRef.current = null;
-        setIsDraggingCrop(false);
+      if (e.pointerId !== drawingPointerIdRef.current) {
+        cancelCropDrag();
       }
     },
-    [commitFrameEdits],
+    [cancelCropDrag, commitFrameEdits],
   );
 
   const hasVisibleCanvas = isEditMode ? Boolean(editFrameCanvasRef.current) : hasCompositedFrame;
@@ -1618,7 +1404,7 @@ export default function AnimationPreviewContent() {
     }
     if (toolMode === "crop") {
       return isDraggingCrop
-        ? cropDragRef.current.mode === "move"
+        ? cropDragMode === "move"
           ? "grabbing"
           : cropCursor
         : cropCursor;
