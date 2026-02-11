@@ -125,6 +125,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
     });
 
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
+    const [panelHeadersVisible, setPanelHeadersVisible] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
     const panelRefsRef = useRef<Map<string, RefObject<HTMLDivElement | null>>>(new Map());
 
@@ -148,6 +149,11 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
         } catch (e) {
           console.error("Failed to load layout:", e);
         }
+      }
+      // Load panel headers visibility
+      const headersStored = localStorage.getItem(`${storageKey}-panel-headers`);
+      if (headersStored !== null) {
+        setPanelHeadersVisible(headersStored !== "false");
       }
     }, []);
 
@@ -630,6 +636,16 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
         floatingWindows: [],
         dockedPanelCollapseStates: {},
       }));
+      setPanelHeadersVisible(true);
+      localStorage.setItem(`${storageKey}-panel-headers`, "true");
+    }, []);
+
+    const togglePanelHeaders = useCallback(() => {
+      setPanelHeadersVisible((prev) => {
+        const next = !prev;
+        localStorage.setItem(`${storageKey}-panel-headers`, String(next));
+        return next;
+      });
     }, []);
 
     const value: LayoutContextValue = {
@@ -663,6 +679,8 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
       updateFloatingWindowSnap,
       updateFloatingWindowMinimizedPosition,
       resetLayout,
+      panelHeadersVisible,
+      togglePanelHeaders,
     };
 
     return (

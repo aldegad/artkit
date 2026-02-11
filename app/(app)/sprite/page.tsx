@@ -120,7 +120,7 @@ function SpriteEditorMain() {
   } = useEditorWindows();
   const { tracks, addTrack, restoreTracks } = useEditorTracks();
   const { copyFrame, pasteFrame } = useEditorClipboard();
-  const { resetLayout } = useLayout();
+  const { resetLayout, panelHeadersVisible, togglePanelHeaders } = useLayout();
 
   // Export
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -850,6 +850,8 @@ function SpriteEditorMain() {
             onTogglePreview={() => setIsPreviewOpen(!isPreviewOpen)}
             onResetLayout={resetLayout}
             isPreviewOpen={isPreviewOpen}
+            panelHeadersVisible={panelHeadersVisible}
+            onTogglePanelHeaders={togglePanelHeaders}
             canSave={hasRenderableFrames && !isSaving}
             canExport={hasRenderableFrames}
             isLoading={isSaving}
@@ -860,6 +862,7 @@ function SpriteEditorMain() {
             translations={{
               file: t.file,
               edit: t.edit,
+              view: t.view,
               window: t.window,
               new: t.new,
               load: t.load,
@@ -873,6 +876,7 @@ function SpriteEditorMain() {
               redo: t.redo,
               preview: t.animation,
               resetLayout: t.resetLayout,
+              panelHeaders: t.panelHeaders,
             }}
           />
         }
