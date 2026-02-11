@@ -105,6 +105,7 @@ interface FirestoreVideoProject {
 
 function removeUndefined<T>(obj: T): T {
   if (obj === null || obj === undefined || typeof obj !== "object") return obj;
+  if (obj instanceof Timestamp || obj instanceof Date) return obj;
   if (Array.isArray(obj)) return obj.map(removeUndefined) as T;
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
@@ -115,7 +116,7 @@ function removeUndefined<T>(obj: T): T {
   return result as T;
 }
 
-function readTimestampMillis(value: Timestamp | number | undefined): number {
+function readTimestampMillis(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
@@ -123,6 +124,26 @@ function readTimestampMillis(value: Timestamp | number | undefined): number {
   if (maybeTimestamp && typeof maybeTimestamp.toMillis === "function") {
     return maybeTimestamp.toMillis();
   }
+
+  // Backward-compat for legacy records where Timestamp may have been serialized
+  // into a plain object ({seconds, nanoseconds} or {_seconds, _nanoseconds}).
+  const asRecord = value as
+    | { seconds?: unknown; nanoseconds?: unknown; _seconds?: unknown; _nanoseconds?: unknown }
+    | undefined;
+  const seconds = typeof asRecord?.seconds === "number"
+    ? asRecord.seconds
+    : typeof asRecord?._seconds === "number"
+      ? asRecord._seconds
+      : null;
+  const nanoseconds = typeof asRecord?.nanoseconds === "number"
+    ? asRecord.nanoseconds
+    : typeof asRecord?._nanoseconds === "number"
+      ? asRecord._nanoseconds
+      : 0;
+  if (seconds !== null && Number.isFinite(seconds) && Number.isFinite(nanoseconds)) {
+    return Math.floor(seconds * 1000 + nanoseconds / 1_000_000);
+  }
+
   return Date.now();
 }
 
