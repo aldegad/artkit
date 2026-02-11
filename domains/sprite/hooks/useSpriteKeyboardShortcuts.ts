@@ -80,6 +80,11 @@ export function useSpriteKeyboardShortcuts({
         clearCrop?.();
       }
 
+      // Let native text editing shortcuts work while an input/textarea/contenteditable is focused.
+      if (isInteractiveElement) {
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
         if (canUndo) undo();
