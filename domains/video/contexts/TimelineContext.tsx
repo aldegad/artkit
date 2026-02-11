@@ -194,6 +194,23 @@ function fitsTrackType(track: VideoTrack | null, clip: Clip): boolean {
   return clip.type !== "audio";
 }
 
+function resolveTrackIdForClipType(
+  trackId: string,
+  clipType: Clip["type"],
+  tracks: VideoTrack[],
+): string {
+  const track = tracks.find((candidate) => candidate.id === trackId) || null;
+  if (!track) return trackId;
+
+  if (clipType === "audio") {
+    if (track.type === "audio") return trackId;
+    return tracks.find((candidate) => candidate.type === "audio")?.id || trackId;
+  }
+
+  if (track.type !== "audio") return trackId;
+  return tracks.find((candidate) => candidate.type !== "audio")?.id || trackId;
+}
+
 function getFittedVisualTransform(sourceSize: Size, canvasSize: Size): { position: { x: number; y: number }; scale: number } {
   if (
     sourceSize.width <= 0 ||
@@ -719,13 +736,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       startTime: number = 0,
       canvasSize?: Size
     ): string => {
-      const track = tracks.find((t) => t.id === trackId) || null;
-      // Only redirect if the track exists but is the wrong type (audio).
-      // When track is null (e.g. just-created track not yet in state), trust the caller's trackId.
-      const resolvedTrackId =
-        track && track.type === "audio"
-          ? tracks.find((t) => t.type !== "audio")?.id || trackId
-          : trackId;
+      const resolvedTrackId = resolveTrackIdForClipType(trackId, "video", tracks);
 
       const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
       const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
@@ -756,12 +767,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       startTime: number = 0,
       sourceSize: Size = { width: 0, height: 0 }
     ): string => {
-      const track = tracks.find((t) => t.id === trackId) || null;
-      // Only redirect if the track exists but is the wrong type (non-audio).
-      const resolvedTrackId =
-        track && track.type !== "audio"
-          ? tracks.find((t) => t.type === "audio")?.id || trackId
-          : trackId;
+      const resolvedTrackId = resolveTrackIdForClipType(trackId, "audio", tracks);
 
       const clip = createAudioClip(resolvedTrackId, sourceUrl, sourceDuration, startTime, sourceSize);
       const safeStartTime = findNextNonOverlappingStart(
@@ -790,12 +796,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       duration: number = 5,
       canvasSize?: Size
     ): string => {
-      const track = tracks.find((t) => t.id === trackId) || null;
-      // Only redirect if the track exists but is the wrong type (audio).
-      const resolvedTrackId =
-        track && track.type === "audio"
-          ? tracks.find((t) => t.type !== "audio")?.id || trackId
-          : trackId;
+      const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
 
       const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
       const fitted = getFittedVisualTransform(sourceSize, canvasSize ?? projectRef.current.canvasSize);
