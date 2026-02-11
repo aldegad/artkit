@@ -339,7 +339,6 @@ function VideoEditorContent() {
     pause,
     seek,
     setLoopRange,
-    toggleLoop,
     stepForward,
     stepBackward,
     playback,
@@ -458,7 +457,6 @@ function VideoEditorContent() {
     setViewState,
     seek,
     setLoopRange,
-    toggleLoop,
     toolMode,
     autoKeyframeEnabled,
     selectClips,
@@ -468,7 +466,11 @@ function VideoEditorContent() {
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
   const playbackRange = useMemo(() => {
-    const duration = Math.max(project.duration, 0.001);
+    const durationFromClips = clips.reduce(
+      (max, clip) => Math.max(max, clip.startTime + clip.duration),
+      0
+    );
+    const duration = Math.max(durationFromClips, project.duration, 0.001);
     const loopStart = Math.max(0, Math.min(playback.loopStart, duration));
     const hasRange = playback.loopEnd > loopStart + 0.001;
     const loopEnd = hasRange
@@ -484,7 +486,7 @@ function VideoEditorContent() {
       loopStart,
       loopEnd,
     };
-  }, [project.duration, playback.loop, playback.loopStart, playback.loopEnd]);
+  }, [clips, project.duration, playback.loop, playback.loopStart, playback.loopEnd]);
   const projectRef = useRef(project);
   projectRef.current = project;
 
