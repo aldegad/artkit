@@ -30,6 +30,9 @@ export interface SpriteExportSettings {
   optimizedTarget: OptimizedTargetFramework;
   optimizedThreshold: number;
   optimizedIncludeGuide: boolean;
+  optimizedImageFormat: "png" | "webp";
+  optimizedWebpQuality: number;
+  optimizedTileSize: number;
 }
 
 // Settings saved to localStorage (excludes fileName)
@@ -50,6 +53,9 @@ interface SavedExportSettings {
   optimizedTarget: OptimizedTargetFramework;
   optimizedThreshold: number;
   optimizedIncludeGuide: boolean;
+  optimizedImageFormat: "png" | "webp";
+  optimizedWebpQuality: number;
+  optimizedTileSize: number;
 }
 
 const STORAGE_KEY = "sprite-export-settings";
@@ -72,6 +78,9 @@ const DEFAULT_SAVED: SavedExportSettings = {
   optimizedTarget: "canvas",
   optimizedThreshold: 0,
   optimizedIncludeGuide: true,
+  optimizedImageFormat: "webp",
+  optimizedWebpQuality: 0.9,
+  optimizedTileSize: 32,
 };
 
 function loadSavedSettings(): SavedExportSettings {
@@ -163,6 +172,10 @@ interface SpriteExportModalProps {
     exportOptimizedThreshold: string;
     exportOptimizedThresholdHint: string;
     exportOptimizedIncludeGuide: string;
+    exportOptimizedImageFormat: string;
+    exportOptimizedFormatPng: string;
+    exportOptimizedFormatWebp: string;
+    exportOptimizedTileSize: string;
   };
 }
 
@@ -226,6 +239,9 @@ export default function SpriteExportModal({
   const [optimizedTarget, setOptimizedTarget] = useState<OptimizedTargetFramework>("canvas");
   const [optimizedThreshold, setOptimizedThreshold] = useState(0);
   const [optimizedIncludeGuide, setOptimizedIncludeGuide] = useState(true);
+  const [optimizedImageFormat, setOptimizedImageFormat] = useState<"png" | "webp">("webp");
+  const [optimizedWebpQuality, setOptimizedWebpQuality] = useState(0.9);
+  const [optimizedTileSize, setOptimizedTileSize] = useState(32);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -256,6 +272,9 @@ export default function SpriteExportModal({
     setOptimizedTarget(saved.optimizedTarget);
     setOptimizedThreshold(saved.optimizedThreshold);
     setOptimizedIncludeGuide(saved.optimizedIncludeGuide);
+    setOptimizedImageFormat(saved.optimizedImageFormat);
+    setOptimizedWebpQuality(saved.optimizedWebpQuality);
+    setOptimizedTileSize(saved.optimizedTileSize);
   }, [
     isOpen,
     defaultFileName,
@@ -387,6 +406,9 @@ export default function SpriteExportModal({
       optimizedTarget,
       optimizedThreshold,
       optimizedIncludeGuide,
+      optimizedImageFormat,
+      optimizedWebpQuality,
+      optimizedTileSize,
     });
 
     onExport({
@@ -404,6 +426,9 @@ export default function SpriteExportModal({
       optimizedTarget,
       optimizedThreshold,
       optimizedIncludeGuide,
+      optimizedImageFormat,
+      optimizedWebpQuality,
+      optimizedTileSize,
     });
   }, [
     fileName,
@@ -425,6 +450,9 @@ export default function SpriteExportModal({
     optimizedTarget,
     optimizedThreshold,
     optimizedIncludeGuide,
+    optimizedImageFormat,
+    optimizedWebpQuality,
+    optimizedTileSize,
     onExport,
   ]);
 
@@ -680,6 +708,23 @@ export default function SpriteExportModal({
             </p>
           </div>
 
+          {/* Tile Size */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.exportOptimizedTileSize} ({optimizedTileSize}px)
+            </label>
+            <input
+              type="range"
+              min={8}
+              max={64}
+              step={1}
+              value={optimizedTileSize}
+              onChange={(e) => setOptimizedTileSize(Number(e.target.value))}
+              disabled={isExporting}
+              className="w-full accent-accent-primary"
+            />
+          </div>
+
           {/* Include Guide */}
           <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
             <input
@@ -691,6 +736,41 @@ export default function SpriteExportModal({
             />
             {t.exportOptimizedIncludeGuide}
           </label>
+
+          {/* Image Format */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">
+              {t.exportOptimizedImageFormat}
+            </label>
+            <Select
+              value={optimizedImageFormat}
+              onChange={(value) => setOptimizedImageFormat(value as "png" | "webp")}
+              options={[
+                { value: "webp", label: t.exportOptimizedFormatWebp },
+                { value: "png", label: t.exportOptimizedFormatPng },
+              ]}
+              size="sm"
+              disabled={isExporting}
+            />
+          </div>
+
+          {/* WebP Quality */}
+          {optimizedImageFormat === "webp" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-text-secondary">
+                {t.quality} ({Math.round(optimizedWebpQuality * 100)}%)
+              </label>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round(optimizedWebpQuality * 100)}
+                onChange={(e) => setOptimizedWebpQuality(Number(e.target.value) / 100)}
+                disabled={isExporting}
+                className="w-full accent-accent-primary"
+              />
+            </div>
+          )}
         </>
       )}
     </ExportModal>
