@@ -18,6 +18,15 @@ export interface MagicWandSelectionOptions {
   connectedOnly?: boolean;
 }
 
+export interface MagicWandOutlineOptions {
+  zoom?: number;
+  offsetX?: number;
+  offsetY?: number;
+  color?: string;
+  lineWidth?: number;
+  dash?: number[];
+}
+
 interface RgbaPixel {
   r: number;
   g: number;
@@ -201,6 +210,84 @@ export function createMagicWandMaskCanvas(selection: MagicWandSelection): HTMLCa
 
   ctx.putImageData(new ImageData(pixels, width, height), 0, 0);
   return canvas;
+}
+
+export function drawMagicWandSelectionOutline(
+  ctx: CanvasRenderingContext2D,
+  selection: MagicWandSelection,
+  options?: MagicWandOutlineOptions,
+): void {
+  const zoom = options?.zoom ?? 1;
+  if (!Number.isFinite(zoom) || zoom <= 0) {
+    return;
+  }
+
+  const offsetX = options?.offsetX ?? 0;
+  const offsetY = options?.offsetY ?? 0;
+  const { width, height, mask, bounds } = selection;
+  const minX = Math.max(0, bounds.x);
+  const minY = Math.max(0, bounds.y);
+  const maxX = Math.min(width - 1, bounds.x + bounds.width - 1);
+  const maxY = Math.min(height - 1, bounds.y + bounds.height - 1);
+  if (maxX < minX || maxY < minY) {
+    return;
+  }
+
+  const path = new Path2D();
+  let hasSegments = false;
+
+  for (let y = minY; y <= maxY; y++) {
+    const rowOffset = y * width;
+    for (let x = minX; x <= maxX; x++) {
+      const index = rowOffset + x;
+      if (mask[index] !== 255) {
+        continue;
+      }
+
+      const hasLeft = x > 0 && mask[index - 1] === 255;
+      const hasRight = x < width - 1 && mask[index + 1] === 255;
+      const hasTop = y > 0 && mask[index - width] === 255;
+      const hasBottom = y < height - 1 && mask[index + width] === 255;
+
+      const px = offsetX + x * zoom;
+      const py = offsetY + y * zoom;
+      const pxNext = px + zoom;
+      const pyNext = py + zoom;
+
+      if (!hasTop) {
+        path.moveTo(px, py);
+        path.lineTo(pxNext, py);
+        hasSegments = true;
+      }
+      if (!hasRight) {
+        path.moveTo(pxNext, py);
+        path.lineTo(pxNext, pyNext);
+        hasSegments = true;
+      }
+      if (!hasBottom) {
+        path.moveTo(px, pyNext);
+        path.lineTo(pxNext, pyNext);
+        hasSegments = true;
+      }
+      if (!hasLeft) {
+        path.moveTo(px, py);
+        path.lineTo(px, pyNext);
+        hasSegments = true;
+      }
+    }
+  }
+
+  if (!hasSegments) {
+    return;
+  }
+
+  ctx.save();
+  ctx.strokeStyle = options?.color ?? "rgba(34, 197, 94, 0.95)";
+  ctx.lineWidth = options?.lineWidth ?? Math.max(1, Math.min(2, zoom * 0.15));
+  const dash = options?.dash ?? [4, 4];
+  ctx.setLineDash(dash.length > 0 ? dash : []);
+  ctx.stroke(path);
+  ctx.restore();
 }
 
 export function isMagicWandPixelSelected(selection: MagicWandSelection, x: number, y: number): boolean {
