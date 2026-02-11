@@ -23,6 +23,12 @@ import { emitImmediatePlaybackStop } from "../utils/playbackStopSignal";
 import { resolvePreRenderEnabledSetting, setPreRenderEnabledSetting } from "../utils/previewPerformance";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 
+export interface SelectedPositionKeyframe {
+  trackId: string;
+  clipId: string;
+  keyframeId: string;
+}
+
 interface VideoState {
   // Project
   project: VideoProject;
@@ -38,6 +44,7 @@ interface VideoState {
   selectedClipIds: string[];
   selectedMaskIds: string[];
   selectedTrackId: string | null;
+  selectedPositionKeyframe: SelectedPositionKeyframe | null;
 
   // UI
   showAssetLibrary: boolean;
@@ -81,6 +88,8 @@ interface VideoStateContextValue extends VideoState {
   selectMasksForTimeline: (maskIds: string[]) => void;
   deselectAll: () => void;
   selectTrack: (trackId: string | null) => void;
+  setSelectedPositionKeyframe: (selection: SelectedPositionKeyframe | null) => void;
+  clearSelectedPositionKeyframe: () => void;
 
   // UI actions
   setShowAssetLibrary: (show: boolean) => void;
@@ -117,6 +126,7 @@ const initialState: VideoState = {
   selectedClipIds: [],
   selectedMaskIds: [],
   selectedTrackId: null,
+  selectedPositionKeyframe: null,
   showAssetLibrary: false,
   isPanLocked: false,
   isSpacePanning: false,
@@ -227,7 +237,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
 
   // Project actions
   const setProject = useCallback((project: VideoProject) => {
-    setState((prev) => ({ ...prev, project }));
+    setState((prev) => ({ ...prev, project, selectedPositionKeyframe: null }));
   }, []);
 
   const setProjectName = useCallback((name: string) => {
@@ -425,11 +435,12 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         ? [...prev.selectedClipIds, clipId]
         : [clipId],
       selectedMaskIds: addToSelection ? prev.selectedMaskIds : [],
+      selectedPositionKeyframe: null,
     }));
   }, []);
 
   const selectClips = useCallback((clipIds: string[]) => {
-    setState((prev) => ({ ...prev, selectedClipIds: clipIds }));
+    setState((prev) => ({ ...prev, selectedClipIds: clipIds, selectedPositionKeyframe: null }));
   }, []);
 
   const selectMaskForTimeline = useCallback((maskId: string, addToSelection: boolean = false) => {
@@ -439,11 +450,12 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         ? [...prev.selectedMaskIds, maskId]
         : [maskId],
       selectedClipIds: addToSelection ? prev.selectedClipIds : [],
+      selectedPositionKeyframe: null,
     }));
   }, []);
 
   const selectMasksForTimeline = useCallback((maskIds: string[]) => {
-    setState((prev) => ({ ...prev, selectedMaskIds: maskIds }));
+    setState((prev) => ({ ...prev, selectedMaskIds: maskIds, selectedPositionKeyframe: null }));
   }, []);
 
   const deselectAll = useCallback(() => {
@@ -452,11 +464,32 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       selectedClipIds: [],
       selectedMaskIds: [],
       selectedTrackId: null,
+      selectedPositionKeyframe: null,
     }));
   }, []);
 
   const selectTrack = useCallback((trackId: string | null) => {
     setState((prev) => ({ ...prev, selectedTrackId: trackId }));
+  }, []);
+
+  const setSelectedPositionKeyframe = useCallback((selection: SelectedPositionKeyframe | null) => {
+    setState((prev) => {
+      if (
+        prev.selectedPositionKeyframe?.clipId === selection?.clipId
+        && prev.selectedPositionKeyframe?.keyframeId === selection?.keyframeId
+        && prev.selectedPositionKeyframe?.trackId === selection?.trackId
+      ) {
+        return prev;
+      }
+      return { ...prev, selectedPositionKeyframe: selection };
+    });
+  }, []);
+
+  const clearSelectedPositionKeyframe = useCallback(() => {
+    setState((prev) => {
+      if (!prev.selectedPositionKeyframe) return prev;
+      return { ...prev, selectedPositionKeyframe: null };
+    });
   }, []);
 
   // UI actions
@@ -534,6 +567,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     selectMasksForTimeline,
     deselectAll,
     selectTrack,
+    setSelectedPositionKeyframe,
+    clearSelectedPositionKeyframe,
     setShowAssetLibrary,
     setIsPanLocked,
     setIsSpacePanning,

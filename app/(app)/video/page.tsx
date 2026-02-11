@@ -56,6 +56,10 @@ import {
   useVideoClipboardActions,
   useVideoCropActions,
 } from "@/domains/video/hooks";
+import {
+  getClipPositionKeyframes,
+  removeClipPositionKeyframeById,
+} from "@/domains/video/utils/clipTransformKeyframes";
 import { getVideoStorageProvider } from "@/domains/video/services/videoProjectStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, type AspectRatio } from "@/shared/types/aspectRatio";
@@ -326,6 +330,8 @@ function VideoEditorContent() {
     setToolMode,
     selectedClipIds,
     selectedMaskIds,
+    selectedPositionKeyframe,
+    setSelectedPositionKeyframe,
     selectClips,
     selectMasksForTimeline,
     deselectAll,
@@ -572,6 +578,22 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+
+  useEffect(() => {
+    if (!selectedPositionKeyframe) return;
+    const clip = clips.find((candidate) => candidate.id === selectedPositionKeyframe.clipId);
+    if (!clip || clip.type === "audio") {
+      setSelectedPositionKeyframe(null);
+      return;
+    }
+    const hasKeyframe = getClipPositionKeyframes(clip).some(
+      (keyframe) => keyframe.id === selectedPositionKeyframe.keyframeId
+    );
+    if (!hasKeyframe) {
+      setSelectedPositionKeyframe(null);
+    }
+  }, [clips, selectedPositionKeyframe, setSelectedPositionKeyframe]);
+
   const gapInterpolationAnalysis = useMemo(
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
     [clips, selectedClipIds, project.frameRate],
@@ -662,6 +684,32 @@ function VideoEditorContent() {
     deselectAll();
   }, [canRedoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, redoMask, redo, deselectAll]);
 
+  const handleDeleteSelectedPositionKeyframe = useCallback((): boolean => {
+    if (!selectedPositionKeyframe) return false;
+
+    const clip = clips.find((candidate) => candidate.id === selectedPositionKeyframe.clipId);
+    if (!clip || clip.type === "audio") {
+      setSelectedPositionKeyframe(null);
+      return true;
+    }
+
+    const hasKeyframe = getClipPositionKeyframes(clip).some(
+      (keyframe) => keyframe.id === selectedPositionKeyframe.keyframeId
+    );
+    if (!hasKeyframe) {
+      setSelectedPositionKeyframe(null);
+      return true;
+    }
+
+    saveToHistory();
+    const result = removeClipPositionKeyframeById(clip, selectedPositionKeyframe.keyframeId);
+    if (result.removed) {
+      updateClip(clip.id, result.updates);
+    }
+    setSelectedPositionKeyframe(null);
+    return result.removed;
+  }, [clips, saveToHistory, selectedPositionKeyframe, setSelectedPositionKeyframe, updateClip]);
+
   const {
     handleCopy,
     handleCut,
@@ -690,6 +738,7 @@ function VideoEditorContent() {
     activeMaskId,
     isEditingMask,
     endMaskEdit,
+    deleteSelectedPositionKeyframe: handleDeleteSelectedPositionKeyframe,
   });
 
   const handleInterpolateClipGap = useCallback(() => {
@@ -1283,7 +1332,7 @@ function VideoEditorContent() {
             onCopy={handleCopy}
             onPaste={handlePaste}
             onDelete={handleDelete}
-            hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0}
+            hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!selectedPositionKeyframe}
             hasClipboard={hasClipboard}
             onZoomIn={handleZoomIn}
             onZoomOut={handleZoomOut}
@@ -1317,7 +1366,7 @@ function VideoEditorContent() {
           canInterpolateGap={gapInterpolationAnalysis.ready}
           isInterpolatingGap={isInterpolatingGap}
           onDelete={handleDelete}
-          hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId}
+          hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId || !!selectedPositionKeyframe}
           translations={toolbarTranslations}
         />
 

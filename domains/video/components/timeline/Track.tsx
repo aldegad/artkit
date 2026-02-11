@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { VideoTrack, Clip as ClipType, MaskData } from "../../types";
 import { Clip } from "./Clip";
 import { MaskClip } from "./MaskClip";
@@ -10,8 +10,8 @@ import { useTimeline, useVideoState } from "../../contexts";
 import { useVideoCoordinates } from "../../hooks";
 import {
   getClipPositionKeyframes,
-  hasClipPositionKeyframeAtTimelineTime,
-  removeClipPositionKeyframeAtTimelineTime,
+  moveClipPositionKeyframeToTimelineTime,
+  removeClipPositionKeyframeById,
   resolveClipPositionAtTimelineTime,
   upsertClipPositionKeyframeAtTimelineTime,
 } from "../../utils/clipTransformKeyframes";
@@ -26,47 +26,30 @@ interface TrackProps {
   className?: string;
 }
 
-interface OffsetNumberInputProps {
-  value: number;
-  onCommit: (value: number) => void;
+interface KeyframeDragState {
+  pointerId: number;
+  clipId: string;
+  keyframeId: string;
+  startClientX: number;
+  didMove: boolean;
+  historySaved: boolean;
 }
 
-function OffsetNumberInput({ value, onCommit }: OffsetNumberInputProps) {
-  const [draft, setDraft] = useState<string>(() => String(Math.round(value)));
+const LANE_PAD_TOP = 6;
+const LANE_PAD_BOTTOM = 8;
+const LANE_SERIES_GAP = 4;
 
-  useEffect(() => {
-    setDraft(String(Math.round(value)));
-  }, [value]);
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
-  const commit = useCallback(() => {
-    const next = Number(draft);
-    if (!Number.isFinite(next)) {
-      setDraft(String(Math.round(value)));
-      return;
-    }
-    onCommit(next);
-  }, [draft, onCommit, value]);
-
-  return (
-    <input
-      data-transform-control="true"
-      type="number"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onPointerDown={(e) => e.stopPropagation()}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.currentTarget.blur();
-        }
-        if (e.key === "Escape") {
-          setDraft(String(Math.round(value)));
-          e.currentTarget.blur();
-        }
-      }}
-      className="w-12 px-1 py-0.5 rounded border border-border-default bg-surface-primary text-[10px] text-text-primary focus:outline-none focus:border-accent-primary"
-    />
-  );
+function mapValueToBand(value: number, min: number, max: number, top: number, bottom: number): number {
+  const span = max - min;
+  if (span <= 0.0001) {
+    return (top + bottom) / 2;
+  }
+  const ratio = (value - min) / span;
+  return bottom - ratio * (bottom - top);
 }
 
 export function Track({
@@ -79,8 +62,17 @@ export function Track({
   className,
 }: TrackProps) {
   const { saveToHistory, updateClip } = useTimeline();
-  const { playback, selectedClipIds, selectClip, seek } = useVideoState();
+  const {
+    playback,
+    selectClip,
+    seek,
+    selectedPositionKeyframe,
+    setSelectedPositionKeyframe,
+  } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
+
+  const transformLaneRef = useRef<HTMLDivElement | null>(null);
+  const keyframeDragRef = useRef<KeyframeDragState | null>(null);
 
   const hasMasks = masks.length > 0;
   const trackHeight = TIMELINE.TRACK_DEFAULT_HEIGHT;
@@ -88,64 +80,21 @@ export function Track({
   const totalHeight = trackHeight + transformLaneHeight + (hasMasks ? MASK_LANE_HEIGHT : 0);
 
   const visualClips = useMemo(
-    () => clips.filter((clip) => clip.type !== "audio"),
+    () => clips.filter((clip): clip is Exclude<ClipType, { type: "audio" }> => clip.type !== "audio"),
     [clips]
   );
 
-  const selectedVisualClipInTrack = useMemo(() => {
-    for (const selectedId of selectedClipIds) {
-      const clip = visualClips.find((candidate) => candidate.id === selectedId);
-      if (clip) return clip;
+  const stopKeyframeDrag = useCallback((pointerId?: number) => {
+    const drag = keyframeDragRef.current;
+    if (!drag) return;
+    if (pointerId !== undefined && drag.pointerId !== pointerId) return;
+
+    const laneEl = transformLaneRef.current;
+    if (laneEl?.hasPointerCapture(drag.pointerId)) {
+      laneEl.releasePointerCapture(drag.pointerId);
     }
-    return null;
-  }, [selectedClipIds, visualClips]);
-
-  const selectedPositionAtPlayhead = useMemo(() => {
-    if (!selectedVisualClipInTrack) return null;
-    return resolveClipPositionAtTimelineTime(selectedVisualClipInTrack, playback.currentTime);
-  }, [playback.currentTime, selectedVisualClipInTrack]);
-
-  const hasKeyframeAtPlayhead = useMemo(() => {
-    if (!selectedVisualClipInTrack) return false;
-    return hasClipPositionKeyframeAtTimelineTime(selectedVisualClipInTrack, playback.currentTime);
-  }, [playback.currentTime, selectedVisualClipInTrack]);
-
-  const setSelectedClipPositionAtPlayhead = useCallback((nextPosition: { x: number; y: number }) => {
-    if (!selectedVisualClipInTrack) return;
-    saveToHistory();
-    updateClip(
-      selectedVisualClipInTrack.id,
-      upsertClipPositionKeyframeAtTimelineTime(
-        selectedVisualClipInTrack,
-        playback.currentTime,
-        nextPosition,
-        { ensureInitialKeyframe: true }
-      )
-    );
-  }, [playback.currentTime, saveToHistory, selectedVisualClipInTrack, updateClip]);
-
-  const handleToggleKeyframeAtPlayhead = useCallback(() => {
-    if (!selectedVisualClipInTrack || !selectedPositionAtPlayhead) return;
-
-    saveToHistory();
-    if (hasKeyframeAtPlayhead) {
-      const result = removeClipPositionKeyframeAtTimelineTime(selectedVisualClipInTrack, playback.currentTime);
-      if (result.removed) {
-        updateClip(selectedVisualClipInTrack.id, result.updates);
-      }
-      return;
-    }
-
-    updateClip(
-      selectedVisualClipInTrack.id,
-      upsertClipPositionKeyframeAtTimelineTime(
-        selectedVisualClipInTrack,
-        playback.currentTime,
-        selectedPositionAtPlayhead,
-        { ensureInitialKeyframe: true }
-      )
-    );
-  }, [hasKeyframeAtPlayhead, playback.currentTime, saveToHistory, selectedPositionAtPlayhead, selectedVisualClipInTrack, updateClip]);
+    keyframeDragRef.current = null;
+  }, []);
 
   const handleTransformLanePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -155,8 +104,10 @@ export function Track({
       return;
     }
 
+    setSelectedPositionKeyframe(null);
+
     const rect = e.currentTarget.getBoundingClientRect();
-    const laneX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const laneX = clamp(e.clientX - rect.left, 0, rect.width);
     const timelineTime = Math.max(0, pixelToTime(laneX));
 
     const targetClip = visualClips.find((clip) => {
@@ -181,7 +132,94 @@ export function Track({
         { ensureInitialKeyframe: true }
       )
     );
-  }, [pixelToTime, saveToHistory, seek, selectClip, updateClip, visualClips]);
+  }, [pixelToTime, saveToHistory, seek, selectClip, setSelectedPositionKeyframe, updateClip, visualClips]);
+
+  const handleTransformLanePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = keyframeDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!drag.didMove && Math.abs(e.clientX - drag.startClientX) > 2) {
+      drag.didMove = true;
+    }
+
+    const laneEl = transformLaneRef.current;
+    if (!laneEl) return;
+
+    const rect = laneEl.getBoundingClientRect();
+    const laneX = clamp(e.clientX - rect.left, 0, rect.width);
+    const rawTimelineTime = Math.max(0, pixelToTime(laneX));
+
+    const clip = visualClips.find((candidate) => candidate.id === drag.clipId);
+    if (!clip) return;
+
+    const timelineTime = clamp(rawTimelineTime, clip.startTime, clip.startTime + clip.duration);
+    if (!drag.historySaved) {
+      saveToHistory();
+      drag.historySaved = true;
+    }
+    const result = moveClipPositionKeyframeToTimelineTime(clip, drag.keyframeId, timelineTime);
+    if (!result.moved) return;
+
+    updateClip(clip.id, result.updates);
+    seek(timelineTime);
+    setSelectedPositionKeyframe({
+      trackId: track.id,
+      clipId: clip.id,
+      keyframeId: drag.keyframeId,
+    });
+  }, [pixelToTime, saveToHistory, seek, setSelectedPositionKeyframe, track.id, updateClip, visualClips]);
+
+  const handleTransformLanePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    stopKeyframeDrag(e.pointerId);
+  }, [stopKeyframeDrag]);
+
+  const handleTransformLanePointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    stopKeyframeDrag(e.pointerId);
+  }, [stopKeyframeDrag]);
+
+  const handleKeyframePointerDown = useCallback((
+    e: React.PointerEvent<HTMLButtonElement>,
+    clip: Exclude<ClipType, { type: "audio" }>,
+    keyframeId: string,
+    globalTime: number
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    selectClip(clip.id, false);
+    seek(globalTime);
+
+    if (e.altKey) {
+      saveToHistory();
+      const removed = removeClipPositionKeyframeById(clip, keyframeId);
+      if (removed.removed) {
+        updateClip(clip.id, removed.updates);
+      }
+      setSelectedPositionKeyframe(null);
+      return;
+    }
+
+    setSelectedPositionKeyframe({
+      trackId: track.id,
+      clipId: clip.id,
+      keyframeId,
+    });
+
+    keyframeDragRef.current = {
+      pointerId: e.pointerId,
+      clipId: clip.id,
+      keyframeId,
+      startClientX: e.clientX,
+      didMove: false,
+      historySaved: false,
+    };
+
+    const laneEl = transformLaneRef.current;
+    laneEl?.setPointerCapture(e.pointerId);
+  }, [saveToHistory, seek, selectClip, setSelectedPositionKeyframe, track.id, updateClip]);
 
   return (
     <div
@@ -207,108 +245,109 @@ export function Track({
       {/* Transform lane */}
       {transformLaneOpen && (
         <div
-          className="relative border-t border-border-default/50 bg-surface-primary/40"
+          ref={transformLaneRef}
+          className="relative border-t border-border-default/50 bg-surface-primary/50"
           style={{ height: TRANSFORM_LANE_HEIGHT }}
           onPointerDown={handleTransformLanePointerDown}
+          onPointerMove={handleTransformLanePointerMove}
+          onPointerUp={handleTransformLanePointerUp}
+          onPointerCancel={handleTransformLanePointerCancel}
         >
-          <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-border-default/40 pointer-events-none" />
+          <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-border-default/35 pointer-events-none" />
+          <div className="absolute left-0 right-0 pointer-events-none" style={{ top: LANE_PAD_TOP }}>
+            <span className="absolute left-1 text-[9px] text-cyan-300/90">X</span>
+            <span className="absolute left-1 text-[9px] text-orange-300/90" style={{ top: (TRANSFORM_LANE_HEIGHT - LANE_PAD_TOP - LANE_PAD_BOTTOM) / 2 + LANE_SERIES_GAP }}>
+              Y
+            </span>
+          </div>
 
           {visualClips.map((clip) => {
             const keyframes = getClipPositionKeyframes(clip);
             if (keyframes.length === 0) return null;
 
+            const xValues = keyframes.map((keyframe) => keyframe.value.x);
+            const yValues = keyframes.map((keyframe) => keyframe.value.y);
+            const xMin = Math.min(...xValues);
+            const xMax = Math.max(...xValues);
+            const yMin = Math.min(...yValues);
+            const yMax = Math.max(...yValues);
+
+            const graphTop = LANE_PAD_TOP;
+            const graphBottom = TRANSFORM_LANE_HEIGHT - LANE_PAD_BOTTOM;
+            const graphHeight = graphBottom - graphTop;
+            const halfHeight = (graphHeight - LANE_SERIES_GAP) / 2;
+            const xBandTop = graphTop;
+            const xBandBottom = graphTop + halfHeight;
+            const yBandTop = xBandBottom + LANE_SERIES_GAP;
+            const yBandBottom = graphBottom;
+            const markerY = graphTop + graphHeight / 2;
+
+            const points = keyframes.map((keyframe) => {
+              const globalTime = clip.startTime + keyframe.time;
+              return {
+                keyframe,
+                globalTime,
+                x: timeToPixel(globalTime),
+                xLineY: mapValueToBand(keyframe.value.x, xMin, xMax, xBandTop, xBandBottom),
+                yLineY: mapValueToBand(keyframe.value.y, yMin, yMax, yBandTop, yBandBottom),
+              };
+            });
+
             return (
               <div key={`${clip.id}-transform-keyframes`} className="absolute inset-0 pointer-events-none">
-                {keyframes.map((keyframe, index) => {
-                  const globalTime = clip.startTime + keyframe.time;
-                  const x = timeToPixel(globalTime);
-                  const nextKeyframe = keyframes[index + 1];
-                  const nextX = nextKeyframe ? timeToPixel(clip.startTime + nextKeyframe.time) : null;
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
+                  {points.slice(0, -1).map((point, index) => {
+                    const next = points[index + 1];
+                    return (
+                      <g key={`${clip.id}-seg-${point.keyframe.id}`}>
+                        <line
+                          x1={point.x}
+                          y1={point.xLineY}
+                          x2={next.x}
+                          y2={next.xLineY}
+                          stroke="rgb(34 211 238 / 0.75)"
+                          strokeWidth={1.25}
+                        />
+                        <line
+                          x1={point.x}
+                          y1={point.yLineY}
+                          x2={next.x}
+                          y2={next.yLineY}
+                          stroke="rgb(251 146 60 / 0.75)"
+                          strokeWidth={1.25}
+                        />
+                      </g>
+                    );
+                  })}
+                </svg>
+
+                {points.map((point) => {
+                  const isPlayheadKeyframe = Math.abs(point.globalTime - playback.currentTime) <= 0.02;
+                  const isSelectedKeyframe =
+                    selectedPositionKeyframe?.clipId === clip.id
+                    && selectedPositionKeyframe.keyframeId === point.keyframe.id;
 
                   return (
-                    <div key={`${clip.id}-${keyframe.id}`}>
-                      {nextX !== null && (
-                        <div
-                          className="absolute top-1/2 -translate-y-1/2 h-px bg-accent-primary/60"
-                          style={{
-                            left: Math.min(x, nextX),
-                            width: Math.max(1, Math.abs(nextX - x)),
-                          }}
-                        />
+                    <button
+                      key={`${clip.id}-${point.keyframe.id}`}
+                      data-transform-control="true"
+                      onPointerDown={(e) => handleKeyframePointerDown(e, clip, point.keyframe.id, point.globalTime)}
+                      title={`t=${point.globalTime.toFixed(2)}s, x=${Math.round(point.keyframe.value.x)}, y=${Math.round(point.keyframe.value.y)}${"\n"}Drag: move, Alt+Click: remove`}
+                      className={cn(
+                        "absolute w-3 h-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border pointer-events-auto",
+                        isSelectedKeyframe
+                          ? "bg-accent-primary border-accent-primary shadow-[0_0_0_2px_rgba(59,130,246,0.25)]"
+                          : isPlayheadKeyframe
+                            ? "bg-accent-primary/80 border-accent-primary"
+                            : "bg-white border-black/35 hover:bg-accent-primary/75"
                       )}
-                      <button
-                        data-transform-control="true"
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          selectClip(clip.id, false);
-                          seek(globalTime);
-
-                          if (e.altKey) {
-                            saveToHistory();
-                            const result = removeClipPositionKeyframeAtTimelineTime(clip, globalTime);
-                            if (result.removed) {
-                              updateClip(clip.id, result.updates);
-                            }
-                          }
-                        }}
-                        title={`t=${globalTime.toFixed(2)}s, x=${Math.round(keyframe.value.x)}, y=${Math.round(keyframe.value.y)}${"\n"}Alt+Click: remove`}
-                        className={cn(
-                          "absolute top-1/2 w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border pointer-events-auto",
-                          Math.abs(globalTime - playback.currentTime) <= 0.02
-                            ? "bg-accent-primary border-accent-primary"
-                            : "bg-white border-black/30 hover:bg-accent-primary/80"
-                        )}
-                        style={{ left: x }}
-                      />
-                    </div>
+                      style={{ left: point.x, top: markerY }}
+                    />
                   );
                 })}
               </div>
             );
           })}
-
-          {selectedVisualClipInTrack && selectedPositionAtPlayhead && (
-            <div
-              data-transform-control="true"
-              onPointerDown={(e) => e.stopPropagation()}
-              className="absolute left-1 top-1/2 -translate-y-1/2 z-20 flex items-center gap-1 px-1 py-0.5 rounded border border-border-default/70 bg-surface-primary/90 shadow-sm"
-            >
-              <button
-                data-transform-control="true"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleKeyframeAtPlayhead();
-                }}
-                title={hasKeyframeAtPlayhead ? "Remove keyframe at playhead" : "Add keyframe at playhead"}
-                className={cn(
-                  "w-3 h-3 rotate-45 border",
-                  hasKeyframeAtPlayhead
-                    ? "bg-accent-primary border-accent-primary"
-                    : "border-border-default hover:border-accent-primary"
-                )}
-              />
-              <span className="text-[10px] text-text-tertiary">X</span>
-              <OffsetNumberInput
-                value={selectedPositionAtPlayhead.x}
-                onCommit={(x) => setSelectedClipPositionAtPlayhead({
-                  x,
-                  y: selectedPositionAtPlayhead.y,
-                })}
-              />
-              <span className="text-[10px] text-text-tertiary">Y</span>
-              <OffsetNumberInput
-                value={selectedPositionAtPlayhead.y}
-                onCommit={(y) => setSelectedClipPositionAtPlayhead({
-                  x: selectedPositionAtPlayhead.x,
-                  y,
-                })}
-              />
-            </div>
-          )}
         </div>
       )}
 
