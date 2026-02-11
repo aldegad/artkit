@@ -29,6 +29,8 @@ export function useMaskTool(): UseMaskToolReturn {
   const { brushSettings, activePreset, pressureEnabled, maskCanvasRef, isEditingMask, maskRegion } = useMask();
   const lastPointRef = useRef<Point | null>(null);
   const isDrawingRef = useRef(false);
+  const rectangleBufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rectangleBufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const getClampedMaskRegion = useCallback(
     (canvas: HTMLCanvasElement): { x: number; y: number; width: number; height: number } | null => {
@@ -75,6 +77,30 @@ export function useMaskTool(): UseMaskToolReturn {
     },
     [brushSettings, activePreset, pressureEnabled],
   );
+
+  const ensureRectangleBuffer = useCallback((width: number, height: number) => {
+    if (
+      !rectangleBufferCanvasRef.current
+      || rectangleBufferCanvasRef.current.width !== width
+      || rectangleBufferCanvasRef.current.height !== height
+      || !rectangleBufferCtxRef.current
+    ) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      rectangleBufferCanvasRef.current = canvas;
+      rectangleBufferCtxRef.current = ctx;
+    }
+
+    return {
+      canvas: rectangleBufferCanvasRef.current,
+      ctx: rectangleBufferCtxRef.current,
+    };
+  }, []);
 
   // Draw a single dab using shared brush engine
   const drawMaskDab = useCallback(
@@ -206,16 +232,15 @@ export function useMaskTool(): UseMaskToolReturn {
       return;
     }
 
-    const shapeCanvas = document.createElement("canvas");
-    shapeCanvas.width = rectWidth;
-    shapeCanvas.height = rectHeight;
-    const shapeCtx = shapeCanvas.getContext("2d");
-    if (!shapeCtx) {
+    const shapeBuffer = ensureRectangleBuffer(rectWidth, rectHeight);
+    if (!shapeBuffer) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
       ctx.restore();
       return;
     }
+    const shapeCtx = shapeBuffer.ctx;
+    shapeCtx.clearRect(0, 0, rectWidth, rectHeight);
 
     const innerX = edge;
     const innerY = edge;
@@ -267,9 +292,9 @@ export function useMaskTool(): UseMaskToolReturn {
     drawCorner(edge, rectHeight - edge, 0, rectHeight - edge);
     drawCorner(rectWidth - edge, rectHeight - edge, rectWidth - edge, rectHeight - edge);
 
-    ctx.drawImage(shapeCanvas, rectX, rectY);
+    ctx.drawImage(shapeBuffer.canvas, rectX, rectY);
     ctx.restore();
-  }, [isEditingMask, maskCanvasRef, brushSettings.mode, brushSettings.opacity, brushSettings.hardness, brushSettings.size, brushSettings.feather]);
+  }, [isEditingMask, maskCanvasRef, brushSettings.mode, brushSettings.opacity, brushSettings.hardness, brushSettings.size, brushSettings.feather, ensureRectangleBuffer]);
 
   // Get mask as data URL
   const getMaskDataUrl = useCallback((): string | null => {
