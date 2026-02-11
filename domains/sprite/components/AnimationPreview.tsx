@@ -51,7 +51,8 @@ import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 
 const MAGIC_WAND_TOLERANCE = 24;
-const MAGIC_WAND_OVERLAY_COLOR = "rgba(34, 197, 94, 0.22)";
+const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
+const MAGIC_WAND_OUTLINE_DASH = [4, 4];
 
 // ============================================
 // Frame Indicator (editable)
@@ -376,17 +377,23 @@ export default function AnimationPreviewContent() {
         && selection.height === sourceCanvas.height
       ) {
         ctx.save();
-        ctx.fillStyle = MAGIC_WAND_OVERLAY_COLOR;
-        ctx.fillRect(0, 0, w, h);
-        ctx.globalCompositeOperation = "destination-in";
+        ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
         ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
         ctx.restore();
 
         drawMagicWandSelectionOutline(ctx, selection, {
           zoom,
-          color: "rgba(34, 197, 94, 0.95)",
-          lineWidth: 1.5,
-          dash: [4, 4],
+          color: "rgba(0, 0, 0, 0.9)",
+          lineWidth: 2,
+          dash: MAGIC_WAND_OUTLINE_DASH,
+          dashOffset: 0,
+        });
+        drawMagicWandSelectionOutline(ctx, selection, {
+          zoom,
+          color: "rgba(255, 255, 255, 0.95)",
+          lineWidth: 1,
+          dash: MAGIC_WAND_OUTLINE_DASH,
+          dashOffset: 4,
         });
       }
 
