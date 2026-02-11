@@ -143,7 +143,9 @@ async function resampleImageDataByScale(
     throw new Error("Failed to get 2d context for resampling.");
   }
 
-  ctx.imageSmoothingEnabled = false;
+  const isDownscale = width < image.width || height < image.height;
+  ctx.imageSmoothingEnabled = isDownscale;
+  ctx.imageSmoothingQuality = isDownscale ? "high" : "low";
   ctx.clearRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0, width, height);
 
