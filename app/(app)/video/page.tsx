@@ -64,6 +64,7 @@ import {
   analyzeGapInterpolationSelection,
   useMaskRestoreSync,
   useVideoFileActions,
+  useSelectedClipAudioActions,
 } from "@/domains/video/hooks";
 import {
   getClipPositionKeyframes,
@@ -234,7 +235,6 @@ function VideoEditorContent() {
   const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality,
   );
-  const audioHistorySavedRef = useRef(false);
 
   const {
     currentProjectId,
@@ -516,33 +516,16 @@ function VideoEditorContent() {
     deleteSelectedPositionKeyframe: handleDeleteSelectedPositionKeyframe,
   });
 
-  const beginAudioAdjustment = useCallback(() => {
-    if (audioHistorySavedRef.current) return;
-    saveToHistory();
-    audioHistorySavedRef.current = true;
-  }, [saveToHistory]);
-
-  const endAudioAdjustment = useCallback(() => {
-    audioHistorySavedRef.current = false;
-  }, []);
-
-  const handleToggleSelectedClipMute = useCallback(() => {
-    if (!selectedAudioClip) return;
-    saveToHistory();
-    updateClip(selectedAudioClip.id, {
-      audioMuted: !(selectedAudioClip.audioMuted ?? false),
-    });
-  }, [selectedAudioClip, saveToHistory, updateClip]);
-
-  const handleSelectedClipVolumeChange = useCallback(
-    (volume: number) => {
-      if (!selectedAudioClip) return;
-      updateClip(selectedAudioClip.id, {
-        audioVolume: Math.max(0, Math.min(100, volume)),
-      });
-    },
-    [selectedAudioClip, updateClip]
-  );
+  const {
+    beginAudioAdjustment,
+    endAudioAdjustment,
+    handleToggleSelectedClipMute,
+    handleSelectedClipVolumeChange,
+  } = useSelectedClipAudioActions({
+    selectedAudioClip,
+    saveToHistory,
+    updateClip,
+  });
 
   const {
     handleSelectAllCrop,
