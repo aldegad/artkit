@@ -48,6 +48,7 @@ export {
   useSpriteProjectFileActions,
   useSpriteProjectSync,
   useSpriteExportActions,
+  useSpriteCropActions,
 } from "./hooks";
 
 // Types
