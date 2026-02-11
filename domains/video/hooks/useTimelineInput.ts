@@ -423,7 +423,13 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       // ── Touch: defer ALL processing until gesture direction is known ──
       if (e.pointerType === "touch" && e.button === 0) {
         const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
-        if (inMaskLane || inTransformLane) return; // Let lane-specific handlers manage it
+        if (inMaskLane) return; // Let MaskClip handle it
+        if (inTransformLane) {
+          const seekTime = Math.max(0, time);
+          seek(seekTime);
+          ensureTimeVisibleOnLeft(seekTime);
+          return;
+        }
         capturePointer(e.pointerId, e.clientX, e.clientY);
         const timelineViewport = timelineViewportRef.current;
 
@@ -447,7 +453,13 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (e.button === 0) {
         // Check if click is in a mask lane - let MaskClip handle it
         const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
-        if (inMaskLane || inTransformLane) return;
+        if (inMaskLane) return;
+        if (inTransformLane) {
+          const seekTime = Math.max(0, time);
+          seek(seekTime);
+          ensureTimeVisibleOnLeft(seekTime);
+          return;
+        }
 
         const result = findClipAtPosition(x, contentY);
 

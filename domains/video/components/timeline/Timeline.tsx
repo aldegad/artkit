@@ -273,8 +273,7 @@ export function Timeline({ className }: TimelineProps) {
                   upsertClipPositionKeyframeAtTimelineTime(
                     selectedVisualClipInTrack,
                     playback.currentTime,
-                    nextPosition,
-                    { ensureInitialKeyframe: true }
+                    nextPosition
                   )
                 );
               };
@@ -298,8 +297,7 @@ export function Timeline({ className }: TimelineProps) {
                   upsertClipPositionKeyframeAtTimelineTime(
                     selectedVisualClipInTrack,
                     playback.currentTime,
-                    selectedPositionAtPlayhead,
-                    { ensureInitialKeyframe: true }
+                    selectedPositionAtPlayhead
                   )
                 );
                 setSelectedPositionKeyframe(null);
@@ -479,52 +477,59 @@ export function Timeline({ className }: TimelineProps) {
 
                   {transformLaneOpen && (
                     <div
-                      className="border-t border-border-default/50 bg-surface-primary/50 px-1.5 flex items-center gap-1 overflow-hidden"
+                      className="border-t border-border-default/50 bg-surface-primary/50 px-1.5 py-1 flex items-start gap-1 overflow-hidden"
                       style={{ height: TRANSFORM_LANE_HEIGHT }}
                     >
-                      <span className="text-[10px] uppercase tracking-wide text-text-secondary font-medium shrink-0">
-                        Transform
-                      </span>
-                      <button
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleKeyframeAtPlayhead();
-                        }}
-                        disabled={!selectedVisualClipInTrack}
-                        title={hasKeyframeAtPlayhead ? "Remove keyframe at playhead" : "Add keyframe at playhead"}
-                        className={cn(
-                          "w-3 h-3 rotate-45 border shrink-0",
-                          selectedVisualClipInTrack
-                            ? hasKeyframeAtPlayhead
-                              ? "bg-accent-primary border-accent-primary"
-                              : "border-border-default hover:border-accent-primary"
-                            : "border-border-default opacity-40 cursor-not-allowed"
-                        )}
-                      />
-
-                      {selectedPositionAtPlayhead ? (
-                        <>
-                          <span className="text-[10px] text-cyan-300 shrink-0">X</span>
-                          <OffsetNumberInput
-                            value={selectedPositionAtPlayhead.x}
-                            onCommit={(x) => handleSetSelectedOffsetAtPlayhead({
-                              x,
-                              y: selectedPositionAtPlayhead.y,
-                            })}
-                          />
-                          <span className="text-[10px] text-orange-300 shrink-0">Y</span>
-                          <OffsetNumberInput
-                            value={selectedPositionAtPlayhead.y}
-                            onCommit={(y) => handleSetSelectedOffsetAtPlayhead({
-                              x: selectedPositionAtPlayhead.x,
-                              y,
-                            })}
-                          />
-                        </>
-                      ) : (
-                        <span className="text-[10px] text-text-quaternary truncate">Select visual clip</span>
-                      )}
+                      <div className="flex items-start gap-1">
+                        <button
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleKeyframeAtPlayhead();
+                          }}
+                          disabled={!selectedVisualClipInTrack}
+                          title={hasKeyframeAtPlayhead ? "Remove keyframe at playhead" : "Add keyframe at playhead"}
+                          className={cn(
+                            "w-3 h-3 mt-0.5 rotate-45 border shrink-0",
+                            selectedVisualClipInTrack
+                              ? hasKeyframeAtPlayhead
+                                ? "bg-accent-primary border-accent-primary"
+                                : "border-border-default hover:border-accent-primary"
+                              : "border-border-default opacity-40 cursor-not-allowed"
+                          )}
+                        />
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] uppercase tracking-wide text-text-secondary font-medium leading-none">
+                            Transform
+                          </span>
+                          {selectedPositionAtPlayhead ? (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-cyan-300 shrink-0">X</span>
+                                <OffsetNumberInput
+                                  value={selectedPositionAtPlayhead.x}
+                                  onCommit={(x) => handleSetSelectedOffsetAtPlayhead({
+                                    x,
+                                    y: selectedPositionAtPlayhead.y,
+                                  })}
+                                />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] text-orange-300 shrink-0">Y</span>
+                                <OffsetNumberInput
+                                  value={selectedPositionAtPlayhead.y}
+                                  onCommit={(y) => handleSetSelectedOffsetAtPlayhead({
+                                    x: selectedPositionAtPlayhead.x,
+                                    y,
+                                  })}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-text-quaternary truncate">Select visual clip</span>
+                          )}
+                        </div>
+                      </div>
 
                       <button
                         onPointerDown={(e) => e.stopPropagation()}

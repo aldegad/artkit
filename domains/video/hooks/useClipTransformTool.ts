@@ -185,8 +185,7 @@ export function useClipTransformTool(options: UseClipTransformToolOptions): Clip
         ...upsertClipPositionKeyframeAtTimelineTime(
           clip,
           currentTimelineTime,
-          { x: bounds.x, y: bounds.y },
-          { ensureInitialKeyframe: true }
+          { x: bounds.x, y: bounds.y }
         ),
         scaleX: Math.max(0.01, nextScaleX),
         scaleY: Math.max(0.01, nextScaleY),

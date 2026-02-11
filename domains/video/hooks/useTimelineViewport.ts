@@ -23,12 +23,14 @@ interface ZoomAtPixelOptions {
 
 export function useTimelineViewport() {
   const { viewState, setScrollX, setZoom } = useTimeline();
+  const safeScrollX = Math.max(0, Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0);
+  const safeZoom = normalizeTimelineZoom(viewState.zoom);
 
   const stateRef = useRef<TimelineViewportState>({
-    scrollX: viewState.scrollX,
-    zoom: viewState.zoom,
+    scrollX: safeScrollX,
+    zoom: safeZoom,
   });
-  stateRef.current = { scrollX: viewState.scrollX, zoom: viewState.zoom };
+  stateRef.current = { scrollX: safeScrollX, zoom: safeZoom };
 
   const getState = useCallback(() => stateRef.current, []);
 

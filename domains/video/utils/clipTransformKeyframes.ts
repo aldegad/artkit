@@ -196,7 +196,7 @@ export function upsertClipPositionKeyframeAtTimelineTime(
   options: { ensureInitialKeyframe?: boolean } = {}
 ): Partial<Clip> {
   const localTime = getClipLocalTime(clip, timelineTime);
-  const ensureInitialKeyframe = options.ensureInitialKeyframe ?? true;
+  const ensureInitialKeyframe = options.ensureInitialKeyframe ?? false;
   const current = getClipPositionKeyframes(clip);
   const next = current.map((keyframe) => createPositionKeyframe(keyframe.time, keyframe.value, keyframe.id));
 

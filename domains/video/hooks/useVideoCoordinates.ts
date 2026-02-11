@@ -13,7 +13,8 @@ import {
  */
 export function useVideoCoordinates() {
   const { viewState } = useTimeline();
-  const { zoom, scrollX } = viewState;
+  const zoom = normalizeTimelineZoom(viewState.zoom);
+  const scrollX = Math.max(0, Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0);
 
   /**
    * Convert a time value (seconds) to a pixel position on the timeline
