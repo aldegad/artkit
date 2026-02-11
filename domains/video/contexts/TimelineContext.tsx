@@ -142,6 +142,11 @@ function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[])
   return candidate;
 }
 
+function reindexTracksForZOrder(tracks: VideoTrack[]): VideoTrack[] {
+  // Top track (index 0) gets highest zIndex (foreground).
+  return tracks.map((track, index) => ({ ...track, zIndex: tracks.length - 1 - index }));
+}
+
 function normalizeClip(clip: Clip): Clip {
   const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
   const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
@@ -626,8 +631,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     );
     setTracks((prev) => {
       const updated = [...prev, newTrack];
-      // Re-index: top track (index 0) gets highest zIndex (foreground)
-      return updated.map((t, i) => ({ ...t, zIndex: updated.length - 1 - i }));
+      return reindexTracksForZOrder(updated);
     });
     return newTrack.id;
   }, [tracks]);
@@ -647,7 +651,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       const insertAt = sourceTrackIndex >= 0 ? sourceTrackIndex + 1 : prev.length;
       const next = [...prev];
       next.splice(insertAt, 0, duplicatedTrack);
-      return next.map((track, index) => ({ ...track, zIndex: next.length - 1 - index }));
+      return reindexTracksForZOrder(next);
     });
 
     const sourceClips = clips
@@ -684,8 +688,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     // Remove the track
     setTracks((prev) => {
       const filtered = prev.filter((t) => t.id !== trackId);
-      // Re-index: top track (index 0) gets highest zIndex (foreground)
-      return filtered.map((t, i) => ({ ...t, zIndex: filtered.length - 1 - i }));
+      return reindexTracksForZOrder(filtered);
     });
 
     updateProjectDuration();
@@ -702,8 +705,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       const newTracks = [...prev];
       const [removed] = newTracks.splice(fromIndex, 1);
       newTracks.splice(toIndex, 0, removed);
-      // Re-index: top track (index 0) gets highest zIndex (foreground)
-      return newTracks.map((t, i) => ({ ...t, zIndex: newTracks.length - 1 - i }));
+      return reindexTracksForZOrder(newTracks);
     });
   }, []);
 
@@ -960,7 +962,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       );
       setTracks((prev) => {
         const updated = [...prev, newTrack];
-        return updated.map((t, i) => ({ ...t, zIndex: updated.length - 1 - i }));
+        return reindexTracksForZOrder(updated);
       });
       trackId = newTrack.id;
     }
