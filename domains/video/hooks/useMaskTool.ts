@@ -5,6 +5,7 @@ import { useMask } from "../contexts/MaskContext";
 import { Point } from "@/shared/types";
 import { drawDab as sharedDrawDab, drawLine as sharedDrawLine } from "@/shared/utils/brushEngine";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
+import { normalizePressureValue } from "@/shared/utils/pointerPressure";
 
 interface UseMaskToolReturn {
   // Drawing
@@ -29,74 +30,103 @@ export function useMaskTool(): UseMaskToolReturn {
   const lastPointRef = useRef<Point | null>(null);
   const isDrawingRef = useRef(false);
 
-  const normalizePressure = (pressure: number): number =>
-    Number.isFinite(pressure) ? Math.max(0.01, Math.min(1, pressure)) : 1;
+  const getClampedMaskRegion = useCallback(
+    (canvas: HTMLCanvasElement): { x: number; y: number; width: number; height: number } | null => {
+      if (!maskRegion || maskRegion.width <= 0 || maskRegion.height <= 0) {
+        return null;
+      }
 
-  // Draw a single dab using shared brush engine
-  const drawMaskDab = useCallback(
-    (ctx: CanvasRenderingContext2D, x: number, y: number, pressure: number = 1) => {
+      const width = canvas.width;
+      const height = canvas.height;
+      if (width <= 0 || height <= 0) {
+        return null;
+      }
+
+      const x = Math.round(Math.max(0, Math.min(maskRegion.x, width)));
+      const y = Math.round(Math.max(0, Math.min(maskRegion.y, height)));
+      const regionWidth = Math.round(Math.max(1, Math.min(maskRegion.width, width - x)));
+      const regionHeight = Math.round(Math.max(1, Math.min(maskRegion.height, height - y)));
+      if (regionWidth <= 0 || regionHeight <= 0) {
+        return null;
+      }
+
+      return { x, y, width: regionWidth, height: regionHeight };
+    },
+    [maskRegion],
+  );
+
+  const resolveBrushSample = useCallback(
+    (pressure: number) => {
       const { size, hardness, opacity, mode } = brushSettings;
-      const isEraser = mode === "erase";
       const params = calculateDrawingParameters(
-        normalizePressure(pressure),
+        normalizePressureValue(pressure),
         activePreset,
         size,
         pressureEnabled,
       );
 
+      return {
+        isEraser: mode === "erase",
+        hardness01: hardness / 100,
+        alpha: (opacity / 100) * params.opacity * params.flow,
+        radius: params.size / 2,
+        spacing: Math.max(1, params.size * (activePreset.spacing / 100)),
+      };
+    },
+    [brushSettings, activePreset, pressureEnabled],
+  );
+
+  // Draw a single dab using shared brush engine
+  const drawMaskDab = useCallback(
+    (ctx: CanvasRenderingContext2D, x: number, y: number, pressure: number = 1) => {
+      const sample = resolveBrushSample(pressure);
+
       ctx.save();
-      if (isEraser) {
+      if (sample.isEraser) {
         ctx.globalCompositeOperation = "destination-out";
       }
 
       sharedDrawDab(ctx, {
         x,
         y,
-        radius: params.size / 2,
-        hardness: hardness / 100,
+        radius: sample.radius,
+        hardness: sample.hardness01,
         color: "#ffffff",
-        alpha: (opacity / 100) * params.opacity * params.flow,
-        isEraser,
+        alpha: sample.alpha,
+        isEraser: sample.isEraser,
       });
 
       ctx.restore();
     },
-    [brushSettings, activePreset, pressureEnabled]
+    [resolveBrushSample],
   );
 
   // Draw a line of dabs using shared brush engine
   const drawMaskLine = useCallback(
     (ctx: CanvasRenderingContext2D, from: Point, to: Point, pressure: number = 1) => {
-      const { size, hardness, opacity, mode } = brushSettings;
-      const isEraser = mode === "erase";
-      const params = calculateDrawingParameters(
-        normalizePressure(pressure),
-        activePreset,
-        size,
-        pressureEnabled,
-      );
+      const sample = resolveBrushSample(pressure);
 
       ctx.save();
-      if (isEraser) {
+      if (sample.isEraser) {
         ctx.globalCompositeOperation = "destination-out";
       }
 
       sharedDrawLine(ctx, {
         from,
         to,
-        spacing: Math.max(1, params.size * (activePreset.spacing / 100)),
+        spacing: sample.spacing,
         dab: {
-          radius: params.size / 2,
-          hardness: hardness / 100,
+          radius: sample.radius,
+          hardness: sample.hardness01,
           color: "#ffffff",
-          alpha: (opacity / 100) * params.opacity * params.flow,
-          isEraser,
+          alpha: sample.alpha,
+          isEraser: sample.isEraser,
         },
       });
 
       ctx.restore();
     },
-    [brushSettings, activePreset, pressureEnabled]
+    [resolveBrushSample],
   );
 
   // Start drawing
@@ -273,20 +303,16 @@ export function useMaskTool(): UseMaskToolReturn {
     const height = canvas.height;
     if (width <= 0 || height <= 0) return;
 
-    if (maskRegion && maskRegion.width > 0 && maskRegion.height > 0) {
+    const region = getClampedMaskRegion(canvas);
+    if (region) {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      const rx = Math.round(Math.max(0, Math.min(maskRegion.x, width)));
-      const ry = Math.round(Math.max(0, Math.min(maskRegion.y, height)));
-      const rw = Math.round(Math.max(1, Math.min(maskRegion.width, width - rx)));
-      const rh = Math.round(Math.max(1, Math.min(maskRegion.height, height - ry)));
-      if (rw <= 0 || rh <= 0) return;
 
       ctx.save();
       ctx.beginPath();
-      ctx.rect(rx, ry, rw, rh);
+      ctx.rect(region.x, region.y, region.width, region.height);
       ctx.clip();
-      ctx.clearRect(rx, ry, rw, rh);
+      ctx.clearRect(region.x, region.y, region.width, region.height);
       ctx.restore();
       return;
     }
@@ -294,7 +320,7 @@ export function useMaskTool(): UseMaskToolReturn {
     // Reset the canvas context to clear any lingering clip region.
     canvas.width = width;
     canvas.height = height;
-  }, [maskCanvasRef, maskRegion]);
+  }, [getClampedMaskRegion, maskCanvasRef]);
 
   // Fill mask (all white = fully visible)
   const fillMask = useCallback(() => {
@@ -304,21 +330,17 @@ export function useMaskTool(): UseMaskToolReturn {
     const height = canvas.height;
     if (width <= 0 || height <= 0) return;
 
-    if (maskRegion && maskRegion.width > 0 && maskRegion.height > 0) {
+    const region = getClampedMaskRegion(canvas);
+    if (region) {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      const rx = Math.round(Math.max(0, Math.min(maskRegion.x, width)));
-      const ry = Math.round(Math.max(0, Math.min(maskRegion.y, height)));
-      const rw = Math.round(Math.max(1, Math.min(maskRegion.width, width - rx)));
-      const rh = Math.round(Math.max(1, Math.min(maskRegion.height, height - ry)));
-      if (rw <= 0 || rh <= 0) return;
 
       ctx.save();
       ctx.beginPath();
-      ctx.rect(rx, ry, rw, rh);
+      ctx.rect(region.x, region.y, region.width, region.height);
       ctx.clip();
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(rx, ry, rw, rh);
+      ctx.fillRect(region.x, region.y, region.width, region.height);
       ctx.restore();
       return;
     }
@@ -331,7 +353,7 @@ export function useMaskTool(): UseMaskToolReturn {
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
-  }, [maskCanvasRef, maskRegion]);
+  }, [getClampedMaskRegion, maskCanvasRef]);
 
   return {
     startDraw,
