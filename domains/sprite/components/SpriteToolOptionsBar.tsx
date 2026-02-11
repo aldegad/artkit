@@ -42,6 +42,7 @@ interface SpriteToolOptionsBarProps {
     colorPickerTip: string;
     brush: string;
     eraser: string;
+    magicWand: string;
     eyedropper: string;
     zoomInOut: string;
     frame: string;
@@ -52,6 +53,7 @@ interface SpriteToolOptionsBarProps {
     builtIn: string;
     zoomToolTip: string;
     cropToolTip: string;
+    magicWandToolTip: string;
   };
 }
 
@@ -90,8 +92,23 @@ export default function SpriteToolOptionsBar({
   const isBrushTool = toolMode === "brush" || toolMode === "eraser";
   const isCropTool = toolMode === "crop";
   const isZoomTool = toolMode === "zoom";
-  const nonBrushToolLabel = isZoomTool ? labels.zoomInOut : toolMode === "eyedropper" ? labels.eyedropper : null;
-  const nonBrushToolDescription = isZoomTool ? labels.zoomToolTip : toolMode === "eyedropper" ? labels.colorPickerTip : isCropTool ? labels.cropToolTip : null;
+  const isMagicWandTool = toolMode === "magicwand";
+  const nonBrushToolLabel = isZoomTool
+    ? labels.zoomInOut
+    : toolMode === "eyedropper"
+      ? labels.eyedropper
+      : isMagicWandTool
+        ? labels.magicWand
+        : null;
+  const nonBrushToolDescription = isZoomTool
+    ? labels.zoomToolTip
+    : toolMode === "eyedropper"
+      ? labels.colorPickerTip
+      : isCropTool
+        ? labels.cropToolTip
+        : isMagicWandTool
+          ? labels.magicWandToolTip
+          : null;
 
   const selectedFrameIndex = selectedFrameId !== null ? frames.findIndex((f) => f.id === selectedFrameId) : -1;
 
