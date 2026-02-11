@@ -91,22 +91,6 @@ export default function VideoToolbar({
       icon: <TransformIcon />,
     },
     {
-      mode: "hand",
-      name: t.hand,
-      description: t.handDesc,
-      shortcut: "H",
-      keys: ["Drag: Pan preview"],
-      icon: <HandIcon />,
-    },
-    {
-      mode: "zoom",
-      name: t.zoomInOut,
-      description: t.zoomToolTip,
-      shortcut: "Z",
-      keys: ["Click: Zoom in", "Alt+Click: Zoom out"],
-      icon: <ZoomSearchIcon />,
-    },
-    {
       mode: "crop",
       name: t.crop,
       description: t.cropDesc,
@@ -137,6 +121,22 @@ export default function VideoToolbar({
       shortcut: "M",
       keys: ["Draw: Paint mask", "Alt+Draw: Erase mask"],
       icon: <MaskToolIcon />,
+    },
+    {
+      mode: "hand",
+      name: t.hand,
+      description: t.handDesc,
+      shortcut: "H",
+      keys: ["Drag: Pan preview"],
+      icon: <HandIcon />,
+    },
+    {
+      mode: "zoom",
+      name: t.zoomInOut,
+      description: t.zoomToolTip,
+      shortcut: "Z",
+      keys: ["Click: Zoom in", "Alt+Click: Zoom out"],
+      icon: <ZoomSearchIcon />,
     },
   ];
 

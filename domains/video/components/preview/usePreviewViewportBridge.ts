@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 import type { PreviewViewportAPI, PreviewTransformState } from "../../contexts/VideoRefsContext";
 
@@ -19,9 +19,10 @@ interface TransformToolLike {
 
 interface UsePreviewViewportBridgeOptions {
   previewViewportRef: RefObject<PreviewViewportAPI | null>;
-  onViewportChange: (cb: (state: { zoom: number }) => void) => () => void;
+  onViewportChange: (cb: (state: { zoom: number; baseScale?: number }) => void) => () => void;
   getZoom: () => number;
   setZoom: (zoom: number) => void;
+  getEffectiveScale: () => number;
   fitToContainer: () => void;
   transformTool: TransformToolLike;
   captureCompositeFrame: (time?: number) => Promise<Blob | null>;
@@ -32,6 +33,7 @@ export function usePreviewViewportBridge({
   onViewportChange,
   getZoom,
   setZoom,
+  getEffectiveScale,
   fitToContainer,
   transformTool,
   captureCompositeFrame,
@@ -58,14 +60,34 @@ export function usePreviewViewportBridge({
     transformTool.state.aspectRatio,
   ]);
 
+  const setDisplayZoom = useCallback((nextDisplayZoom: number) => {
+    if (!Number.isFinite(nextDisplayZoom) || nextDisplayZoom <= 0) return;
+
+    const currentDisplayZoom = getEffectiveScale();
+    const currentRelativeZoom = getZoom();
+
+    if (
+      !Number.isFinite(currentDisplayZoom) ||
+      currentDisplayZoom <= 0 ||
+      !Number.isFinite(currentRelativeZoom) ||
+      currentRelativeZoom <= 0
+    ) {
+      setZoom(nextDisplayZoom);
+      return;
+    }
+
+    // Convert display-scale target back into viewport-relative zoom.
+    setZoom((currentRelativeZoom * nextDisplayZoom) / currentDisplayZoom);
+  }, [getEffectiveScale, getZoom, setZoom]);
+
   useEffect(() => {
     previewViewportRef.current = {
-      zoomIn: () => setZoom(getZoom() * 1.25),
-      zoomOut: () => setZoom(getZoom() / 1.25),
+      zoomIn: () => setDisplayZoom(getEffectiveScale() * 1.25),
+      zoomOut: () => setDisplayZoom(getEffectiveScale() / 1.25),
       fitToContainer,
-      getZoom,
-      setZoom,
-      onZoomChange: (cb) => onViewportChange((state) => cb(state.zoom)),
+      getZoom: getEffectiveScale,
+      setZoom: setDisplayZoom,
+      onZoomChange: (cb) => onViewportChange((state) => cb(state.zoom * (state.baseScale ?? 1))),
       startTransformForSelection: () => transformTool.startTransformForSelection(),
       applyTransform: () => transformTool.applyTransform(),
       cancelTransform: () => transformTool.cancelTransform(),
@@ -88,10 +110,11 @@ export function usePreviewViewportBridge({
   }, [
     captureCompositeFrame,
     fitToContainer,
+    getEffectiveScale,
     getZoom,
     onViewportChange,
     previewViewportRef,
-    setZoom,
+    setDisplayZoom,
     transformTool,
   ]);
 }
