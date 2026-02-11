@@ -13,6 +13,8 @@ export { default as VideoImportModal } from "./VideoImportModal";
 export { FrameBackgroundRemovalModals } from "./FrameBackgroundRemovalModals";
 export { FrameInterpolationModals } from "./FrameInterpolationModals";
 export { default as SpriteExportModal } from "./SpriteExportModal";
+export { default as SpriteResampleModal } from "./SpriteResampleModal";
+export type { SpriteResampleSettings, SpriteResampleQuality } from "./SpriteResampleModal";
 
 // Layout components
 export * from "./layout";

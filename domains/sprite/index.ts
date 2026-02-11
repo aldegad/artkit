@@ -36,6 +36,7 @@ export {
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
   SpriteExportModal,
+  SpriteResampleModal,
   SplitView,
 } from "./components";
 
@@ -55,3 +56,4 @@ export type {
   UnifiedLayer,
   BoundingBox,
 } from "./types";
+export type { SpriteResampleSettings, SpriteResampleQuality } from "./components";

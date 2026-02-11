@@ -72,6 +72,12 @@ interface Translations {
   storage: string;
   export: string;
   resampleAllResolution: string;
+  resampleUseCurrentSize: string;
+  resampleQualitySmooth: string;
+  resampleQualityBalanced: string;
+  resampleQualityPixel: string;
+  resampleQualityHint: string;
+  resampling: string;
   exportLayers: string;
   import: string;
   importComplete: string;
@@ -442,6 +448,12 @@ const translations: Record<Language, Translations> = {
     storage: "저장소",
     export: "내보내기",
     resampleAllResolution: "전체 해상도 리샘플",
+    resampleUseCurrentSize: "현재 캔버스 크기 사용",
+    resampleQualitySmooth: "부드럽게 (고품질)",
+    resampleQualityBalanced: "기본 (중간 보간)",
+    resampleQualityPixel: "픽셀 유지 (보간 없음)",
+    resampleQualityHint: "축소 시 smooth가 가장 자연스럽고, pixel은 도트 느낌을 유지합니다.",
+    resampling: "리샘플링 중...",
     exportLayers: "레이어 개별 내보내기",
     import: "가져오기",
     importComplete: "가져오기 완료!",
@@ -810,6 +822,12 @@ const translations: Record<Language, Translations> = {
     storage: "Storage",
     export: "Export",
     resampleAllResolution: "Resample All Resolution",
+    resampleUseCurrentSize: "Use current canvas size",
+    resampleQualitySmooth: "Smooth (High quality)",
+    resampleQualityBalanced: "Balanced (Medium smoothing)",
+    resampleQualityPixel: "Pixel Preserve (No smoothing)",
+    resampleQualityHint: "For downscale, smooth looks most natural. Use pixel to keep crisp pixel-art edges.",
+    resampling: "Resampling...",
     exportLayers: "Export Layers",
     import: "Import",
     importComplete: "Import complete!",

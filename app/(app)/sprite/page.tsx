@@ -27,9 +27,10 @@ import {
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
   SpriteExportModal,
+  SpriteResampleModal,
   useSpriteExport,
 } from "@/domains/sprite";
-import type { SavedSpriteProject, SpriteTrack } from "@/domains/sprite";
+import type { SavedSpriteProject, SpriteTrack, SpriteResampleSettings, SpriteResampleQuality } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
@@ -57,59 +58,10 @@ import {
 } from "@/domains/sprite/utils/export";
 
 const MAX_RESAMPLE_DIMENSION = 16384;
-const RESAMPLE_SIZE_PATTERN = /^(\d+)\s*[x×]\s*(\d+)$/;
-const RESAMPLE_PERCENT_PATTERN = /^(\d+(?:\.\d+)?)\s*%$/;
 
 function clampResampleDimension(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.max(1, Math.min(MAX_RESAMPLE_DIMENSION, Math.round(value)));
-}
-
-function parseResampleInput(
-  input: string,
-  sourceSize: SpriteExportFrameSize,
-): SpriteExportFrameSize {
-  const trimmed = input.trim().toLowerCase();
-  if (!trimmed) {
-    throw new Error("형식을 입력하세요. 예: 512x512 또는 50%");
-  }
-
-  const percentMatch = trimmed.match(RESAMPLE_PERCENT_PATTERN);
-  if (percentMatch) {
-    const percent = Number.parseFloat(percentMatch[1]);
-    if (!Number.isFinite(percent) || percent <= 0) {
-      throw new Error("퍼센트는 0보다 큰 숫자여야 합니다.");
-    }
-    return {
-      width: clampResampleDimension((sourceSize.width * percent) / 100),
-      height: clampResampleDimension((sourceSize.height * percent) / 100),
-    };
-  }
-
-  const sizeMatch = trimmed.match(RESAMPLE_SIZE_PATTERN);
-  if (sizeMatch) {
-    const width = Number.parseInt(sizeMatch[1], 10);
-    const height = Number.parseInt(sizeMatch[2], 10);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-      throw new Error("가로/세로 값은 1 이상의 숫자여야 합니다.");
-    }
-    if (width > MAX_RESAMPLE_DIMENSION || height > MAX_RESAMPLE_DIMENSION) {
-      throw new Error(`최대 해상도는 ${MAX_RESAMPLE_DIMENSION}x${MAX_RESAMPLE_DIMENSION} 입니다.`);
-    }
-    return { width, height };
-  }
-
-  const widthOnly = Number.parseInt(trimmed, 10);
-  if (Number.isFinite(widthOnly) && widthOnly > 0) {
-    const ratio = sourceSize.height / sourceSize.width;
-    const width = clampResampleDimension(widthOnly);
-    return {
-      width,
-      height: clampResampleDimension(width * ratio),
-    };
-  }
-
-  throw new Error("형식은 512x512 또는 50% 입니다.");
 }
 
 function loadImageFromSource(src: string): Promise<HTMLImageElement> {
@@ -125,6 +77,7 @@ async function resampleImageDataByScale(
   imageData: string,
   scaleX: number,
   scaleY: number,
+  qualityMode: SpriteResampleQuality,
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   const image = await loadImageFromSource(imageData);
   const width = clampResampleDimension(image.width * scaleX);
@@ -144,8 +97,13 @@ async function resampleImageDataByScale(
   }
 
   const isDownscale = width < image.width || height < image.height;
-  ctx.imageSmoothingEnabled = isDownscale;
-  ctx.imageSmoothingQuality = isDownscale ? "high" : "low";
+  const smoothingEnabled = qualityMode !== "pixel" && isDownscale;
+  ctx.imageSmoothingEnabled = smoothingEnabled;
+  if (smoothingEnabled) {
+    ctx.imageSmoothingQuality = qualityMode === "smooth" ? "high" : "medium";
+  } else {
+    ctx.imageSmoothingQuality = "low";
+  }
   ctx.clearRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0, width, height);
 
@@ -271,6 +229,7 @@ function SpriteEditorMain() {
 
   // Export
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isResampleModalOpen, setIsResampleModalOpen] = useState(false);
   const [detectedSourceFrameSize, setDetectedSourceFrameSize] = useState<SpriteExportFrameSize | null>(null);
   const { isExporting, exportProgress, exportMp4, startProgress, endProgress } = useSpriteExport();
 
@@ -635,7 +594,7 @@ function SpriteEditorMain() {
     });
   }, [toolMode, cropArea, cropBaseSize, setCropArea]);
 
-  const handleResampleAllResolution = useCallback(async () => {
+  const handleResampleAllResolution = useCallback(async (settings: SpriteResampleSettings) => {
     if (isResampling) return;
 
     const sourceTracks = useSpriteTrackStore.getState().tracks;
@@ -667,20 +626,16 @@ function SpriteEditorMain() {
       return;
     }
 
-    const defaultInput = `${currentCanvasSize.width}x${currentCanvasSize.height}`;
-    const input = window.prompt(
-      "전체 해상도 리샘플: 새 크기를 입력하세요 (예: 512x512 또는 50%)",
-      defaultInput,
-    );
-    if (input === null) return;
+    const nextCanvasSize = settings.frameSize;
+    const qualityMode = settings.quality;
 
     setIsResampling(true);
     try {
-      const nextCanvasSize = parseResampleInput(input, currentCanvasSize);
       if (
         nextCanvasSize.width === currentCanvasSize.width
         && nextCanvasSize.height === currentCanvasSize.height
       ) {
+        setIsResampleModalOpen(false);
         return;
       }
 
@@ -701,7 +656,7 @@ function SpriteEditorMain() {
         const cached = frameResampleCache.get(frameImageData);
         if (cached) return cached;
 
-        const promise = resampleImageDataByScale(frameImageData, scaleX, scaleY)
+        const promise = resampleImageDataByScale(frameImageData, scaleX, scaleY, qualityMode)
           .then((result) => result.dataUrl)
           .catch((error) => {
             console.error("Failed to resample frame image:", error);
@@ -742,7 +697,7 @@ function SpriteEditorMain() {
 
       if (imageSrc) {
         try {
-          const resampledSource = await resampleImageDataByScale(imageSrc, scaleX, scaleY);
+          const resampledSource = await resampleImageDataByScale(imageSrc, scaleX, scaleY, qualityMode);
           nextImageSrc = resampledSource.dataUrl;
           nextImageSize = {
             width: resampledSource.width,
@@ -783,6 +738,7 @@ function SpriteEditorMain() {
       setCanvasSize(nextCanvasSize);
       setCropArea(null);
       setCanvasExpandMode(false);
+      setIsResampleModalOpen(false);
     } catch (error) {
       console.error("Failed to resample sprite project:", error);
       alert((error as Error).message || "전체 해상도 리샘플에 실패했습니다.");
@@ -799,6 +755,7 @@ function SpriteEditorMain() {
     setCanvasExpandMode,
     setCropArea,
     setCanvasSize,
+    setIsResampleModalOpen,
     t.noFramesToSave,
   ]);
 
@@ -1163,7 +1120,7 @@ function SpriteEditorMain() {
             onSave={saveProject}
             onSaveAs={saveProjectAs}
             onExport={() => setIsExportModalOpen(true)}
-            onResampleAllResolution={() => void handleResampleAllResolution()}
+            onResampleAllResolution={() => setIsResampleModalOpen(true)}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -1387,6 +1344,31 @@ function SpriteEditorMain() {
           exportOptimizedFormatPng: t.exportOptimizedFormatPng,
           exportOptimizedFormatWebp: t.exportOptimizedFormatWebp,
           exportOptimizedTileSize: t.exportOptimizedTileSize,
+        }}
+      />
+
+      <SpriteResampleModal
+        isOpen={isResampleModalOpen}
+        onClose={() => setIsResampleModalOpen(false)}
+        onApply={(settings) => void handleResampleAllResolution(settings)}
+        sourceFrameSize={cropBaseSize}
+        isResampling={isResampling}
+        translations={{
+          title: t.resampleAllResolution,
+          cancel: t.cancel,
+          apply: t.confirm,
+          applying: t.resampling,
+          canvasSize: t.exportCanvasSize,
+          useSourceSize: t.resampleUseCurrentSize,
+          width: t.exportWidth,
+          height: t.exportHeight,
+          keepAspectRatio: t.exportKeepAspectRatio,
+          sizeLimitHint: t.exportCanvasSizeLimit,
+          quality: t.quality,
+          qualitySmooth: t.resampleQualitySmooth,
+          qualityBalanced: t.resampleQualityBalanced,
+          qualityPixel: t.resampleQualityPixel,
+          qualityHint: t.resampleQualityHint,
         }}
       />
 
