@@ -19,13 +19,6 @@ import { AudioClip, Clip, VideoClip, getClipScaleX, getClipScaleY } from "../../
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
-import {
-  getRectHandleAtPosition,
-  resizeRectByHandle,
-  createRectFromDrag,
-  type RectHandle,
-} from "@/shared/utils/rectTransform";
-import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import { resolvePreviewPerformanceConfig } from "../../utils/previewPerformance";
 import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
 import {
@@ -35,6 +28,8 @@ import {
 } from "../../utils/clipTransformKeyframes";
 import { usePreviewFrameCapture } from "./usePreviewFrameCapture";
 import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
+import { useMaskInteractionSession } from "./useMaskInteractionSession";
+import { useCropInteractionSession } from "./useCropInteractionSession";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -94,18 +89,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const imageCacheRef = useRef(new Map<string, HTMLImageElement>());
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isMaskDrawingRef = useRef(false);
-  const isMaskRegionDraggingRef = useRef(false);
-  const maskClipActiveRef = useRef(false);
-  const maskRectDragRef = useRef<{
-    start: { x: number; y: number };
-    current: { x: number; y: number };
-  } | null>(null);
-  const maskRegionRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
-  const prevBrushModeRef = useRef<"paint" | "erase" | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState(false);
-  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
@@ -147,75 +132,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     maskRegionClearRequestId,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
-
-  maskRegionRef.current = maskRegion;
-
-  const updateMaskRegion = useCallback((nextRegion: { x: number; y: number; width: number; height: number } | null) => {
-    setMaskRegion(nextRegion);
-  }, [setMaskRegion]);
-
-  const createMaskRegionFromPoints = useCallback(
-    (start: { x: number; y: number }, current: { x: number; y: number }) => {
-      const x = Math.round(Math.min(start.x, current.x));
-      const y = Math.round(Math.min(start.y, current.y));
-      const width = Math.round(Math.max(1, Math.abs(current.x - start.x)));
-      const height = Math.round(Math.max(1, Math.abs(current.y - start.y)));
-      return { x, y, width, height };
-    },
-    []
-  );
-
-  const applyMaskRegionClip = useCallback((region: { x: number; y: number; width: number; height: number }) => {
-    if (maskClipActiveRef.current) return;
-    const ctx = maskContextCanvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(region.x, region.y, region.width, region.height);
-    ctx.clip();
-    maskClipActiveRef.current = true;
-  }, [maskContextCanvasRef]);
-
-  const clearMaskRegionClip = useCallback(() => {
-    if (!maskClipActiveRef.current) return;
-    const ctx = maskContextCanvasRef.current?.getContext("2d");
-    if (ctx) {
-      ctx.restore();
-    }
-    maskClipActiveRef.current = false;
-  }, [maskContextCanvasRef]);
-
-  const clearMaskRegionSelection = useCallback(() => {
-    const hadRegion = Boolean(maskRegionRef.current || maskRectDragRef.current || isMaskRegionDraggingRef.current);
-    const hadClip = maskClipActiveRef.current;
-    if (!hadRegion && !hadClip) return false;
-
-    updateMaskRegion(null);
-    maskRectDragRef.current = null;
-    isMaskRegionDraggingRef.current = false;
-    if (hadClip) {
-      clearMaskRegionClip();
-    }
-
-    scheduleRender();
-    return true;
-  }, [clearMaskRegionClip, scheduleRender, updateMaskRegion]);
-
-  useEffect(() => {
-    if (isEditingMask) return;
-    clearMaskRegionSelection();
-  }, [isEditingMask, clearMaskRegionSelection]);
-
-  useEffect(() => {
-    if (!isEditingMask) return;
-    if (maskRegionClearRequestId <= 0) return;
-    clearMaskRegionSelection();
-  }, [isEditingMask, maskRegionClearRequestId, clearMaskRegionSelection]);
-
-  useEffect(() => {
-    if (!isEditingMask || !activeMaskId) return;
-    clearMaskRegionSelection();
-  }, [isEditingMask, activeMaskId, clearMaskRegionSelection]);
 
   const isHandTool = toolMode === "hand";
   const isZoomTool = toolMode === "zoom";
@@ -297,19 +213,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     clipStart: { x: 0, y: 0 },
     clipSnapshot: null,
   });
-  const cropDragRef = useRef<{
-    mode: "none" | "create" | "move" | "resize";
-    pointerStart: { x: number; y: number };
-    cropStart: { x: number; y: number; width: number; height: number } | null;
-    resizeHandle: RectHandle | null;
-  }>({
-    mode: "none",
-    pointerStart: { x: 0, y: 0 },
-    cropStart: null,
-    resizeHandle: null,
-  });
-  const originalCropAreaRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [cropCursor, setCropCursor] = useState<string>("crosshair");
 
   // Initialize video elements pool - preloads videos when clips change
   useVideoElements();
@@ -1096,25 +999,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     if (isEditingMask) {
-      const rectangleDrag = maskRectDragRef.current;
-      const draggingRegion = maskDrawShape === "rectangle" && rectangleDrag
-        ? createMaskRegionFromPoints(rectangleDrag.start, rectangleDrag.current)
-        : null;
-      const visibleRegion = draggingRegion ?? maskRegionRef.current;
-
-      if (visibleRegion) {
-        const regionTopLeft = vpContentToScreen({ x: visibleRegion.x, y: visibleRegion.y });
+      const visibleMaskRegion = getVisibleMaskRegion();
+      if (visibleMaskRegion) {
+        const { region, isDragging } = visibleMaskRegion;
+        const regionTopLeft = vpContentToScreen({ x: region.x, y: region.y });
         const rectX = regionTopLeft.x;
         const rectY = regionTopLeft.y;
-        const rectW = visibleRegion.width * scale;
-        const rectH = visibleRegion.height * scale;
-        const isDraggingRegion = Boolean(draggingRegion);
+        const rectW = region.width * scale;
+        const rectH = region.height * scale;
 
         ctx.save();
-        ctx.fillStyle = isDraggingRegion ? "rgba(59, 130, 246, 0.16)" : "rgba(59, 130, 246, 0.08)";
+        ctx.fillStyle = isDragging ? "rgba(59, 130, 246, 0.16)" : "rgba(59, 130, 246, 0.08)";
         ctx.strokeStyle = "rgba(147, 197, 253, 0.95)";
-        ctx.lineWidth = isDraggingRegion ? 1.75 : 1.25;
-        ctx.setLineDash(isDraggingRegion ? [8, 4] : [6, 6]);
+        ctx.lineWidth = isDragging ? 1.75 : 1.25;
+        ctx.setLineDash(isDragging ? [8, 4] : [6, 6]);
         ctx.fillRect(rectX, rectY, rectW, rectH);
         ctx.strokeRect(rectX, rectY, rectW, rectH);
         ctx.restore();
@@ -1238,6 +1136,66 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     captureCompositeFrame,
   });
 
+  const {
+    clearMaskRegionSelection,
+    getVisibleMaskRegion,
+    handleMaskPointerDown,
+    handleMaskPointerMove,
+    handleMaskPointerUp,
+  } = useMaskInteractionSession({
+    isEditingMask,
+    activeTrackId,
+    maskDrawShape,
+    brushMode: brushSettings.mode,
+    maskCanvasRef: maskContextCanvasRef,
+    maskRegion,
+    setMaskRegion,
+    setBrushMode,
+    screenToMaskCoords,
+    startDraw,
+    continueDraw,
+    endDraw,
+    saveMaskData,
+    saveMaskHistoryPoint,
+    scheduleRender,
+  });
+
+  useEffect(() => {
+    if (isEditingMask) return;
+    clearMaskRegionSelection();
+  }, [isEditingMask, clearMaskRegionSelection]);
+
+  useEffect(() => {
+    if (!isEditingMask) return;
+    if (maskRegionClearRequestId <= 0) return;
+    clearMaskRegionSelection();
+  }, [isEditingMask, maskRegionClearRequestId, clearMaskRegionSelection]);
+
+  useEffect(() => {
+    if (!isEditingMask || !activeMaskId) return;
+    clearMaskRegionSelection();
+  }, [isEditingMask, activeMaskId, clearMaskRegionSelection]);
+
+  const {
+    cropCursor,
+    cropDragMode,
+    isDraggingCrop,
+    handleCropPointerDown,
+    handleCropPointerMove,
+    handleCropPointerUp,
+  } = useCropInteractionSession({
+    isCropMode: toolMode === "crop",
+    cropArea,
+    setCropArea,
+    cropAspectRatio,
+    lockCropAspect,
+    canvasExpandMode,
+    canvasWidth: project.canvasSize.width,
+    canvasHeight: project.canvasSize.height,
+    screenToProject,
+    clampToCanvas,
+  });
+
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.focus();
 
@@ -1275,91 +1233,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     if (isEditingMask && activeTrackId) {
-      const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
-      if (!maskCoords) return;
-      e.preventDefault();
-      safeSetPointerCapture(e.currentTarget, e.pointerId);
-
-      if (maskDrawShape === "rectangle") {
-        isMaskRegionDraggingRef.current = true;
-        maskRectDragRef.current = {
-          start: maskCoords,
-          current: maskCoords,
-        };
-      } else {
-        // Alt key toggles erase mode temporarily
-        if (e.altKey && brushSettings.mode !== "erase") {
-          prevBrushModeRef.current = brushSettings.mode;
-          setBrushMode("erase");
-        }
-
-        saveMaskHistoryPoint();
-        const region = maskRegionRef.current;
-        if (region) {
-          applyMaskRegionClip(region);
-        }
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
-        startDraw(maskCoords.x, maskCoords.y, pressure);
-        isMaskDrawingRef.current = true;
+      const handledMask = handleMaskPointerDown(e);
+      if (handledMask) {
+        e.preventDefault();
+        safeSetPointerCapture(e.currentTarget, e.pointerId);
       }
-      scheduleRender();
       return;
     }
 
-    if (toolMode === "crop") {
-      const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
-      if (!rawPoint) return;
-      const point = canvasExpandMode ? rawPoint : clampToCanvas(rawPoint);
-
+    if (handleCropPointerDown(e)) {
       e.preventDefault();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
-
-      // Check handle hit first (resize)
-      if (cropArea && cropArea.width > 0 && cropArea.height > 0) {
-        const hit = getRectHandleAtPosition(point, cropArea, {
-          handleSize: 12,
-          includeMove: true,
-        });
-
-        if (hit && hit !== "move") {
-          originalCropAreaRef.current = { ...cropArea };
-          cropDragRef.current = {
-            mode: "resize",
-            pointerStart: point,
-            cropStart: { ...cropArea },
-            resizeHandle: hit as RectHandle,
-          };
-          setIsDraggingCrop(true);
-          return;
-        }
-
-        if (hit === "move") {
-          cropDragRef.current = {
-            mode: "move",
-            pointerStart: point,
-            cropStart: { ...cropArea },
-            resizeHandle: null,
-          };
-          setIsDraggingCrop(true);
-          return;
-        }
-      }
-
-      // Create new crop area
-      const nextArea = {
-        x: Math.round(point.x),
-        y: Math.round(point.y),
-        width: 0,
-        height: 0,
-      };
-      setCropArea(nextArea);
-      cropDragRef.current = {
-        mode: "create",
-        pointerStart: point,
-        cropStart: nextArea,
-        resizeHandle: null,
-      };
-      setIsDraggingCrop(true);
       return;
     }
 
@@ -1399,24 +1283,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isHandMode,
     isEditingMask,
     activeTrackId,
-    screenToMaskCoords,
-    startDraw,
-    brushSettings.mode,
-    setBrushMode,
+    handleMaskPointerDown,
     toolMode,
+    handleCropPointerDown,
     screenToProject,
-    canvasExpandMode,
-    clampToCanvas,
-    cropArea,
-    setCropArea,
     hitTestClipAtPoint,
     saveToHistory,
     selectClip,
-    saveMaskHistoryPoint,
-    maskDrawShape,
     transformTool,
-    applyMaskRegionClip,
-    scheduleRender,
   ]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1435,22 +1309,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
     }
 
-    if (isMaskRegionDraggingRef.current) {
-      const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
-      if (maskCoords && maskRectDragRef.current) {
-        maskRectDragRef.current.current = maskCoords;
-        scheduleRender();
-      }
-      return;
-    }
-
-    if (isMaskDrawingRef.current) {
-      const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
-      if (maskCoords) {
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
-        continueDraw(maskCoords.x, maskCoords.y, pressure);
-        scheduleRender();
-      }
+    if (handleMaskPointerMove(e)) {
       return;
     }
 
@@ -1462,116 +1321,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
-    // Update crop cursor on hover (when not dragging)
-    if (toolMode === "crop" && cropDragRef.current.mode === "none") {
-      const hoverPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
-      if (hoverPoint && cropArea && cropArea.width > 0 && cropArea.height > 0) {
-        const hit = getRectHandleAtPosition(hoverPoint, cropArea, {
-          handleSize: 12,
-          includeMove: true,
-        });
-        if (hit && hit !== "move") {
-          const cursorMap: Record<string, string> = {
-            nw: "nwse-resize", se: "nwse-resize",
-            ne: "nesw-resize", sw: "nesw-resize",
-            n: "ns-resize", s: "ns-resize",
-            e: "ew-resize", w: "ew-resize",
-          };
-          setCropCursor(cursorMap[hit] || "crosshair");
-        } else if (hit === "move") {
-          setCropCursor("move");
-        } else {
-          setCropCursor("crosshair");
-        }
-      } else {
-        setCropCursor("crosshair");
-      }
-    }
-
-    if (cropDragRef.current.mode !== "none") {
-      const rawPoint = screenToProject(e.clientX, e.clientY, canvasExpandMode);
-      if (!rawPoint) return;
-      const point = canvasExpandMode ? rawPoint : clampToCanvas(rawPoint);
-
-      if (cropDragRef.current.mode === "create") {
-        const start = cropDragRef.current.pointerStart;
-        const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
-        const clampedPos = canvasExpandMode ? point : {
-          x: Math.max(0, Math.min(Math.round(point.x), project.canvasSize.width)),
-          y: Math.max(0, Math.min(Math.round(point.y), project.canvasSize.height)),
-        };
-        const nextArea = createRectFromDrag(start, clampedPos, {
-          keepAspect: Boolean(ratioValue),
-          targetAspect: ratioValue ?? undefined,
-          round: true,
-          bounds: canvasExpandMode ? undefined : {
-            minX: 0, minY: 0,
-            maxX: project.canvasSize.width,
-            maxY: project.canvasSize.height,
-          },
-        });
-        setCropArea(nextArea);
-        return;
-      }
-
-      if (cropDragRef.current.mode === "move" && cropDragRef.current.cropStart) {
-        const start = cropDragRef.current.cropStart;
-        const dx = point.x - cropDragRef.current.pointerStart.x;
-        const dy = point.y - cropDragRef.current.pointerStart.y;
-        let nextX = start.x + dx;
-        let nextY = start.y + dy;
-
-        if (!canvasExpandMode) {
-          nextX = Math.max(0, Math.min(project.canvasSize.width - start.width, nextX));
-          nextY = Math.max(0, Math.min(project.canvasSize.height - start.height, nextY));
-        }
-
-        setCropArea({
-          x: Math.round(nextX),
-          y: Math.round(nextY),
-          width: Math.round(start.width),
-          height: Math.round(start.height),
-        });
-        return;
-      }
-
-      if (cropDragRef.current.mode === "resize" && originalCropAreaRef.current && cropDragRef.current.resizeHandle) {
-        const orig = originalCropAreaRef.current;
-        const dx = point.x - cropDragRef.current.pointerStart.x;
-        const dy = point.y - cropDragRef.current.pointerStart.y;
-        const ratioValue = ASPECT_RATIO_VALUES[cropAspectRatio] ?? null;
-        const originalAspect = orig.width / orig.height;
-        const effectiveRatio = ratioValue || (lockCropAspect ? originalAspect : null);
-
-        let newArea = resizeRectByHandle(
-          orig,
-          cropDragRef.current.resizeHandle,
-          { dx, dy },
-          {
-            minWidth: 10,
-            minHeight: 10,
-            keepAspect: Boolean(effectiveRatio),
-            targetAspect: effectiveRatio ?? undefined,
-          }
-        );
-
-        if (!canvasExpandMode) {
-          newArea = {
-            x: Math.max(0, newArea.x),
-            y: Math.max(0, newArea.y),
-            width: Math.min(newArea.width, project.canvasSize.width - Math.max(0, newArea.x)),
-            height: Math.min(newArea.height, project.canvasSize.height - Math.max(0, newArea.y)),
-          };
-        }
-
-        setCropArea({
-          x: Math.round(newArea.x),
-          y: Math.round(newArea.y),
-          width: Math.round(newArea.width),
-          height: Math.round(newArea.height),
-        });
-        return;
-      }
+    if (handleCropPointerMove(e)) {
+      return;
     }
 
     if (!isDraggingClip || !dragStateRef.current.clipId) return;
@@ -1606,46 +1357,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
     updateClip(clipId, { position: nextPosition });
     scheduleRender();
-  }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender, autoKeyframeEnabled, currentTimeRef]);
+  }, [vpUpdatePanDrag, screenToProject, isDraggingClip, updateClip, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender, autoKeyframeEnabled, currentTimeRef, handleMaskPointerMove, handleCropPointerMove]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     stopPanDrag();
-
-    if (isMaskRegionDraggingRef.current) {
-      const rectDrag = maskRectDragRef.current;
-      isMaskRegionDraggingRef.current = false;
-      maskRectDragRef.current = null;
-
-      if (rectDrag) {
-        const region = createMaskRegionFromPoints(rectDrag.start, rectDrag.current);
-        if (region.width < 2 || region.height < 2) {
-          updateMaskRegion(null);
-        } else {
-          updateMaskRegion(region);
-        }
-      }
-
-      scheduleRender();
-    }
-
-    if (isMaskDrawingRef.current) {
-      endDraw();
-      isMaskDrawingRef.current = false;
-      clearMaskRegionClip();
-
-      // Auto-save mask data after each stroke
-      saveMaskData();
-
-      // Restore brush mode if Alt was used
-      if (prevBrushModeRef.current !== null) {
-        setBrushMode(prevBrushModeRef.current);
-        prevBrushModeRef.current = null;
-      }
-
-      scheduleRender();
-    } else {
-      clearMaskRegionClip();
-    }
+    handleMaskPointerUp();
 
     if (e) {
       safeReleasePointerCapture(e.currentTarget, e.pointerId);
@@ -1658,20 +1374,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       clipSnapshot: null,
     };
     setIsDraggingClip(false);
-    originalCropAreaRef.current = null;
-    cropDragRef.current = {
-      mode: "none",
-      pointerStart: { x: 0, y: 0 },
-      cropStart: null,
-      resizeHandle: null,
-    };
-    setIsDraggingCrop(false);
-
-    // Remove crop if too small
-    if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
-      setCropArea(null);
-    }
-  }, [stopPanDrag, endDraw, setBrushMode, saveMaskData, cropArea, setCropArea, transformTool, createMaskRegionFromPoints, clearMaskRegionClip, updateMaskRegion, scheduleRender]);
+    handleCropPointerUp();
+  }, [stopPanDrag, handleMaskPointerUp, transformTool, handleCropPointerUp]);
 
   // Render on playback tick (driven by RAF, not React state) — no re-renders
   usePlaybackTick((tickTime) => {
@@ -1822,7 +1526,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               : isZoomTool
                   ? "zoom-in"
               : toolMode === "crop"
-                ? (isDraggingCrop ? (cropDragRef.current.mode === "move" ? "grabbing" : cropCursor) : cropCursor)
+                ? (isDraggingCrop ? (cropDragMode === "move" ? "grabbing" : cropCursor) : cropCursor)
                 : toolMode === "transform"
                   ? transformTool.cursor
                   : (isDraggingClip ? "grabbing" : (toolMode === "select" ? "grab" : "default")),
