@@ -78,6 +78,7 @@ import {
   type RifeInterpolationQuality,
 } from "@/shared/ai/frameInterpolation";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
+import { useHorizontalWheelCapture } from "@/shared/hooks";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -885,44 +886,7 @@ function VideoEditorContent() {
   });
 
   // Prevent browser history swipe gestures while preserving editor-local horizontal scroll.
-  useEffect(() => {
-    const root = editorRootRef.current;
-    if (!root) return;
-
-    const isHorizontallyScrollable = (el: HTMLElement): boolean => {
-      if (el.scrollWidth <= el.clientWidth + 1) return false;
-      const overflowX = window.getComputedStyle(el).overflowX;
-      return overflowX === "auto" || overflowX === "scroll" || overflowX === "overlay";
-    };
-
-    const findHorizontalScrollContainer = (start: HTMLElement): HTMLElement | null => {
-      let node: HTMLElement | null = start;
-      while (node && node !== root) {
-        if (isHorizontallyScrollable(node)) return node;
-        node = node.parentElement;
-      }
-      return isHorizontallyScrollable(root) ? root : null;
-    };
-
-    const handleWheelCapture = (event: WheelEvent) => {
-      if (event.ctrlKey || event.metaKey) return;
-      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
-      const target = event.target;
-      if (!(target instanceof HTMLElement) || !root.contains(target)) return;
-
-      const scrollContainer = findHorizontalScrollContainer(target);
-      if (scrollContainer) {
-        scrollContainer.scrollLeft += event.deltaX;
-      }
-
-      event.preventDefault();
-    };
-
-    document.addEventListener("wheel", handleWheelCapture, { passive: false, capture: true });
-    return () => {
-      document.removeEventListener("wheel", handleWheelCapture, { capture: true });
-    };
-  }, []);
+  useHorizontalWheelCapture({ rootRef: editorRootRef });
 
   const menuTranslations = useMemo(() => createVideoMenuTranslations(t), [t]);
   const toolbarTranslations = useMemo(() => createVideoToolbarTranslations(t), [t]);

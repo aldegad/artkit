@@ -25,3 +25,4 @@ export { useCanvasViewportPersistence } from "./useCanvasViewportPersistence";
 export type { PersistedCanvasViewportState } from "./useCanvasViewportPersistence";
 
 export { useViewportZoomTool } from "./useViewportZoomTool";
+export { useHorizontalWheelCapture } from "./useHorizontalWheelCapture";
