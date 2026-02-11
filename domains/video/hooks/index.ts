@@ -12,6 +12,7 @@ export { useVideoClipboardActions } from "./useVideoClipboardActions";
 export { useVideoCropActions } from "./useVideoCropActions";
 export { useVideoFileActions } from "./useVideoFileActions";
 export { useSelectedClipAudioActions } from "./useSelectedClipAudioActions";
+export { useVideoEditActions } from "./useVideoEditActions";
 export { useVideoSave } from "./useVideoSave";
 export { usePlaybackTick, usePlaybackTime } from "./usePlaybackTick";
 export { usePreRenderCache, subscribeCacheStatus, getCacheStatus } from "./usePreRenderCache";
