@@ -8,6 +8,7 @@ import { TimelineDragType, Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
 import { sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
+import { resolveTimelineClipSelection } from "../utils/timelineSelection";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
@@ -280,7 +281,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     (activeClipIds: string[], activeMaskIds: string[]): DragItem[] => {
       const items: DragItem[] = [];
       for (const cid of activeClipIds) {
-        const c = clips.find((cl) => cl.id === cid);
+        const c = clipsById.get(cid);
         if (c) items.push({ type: "clip", id: cid, originalStartTime: c.startTime });
       }
       for (const mid of activeMaskIds) {
@@ -289,7 +290,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       }
       return items;
     },
-    [clips, masks]
+    [clipsById, masks]
   );
 
   const clearMaskSelectionState = useCallback(() => {
@@ -406,8 +407,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     const newMaskIds: string[] = [];
 
     for (const clipId of options.activeClipIds) {
-      const clip = clips.find((candidate) => candidate.id === clipId);
-      const duplicatedClipId = duplicateClip(clipId, clip?.trackId);
+      const duplicatedClipId = duplicateClip(clipId, clipsById.get(clipId)?.trackId);
       if (duplicatedClipId) {
         newClipIds.push(duplicatedClipId);
       }
@@ -434,7 +434,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
     const items: DragItem[] = [];
     for (let i = 0; i < newClipIds.length; i++) {
-      const originalClip = clips.find((clip) => clip.id === options.activeClipIds[i]);
+      const originalClip = clipsById.get(options.activeClipIds[i]);
       if (originalClip) {
         items.push({ type: "clip", id: newClipIds[i], originalStartTime: originalClip.startTime });
       }
@@ -450,7 +450,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       primaryClipId: resolvedPrimaryClipId,
       items,
     };
-  }, [clips, duplicateClip, duplicateMask, masks, selectClips, selectMasksForTimeline]);
+  }, [clipsById, duplicateClip, duplicateMask, masks, selectClips, selectMasksForTimeline]);
 
   /** Cancel any pending long-press timer */
   const cancelLongPress = useCallback(() => {
@@ -702,23 +702,17 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }
 
     saveToHistory();
-    const isAlreadySelected = selectedClipIds.includes(clip.id);
-
-    // Determine effective selection after this click
-    let activeClipIds: string[];
-    let activeMaskIds: string[];
-
-    if (isAlreadySelected) {
-      activeClipIds = selectedClipIds;
-      activeMaskIds = selectedMaskIds;
-    } else if (e.shiftKey) {
-      activeClipIds = [...selectedClipIds, clip.id];
-      activeMaskIds = selectedMaskIds;
-      selectClip(clip.id, true);
-    } else {
-      activeClipIds = [clip.id];
-      activeMaskIds = [];
-      selectClip(clip.id, false);
+    const resolvedSelection = resolveTimelineClipSelection({
+      clipId: clip.id,
+      selectedClipIds,
+      selectedMaskIds,
+      shiftKey: e.shiftKey,
+    });
+    const { activeClipIds, activeMaskIds } = resolvedSelection;
+    if (resolvedSelection.shouldSelectClip) {
+      selectClip(clip.id, resolvedSelection.selectAppend);
+    }
+    if (resolvedSelection.shouldClearMaskSelection) {
       clearMaskSelectionState();
     }
 
