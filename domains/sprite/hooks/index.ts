@@ -17,3 +17,4 @@ export { useSpriteProjectSync } from "./useSpriteProjectSync";
 export { useSpriteExportActions } from "./useSpriteExportActions";
 export { useSpriteCropActions } from "./useSpriteCropActions";
 export { useFrameStripSkipActions } from "./useFrameStripSkipActions";
+export { useSpriteResampleActions } from "./useSpriteResampleActions";
