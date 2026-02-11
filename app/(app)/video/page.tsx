@@ -468,8 +468,11 @@ function VideoEditorContent() {
   const playbackRange = useMemo(() => {
     const duration = Math.max(project.duration, 0.001);
     const loopStart = Math.max(0, Math.min(playback.loopStart, duration));
-    const loopEnd = Math.max(loopStart + 0.001, Math.min(playback.loopEnd, duration));
-    const hasCustomRange = loopStart > 0.001 || loopEnd < duration - 0.001;
+    const hasRange = playback.loopEnd > loopStart + 0.001;
+    const loopEnd = hasRange
+      ? Math.max(loopStart + 0.001, Math.min(playback.loopEnd, duration))
+      : duration;
+    const hasCustomRange = hasRange && (loopStart > 0.001 || loopEnd < duration - 0.001);
 
     // Don't persist when range is effectively cleared (full range + loop off).
     if (!playback.loop && !hasCustomRange) return undefined;
@@ -502,6 +505,7 @@ function VideoEditorContent() {
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
+    isInitialized: isAutosaveInitialized,
   });
 
   const handleExportSettled = useCallback(() => {

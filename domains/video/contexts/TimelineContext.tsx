@@ -123,6 +123,10 @@ function cloneClip(clip: Clip): Clip {
   };
 }
 
+function calculateClipsDuration(clips: Clip[]): number {
+  return clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0);
+}
+
 function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[]): string {
   const base = `${sourceName} (Copy)`;
   if (!existingTracks.some((track) => track.name === base)) {
@@ -455,6 +459,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       try {
         const data = await loadVideoAutosave();
         if (data) {
+          let durationHint = Math.max(data.project?.duration || 0, 0);
+
           // Restore timeline data
           if (data.tracks && data.tracks.length > 0) {
             setTracks(data.tracks);
@@ -463,6 +469,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             // Restore clips with blobs from IndexedDB
             const restoredClips: Clip[] = [];
             const normalizedClips = data.clips.map((clip) => normalizeClip(clip as Clip));
+            durationHint = Math.max(durationHint, calculateClipsDuration(normalizedClips));
             const clipIdsBySourceId = new Map<string, string[]>();
             for (const clip of normalizedClips) {
               if (!clip.sourceId) continue;
@@ -506,15 +513,21 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             }
 
             setClips(restoredClips);
+            if (restoredClips.length > 0) {
+              durationHint = Math.max(durationHint, calculateClipsDuration(restoredClips));
+            }
           }
           if (data.timelineView) {
             setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
           }
+          const normalizedDurationHint = Math.max(durationHint, 0.001);
+
           // Restore VideoState data
           // Merge correct masks (data.masks) into project to avoid stale project.masks
           if (data.project) {
             setProject({
               ...data.project,
+              duration: normalizedDurationHint,
               masks: data.masks || data.project.masks || [],
             });
           }
@@ -535,11 +548,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           }
           const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
           seek(restoredTime);
-          const durationHint = Math.max(data.project?.duration || 0, 0.001);
           window.setTimeout(() => {
             if (data.playbackRange) {
-              const rangeStart = Math.max(0, Math.min(data.playbackRange.loopStart, durationHint));
-              const rangeEnd = Math.max(rangeStart + 0.001, Math.min(data.playbackRange.loopEnd, durationHint));
+              const rangeStart = Math.max(0, Math.min(data.playbackRange.loopStart, normalizedDurationHint));
+              const rangeEnd = Math.max(
+                rangeStart + 0.001,
+                Math.min(data.playbackRange.loopEnd, normalizedDurationHint)
+              );
               setLoopRange(rangeStart, rangeEnd, true);
               if (!data.playbackRange?.loop) {
                 toggleLoop();
@@ -548,7 +563,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             } else {
               // Autosave can omit playbackRange when user cleared IN/OUT.
               // In that case, explicitly restore a cleared range.
-              clearLoopRange(durationHint);
+              clearLoopRange(normalizedDurationHint);
               seek(restoredTime);
             }
           }, 0);
