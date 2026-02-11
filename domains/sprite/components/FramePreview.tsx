@@ -8,10 +8,12 @@ import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
-import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
-import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
+import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKeys";
+import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
+import { drawInterpolatedStroke, drawSpriteBrushPixel } from "../utils/brushDrawing";
 import {
   drawScaledImage,
+  getPointerPressure,
   safeReleasePointerCapture,
   safeSetPointerCapture,
   type CanvasScaleScratch,
@@ -21,7 +23,6 @@ import {
   computeMagicWandSelectionFromAlphaMask,
   createMagicWandMaskCanvas,
   drawMagicWandSelectionOutline,
-  isMagicWandPixelSelected,
   type MagicWandSelection,
 } from "@/shared/utils/magicWand";
 import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
@@ -70,12 +71,11 @@ export default function FramePreviewContent() {
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
   const magicWandSelectionRef = useRef<MagicWandSelection | null>(null);
   const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dabBufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dabBufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
   const aiSelectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const aiSelectionFrameIdRef = useRef<number | null>(null);
   const aiSelectionTaskIdRef = useRef(0);
+  const { ensureDabBufferCanvas, resetDabBufferCanvas } = useDabBufferCanvas();
 
   const validFrames = frames.filter((f) => f.imageData);
   const editFrameIndex = editFrameId !== null ? validFrames.findIndex((f) => f.id === editFrameId) : -1;
@@ -141,31 +141,6 @@ export default function FramePreviewContent() {
   const invalidateAiSelectionCache = useCallback(() => {
     aiSelectionCanvasRef.current = null;
     aiSelectionFrameIdRef.current = null;
-  }, []);
-
-  const ensureDabBufferCanvas = useCallback((width: number, height: number) => {
-    if (
-      !dabBufferCanvasRef.current
-      || dabBufferCanvasRef.current.width !== width
-      || dabBufferCanvasRef.current.height !== height
-      || !dabBufferCtxRef.current
-    ) {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        return null;
-      }
-      ctx.imageSmoothingEnabled = false;
-      dabBufferCanvasRef.current = canvas;
-      dabBufferCtxRef.current = ctx;
-    }
-
-    return {
-      canvas: dabBufferCanvasRef.current,
-      ctx: dabBufferCtxRef.current,
-    } as const;
   }, []);
 
   useEffect(() => {
@@ -285,8 +260,7 @@ export default function FramePreviewContent() {
     }
 
     clearMagicWandSelection();
-    dabBufferCanvasRef.current = null;
-    dabBufferCtxRef.current = null;
+    resetDabBufferCanvas();
 
     const img = new Image();
     img.onload = () => {
@@ -306,7 +280,7 @@ export default function FramePreviewContent() {
       requestRender();
     };
     img.src = currentFrame.imageData;
-  }, [currentFrame?.id, currentFrame?.imageData, clearMagicWandSelection, invalidateAiSelectionCache, requestRender]);
+  }, [currentFrame?.id, currentFrame?.imageData, clearMagicWandSelection, invalidateAiSelectionCache, requestRender, resetDabBufferCanvas]);
 
   const handlePrev = useCallback(() => {
     if (validFrames.length > 0 && editFrameIndex >= 0) {
@@ -509,77 +483,29 @@ export default function FramePreviewContent() {
 
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure: number = 1) => {
-      const frameCtx = frameCtxRef.current;
-      const frameCanvas = frameCanvasRef.current;
-      if (!frameCtx || !frameCanvas) return false;
-
-      const params = calculateDrawingParameters(
-        Number.isFinite(pressure) ? Math.max(0.01, Math.min(1, pressure)) : 1,
+      const didDraw = drawSpriteBrushPixel({
+        x,
+        y,
+        color,
+        isEraser,
+        pressure,
+        frameCtx: frameCtxRef.current,
+        frameCanvas: frameCanvasRef.current,
         activePreset,
         brushSize,
+        brushHardness,
         pressureEnabled,
-      );
+        selection: magicWandSelectionRef.current,
+        selectionMaskCanvas: magicWandMaskCanvasRef.current,
+        ensureDabBufferCanvas,
+      });
+      if (!didDraw) return false;
 
-      const selection = magicWandSelectionRef.current;
-      const selectionMaskCanvas = magicWandMaskCanvasRef.current;
-
-      if (selection && selectionMaskCanvas) {
-        if (
-          selection.width !== frameCanvas.width
-          || selection.height !== frameCanvas.height
-          || !isMagicWandPixelSelected(selection, x, y)
-        ) {
-          return false;
-        }
-
-        const dabBuffer = ensureDabBufferCanvas(frameCanvas.width, frameCanvas.height);
-        if (!dabBuffer) return false;
-
-        dabBuffer.ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
-        sharedDrawDab(dabBuffer.ctx, {
-          x,
-          y,
-          radius: params.size / 2,
-          hardness: brushHardness / 100,
-          color,
-          alpha: params.opacity * params.flow,
-          isEraser,
-        });
-
-        dabBuffer.ctx.save();
-        dabBuffer.ctx.globalCompositeOperation = "destination-in";
-        dabBuffer.ctx.drawImage(selectionMaskCanvas, 0, 0);
-        dabBuffer.ctx.restore();
-
-        frameCtx.save();
-        if (isEraser) {
-          frameCtx.globalCompositeOperation = "destination-out";
-        }
-        frameCtx.drawImage(dabBuffer.canvas, 0, 0);
-        frameCtx.restore();
-      } else {
-        frameCtx.save();
-        if (isEraser) {
-          frameCtx.globalCompositeOperation = "destination-out";
-        }
-
-        sharedDrawDab(frameCtx, {
-          x,
-          y,
-          radius: params.size / 2,
-          hardness: brushHardness / 100,
-          color,
-          alpha: params.opacity * params.flow,
-          isEraser,
-        });
-
-        frameCtx.restore();
-      }
       isFrameDirtyRef.current = true;
       invalidateAiSelectionCache();
       return true;
     },
-    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled]
+    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
   );
 
   const pickColor = useCallback(
@@ -600,59 +526,26 @@ export default function FramePreviewContent() {
     [setBrushColor]
   );
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isInteractiveElement =
-        target.tagName === "BUTTON" ||
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
-      const isTextInputElement =
-        target.tagName === "INPUT" ||
-        target.tagName === "SELECT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
+  const hasMagicWandSelection = useCallback(
+    () => Boolean(magicWandSelectionRef.current && magicWandMaskCanvasRef.current),
+    [],
+  );
 
-      if (e.code === "Space" && !e.repeat && !isTextInputElement) {
-        e.preventDefault();
-        setIsPanning(true);
-      }
+  const deleteMagicWandSelection = useCallback(() => {
+    pushHistory();
+    if (clearSelectedPixels()) {
+      requestRender();
+      commitFrameEdits();
+    }
+  }, [clearSelectedPixels, commitFrameEdits, pushHistory, requestRender]);
 
-      if (!isInteractiveElement && !e.repeat && (e.key === "Delete" || e.key === "Backspace")) {
-        if (magicWandSelectionRef.current && magicWandMaskCanvasRef.current) {
-          e.preventDefault();
-          e.stopPropagation();
-          pushHistory();
-          if (clearSelectedPixels()) {
-            requestRender();
-            commitFrameEdits();
-          }
-        }
-      }
-
-      if (!isInteractiveElement && e.key === "Escape" && magicWandSelectionRef.current) {
-        e.preventDefault();
-        clearMagicWandSelection();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        setIsPanning(false);
-        frameEndPanDrag();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [clearMagicWandSelection, clearSelectedPixels, commitFrameEdits, frameEndPanDrag, pushHistory, requestRender]);
+  useSpacePanAndSelectionKeys({
+    setIsPanning,
+    endPanDrag: frameEndPanDrag,
+    hasSelection: hasMagicWandSelection,
+    onDeleteSelection: deleteMagicWandSelection,
+    onClearSelection: clearMagicWandSelection,
+  });
 
   const handleContainerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -751,7 +644,7 @@ export default function FramePreviewContent() {
 
         drawingPointerIdRef.current = e.pointerId;
         setIsDrawing(true);
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        const pressure = getPointerPressure(e);
         if (drawPixel(coords.x, coords.y, brushColor, isEraserTool, pressure)) {
           requestRender();
         }
@@ -799,17 +692,15 @@ export default function FramePreviewContent() {
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (!coords) return;
 
-      const lineDx = coords.x - lastMousePosRef.current.x;
-      const lineDy = coords.y - lastMousePosRef.current.y;
-      const steps = Math.max(Math.abs(lineDx), Math.abs(lineDy));
-
-      if (steps > 0) {
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
-        for (let i = 1; i <= steps; i++) {
-          const x = Math.round(lastMousePosRef.current.x + (lineDx * i) / steps);
-          const y = Math.round(lastMousePosRef.current.y + (lineDy * i) / steps);
+      const pressure = getPointerPressure(e);
+      const didInterpolate = drawInterpolatedStroke({
+        from: lastMousePosRef.current,
+        to: coords,
+        drawAt: (x, y) => {
           drawPixel(x, y, brushColor, isEraserTool, pressure);
-        }
+        },
+      });
+      if (didInterpolate) {
         requestRender();
       }
 
