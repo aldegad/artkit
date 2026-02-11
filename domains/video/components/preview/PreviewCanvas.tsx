@@ -235,10 +235,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   });
   const isPanningRef = useRef(false);
   const containerRectRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
-  const { zoom: viewportZoom, baseScale: viewportBaseScale } = viewport.useReactSync(200);
-  const zoomPercent = Math.round(
-    (viewportBaseScale > 0 ? viewportZoom * viewportBaseScale : viewportZoom) * 100
-  );
 
   // Extract stable refs from viewport (useCallback-backed, stable across re-renders)
   const {
@@ -1859,12 +1855,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       {(previewPerf.draftMode || !previewPerf.preRenderEnabled) && (
         <div className="absolute bottom-2 left-2 rounded bg-surface-primary/80 px-2 py-1 text-[11px] text-text-secondary backdrop-blur-sm pointer-events-none">
           {previewPerf.draftMode ? "Draft" : "Full"} · PR {previewPerf.preRenderEnabled ? "On" : "Off"}
-        </div>
-      )}
-      {/* Zoom indicator — shown when zoomed in/out */}
-      {zoomPercent !== 100 && (
-        <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-surface-primary/80 backdrop-blur-sm rounded px-2 py-1 text-[11px] text-text-secondary pointer-events-auto">
-          <span>{zoomPercent}%</span>
         </div>
       )}
     </div>
