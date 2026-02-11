@@ -107,6 +107,10 @@ interface Translations {
   exportOptimizedThreshold: string;
   exportOptimizedThresholdHint: string;
   exportOptimizedIncludeGuide: string;
+  exportOptimizedImageFormat: string;
+  exportOptimizedFormatPng: string;
+  exportOptimizedFormatWebp: string;
+  exportOptimizedTileSize: string;
   enterProjectName: string;
   importOverwriteConfirm: string;
   noFrames: string;
@@ -469,6 +473,10 @@ const translations: Record<Language, Translations> = {
     exportOptimizedThreshold: "픽셀 허용치",
     exportOptimizedThresholdHint: "0은 완전 동일 픽셀만 고정 영역으로 처리합니다. 값을 높이면 미세한 떨림/노이즈를 무시합니다.",
     exportOptimizedIncludeGuide: "AI 코딩 가이드 포함",
+    exportOptimizedImageFormat: "이미지 포맷",
+    exportOptimizedFormatPng: "PNG (무손실)",
+    exportOptimizedFormatWebp: "WebP (권장)",
+    exportOptimizedTileSize: "타일 크기",
     enterProjectName: "프로젝트 이름을 입력하세요:",
     importOverwriteConfirm: "기존 프로젝트를 모두 삭제하고 가져오시겠습니까?",
     noFrames: "프레임 없음",
@@ -829,6 +837,10 @@ const translations: Record<Language, Translations> = {
     exportOptimizedThreshold: "Pixel Threshold",
     exportOptimizedThresholdHint: "0 keeps only exact matches as static. Increase slightly to ignore tiny flicker/noise.",
     exportOptimizedIncludeGuide: "Include AI Coding Guide",
+    exportOptimizedImageFormat: "Image Format",
+    exportOptimizedFormatPng: "PNG (Lossless)",
+    exportOptimizedFormatWebp: "WebP (Recommended)",
+    exportOptimizedTileSize: "Tile Size",
     enterProjectName: "Enter project name:",
     importOverwriteConfirm: "Delete all existing projects and import?",
     noFrames: "No frames",
