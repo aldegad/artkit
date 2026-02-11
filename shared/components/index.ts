@@ -37,8 +37,8 @@ export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 export { ExportCanvasSizeControls } from "./ExportCanvasSizeControls";
 export type { ExportCanvasSize } from "./ExportCanvasSizeControls";
 
-// Toolbar
-export { PanZoomToolbarButtons } from "./PanZoomToolbarButtons";
+// Toolbar / Floating Controls
+export { PanLockFloatingButton } from "./PanLockFloatingButton";
 
 // Feedback
 export { SaveToast } from "./SaveToast";

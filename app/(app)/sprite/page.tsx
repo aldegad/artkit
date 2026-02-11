@@ -39,7 +39,7 @@ import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay } from "@/shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay, PanLockFloatingButton } from "@/shared/components";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
   getSpriteStorageProvider,
@@ -245,7 +245,7 @@ function SpriteEditorMain() {
     pressureEnabled,
     setPressureEnabled,
   } = useEditorBrush();
-  const { setScale, setZoom, setPan } = useEditorViewport();
+  const { zoom, setScale, setZoom, setPan } = useEditorViewport();
   const { fps } = useEditorAnimation();
   const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
   const { projectName, setProjectName, savedProjects, setSavedSpriteProjects, currentProjectId, setCurrentProjectId, newProject, isAutosaveLoading } = useEditorProject();
@@ -1208,8 +1208,6 @@ function SpriteEditorMain() {
       <SpriteTopToolbar
         toolMode={toolMode}
         setSpriteToolMode={setSpriteToolMode}
-        isPanLocked={isPanLocked}
-        onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
@@ -1220,6 +1218,9 @@ function SpriteEditorMain() {
         onRedo={redo}
         onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
         onRequestFrameInterpolation={() => setShowFrameInterpolationConfirm(true)}
+        zoom={zoom}
+        setZoom={setZoom}
+        onFitToScreen={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
       />
 
       <SpriteToolOptionsBar
@@ -1487,6 +1488,11 @@ function SpriteEditorMain() {
         }}
       />
 
+      <PanLockFloatingButton
+        isPanLocked={isPanLocked}
+        onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
+        storageKey="artkit.sprite.pan-toggle-position-v1"
+      />
     </div>
   );
 }
