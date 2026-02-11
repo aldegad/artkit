@@ -414,6 +414,8 @@ function VideoEditorContent() {
     openFloatingWindow,
     closeFloatingWindow,
     resetLayout,
+    panelHeadersVisible,
+    togglePanelHeaders,
   } = useVideoLayout();
 
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
@@ -1263,6 +1265,7 @@ function VideoEditorContent() {
     zoomIn: t.zoomIn,
     zoomOut: t.zoomOut,
     fitToScreen: t.fitToScreen,
+    panelHeaders: t.panelHeaders,
     timeline: t.timeline,
     previewVideoCache: t.previewVideoCache,
     resetLayout: t.resetLayout,
@@ -1334,6 +1337,8 @@ function VideoEditorContent() {
             onDelete={handleDelete}
             hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!selectedPositionKeyframe}
             hasClipboard={hasClipboard}
+            panelHeadersVisible={panelHeadersVisible}
+            onTogglePanelHeaders={togglePanelHeaders}
             onZoomIn={handleZoomIn}
             onZoomOut={handleZoomOut}
             onFitToScreen={handleFitToScreen}

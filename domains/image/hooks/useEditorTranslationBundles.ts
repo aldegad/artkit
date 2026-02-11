@@ -22,6 +22,7 @@ interface EditorTranslationSource {
   lockGuides: string;
   snapToGuides: string;
   clearGuides: string;
+  panelHeaders: string;
   removeBackground: string;
   rotate: string;
   rotateLeft: string;
@@ -69,6 +70,7 @@ interface EditorTranslationBundles {
     lockGuides: string;
     snapToGuides: string;
     clearGuides: string;
+    panelHeaders: string;
   };
   actionToolbar: {
     removeBackground: string;
@@ -143,6 +145,7 @@ export function useEditorTranslationBundles(
         lockGuides: source.lockGuides,
         snapToGuides: source.snapToGuides,
         clearGuides: source.clearGuides,
+        panelHeaders: source.panelHeaders,
       },
       actionToolbar: {
         removeBackground: source.removeBackground,

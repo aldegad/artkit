@@ -48,6 +48,7 @@ interface Translations {
   lockGuides: string;
   snapToGuides: string;
   clearGuides: string;
+  panelHeaders: string;
 
   // Sprite editor
   importSheet: string;
@@ -407,6 +408,7 @@ const translations: Record<Language, Translations> = {
     lockGuides: "가이드 잠금",
     snapToGuides: "가이드 스냅",
     clearGuides: "가이드 모두 삭제",
+    panelHeaders: "패널 헤더",
 
     // Sprite editor
     importSheet: "시트 가져오기",
@@ -764,6 +766,7 @@ const translations: Record<Language, Translations> = {
     lockGuides: "Lock Guides",
     snapToGuides: "Snap to Guides",
     clearGuides: "Clear All Guides",
+    panelHeaders: "Panel Headers",
 
     // Sprite editor
     importSheet: "Import Sheet",

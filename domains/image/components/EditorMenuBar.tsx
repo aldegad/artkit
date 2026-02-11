@@ -40,6 +40,8 @@ interface MenuBarProps {
   onToggleLockGuides: () => void;
   onToggleSnapToGuides: () => void;
   onClearGuides: () => void;
+  panelHeadersVisible: boolean;
+  onTogglePanelHeaders: () => void;
   translations: {
     file: string;
     edit: string;
@@ -60,6 +62,7 @@ interface MenuBarProps {
     lockGuides: string;
     snapToGuides: string;
     clearGuides: string;
+    panelHeaders: string;
   };
 }
 
@@ -93,6 +96,8 @@ export default function EditorMenuBar({
   onToggleLockGuides,
   onToggleSnapToGuides,
   onClearGuides,
+  panelHeadersVisible,
+  onTogglePanelHeaders,
   translations: t,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | null>(null);
@@ -118,6 +123,8 @@ export default function EditorMenuBar({
   ];
 
   const viewMenuItems: MenuItem[] = [
+    { label: t.panelHeaders, onClick: onTogglePanelHeaders, checked: panelHeadersVisible },
+    { divider: true },
     { label: t.showRulers, onClick: onToggleRulers, checked: showRulers },
     { label: t.showGuides, onClick: onToggleGuides, checked: showGuides },
     { label: t.lockGuides, onClick: onToggleLockGuides, checked: lockGuides, disabled: !showGuides },

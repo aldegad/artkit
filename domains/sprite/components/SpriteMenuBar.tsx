@@ -24,6 +24,8 @@ interface SpriteMenuBarProps {
   onTogglePreview: () => void;
   onResetLayout: () => void;
   isPreviewOpen: boolean;
+  panelHeadersVisible: boolean;
+  onTogglePanelHeaders: () => void;
   canSave: boolean;
   canExport: boolean;
   isLoading?: boolean;
@@ -35,6 +37,7 @@ interface SpriteMenuBarProps {
   translations: {
     file: string;
     edit: string;
+    view: string;
     window: string;
     new: string;
     load: string;
@@ -48,6 +51,7 @@ interface SpriteMenuBarProps {
     redo: string;
     preview: string;
     resetLayout: string;
+    panelHeaders: string;
   };
 }
 
@@ -67,6 +71,8 @@ export default function SpriteMenuBar({
   onTogglePreview,
   onResetLayout,
   isPreviewOpen,
+  panelHeadersVisible,
+  onTogglePanelHeaders,
   canSave,
   canExport,
   isLoading,
@@ -76,7 +82,7 @@ export default function SpriteMenuBar({
   canRedo,
   translations: t,
 }: SpriteMenuBarProps) {
-  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "window" | null>(null);
+  const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | null>(null);
 
   const d = shortcutToDisplayString;
   const db = bindingToDisplayString;
@@ -97,6 +103,10 @@ export default function SpriteMenuBar({
   const editMenuItems: MenuItem[] = [
     { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: d(COMMON_SHORTCUTS.undo) },
     { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: db(COMMON_SHORTCUTS.redo) },
+  ];
+
+  const viewMenuItems: MenuItem[] = [
+    { label: t.panelHeaders, onClick: onTogglePanelHeaders, checked: panelHeadersVisible },
   ];
 
   const windowMenuItems: MenuItem[] = [
@@ -123,6 +133,12 @@ export default function SpriteMenuBar({
         items={editMenuItems}
         isOpen={openMenu === "edit"}
         onOpenChange={(open) => setOpenMenu(open ? "edit" : null)}
+      />
+      <MenuDropdown
+        label={t.view}
+        items={viewMenuItems}
+        isOpen={openMenu === "view"}
+        onOpenChange={(open) => setOpenMenu(open ? "view" : null)}
       />
       <MenuDropdown
         label={t.window}
