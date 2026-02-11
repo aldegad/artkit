@@ -31,6 +31,28 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     : duration;
   const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < duration - 0.001);
 
+  const formatTimeLabel = useCallback((time: number): string => {
+    const safeTime = Math.max(0, Number.isFinite(time) ? time : 0);
+    const rounded = Math.round(safeTime * 1000) / 1000;
+    const mins = Math.floor((rounded + 1e-6) / 60);
+    const secsFloat = rounded - mins * 60;
+    const isWholeSecond = Math.abs(secsFloat - Math.round(secsFloat)) < 1e-6;
+
+    if (mins > 0) {
+      if (isWholeSecond) {
+        const secs = Math.round(secsFloat);
+        return `${mins}:${secs.toString().padStart(2, "0")}`;
+      }
+      const secs = secsFloat.toFixed(1).padStart(4, "0");
+      return `${mins}:${secs}`;
+    }
+
+    if (isWholeSecond) {
+      return `${Math.round(secsFloat)}s`;
+    }
+    return `${secsFloat.toFixed(1)}s`;
+  }, []);
+
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -102,18 +124,24 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     }
 
     // Draw ticks
-    const startTime = Math.max(0, Math.floor(safeScrollX / tickInterval) * tickInterval);
     const endTime = pixelToTime(width);
+    const majorEveryTicks = Math.max(1, Math.round(majorTickInterval / tickInterval));
+    const startIndex = Math.max(0, Math.floor(safeScrollX / tickInterval));
+    const endIndex = Math.max(startIndex, Math.ceil(endTime / tickInterval));
+    const edgeLabelPadding = 12;
+    const minLabelGap = 18;
+    let lastLabelX = Number.NEGATIVE_INFINITY;
 
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "center";
 
-    for (let time = startTime; time <= endTime; time += tickInterval) {
+    for (let tickIndex = startIndex; tickIndex <= endIndex; tickIndex += 1) {
+      const time = tickIndex * tickInterval;
       const safeTime = Math.max(0, time);
       const x = timeToPixel(safeTime);
       if (x < 0 || x > width) continue;
 
-      const isMajor = safeTime % majorTickInterval < 0.001 || safeTime % majorTickInterval > majorTickInterval - 0.001;
+      const isMajor = tickIndex % majorEveryTicks === 0;
       const tickHeight = isMajor ? 8 : 4;
 
       ctx.strokeStyle = isMajor ? colors.rulerTickMajor : colors.rulerTick;
@@ -125,12 +153,14 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
 
       // Draw time label for major ticks
       if (isMajor) {
-        const mins = Math.floor(safeTime / 60);
-        const secs = Math.floor(safeTime % 60);
-        const label = mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : `${secs}s`;
-        const labelX = Math.max(10, Math.min(width - 10, x));
+        const isEdge = x < edgeLabelPadding || x > width - edgeLabelPadding;
+        if (isEdge) continue;
+        if (x - lastLabelX < minLabelGap) continue;
+
+        const label = formatTimeLabel(safeTime);
+        lastLabelX = x;
         ctx.fillStyle = colors.rulerText;
-        ctx.fillText(label, labelX, height - 9);
+        ctx.fillText(label, x, height - 9);
       }
     }
 
@@ -145,7 +175,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       ctx.closePath();
       ctx.fill();
     }
-  }, [safeZoom, safeScrollX, timeToPixel, pixelToTime, currentTimeRef, hasCustomRange, rangeStart, rangeEnd]);
+  }, [safeZoom, safeScrollX, timeToPixel, pixelToTime, currentTimeRef, hasCustomRange, rangeStart, rangeEnd, formatTimeLabel]);
 
   // Seek at a given clientX position
   const seekAtX = useCallback(
