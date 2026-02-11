@@ -81,4 +81,7 @@ export interface LayoutContextValue {
   updateFloatingWindowMinimizedPosition: (windowId: string, position: { x: number; y: number } | undefined) => void;
   // Reset layout
   resetLayout: () => void;
+  // Panel headers visibility
+  panelHeadersVisible: boolean;
+  togglePanelHeaders: () => void;
 }

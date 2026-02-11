@@ -34,6 +34,8 @@ interface UseEditorHeaderModelOptions {
   setLockGuides: (lock: boolean) => void;
   setSnapToGuides: (snap: boolean) => void;
   onClearGuides: () => void;
+  panelHeadersVisible: boolean;
+  onTogglePanelHeaders: () => void;
   translations: EditorHeaderProps["translations"];
 }
 
@@ -71,6 +73,8 @@ export function useEditorHeaderModel(
     setLockGuides,
     setSnapToGuides,
     onClearGuides,
+    panelHeadersVisible,
+    onTogglePanelHeaders,
     translations,
   } = options;
 
@@ -122,6 +126,8 @@ export function useEditorHeaderModel(
       onToggleLockGuides,
       onToggleSnapToGuides,
       onClearGuides,
+      panelHeadersVisible,
+      onTogglePanelHeaders,
       translations,
     }),
     [
@@ -155,6 +161,8 @@ export function useEditorHeaderModel(
       onToggleLockGuides,
       onToggleSnapToGuides,
       onClearGuides,
+      panelHeadersVisible,
+      onTogglePanelHeaders,
       translations,
     ]
   );

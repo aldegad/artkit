@@ -30,6 +30,8 @@ interface VideoMenuBarProps {
   hasSelection: boolean;
   hasClipboard?: boolean;
   // View menu
+  panelHeadersVisible: boolean;
+  onTogglePanelHeaders: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitToScreen: () => void;
@@ -59,6 +61,7 @@ interface VideoMenuBarProps {
     zoomIn: string;
     zoomOut: string;
     fitToScreen: string;
+    panelHeaders: string;
     timeline: string;
     previewVideoCache: string;
     resetLayout: string;
@@ -85,6 +88,8 @@ export default function VideoMenuBar({
   onDelete,
   hasSelection,
   hasClipboard,
+  panelHeadersVisible,
+  onTogglePanelHeaders,
   onZoomIn,
   onZoomOut,
   onFitToScreen,
@@ -121,6 +126,8 @@ export default function VideoMenuBar({
   ];
 
   const viewMenuItems: MenuItem[] = [
+    { label: t.panelHeaders, onClick: onTogglePanelHeaders, checked: panelHeadersVisible },
+    { divider: true },
     { label: t.zoomIn, onClick: onZoomIn, shortcut: d(COMMON_SHORTCUTS.zoomIn) },
     { label: t.zoomOut, onClick: onZoomOut, shortcut: d(COMMON_SHORTCUTS.zoomOut) },
     { label: t.fitToScreen, onClick: onFitToScreen, shortcut: d(COMMON_SHORTCUTS.resetZoom) },
