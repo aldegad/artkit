@@ -664,8 +664,11 @@ export function useEditorClipboard() {
       ? activeTrack.frames.findIndex((frame) => frame.id === state.selectedFrameId)
       : -1;
 
-    const boundedCurrentFrameIndex = Math.max(0, Math.min(state.currentFrameIndex, activeTrack.frames.length));
-    const insertIndex = selectedFrameIndex >= 0 ? selectedFrameIndex : boundedCurrentFrameIndex;
+    const boundedCurrentFrameIndex = Math.max(0, Math.min(state.currentFrameIndex, activeTrack.frames.length - 1));
+    const anchorIndex = selectedFrameIndex >= 0 ? selectedFrameIndex : boundedCurrentFrameIndex;
+    const insertIndex = activeTrack.frames.length > 0
+      ? Math.min(anchorIndex + 1, activeTrack.frames.length)
+      : 0;
 
     const insertedFrames = copiedFrames.map((copiedFrame, idx) => ({
       ...deepCopyFrame(copiedFrame),
