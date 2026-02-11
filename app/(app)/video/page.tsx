@@ -10,7 +10,6 @@ import {
   Scrollbar,
   CanvasCropControls,
   PanLockFloatingButton,
-  confirmDialog,
   showErrorToast,
 } from "@/shared/components";
 import {
@@ -45,14 +44,12 @@ import {
   clearVideoPanelComponents,
   VideoPreviewPanelContent,
   VideoTimelinePanelContent,
-  clearVideoAutosave,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
   TIMELINE,
   MASK_BRUSH,
   type Clip,
-  type SavedVideoProject,
 } from "@/domains/video";
 import {
   useVideoKeyboardShortcuts,
@@ -66,6 +63,7 @@ import {
   useGapInterpolationActions,
   analyzeGapInterpolationSelection,
   useMaskRestoreSync,
+  useVideoFileActions,
 } from "@/domains/video/hooks";
 import {
   getClipPositionKeyframes,
@@ -237,7 +235,6 @@ function VideoEditorContent() {
     () => readAISettings().frameInterpolationQuality,
   );
   const audioHistorySavedRef = useRef(false);
-  const [saveCount, setSaveCount] = useState(0);
 
   const {
     currentProjectId,
@@ -412,58 +409,28 @@ function VideoEditorContent() {
   const canRedoAny = canRedo || canRedoMask;
 
   const { importFiles: importMediaFiles } = useMediaImport();
-
-  // Menu handlers
-  const handleNew = useCallback(async () => {
-    const shouldCreate = await confirmDialog({
-      title: t.new || "New Project",
-      message: t.newProjectConfirm,
-      confirmLabel: t.new || "New",
-      cancelLabel: t.cancel || "Cancel",
-    });
-    if (!shouldCreate) return;
-    await clearVideoAutosave();
-    window.location.reload();
-  }, [t]);
-
-  const handleOpen = useCallback(() => {
-    openProjectList();
-  }, [openProjectList]);
-
-  const runProjectSaveAction = useCallback(async (action: () => Promise<void>) => {
-    try {
-      await action();
-      setSaveCount((count) => count + 1);
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      showErrorToast(`Save failed: ${(error as Error).message}`);
-    }
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    await runProjectSaveAction(saveProject);
-  }, [runProjectSaveAction, saveProject]);
-
-  const handleSaveAs = useCallback(async () => {
-    const suggestedName = projectName || "Untitled Project";
-    const nextName = window.prompt("Project name", suggestedName);
-    if (!nextName) return;
-
-    setProjectName(nextName);
-    await runProjectSaveAction(() => saveAsProject(nextName));
-  }, [projectName, runProjectSaveAction, saveAsProject, setProjectName]);
-
-  const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
-    await loadProject(projectMeta);
-  }, [loadProject]);
-
-  const handleDeleteProject = useCallback(async (id: string) => {
-    await deleteProject(id);
-  }, [deleteProject]);
-
-  const handleImportMedia = useCallback(() => {
-    mediaFileInputRef.current?.click();
-  }, []);
+  const {
+    saveCount,
+    handleNew,
+    handleOpen,
+    handleSave,
+    handleSaveAs,
+    handleLoadProject,
+    handleDeleteProject,
+    handleImportMedia,
+  } = useVideoFileActions({
+    newLabel: t.new,
+    newProjectConfirm: t.newProjectConfirm,
+    cancelLabel: t.cancel,
+    projectName,
+    setProjectName,
+    saveProject,
+    saveAsProject,
+    openProjectList,
+    loadProject,
+    deleteProject,
+    mediaFileInputRef,
+  });
 
   const shouldUseMaskHistory = useCallback((): boolean => {
     return (
