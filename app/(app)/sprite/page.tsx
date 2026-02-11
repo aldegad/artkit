@@ -239,6 +239,8 @@ function SpriteEditorMain() {
     setMagicWandTolerance,
     magicWandFeather,
     setMagicWandFeather,
+    magicWandSelectionMode,
+    setMagicWandSelectionMode,
     isPanLocked,
     setIsPanLocked,
   } = useEditorTools();
@@ -1230,6 +1232,7 @@ function SpriteEditorMain() {
 
       <SpriteTopToolbar
         toolMode={toolMode}
+        magicWandSelectionMode={magicWandSelectionMode}
         setSpriteToolMode={setSpriteToolMode}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
@@ -1239,6 +1242,10 @@ function SpriteEditorMain() {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
+        onRequestAISelection={() => {
+          setSpriteToolMode("magicwand");
+          setMagicWandSelectionMode("ai");
+        }}
         onRequestBackgroundRemoval={() => setShowBgRemovalConfirm(true)}
         onRequestFrameInterpolation={() => setShowFrameInterpolationConfirm(true)}
         zoom={animPreviewZoom || 1}

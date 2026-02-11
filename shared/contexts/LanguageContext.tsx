@@ -289,6 +289,8 @@ interface Translations {
   // Frame Interpolation
   frameInterpolation: string;
   frameInterpolationDescription: string;
+  aiSelection: string;
+  aiSelectionDescription: string;
   interpolationFirstRunDownload: string;
   interpolationSteps: string;
   interpolationQuality: string;
@@ -659,6 +661,8 @@ const translations: Record<Language, Translations> = {
     // Frame Interpolation
     frameInterpolation: "AI 프레임 보간",
     frameInterpolationDescription: "선택한 프레임 사이에 AI로 중간 프레임을 생성합니다.",
+    aiSelection: "AI 선택",
+    aiSelectionDescription: "AI로 피사체/배경 경계를 분석해 클릭 위치 기준으로 영역을 선택합니다.",
     interpolationFirstRunDownload: "첫 실행 시 AI 모델을 다운로드합니다 (~22MB)",
     interpolationSteps: "구간당 생성 프레임 수",
     interpolationQuality: "품질 모드",
@@ -1027,6 +1031,8 @@ const translations: Record<Language, Translations> = {
     // Frame Interpolation
     frameInterpolation: "AI Frame Interpolation",
     frameInterpolationDescription: "Generate in-between frames between selected frames using AI.",
+    aiSelection: "AI Selection",
+    aiSelectionDescription: "Use AI segmentation and select foreground/background based on the clicked point.",
     interpolationFirstRunDownload: "First run will download the AI model (~22MB)",
     interpolationSteps: "Frames per gap",
     interpolationQuality: "Quality mode",
