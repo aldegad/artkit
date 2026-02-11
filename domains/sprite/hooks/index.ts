@@ -13,3 +13,4 @@ export { useSpritePanPointerSession } from "./useSpritePanPointerSession";
 export { useSpriteProjectFileActions } from "./useSpriteProjectFileActions";
 export { useSpritePreviewImportHandlers } from "./useSpritePreviewImportHandlers";
 export { useSpritePreviewPointerHandlers } from "./useSpritePreviewPointerHandlers";
+export { useSpriteProjectSync } from "./useSpriteProjectSync";

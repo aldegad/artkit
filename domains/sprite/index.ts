@@ -46,6 +46,7 @@ export {
   useSpriteKeyboardShortcuts,
   useSpriteExport,
   useSpriteProjectFileActions,
+  useSpriteProjectSync,
 } from "./hooks";
 
 // Types
