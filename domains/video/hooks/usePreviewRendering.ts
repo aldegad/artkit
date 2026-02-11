@@ -120,6 +120,8 @@ export function usePreviewRendering() {
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
     const width = rect.width;
     const height = rect.height;
