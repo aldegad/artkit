@@ -88,46 +88,6 @@ export default function SpriteTopToolbar({
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.hand}</span>
-                <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
-              </div>
-            }
-            shortcut="H"
-          >
-            <button
-              onClick={() => setSpriteToolMode("hand")}
-              className={`p-1.5 rounded transition-colors ${
-                toolMode === "hand" ? "bg-accent-primary text-white" : "hover:bg-interactive-hover"
-              }`}
-            >
-              <HandIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.zoomInOut}</span>
-                <span className="text-text-tertiary text-[11px]">{t.zoomToolTip}</span>
-              </div>
-            }
-            shortcut="Z"
-          >
-            <button
-              onClick={() => setSpriteToolMode("zoom")}
-              className={`p-1.5 rounded transition-colors ${
-                toolMode === "zoom"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover"
-              }`}
-            >
-              <ZoomSearchIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
                 <span className="font-medium">{t.crop}</span>
                 <span className="text-text-tertiary text-[11px]">{t.cropToolTip}</span>
                 <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border-default text-[10px] text-text-tertiary">
@@ -233,6 +193,46 @@ export default function SpriteTopToolbar({
               }`}
             >
               <MagicWandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.hand}</span>
+                <span className="text-text-tertiary text-[11px]">{t.handToolTip}</span>
+              </div>
+            }
+            shortcut="H"
+          >
+            <button
+              onClick={() => setSpriteToolMode("hand")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "hand" ? "bg-accent-primary text-white" : "hover:bg-interactive-hover"
+              }`}
+            >
+              <HandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.zoomInOut}</span>
+                <span className="text-text-tertiary text-[11px]">{t.zoomToolTip}</span>
+              </div>
+            }
+            shortcut="Z"
+          >
+            <button
+              onClick={() => setSpriteToolMode("zoom")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "zoom"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <ZoomSearchIcon className="w-4 h-4" />
             </button>
           </Tooltip>
 
