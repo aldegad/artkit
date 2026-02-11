@@ -31,6 +31,9 @@ export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 
+// Toolbar
+export { PanZoomToolbarButtons } from "./PanZoomToolbarButtons";
+
 // Feedback
 export { SaveToast } from "./SaveToast";
 export { LoadingOverlay } from "./LoadingOverlay";

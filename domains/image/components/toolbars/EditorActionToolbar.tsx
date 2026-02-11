@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { Tooltip, Scrollbar, NumberScrubber } from "@/shared/components";
+import { Tooltip, Scrollbar, NumberScrubber, PanZoomToolbarButtons } from "@/shared/components";
 import {
   BackgroundRemovalIcon,
   UndoIcon,
@@ -23,6 +23,8 @@ export interface EditorActionToolbarProps {
   toolButtons: ToolButton[];
   toolMode: EditorToolMode;
   onToolModeChange: (mode: EditorToolMode) => void;
+  isPanLocked: boolean;
+  onTogglePanLock: () => void;
   onOpenBackgroundRemoval: () => void;
   isRemovingBackground: boolean;
   onUndo: () => void;
@@ -42,6 +44,8 @@ export interface EditorActionToolbarProps {
     rotateLeft: string;
     rotateRight: string;
     fitToScreen: string;
+    panLockOn: string;
+    panLockOff: string;
   };
 }
 
@@ -49,6 +53,8 @@ export function EditorActionToolbar({
   toolButtons,
   toolMode,
   onToolModeChange,
+  isPanLocked,
+  onTogglePanLock,
   onOpenBackgroundRemoval,
   isRemovingBackground,
   onUndo,
@@ -101,6 +107,14 @@ export function EditorActionToolbar({
               </button>
             </Tooltip>
           ))}
+
+          <div className="w-px bg-border-default mx-0.5" />
+
+          <PanZoomToolbarButtons
+            isPanLocked={isPanLocked}
+            onTogglePanLock={onTogglePanLock}
+            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff, fitToScreen: t.fitToScreen }}
+          />
 
           <div className="w-px bg-border-default mx-0.5" />
 

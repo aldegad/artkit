@@ -46,6 +46,8 @@ interface EditorTranslationSource {
   loading: string;
   savedProjects?: string;
   noSavedProjects?: string;
+  panLockOn: string;
+  panLockOff: string;
 }
 
 interface EditorTranslationBundles {
@@ -78,6 +80,8 @@ interface EditorTranslationBundles {
     rotateLeft: string;
     rotateRight: string;
     fitToScreen: string;
+    panLockOn: string;
+    panLockOff: string;
   };
   toolOptions: {
     size: string;
@@ -152,6 +156,8 @@ export function useEditorTranslationBundles(
         rotateLeft: source.rotateLeft,
         rotateRight: source.rotateRight,
         fitToScreen: source.fitToScreen,
+        panLockOn: source.panLockOn,
+        panLockOff: source.panLockOff,
       },
       toolOptions: {
         size: source.size,
