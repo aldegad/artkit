@@ -316,6 +316,8 @@ export function useEditorTools() {
   const setMagicWandTolerance = useSpriteToolStore((s) => s.setMagicWandTolerance);
   const magicWandFeather = useSpriteToolStore((s) => s.magicWandFeather);
   const setMagicWandFeather = useSpriteToolStore((s) => s.setMagicWandFeather);
+  const magicWandSelectionMode = useSpriteToolStore((s) => s.magicWandSelectionMode);
+  const setMagicWandSelectionMode = useSpriteToolStore((s) => s.setMagicWandSelectionMode);
   const currentPoints = useSpriteTrackStore((s) => s.currentPoints);
   const setCurrentPoints = useSpriteTrackStore((s) => s.setCurrentPoints);
   const isSpacePressed = useSpriteToolStore((s) => s.isSpacePressed);
@@ -341,6 +343,8 @@ export function useEditorTools() {
     setMagicWandTolerance,
     magicWandFeather,
     setMagicWandFeather,
+    magicWandSelectionMode,
+    setMagicWandSelectionMode,
     currentPoints,
     setCurrentPoints,
     isSpacePressed,

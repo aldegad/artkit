@@ -18,11 +18,13 @@ import {
 } from "@/shared/utils";
 import {
   computeMagicWandSelection,
+  computeMagicWandSelectionFromAlphaMask,
   createMagicWandMaskCanvas,
   drawMagicWandSelectionOutline,
   isMagicWandPixelSelected,
   type MagicWandSelection,
 } from "@/shared/utils/magicWand";
+import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
@@ -39,6 +41,7 @@ export default function FramePreviewContent() {
     isPanLocked,
     magicWandTolerance,
     magicWandFeather,
+    magicWandSelectionMode,
   } = useEditorTools();
   const { t } = useLanguage();
 
@@ -53,6 +56,7 @@ export default function FramePreviewContent() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
   const [editFrameId, setEditFrameId] = useState<number | null>(null);
+  const [isAiSelecting, setIsAiSelecting] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,9 @@ export default function FramePreviewContent() {
   const dabBufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dabBufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
+  const aiSelectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const aiSelectionFrameIdRef = useRef<number | null>(null);
+  const aiSelectionTaskIdRef = useRef(0);
 
   const validFrames = frames.filter((f) => f.imageData);
   const editFrameIndex = editFrameId !== null ? validFrames.findIndex((f) => f.id === editFrameId) : -1;
@@ -132,6 +139,11 @@ export default function FramePreviewContent() {
     setMagicWandSelectionActive("frame-preview", false);
     requestRender();
   }, [requestRender, setMagicWandSelectionActive]);
+
+  const invalidateAiSelectionCache = useCallback(() => {
+    aiSelectionCanvasRef.current = null;
+    aiSelectionFrameIdRef.current = null;
+  }, []);
 
   const ensureDabBufferCanvas = useCallback((width: number, height: number) => {
     if (
@@ -261,6 +273,10 @@ export default function FramePreviewContent() {
   }, [selectedFrameId, commitFrameEdits]);
 
   useEffect(() => {
+    aiSelectionTaskIdRef.current += 1;
+    setIsAiSelecting(false);
+    invalidateAiSelectionCache();
+
     if (!currentFrame?.imageData) {
       frameCanvasRef.current = null;
       frameCtxRef.current = null;
@@ -292,7 +308,7 @@ export default function FramePreviewContent() {
       requestRender();
     };
     img.src = currentFrame.imageData;
-  }, [currentFrame?.id, currentFrame?.imageData, clearMagicWandSelection, requestRender]);
+  }, [currentFrame?.id, currentFrame?.imageData, clearMagicWandSelection, invalidateAiSelectionCache, requestRender]);
 
   const handlePrev = useCallback(() => {
     if (validFrames.length > 0 && editFrameIndex >= 0) {
@@ -339,13 +355,68 @@ export default function FramePreviewContent() {
     [getFrameVpZoom]
   );
 
-  const applyMagicWandSelection = useCallback((x: number, y: number) => {
+  const applyMagicWandSelection = useCallback(async (x: number, y: number) => {
     const frameCtx = frameCtxRef.current;
     const frameCanvas = frameCanvasRef.current;
     if (!frameCtx || !frameCanvas) return;
 
     if (x < 0 || y < 0 || x >= frameCanvas.width || y >= frameCanvas.height) {
       clearMagicWandSelection();
+      return;
+    }
+
+    if (magicWandSelectionMode === "ai") {
+      const taskId = aiSelectionTaskIdRef.current + 1;
+      aiSelectionTaskIdRef.current = taskId;
+      setIsAiSelecting(true);
+
+      try {
+        const frameId = currentFrameIdRef.current;
+        let aiCanvas = aiSelectionCanvasRef.current;
+        if (
+          !aiCanvas
+          || aiSelectionFrameIdRef.current !== frameId
+          || aiCanvas.width !== frameCanvas.width
+          || aiCanvas.height !== frameCanvas.height
+        ) {
+          aiCanvas = await removeBackgroundFromCanvas(frameCanvas);
+          if (aiSelectionTaskIdRef.current !== taskId) {
+            return;
+          }
+          aiSelectionCanvasRef.current = aiCanvas;
+          aiSelectionFrameIdRef.current = frameId;
+        }
+
+        const aiCtx = aiCanvas.getContext("2d");
+        if (!aiCtx) {
+          clearMagicWandSelection();
+          return;
+        }
+
+        const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
+        const selection = computeMagicWandSelectionFromAlphaMask(alphaImage, x, y, {
+          connectedOnly: true,
+        });
+
+        if (!selection) {
+          clearMagicWandSelection();
+          return;
+        }
+
+        magicWandSeedRef.current = { x, y };
+        magicWandSelectionRef.current = selection;
+        magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
+          feather: magicWandFeather,
+        });
+        requestRender();
+      } catch (error) {
+        console.error("AI selection failed:", error);
+        clearMagicWandSelection();
+      } finally {
+        if (aiSelectionTaskIdRef.current === taskId) {
+          setIsAiSelecting(false);
+        }
+      }
       return;
     }
 
@@ -370,6 +441,7 @@ export default function FramePreviewContent() {
   }, [
     clearMagicWandSelection,
     magicWandFeather,
+    magicWandSelectionMode,
     magicWandTolerance,
     requestRender,
     setMagicWandSelectionActive,
@@ -388,11 +460,32 @@ export default function FramePreviewContent() {
       return;
     }
 
-    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-    const selection = computeMagicWandSelection(imageData, seed.x, seed.y, {
-      tolerance: magicWandTolerance,
-      connectedOnly: true,
-    });
+    const selection = magicWandSelectionMode === "ai"
+      ? (() => {
+          const aiCanvas = aiSelectionCanvasRef.current;
+          if (
+            !aiCanvas
+            || aiCanvas.width !== frameCanvas.width
+            || aiCanvas.height !== frameCanvas.height
+          ) {
+            return null;
+          }
+          const aiCtx = aiCanvas.getContext("2d");
+          if (!aiCtx) {
+            return null;
+          }
+          const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
+          return computeMagicWandSelectionFromAlphaMask(alphaImage, seed.x, seed.y, {
+            connectedOnly: true,
+          });
+        })()
+      : (() => {
+          const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
+          return computeMagicWandSelection(imageData, seed.x, seed.y, {
+            tolerance: magicWandTolerance,
+            connectedOnly: true,
+          });
+        })();
 
     if (!selection) {
       clearMagicWandSelection();
@@ -408,6 +501,7 @@ export default function FramePreviewContent() {
   }, [
     clearMagicWandSelection,
     magicWandFeather,
+    magicWandSelectionMode,
     magicWandTolerance,
     requestRender,
     setMagicWandSelectionActive,
@@ -429,8 +523,9 @@ export default function FramePreviewContent() {
     frameCtx.drawImage(maskCanvas, 0, 0);
     frameCtx.restore();
     isFrameDirtyRef.current = true;
+    invalidateAiSelectionCache();
     return true;
-  }, []);
+  }, [invalidateAiSelectionCache]);
 
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure: number = 1) => {
@@ -501,9 +596,10 @@ export default function FramePreviewContent() {
         frameCtx.restore();
       }
       isFrameDirtyRef.current = true;
+      invalidateAiSelectionCache();
       return true;
     },
-    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, pressureEnabled]
+    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled]
   );
 
   const pickColor = useCallback(
@@ -655,7 +751,10 @@ export default function FramePreviewContent() {
       }
 
       if (isMagicWandTool) {
-        applyMagicWandSelection(coords.x, coords.y);
+        if (isAiSelecting) {
+          return;
+        }
+        void applyMagicWandSelection(coords.x, coords.y);
         return;
       }
 
@@ -683,6 +782,7 @@ export default function FramePreviewContent() {
       isPanning,
       isEyedropperTool,
       isMagicWandTool,
+      isAiSelecting,
       isBrushTool,
       hasDrawn,
       getPixelCoordinates,
@@ -767,6 +867,9 @@ export default function FramePreviewContent() {
   const isHandMode = toolMode === "hand" || isPanning;
 
   const getContainerCursor = () => {
+    if (isAiSelecting) {
+      return "progress";
+    }
     if (isHandMode) {
       return frameIsPanDragging() ? "grabbing" : "grab";
     }
@@ -818,7 +921,13 @@ export default function FramePreviewContent() {
               onPointerLeave={handleCanvasPointerLeave}
               onPointerEnter={handleCanvasPointerEnter}
               style={{
-                cursor: isBrushTool ? "none" : (isEyedropperTool || isMagicWandTool) ? "crosshair" : "default",
+                cursor: isAiSelecting
+                  ? "progress"
+                  : isBrushTool
+                    ? "none"
+                    : (isEyedropperTool || isMagicWandTool)
+                      ? "crosshair"
+                      : "default",
                 pointerEvents: isHandMode ? "none" : "auto",
                 touchAction: "none",
               }}

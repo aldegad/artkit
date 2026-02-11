@@ -42,6 +42,7 @@ export interface SpriteCropArea {
   height: number;
 }
 
+export type MagicWandSelectionMode = "color" | "ai";
 export type SpriteToolMode = "pen" | "select" | "hand" | "brush" | "eraser" | "magicwand" | "eyedropper" | "zoom" | "crop";
 export type FrameEditToolMode = "brush" | "eraser" | "magicwand" | "eyedropper" | "zoom" | "crop";
 export type SpriteCropAspectRatio = AspectRatio;

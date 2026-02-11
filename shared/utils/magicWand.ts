@@ -18,6 +18,11 @@ export interface MagicWandSelectionOptions {
   connectedOnly?: boolean;
 }
 
+export interface MagicWandAlphaSelectionOptions {
+  alphaThreshold?: number;
+  connectedOnly?: boolean;
+}
+
 export interface MagicWandMaskCanvasOptions {
   feather?: number;
 }
@@ -40,6 +45,7 @@ interface RgbaPixel {
 }
 
 const DEFAULT_TOLERANCE = 24;
+const DEFAULT_ALPHA_THRESHOLD = 16;
 const MAX_FEATHER = 32;
 
 function clampTolerance(value: number | undefined): number {
@@ -51,6 +57,11 @@ function clampFeather(value: number | undefined): number {
   if (!Number.isFinite(value)) return 0;
   const clamped = Math.max(0, Math.min(MAX_FEATHER, value as number));
   return Math.round(clamped * 2) / 2;
+}
+
+function clampAlphaThreshold(value: number | undefined): number {
+  if (!Number.isFinite(value)) return DEFAULT_ALPHA_THRESHOLD;
+  return Math.max(0, Math.min(255, Math.round(value as number)));
 }
 
 function getPixel(data: Uint8ClampedArray, index: number): RgbaPixel {
@@ -170,6 +181,125 @@ export function computeMagicWandSelection(
   } else {
     for (let index = 0; index < total; index++) {
       if (!isWithinTolerance(data, index, seedPixel, tolerance)) {
+        continue;
+      }
+
+      mask[index] = 255;
+      selectedCount += 1;
+
+      const px = index % width;
+      const py = Math.floor(index / width);
+
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+    }
+  }
+
+  if (selectedCount <= 0 || maxX < minX || maxY < minY) {
+    return null;
+  }
+
+  return {
+    width,
+    height,
+    mask,
+    selectedCount,
+    bounds: toBounds(minX, minY, maxX, maxY),
+  };
+}
+
+export function computeMagicWandSelectionFromAlphaMask(
+  imageData: ImageData,
+  seedX: number,
+  seedY: number,
+  options?: MagicWandAlphaSelectionOptions,
+): MagicWandSelection | null {
+  const width = imageData.width;
+  const height = imageData.height;
+  const total = width * height;
+
+  if (width <= 0 || height <= 0 || total <= 0) {
+    return null;
+  }
+
+  const x = Math.floor(seedX);
+  const y = Math.floor(seedY);
+  if (x < 0 || y < 0 || x >= width || y >= height) {
+    return null;
+  }
+
+  const alphaThreshold = clampAlphaThreshold(options?.alphaThreshold);
+  const connectedOnly = options?.connectedOnly !== false;
+  const data = imageData.data;
+  const seedIndex = y * width + x;
+  const seedIsOpaque = data[seedIndex * 4 + 3] > alphaThreshold;
+
+  const mask = new Uint8Array(total);
+  let selectedCount = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  if (connectedOnly) {
+    const visited = new Uint8Array(total);
+    const queue = new Int32Array(total);
+    let head = 0;
+    let tail = 0;
+
+    visited[seedIndex] = 1;
+    queue[tail++] = seedIndex;
+
+    while (head < tail) {
+      const index = queue[head++];
+      const isOpaque = data[index * 4 + 3] > alphaThreshold;
+      if (isOpaque !== seedIsOpaque) {
+        continue;
+      }
+
+      if (mask[index] === 255) {
+        continue;
+      }
+
+      mask[index] = 255;
+      selectedCount += 1;
+
+      const px = index % width;
+      const py = Math.floor(index / width);
+
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+
+      const left = index - 1;
+      const right = index + 1;
+      const top = index - width;
+      const bottom = index + width;
+
+      if (px > 0 && visited[left] === 0) {
+        visited[left] = 1;
+        queue[tail++] = left;
+      }
+      if (px < width - 1 && visited[right] === 0) {
+        visited[right] = 1;
+        queue[tail++] = right;
+      }
+      if (py > 0 && visited[top] === 0) {
+        visited[top] = 1;
+        queue[tail++] = top;
+      }
+      if (py < height - 1 && visited[bottom] === 0) {
+        visited[bottom] = 1;
+        queue[tail++] = bottom;
+      }
+    }
+  } else {
+    for (let index = 0; index < total; index++) {
+      const isOpaque = data[index * 4 + 3] > alphaThreshold;
+      if (isOpaque !== seedIsOpaque) {
         continue;
       }
 
