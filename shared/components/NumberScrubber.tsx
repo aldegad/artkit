@@ -173,7 +173,7 @@ export function NumberScrubber({
 
   const handleDoubleClick = useCallback(() => {
     if (!editable || disabled) return;
-    setEditValue(String(Math.round(value)));
+    setEditValue(String(value));
     setIsEditing(true);
   }, [editable, disabled, value]);
 
@@ -229,6 +229,7 @@ export function NumberScrubber({
           )}
           min={min}
           max={max}
+          step={!isMultiplicative ? linearStep : undefined}
         />
       ) : (
         <span
