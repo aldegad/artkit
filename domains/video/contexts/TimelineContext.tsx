@@ -25,6 +25,7 @@ import { useVideoState } from "./VideoStateContext";
 import { Size } from "@/shared/types";
 import {
   loadVideoAutosave,
+  type VideoAutosaveData,
 } from "../utils/videoAutosave";
 import { loadMediaBlob, copyMediaBlob } from "../utils/mediaStorage";
 import { normalizeClipTransformKeyframes, sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
@@ -542,66 +543,80 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     updateClipsWithDuration(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
   }, [updateClipsWithDuration]);
 
+  const restoreAutosaveData = useCallback(async (data: VideoAutosaveData) => {
+    let durationHint = Math.max(data.project?.duration || 0, 0);
+
+    // Restore timeline data
+    if (data.tracks && data.tracks.length > 0) {
+      setTracks(data.tracks);
+    }
+    if (data.clips && data.clips.length > 0) {
+      const { restoredClips, durationHint: clipDurationHint } = await restoreAutosavedClips(data.clips as Clip[]);
+      durationHint = Math.max(durationHint, clipDurationHint);
+      setClips(restoredClips);
+    }
+    if (data.timelineView) {
+      setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
+    }
+    const normalizedDurationHint = Math.max(durationHint, 0.001);
+
+    // Restore VideoState data
+    // Merge correct masks (data.masks) into project to avoid stale project.masks
+    if (data.project) {
+      setProject({
+        ...data.project,
+        duration: normalizedDurationHint,
+        masks: data.masks || data.project.masks || [],
+      });
+    }
+    if (data.projectName) {
+      setProjectName(data.projectName);
+    }
+    if (data.toolMode) {
+      setToolMode(data.toolMode);
+    }
+    if (typeof data.autoKeyframeEnabled === "boolean") {
+      setAutoKeyframeEnabled(data.autoKeyframeEnabled);
+    }
+    if (data.selectedClipIds) {
+      selectClips(data.selectedClipIds);
+    }
+    if (data.selectedMaskIds) {
+      selectMasksForTimeline(data.selectedMaskIds);
+    }
+    const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
+    if (data.playbackRange) {
+      setLoopRange(
+        data.playbackRange.loopStart,
+        data.playbackRange.loopEnd,
+        Boolean(data.playbackRange.loop),
+        normalizedDurationHint
+      );
+    } else {
+      // Autosave can omit playbackRange when user cleared IN/OUT.
+      // In that case, explicitly restore a cleared range.
+      clearLoopRange(normalizedDurationHint);
+    }
+    seek(restoredTime);
+  }, [
+    clearLoopRange,
+    seek,
+    selectClips,
+    selectMasksForTimeline,
+    setAutoKeyframeEnabled,
+    setLoopRange,
+    setProject,
+    setProjectName,
+    setToolMode,
+  ]);
+
   // Load autosave on mount
   useEffect(() => {
     const loadAutosave = async () => {
       try {
         const data = await loadVideoAutosave();
         if (data) {
-          let durationHint = Math.max(data.project?.duration || 0, 0);
-
-          // Restore timeline data
-          if (data.tracks && data.tracks.length > 0) {
-            setTracks(data.tracks);
-          }
-          if (data.clips && data.clips.length > 0) {
-            const { restoredClips, durationHint: clipDurationHint } = await restoreAutosavedClips(data.clips as Clip[]);
-            durationHint = Math.max(durationHint, clipDurationHint);
-            setClips(restoredClips);
-          }
-          if (data.timelineView) {
-            setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
-          }
-          const normalizedDurationHint = Math.max(durationHint, 0.001);
-
-          // Restore VideoState data
-          // Merge correct masks (data.masks) into project to avoid stale project.masks
-          if (data.project) {
-            setProject({
-              ...data.project,
-              duration: normalizedDurationHint,
-              masks: data.masks || data.project.masks || [],
-            });
-          }
-          if (data.projectName) {
-            setProjectName(data.projectName);
-          }
-          if (data.toolMode) {
-            setToolMode(data.toolMode);
-          }
-          if (typeof data.autoKeyframeEnabled === "boolean") {
-            setAutoKeyframeEnabled(data.autoKeyframeEnabled);
-          }
-          if (data.selectedClipIds) {
-            selectClips(data.selectedClipIds);
-          }
-          if (data.selectedMaskIds) {
-            selectMasksForTimeline(data.selectedMaskIds);
-          }
-          const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
-          if (data.playbackRange) {
-            setLoopRange(
-              data.playbackRange.loopStart,
-              data.playbackRange.loopEnd,
-              Boolean(data.playbackRange.loop),
-              normalizedDurationHint
-            );
-          } else {
-            // Autosave can omit playbackRange when user cleared IN/OUT.
-            // In that case, explicitly restore a cleared range.
-            clearLoopRange(normalizedDurationHint);
-          }
-          seek(restoredTime);
+          await restoreAutosaveData(data);
         }
       } catch (error) {
         console.error("Failed to load autosave:", error);
@@ -612,7 +627,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
 
     loadAutosave();
-  }, [setProject, setProjectName, setToolMode, setAutoKeyframeEnabled, selectClips, selectMasksForTimeline, seek, setLoopRange, clearLoopRange, clearHistory]);
+  }, [restoreAutosaveData, clearHistory]);
 
   // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
   // access to MaskContext for correct mask data. TimelineContext only handles
