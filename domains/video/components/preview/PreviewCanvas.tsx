@@ -235,8 +235,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   });
   const isPanningRef = useRef(false);
   const containerRectRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
-  const { zoom: viewportZoom } = viewport.useReactSync(200);
-  const zoomPercent = Math.round(viewportZoom * 100);
+  const { zoom: viewportZoom, baseScale: viewportBaseScale } = viewport.useReactSync(200);
+  const zoomPercent = Math.round(
+    (viewportBaseScale > 0 ? viewportZoom * viewportBaseScale : viewportZoom) * 100
+  );
 
   // Extract stable refs from viewport (useCallback-backed, stable across re-renders)
   const {
@@ -1234,6 +1236,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     onViewportChange: onVideoViewportChange,
     getZoom: vpGetZoom,
     setZoom: vpSetZoom,
+    getEffectiveScale: vpGetEffectiveScale,
     fitToContainer: fitViewportToContainer,
     transformTool,
     captureCompositeFrame,
@@ -1799,10 +1802,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     return () => resizeObserver.disconnect();
   }, [previewContainerRef, vpGetTransform, vpFitToContainer, vpSetBaseScale, project.canvasSize.width, project.canvasSize.height]);
 
-  const handleFitToScreen = useCallback(() => {
-    vpFitToContainer(40);
-  }, [vpFitToContainer]);
-
   return (
     <div
       ref={containerRefCallback}
@@ -1866,12 +1865,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       {zoomPercent !== 100 && (
         <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-surface-primary/80 backdrop-blur-sm rounded px-2 py-1 text-[11px] text-text-secondary pointer-events-auto">
           <span>{zoomPercent}%</span>
-          <button
-            onClick={handleFitToScreen}
-            className="hover:text-text-primary transition-colors text-[10px] underline"
-          >
-            Fit
-          </button>
         </div>
       )}
     </div>
