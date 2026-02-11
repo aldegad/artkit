@@ -60,6 +60,11 @@ interface SpriteToolStore {
   reset: () => void;
 }
 
+function normalizeMagicWandFeather(feather: number): number {
+  const clamped = Math.max(0, Math.min(32, feather));
+  return Math.round(clamped * 2) / 2;
+}
+
 // ============================================
 // Store
 // ============================================
@@ -121,7 +126,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   setMagicWandTolerance: (tolerance) =>
     set({ magicWandTolerance: Math.max(0, Math.min(255, Math.round(tolerance))) }),
   setMagicWandFeather: (feather) =>
-    set({ magicWandFeather: Math.max(0, Math.min(32, Math.round(feather))) }),
+    set({ magicWandFeather: normalizeMagicWandFeather(feather) }),
   setMagicWandSelectionActive: (source, active) =>
     set((state) => {
       const nextBySource = { ...state.magicWandSelectionActiveBySource };
