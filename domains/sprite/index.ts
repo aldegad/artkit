@@ -50,6 +50,7 @@ export {
   useSpriteExportActions,
   useSpriteCropActions,
   useFrameStripSkipActions,
+  useSpriteResampleActions,
 } from "./hooks";
 
 // Types
