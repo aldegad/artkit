@@ -65,10 +65,10 @@ import {
   useMaskRestoreSync,
   useVideoFileActions,
   useSelectedClipAudioActions,
+  useVideoEditActions,
 } from "@/domains/video/hooks";
 import {
   getClipPositionKeyframes,
-  removeClipPositionKeyframeById,
 } from "@/domains/video/utils/clipTransformKeyframes";
 import {
   createVideoMenuTranslations,
@@ -432,58 +432,28 @@ function VideoEditorContent() {
     mediaFileInputRef,
   });
 
-  const shouldUseMaskHistory = useCallback((): boolean => {
-    return (
-      toolMode === "mask"
-      || isEditingMask
-      || activeMaskId !== null
-      || selectedMaskIds.length > 0
-    );
-  }, [toolMode, isEditingMask, activeMaskId, selectedMaskIds.length]);
-
-  // Edit menu handlers
-  const handleUndo = useCallback(() => {
-    if (canUndoMask && shouldUseMaskHistory()) {
-      undoMask();
-      return;
-    }
-    undo();
-    deselectAll();
-  }, [canUndoMask, undoMask, undo, deselectAll, shouldUseMaskHistory]);
-
-  const handleRedo = useCallback(() => {
-    if (canRedoMask && shouldUseMaskHistory()) {
-      redoMask();
-      return;
-    }
-    redo();
-    deselectAll();
-  }, [canRedoMask, redoMask, redo, deselectAll, shouldUseMaskHistory]);
-
-  const handleDeleteSelectedPositionKeyframe = useCallback((): boolean => {
-    if (!selectedPositionKeyframe) return false;
-    if (!selectedPositionKeyframeClip) {
-      setSelectedPositionKeyframe(null);
-      return true;
-    }
-
-    saveToHistory();
-    const result = removeClipPositionKeyframeById(
-      selectedPositionKeyframeClip,
-      selectedPositionKeyframe.keyframeId
-    );
-    if (result.removed) {
-      updateClip(selectedPositionKeyframeClip.id, result.updates);
-    }
-    setSelectedPositionKeyframe(null);
-    return result.removed;
-  }, [
-    saveToHistory,
+  const {
+    handleUndo,
+    handleRedo,
+    handleDeleteSelectedPositionKeyframe,
+  } = useVideoEditActions({
+    toolMode,
+    isEditingMask,
+    activeMaskId,
+    selectedMaskCount: selectedMaskIds.length,
+    canUndoMask,
+    canRedoMask,
+    undoMask,
+    redoMask,
+    undo,
+    redo,
+    deselectAll,
     selectedPositionKeyframe,
     selectedPositionKeyframeClip,
-    setSelectedPositionKeyframe,
+    clearSelectedPositionKeyframe: () => setSelectedPositionKeyframe(null),
+    saveToHistory,
     updateClip,
-  ]);
+  });
 
   const {
     handleCopy,
