@@ -465,7 +465,8 @@ export default function FrameStrip() {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isInteractiveElement(e.target)) return;
-      if (toolMode !== "select" && toolMode !== "hand") return;
+      // Keep wand delete behavior for pixel-mask clearing in preview components.
+      if (toolMode === "magicwand") return;
       if (frames.length === 0) return;
 
       e.preventDefault();
