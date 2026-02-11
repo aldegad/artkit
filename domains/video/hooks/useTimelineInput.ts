@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { useTimelineViewport } from "./useTimelineViewport";
@@ -154,6 +154,22 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
 
+  const clipsByTrackDesc = useMemo(() => {
+    const index = new Map<string, Clip[]>();
+    for (const clip of clips) {
+      const list = index.get(clip.trackId);
+      if (list) {
+        list.push(clip);
+      } else {
+        index.set(clip.trackId, [clip]);
+      }
+    }
+    for (const list of index.values()) {
+      list.sort((a, b) => b.startTime - a.startTime);
+    }
+    return index;
+  }, [clips]);
+
   const capturePointer = useCallback((pointerId: number, clientX: number = 0, clientY: number = 0) => {
     activePointerIdRef.current = pointerId;
     setDragPointerPending({ pointerId, clientX, clientY });
@@ -228,9 +244,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (!trackId || inMaskLane || inTransformLane) return null;
 
       const time = pixelToTime(x);
-      const trackClips = clips
-        .filter((clip) => clip.trackId === trackId)
-        .sort((a, b) => b.startTime - a.startTime);
+      const trackClips = clipsByTrackDesc.get(trackId) || [];
 
       for (const clip of trackClips) {
         const clipStartX = timeToPixel(clip.startTime);
@@ -250,7 +264,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       }
       return null;
     },
-    [getTrackAtY, clips, pixelToTime, timeToPixel]
+    [getTrackAtY, clipsByTrackDesc, pixelToTime, timeToPixel]
   );
 
   // Build drag items from selected clips and masks
