@@ -1,7 +1,7 @@
 "use client";
 
 import Tooltip from "../../../shared/components/Tooltip";
-import { PanZoomToolbarButtons } from "@/shared/components";
+import { NumberScrubber } from "@/shared/components";
 import {
   MoveIcon,
   TransformIcon,
@@ -28,13 +28,14 @@ interface ToolButton {
 interface VideoToolbarProps {
   toolMode: VideoToolMode;
   onToolModeChange: (mode: VideoToolMode) => void;
-  isPanLocked: boolean;
-  onTogglePanLock: () => void;
   onInterpolateGap?: () => void;
   canInterpolateGap?: boolean;
   isInterpolatingGap?: boolean;
   onDelete?: () => void;
   hasSelection?: boolean;
+  previewZoom: number;
+  setPreviewZoom: (zoom: number | ((z: number) => number)) => void;
+  onPreviewFit: () => void;
   translations: {
     select: string;
     selectDesc: string;
@@ -55,21 +56,21 @@ interface VideoToolbarProps {
     frameInterpolation: string;
     frameInterpolationDescription: string;
     delete: string;
-    panLockOn: string;
-    panLockOff: string;
+    fitToScreen: string;
   };
 }
 
 export default function VideoToolbar({
   toolMode,
   onToolModeChange,
-  isPanLocked,
-  onTogglePanLock,
   onInterpolateGap,
   canInterpolateGap,
   isInterpolatingGap,
   onDelete,
   hasSelection,
+  previewZoom,
+  setPreviewZoom,
+  onPreviewFit,
   translations: t,
 }: VideoToolbarProps) {
   const toolButtons: ToolButton[] = [
@@ -177,15 +178,6 @@ export default function VideoToolbar({
       {/* Separator */}
       <div className="w-px bg-border-default mx-0.5" />
 
-      <PanZoomToolbarButtons
-        isPanLocked={isPanLocked}
-        onTogglePanLock={onTogglePanLock}
-        translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff }}
-      />
-
-      {/* Separator */}
-      <div className="w-px bg-border-default mx-0.5" />
-
       {/* AI gap interpolation */}
       <Tooltip
         content={
@@ -227,6 +219,28 @@ export default function VideoToolbar({
           <DeleteIcon />
         </button>
       </Tooltip>
+
+      <div className="w-px bg-border-default mx-0.5" />
+
+      <div className="flex items-center gap-1">
+        <NumberScrubber
+          value={previewZoom}
+          onChange={setPreviewZoom}
+          min={0.1}
+          max={10}
+          step={{ multiply: 1.25 }}
+          format={(value) => `${Math.round(value * 100)}%`}
+          size="sm"
+          variant="zoom"
+        />
+        <button
+          onClick={onPreviewFit}
+          className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+          title={t.fitToScreen}
+        >
+          Fit
+        </button>
+      </div>
     </div>
   );
 }

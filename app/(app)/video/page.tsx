@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage, useAuth } from "@/shared/contexts";
-import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar, CanvasCropControls } from "@/shared/components";
+import { HeaderContent, SaveToast, LoadingOverlay, Select, Scrollbar, CanvasCropControls, PanLockFloatingButton } from "@/shared/components";
 import {
   VolumeOnIcon,
   VolumeMutedIcon,
@@ -987,12 +987,33 @@ function VideoEditorContent() {
     };
   }, [previewViewportRef]);
 
-  const handlePreviewZoomIn = useCallback(() => {
-    previewViewportRef.current?.zoomIn();
+  // Preview zoom state (synced from PreviewCanvas viewport)
+  const [previewZoom, setPreviewZoomState] = useState(1);
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let rafId: number | null = null;
+
+    const attach = () => {
+      const api = previewViewportRef.current;
+      if (!api) {
+        rafId = requestAnimationFrame(attach);
+        return;
+      }
+      unsubscribe = api.onZoomChange((z) => setPreviewZoomState(z));
+    };
+
+    attach();
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      unsubscribe?.();
+    };
   }, [previewViewportRef]);
 
-  const handlePreviewZoomOut = useCallback(() => {
-    previewViewportRef.current?.zoomOut();
+  const setPreviewZoom = useCallback((zoomOrFn: number | ((z: number) => number)) => {
+    const api = previewViewportRef.current;
+    if (!api) return;
+    const next = typeof zoomOrFn === "function" ? zoomOrFn(api.getZoom()) : zoomOrFn;
+    api.setZoom(next);
   }, [previewViewportRef]);
 
   const handlePreviewFit = useCallback(() => {
@@ -1298,8 +1319,7 @@ function VideoEditorContent() {
     frameInterpolation: t.frameInterpolation,
     frameInterpolationDescription: t.frameInterpolationDescription,
     delete: t.delete,
-    panLockOn: t.panLockOn,
-    panLockOff: t.panLockOff,
+    fitToScreen: t.fitToScreen,
   };
 
   return (
@@ -1376,13 +1396,14 @@ function VideoEditorContent() {
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
-          isPanLocked={isPanLocked}
-          onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
           onInterpolateGap={handleInterpolateClipGap}
           canInterpolateGap={gapInterpolationAnalysis.ready}
           isInterpolatingGap={isInterpolatingGap}
           onDelete={handleDelete}
           hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId || !!selectedPositionKeyframe}
+          previewZoom={previewZoom}
+          setPreviewZoom={setPreviewZoom}
+          onPreviewFit={handlePreviewFit}
           translations={toolbarTranslations}
         />
 
@@ -1674,6 +1695,12 @@ function VideoEditorContent() {
           compressionBalanced: t.compressionBalanced,
           compressionSmallFile: t.compressionSmallFile,
         }}
+      />
+
+      <PanLockFloatingButton
+        isPanLocked={isPanLocked}
+        onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
+        storageKey="artkit.video.pan-toggle-position-v1"
       />
     </div>
   );

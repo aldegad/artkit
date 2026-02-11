@@ -1,6 +1,6 @@
 "use client";
 
-import { SaveToast, LoadingOverlay } from "@/shared/components";
+import { SaveToast, LoadingOverlay, PanLockFloatingButton } from "@/shared/components";
 import {
   useImageEditorController,
   EditorHeader,
@@ -73,6 +73,12 @@ function ImageEditorContent() {
           </div>
 
           <EditorOverlays {...controller.overlaysProps} />
+
+          <PanLockFloatingButton
+            isPanLocked={controller.isPanLocked}
+            onTogglePanLock={controller.togglePanLock}
+            storageKey="artkit.image.pan-toggle-position-v1"
+          />
         </div>
       </EditorCanvasProvider>
     </EditorLayersProvider>
