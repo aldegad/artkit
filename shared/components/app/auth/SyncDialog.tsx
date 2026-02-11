@@ -2,6 +2,7 @@
 
 import { useLanguage } from "@/shared/contexts";
 import { SystemIcon, CloudIcon } from "@/shared/components/icons";
+import { Modal } from "@/shared/components/Modal";
 
 interface SyncDialogProps {
   isOpen: boolean;
@@ -46,49 +47,16 @@ export function SyncDialog({
         : "This action cannot be undone.",
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-popover border border-border rounded-lg shadow-xl w-full max-w-md mx-4">
-        <div className="p-4 border-b border-border">
-          <h2 className="text-lg font-semibold">{t.title}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
-        </div>
-
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 border border-border rounded-md">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <SystemIcon />
-                {t.localData}
-              </div>
-              <p className="text-2xl font-bold mt-2">
-                {localCount}
-                <span className="text-sm font-normal text-muted-foreground">
-                  {t.projects}
-                </span>
-              </p>
-            </div>
-
-            <div className="p-3 border border-border rounded-md">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <CloudIcon />
-                {t.cloudData}
-              </div>
-              <p className="text-2xl font-bold mt-2">
-                {cloudCount}
-                <span className="text-sm font-normal text-muted-foreground">
-                  {t.projects}
-                </span>
-              </p>
-            </div>
-          </div>
-
-          <p className="text-xs text-destructive">{t.warning}</p>
-        </div>
-
-        <div className="p-4 border-t border-border flex flex-col gap-2">
+    <Modal
+      isOpen={isOpen}
+      onClose={onCancel}
+      title={t.title}
+      width="448px"
+      maxHeight="80vh"
+      contentClassName="px-4 py-4 space-y-3"
+      footer={(
+        <div className="flex flex-col gap-2">
           <button
             onClick={onKeepCloud}
             className="w-full px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -108,7 +76,39 @@ export function SyncDialog({
             {t.cancel}
           </button>
         </div>
+      )}
+    >
+      <p className="text-sm text-muted-foreground">{t.description}</p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-3 border border-border rounded-md">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <SystemIcon />
+            {t.localData}
+          </div>
+          <p className="text-2xl font-bold mt-2">
+            {localCount}
+            <span className="text-sm font-normal text-muted-foreground">
+              {t.projects}
+            </span>
+          </p>
+        </div>
+
+        <div className="p-3 border border-border rounded-md">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <CloudIcon />
+            {t.cloudData}
+          </div>
+          <p className="text-2xl font-bold mt-2">
+            {cloudCount}
+            <span className="text-sm font-normal text-muted-foreground">
+              {t.projects}
+            </span>
+          </p>
+        </div>
       </div>
-    </div>
+
+      <p className="text-xs text-destructive">{t.warning}</p>
+    </Modal>
   );
 }
