@@ -483,6 +483,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     });
   }, [setTracks]);
 
+  const copyMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
+    return copyMediaBlob(sourceClipId, targetClipId).catch((error) => {
+      console.error(`Failed to copy media blob (${reason}):`, error);
+    });
+  }, []);
+
   const createSafeFittedVisualClip = useCallback((options: {
     baseClip: Clip;
     sourceSize: Size;
@@ -735,16 +741,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     if (duplicatedClips.length > 0) {
       void Promise.all(
         duplicatedClips.map((newClip, index) =>
-          copyMediaBlob(sourceClips[index].id, newClip.id).catch((error) => {
-            console.error("Failed to copy media blob on track duplicate:", error);
-          })
+          copyMediaBlobSafely(sourceClips[index].id, newClip.id, "track duplicate")
         )
       );
       updateClipsWithDuration((prev) => [...prev, ...duplicatedClips]);
     }
 
     return duplicatedTrack.id;
-  }, [tracks, clips, updateClipsWithDuration]);
+  }, [tracks, clips, copyMediaBlobSafely, updateClipsWithDuration]);
 
   const removeTrack = useCallback((trackId: string) => {
     // Don't remove the last track
@@ -989,13 +993,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       transformKeyframes: normalizeClipTransformKeyframes(sourceClip),
     }, sourceClip.startTime + 0.25);
 
-    void copyMediaBlob(sourceClip.id, newClip.id).catch((error) => {
-      console.error("Failed to copy media blob on timeline duplicate:", error);
-    });
+    void copyMediaBlobSafely(sourceClip.id, newClip.id, "timeline duplicate");
 
     updateClipsWithDuration((prev) => [...prev, newClip]);
     return newClip.id;
-  }, [clips, tracks, appendTrack, updateClipsWithDuration]);
+  }, [clips, tracks, appendTrack, copyMediaBlobSafely, updateClipsWithDuration]);
 
   // Add pre-formed clips (for paste)
   const addClips = useCallback((newClips: Clip[]) => {
