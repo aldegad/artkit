@@ -250,15 +250,39 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     }
 
     autosaveTimeoutRef.current = setTimeout(() => {
+      const autosaveDuration = calculateProjectDuration(clips);
+      const normalizedPlaybackRange = playbackRange
+        ? (() => {
+            const loopStart = Math.max(0, Math.min(playbackRange.loopStart, autosaveDuration));
+            const loopEnd = Math.max(loopStart + 0.001, Math.min(playbackRange.loopEnd, autosaveDuration));
+            return {
+              loop: Boolean(playbackRange.loop),
+              loopStart,
+              loopEnd,
+            };
+          })()
+        : undefined;
+
       saveVideoAutosave({
-        project,
+        project: {
+          ...project,
+          name: projectName || project.name,
+          tracks: tracks.map((track) => ({ ...track })),
+          clips: clips.map((clip) => ({
+            ...clip,
+            position: { ...clip.position },
+            transformKeyframes: normalizeClipTransformKeyframes(clip),
+          })),
+          masks: masks.map((mask) => ({ ...mask })),
+          duration: autosaveDuration,
+        },
         projectName,
         tracks,
         clips,
         masks,
         timelineView: sanitizeTimelineView(viewState),
         currentTime,
-        playbackRange,
+        playbackRange: normalizedPlaybackRange,
         toolMode: toolMode as import("../types").VideoToolMode,
         autoKeyframeEnabled,
         selectedClipIds,
