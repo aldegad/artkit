@@ -16,3 +16,4 @@ export { useSpritePreviewPointerHandlers } from "./useSpritePreviewPointerHandle
 export { useSpriteProjectSync } from "./useSpriteProjectSync";
 export { useSpriteExportActions } from "./useSpriteExportActions";
 export { useSpriteCropActions } from "./useSpriteCropActions";
+export { useFrameStripSkipActions } from "./useFrameStripSkipActions";

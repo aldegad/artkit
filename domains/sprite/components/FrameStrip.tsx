@@ -8,6 +8,7 @@ import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameS
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
 import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
+import { useFrameStripSkipActions } from "../hooks/useFrameStripSkipActions";
 
 interface FrameCardProps {
   frame: SpriteFrame;
@@ -540,55 +541,26 @@ export default function FrameStrip() {
     setIsPlaying,
   ]);
 
-  // Toggle disabled on a single frame
-  const toggleFrameDisabled = useCallback(
-    (frameId: number) => {
-      const currentFrameIndex = getCurrentFrameIndex();
-      pushHistory();
-      const newFrames = frames.map((f: SpriteFrame) =>
-        f.id === frameId ? { ...f, disabled: !f.disabled } : f,
-      );
-      setFrames(newFrames);
-
-      // Auto-advance if current frame becomes disabled
-      if (newFrames[currentFrameIndex]?.disabled) {
-        const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
-        if (next >= 0) {
-          setCurrentFrameIndex(next);
-        } else {
-          const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
-          if (first >= 0) setCurrentFrameIndex(first);
-        }
-      }
-    },
-    [frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex],
-  );
-
-  // Toggle disabled on selected frames (batch)
-  const toggleSelectedFramesDisabled = useCallback(() => {
-    const currentFrameIndex = getCurrentFrameIndex();
-    if (selectedFrameIds.length === 0) return;
-    pushHistory();
-    // If any selected frame is enabled, disable all; otherwise enable all
-    const anyEnabled = frames.some(
-      (f: SpriteFrame) => selectedFrameIds.includes(f.id) && !f.disabled,
-    );
-    const newFrames = frames.map((f: SpriteFrame) =>
-      selectedFrameIds.includes(f.id) ? { ...f, disabled: anyEnabled } : f,
-    );
-    setFrames(newFrames);
-
-    // Auto-advance if current frame becomes disabled
-    if (newFrames[currentFrameIndex]?.disabled) {
-      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
-      if (next >= 0) {
-        setCurrentFrameIndex(next);
-      } else {
-        const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
-        if (first >= 0) setCurrentFrameIndex(first);
-      }
-    }
-  }, [selectedFrameIds, frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
+  const {
+    disabledCount,
+    toggleFrameDisabled,
+    toggleSelectedFramesDisabled,
+    applyNthSkip,
+    clearAllDisabled,
+    deleteDisabledFrames,
+  } = useFrameStripSkipActions({
+    frames,
+    selectedFrameIds,
+    nthValue,
+    keepCount,
+    getCurrentFrameIndex,
+    pushHistory,
+    setFrames,
+    setCurrentFrameIndex,
+    setSelectedFrameIds,
+    setSelectedFrameId,
+    setIsPlaying,
+  });
 
   const flipSelectedFrames = useCallback(
     async (direction: FrameFlipDirection) => {
@@ -673,38 +645,6 @@ export default function FrameStrip() {
     setFrames,
     setCurrentFrameIndex,
   ]);
-
-  // Nth skip: keep M frames out of every N (e.g. keep 1/3, keep 2/4)
-  const applyNthSkip = useCallback(() => {
-    const currentFrameIndex = getCurrentFrameIndex();
-    if (frames.length === 0 || nthValue < 2 || keepCount < 1 || keepCount >= nthValue) return;
-    pushHistory();
-    const startIndex = currentFrameIndex;
-    const newFrames = frames.map((f: SpriteFrame, idx: number) => {
-      const relativeIdx = idx - startIndex;
-      if (relativeIdx < 0) return f; // keep frames before start unchanged
-      const posInGroup = relativeIdx % nthValue;
-      const shouldKeep = posInGroup < keepCount;
-      return { ...f, disabled: !shouldKeep };
-    });
-    setFrames(newFrames);
-
-    // Auto-advance if current frame becomes disabled
-    if (newFrames[currentFrameIndex]?.disabled) {
-      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i >= currentFrameIndex && !f.disabled);
-      if (next >= 0) setCurrentFrameIndex(next);
-    }
-  }, [frames, getCurrentFrameIndex, nthValue, keepCount, pushHistory, setFrames, setCurrentFrameIndex]);
-
-  // Clear all disabled states
-  const clearAllDisabled = useCallback(() => {
-    const hasDisabled = frames.some((f: SpriteFrame) => f.disabled);
-    if (!hasDisabled) return;
-    pushHistory();
-    setFrames((prev: SpriteFrame[]) =>
-      prev.map((f: SpriteFrame) => (f.disabled ? { ...f, disabled: false } : f)),
-    );
-  }, [frames, pushHistory, setFrames]);
 
   // File drag & drop
   const handleFileDragOver = useCallback((e: React.DragEvent) => {
@@ -800,28 +740,6 @@ export default function FrameStrip() {
     },
     [setIsPlaying, isSkipToggleMode, toggleFrameDisabled, selectFrameRange, toggleSelectedFrameId, setSelectedFrameIds, setCurrentFrameIndex, setSelectedFrameId],
   );
-
-  // Count disabled frames
-  const disabledCount = useMemo(
-    () => frames.filter((f: SpriteFrame) => f.disabled).length,
-    [frames],
-  );
-
-  // Delete all disabled (skipped) frames
-  const deleteDisabledFrames = useCallback(() => {
-    const currentFrameIndex = getCurrentFrameIndex();
-    if (disabledCount === 0) return;
-    pushHistory();
-    const newFrames = frames.filter((f: SpriteFrame) => !f.disabled);
-    setFrames(newFrames);
-    if (currentFrameIndex >= newFrames.length && newFrames.length > 0) {
-      setCurrentFrameIndex(newFrames.length - 1);
-    } else if (newFrames.length === 0) {
-      setCurrentFrameIndex(0);
-    }
-    setSelectedFrameIds([]);
-    setSelectedFrameId(null);
-  }, [frames, disabledCount, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex, setSelectedFrameIds, setSelectedFrameId]);
 
   // Determine which frames to display
   const displayFrames = useMemo(
