@@ -114,6 +114,37 @@ function countActiveVisualLayersAtTime(
   return activeVisualLayers;
 }
 
+function resolvePreviewCanvasCursor(options: {
+  isPanning: boolean;
+  isHandMode: boolean;
+  isEditingMask: boolean;
+  maskDrawShape: "brush" | "rectangle";
+  isZoomTool: boolean;
+  toolMode: string;
+  isDraggingCrop: boolean;
+  cropDragMode: string;
+  cropCursor: string;
+  transformCursor: string;
+  isDraggingClip: boolean;
+}): string {
+  if (options.isPanning) return "grabbing";
+  if (options.isHandMode) return "grab";
+  if (options.isEditingMask) {
+    return options.maskDrawShape === "rectangle" ? "crosshair" : "none";
+  }
+  if (options.isZoomTool) return "zoom-in";
+  if (options.toolMode === "crop") {
+    if (options.isDraggingCrop) {
+      return options.cropDragMode === "move" ? "grabbing" : options.cropCursor;
+    }
+    return options.cropCursor;
+  }
+  if (options.toolMode === "transform") return options.transformCursor;
+  if (options.isDraggingClip) return "grabbing";
+  if (options.toolMode === "select") return "grab";
+  return "default";
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -1261,6 +1292,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     renderRef,
   });
 
+  const canvasCursor = resolvePreviewCanvasCursor({
+    isPanning: isPanningRef.current,
+    isHandMode,
+    isEditingMask,
+    maskDrawShape,
+    isZoomTool,
+    toolMode,
+    isDraggingCrop,
+    cropDragMode,
+    cropCursor,
+    transformCursor: transformTool.cursor,
+    isDraggingClip,
+  });
+
   return (
     <div
       ref={containerRefCallback}
@@ -1276,19 +1321,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         className="absolute inset-0"
         tabIndex={0}
         style={{
-          cursor: isPanningRef.current
-            ? "grabbing"
-            : isHandMode
-              ? "grab"
-              : isEditingMask
-              ? (maskDrawShape === "rectangle" ? "crosshair" : "none")
-              : isZoomTool
-                  ? "zoom-in"
-              : toolMode === "crop"
-                ? (isDraggingCrop ? (cropDragMode === "move" ? "grabbing" : cropCursor) : cropCursor)
-                : toolMode === "transform"
-                  ? transformTool.cursor
-                  : (isDraggingClip ? "grabbing" : (toolMode === "select" ? "grab" : "default")),
+          cursor: canvasCursor,
           touchAction: "none",
         }}
         onPointerDown={handlePointerDown}
