@@ -916,9 +916,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }));
   }, [clipsById, trimClipEnd, snapToPoints]);
 
-  // Ref to hold the latest drag-move handler (avoids stale closures in document listener)
-  const moveHandlerRef = useRef<(e: PointerEvent) => void>(() => {});
-  moveHandlerRef.current = (e: PointerEvent) => {
+  const handleDragPointerMove = useCallback((e: PointerEvent) => {
     if (dragState.type === "none") return;
     const containerRect = tracksContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -951,14 +949,23 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       default:
         break;
     }
-  };
+  }, [
+    dragState,
+    tracksContainerRef,
+    getContentY,
+    pixelToTime,
+    handlePlayheadDragMove,
+    handleClipMoveDrag,
+    handleClipTrimStartDrag,
+    handleClipTrimEndDrag,
+  ]);
 
   useDeferredPointerGesture<DragPointerPendingState>({
     pending: dragState.type === "none" ? null : dragPointerPending,
     thresholdPx: 0,
     onMoveResolved: ({ event }) => {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
-      moveHandlerRef.current(event);
+      handleDragPointerMove(event);
     },
     onEnd: (_pending, event) => {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
