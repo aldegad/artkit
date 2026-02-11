@@ -21,7 +21,6 @@ import {
   SpriteFrame,
   SpriteTopToolbar,
   SpriteToolOptionsBar,
-  SpritePanModeToggle,
   useFrameBackgroundRemoval,
   useFrameInterpolation,
   useSpriteKeyboardShortcuts,
@@ -29,7 +28,7 @@ import {
   FrameInterpolationModals,
 } from "@/domains/sprite";
 import type { SavedSpriteProject } from "@/domains/sprite";
-import { useSpriteTrackStore } from "@/domains/sprite/stores";
+import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/ai/frameInterpolation";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
@@ -83,6 +82,8 @@ function SpriteEditorMain() {
     setSpriteToolMode,
     setCurrentPoints,
     setIsSpacePressed,
+    isPanLocked,
+    setIsPanLocked,
   } = useEditorTools();
   const {
     brushColor,
@@ -709,6 +710,9 @@ function SpriteEditorMain() {
       <SpriteTopToolbar
         toolMode={toolMode}
         setSpriteToolMode={setSpriteToolMode}
+        isPanLocked={isPanLocked}
+        onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
+        onFitToScreen={useSpriteViewportStore.getState().requestFit}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}
@@ -758,7 +762,6 @@ function SpriteEditorMain() {
       {/* Main Content - Split View */}
       <div className="flex-1 min-h-0 relative">
         <SplitView />
-        <SpritePanModeToggle />
       </div>
 
       {/* Project List Modal */}

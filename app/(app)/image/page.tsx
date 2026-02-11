@@ -7,7 +7,6 @@ import {
   EditorOverlays,
   EditorActionToolbar,
   EditorToolOptionsBar,
-  PanModeToggle,
   EditorLayersProvider,
   EditorCanvasProvider,
 } from "@/domains/image";
@@ -71,7 +70,6 @@ function ImageEditorContent() {
 
           <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
             <EditorDockableArea />
-            {controller.showPanModeToggle && <PanModeToggle />}
           </div>
 
           <EditorOverlays {...controller.overlaysProps} />

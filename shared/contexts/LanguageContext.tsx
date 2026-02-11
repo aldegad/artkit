@@ -122,6 +122,8 @@ interface Translations {
   zoomIn: string;
   zoomOut: string;
   fitToScreen: string;
+  panLockOn: string;
+  panLockOff: string;
   addLayer: string;
   hideLayer: string;
   showLayer: string;
@@ -453,6 +455,8 @@ const translations: Record<Language, Translations> = {
     zoomIn: "확대",
     zoomOut: "축소",
     fitToScreen: "화면에 맞추기",
+    panLockOn: "터치 팬 잠금 ON",
+    panLockOff: "터치 팬 잠금 OFF",
     addLayer: "새 레이어 추가",
     hideLayer: "레이어 숨기기",
     showLayer: "레이어 보이기",
@@ -782,6 +786,8 @@ const translations: Record<Language, Translations> = {
     zoomIn: "Zoom In",
     zoomOut: "Zoom Out",
     fitToScreen: "Fit to Screen",
+    panLockOn: "Touch Pan Lock ON",
+    panLockOff: "Touch Pan Lock OFF",
     addLayer: "Add Layer",
     hideLayer: "Hide Layer",
     showLayer: "Show Layer",

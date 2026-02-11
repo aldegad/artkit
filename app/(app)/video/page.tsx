@@ -48,7 +48,6 @@ import {
   createImageClip,
   TIMELINE,
   MASK_BRUSH,
-  VideoPanModeToggle,
   type Clip,
   type SavedVideoProject,
   type VideoToolMode,
@@ -357,6 +356,8 @@ function VideoEditorContent() {
     setIsSpacePanning,
     previewPreRenderEnabled,
     togglePreviewPreRender,
+    isPanLocked,
+    setIsPanLocked,
   } = useVideoState();
   const { previewCanvasRef, previewViewportRef } = useVideoRefs();
   const {
@@ -1234,6 +1235,9 @@ function VideoEditorContent() {
     frameInterpolation: t.frameInterpolation,
     frameInterpolationDescription: t.frameInterpolationDescription,
     delete: t.delete,
+    panLockOn: t.panLockOn,
+    panLockOff: t.panLockOff,
+    fitToScreen: t.fitToScreen,
   };
 
   return (
@@ -1308,6 +1312,9 @@ function VideoEditorContent() {
         <VideoToolbar
           toolMode={toolMode}
           onToolModeChange={handleToolModeChange}
+          isPanLocked={isPanLocked}
+          onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
+          onFitToScreen={handleFitToScreen}
           onInterpolateGap={handleInterpolateClipGap}
           canInterpolateGap={gapInterpolationAnalysis.ready}
           isInterpolatingGap={isInterpolatingGap}
@@ -1595,7 +1602,6 @@ function VideoEditorContent() {
       {/* Main Content (shared docking/split system) */}
       <div className="flex-1 h-full w-full min-h-0 flex overflow-hidden relative">
         <VideoDockableArea />
-        <VideoPanModeToggle />
       </div>
 
       {/* Hidden file input for media import */}
