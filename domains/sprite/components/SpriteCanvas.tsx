@@ -21,7 +21,7 @@ import { SPRITE_CANVAS_VIEWPORT } from "../constants";
 // ============================================
 
 function isCanvasSelectionTool(mode: SpriteToolMode): boolean {
-  return mode !== "hand" && mode !== "pen" && mode !== "crop";
+  return mode !== "hand" && mode !== "pen" && mode !== "crop" && mode !== "magicwand";
 }
 
 export default function CanvasContent() {

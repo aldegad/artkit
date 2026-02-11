@@ -64,6 +64,7 @@ export function useSpriteKeyboardShortcuts({
         if (e.key === "h") setSpriteToolMode("hand");
         if (e.key === "b") setSpriteToolMode("brush");
         if (e.key === "e") setSpriteToolMode("eraser");
+        if (e.key === "w") setSpriteToolMode("magicwand");
         if (e.key === "i") setSpriteToolMode("eyedropper");
         if (e.key === "z") setSpriteToolMode("zoom");
         if (e.key === "r") setSpriteToolMode("crop");

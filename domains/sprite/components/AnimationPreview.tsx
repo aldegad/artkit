@@ -40,8 +40,17 @@ import {
   safeSetPointerCapture,
   zoomAtPoint,
 } from "@/shared/utils";
+import {
+  computeMagicWandSelection,
+  createMagicWandMaskCanvas,
+  isMagicWandPixelSelected,
+  type MagicWandSelection,
+} from "@/shared/utils/magicWand";
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
+
+const MAGIC_WAND_TOLERANCE = 24;
+const MAGIC_WAND_OVERLAY_ALPHA = 0.18;
 
 // ============================================
 // Frame Indicator (editable)
@@ -157,6 +166,10 @@ export default function AnimationPreviewContent() {
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
   const drawingPointerIdRef = useRef<number | null>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
+  const magicWandSelectionRef = useRef<MagicWandSelection | null>(null);
+  const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dabBufferCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dabBufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const cropDragRef = useRef<{
     mode: "none" | "create" | "move" | "resize";
     pointerStart: { x: number; y: number };
@@ -218,7 +231,9 @@ export default function AnimationPreviewContent() {
   );
 
   const hasContent = tracks.some((track) => track.frames.length > 0);
-  const isEditMode = toolMode === "brush" || toolMode === "eraser";
+  const isMagicWandTool = toolMode === "magicwand";
+  const isBrushEditMode = toolMode === "brush" || toolMode === "eraser";
+  const isEditMode = isBrushEditMode || isMagicWandTool;
   const isEraserTool = toolMode === "eraser";
   const isZoomTool = toolMode === "zoom";
   const isEyedropperTool = toolMode === "eyedropper";
@@ -279,6 +294,37 @@ export default function AnimationPreviewContent() {
   // ---- Render scheduler (RAF-based, replaces useEffect rendering) ----
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
 
+  const clearMagicWandSelection = useCallback(() => {
+    magicWandSelectionRef.current = null;
+    magicWandMaskCanvasRef.current = null;
+    requestRender();
+  }, [requestRender]);
+
+  const ensureDabBufferCanvas = useCallback((width: number, height: number) => {
+    if (
+      !dabBufferCanvasRef.current
+      || dabBufferCanvasRef.current.width !== width
+      || dabBufferCanvasRef.current.height !== height
+      || !dabBufferCtxRef.current
+    ) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.imageSmoothingEnabled = false;
+      dabBufferCanvasRef.current = canvas;
+      dabBufferCtxRef.current = ctx;
+    }
+
+    return {
+      canvas: dabBufferCanvasRef.current,
+      ctx: dabBufferCtxRef.current,
+    } as const;
+  }, []);
+
   const commitFrameEdits = useCallback(() => {
     const trackId = currentEditTrackIdRef.current;
     const frameId = currentEditFrameIdRef.current;
@@ -318,6 +364,34 @@ export default function AnimationPreviewContent() {
       ctx.clearRect(0, 0, w, h);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(sourceCanvas, 0, 0, w, h);
+
+      const selection = magicWandSelectionRef.current;
+      const selectionMaskCanvas = magicWandMaskCanvasRef.current;
+      if (
+        isEditMode
+        && selection
+        && selectionMaskCanvas
+        && selection.width === sourceCanvas.width
+        && selection.height === sourceCanvas.height
+      ) {
+        ctx.save();
+        ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
+        ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
+        ctx.restore();
+
+        const { bounds } = selection;
+        ctx.save();
+        ctx.strokeStyle = "rgba(34, 197, 94, 0.95)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(
+          bounds.x * zoom,
+          bounds.y * zoom,
+          Math.max(1, bounds.width * zoom),
+          Math.max(1, bounds.height * zoom),
+        );
+        ctx.restore();
+      }
 
       if (toolMode === "crop") {
         const activeCrop = cropArea || {
@@ -577,9 +651,14 @@ export default function AnimationPreviewContent() {
       currentEditTrackIdRef.current = null;
       currentEditFrameIdRef.current = null;
       isEditFrameDirtyRef.current = false;
+      clearMagicWandSelection();
       requestRender();
       return;
     }
+
+    clearMagicWandSelection();
+    dabBufferCanvasRef.current = null;
+    dabBufferCtxRef.current = null;
 
     let cancelled = false;
     const img = new Image();
@@ -606,7 +685,7 @@ export default function AnimationPreviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [editableFrame?.id, editableFrame?.imageData, activeTrackId, commitFrameEdits, requestRender]);
+  }, [editableFrame?.id, editableFrame?.imageData, activeTrackId, clearMagicWandSelection, commitFrameEdits, requestRender]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -744,6 +823,45 @@ export default function AnimationPreviewContent() {
     });
   }, [toolMode, cropArea, getCropCanvasBounds, setCropArea, hasCompositedFrame, currentVisualIndex]);
 
+  const applyMagicWandSelection = useCallback((x: number, y: number) => {
+    const frameCtx = editFrameCtxRef.current;
+    const frameCanvas = editFrameCanvasRef.current;
+    if (!frameCtx || !frameCanvas) return;
+
+    if (x < 0 || y < 0 || x >= frameCanvas.width || y >= frameCanvas.height) {
+      clearMagicWandSelection();
+      return;
+    }
+
+    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
+    const selection = computeMagicWandSelection(imageData, x, y, {
+      tolerance: MAGIC_WAND_TOLERANCE,
+      connectedOnly: true,
+    });
+
+    if (!selection) {
+      clearMagicWandSelection();
+      return;
+    }
+
+    magicWandSelectionRef.current = selection;
+    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection);
+    requestRender();
+  }, [clearMagicWandSelection, requestRender]);
+
+  const clearSelectedPixels = useCallback(() => {
+    const frameCtx = editFrameCtxRef.current;
+    const maskCanvas = magicWandMaskCanvasRef.current;
+    if (!frameCtx || !maskCanvas) return false;
+
+    frameCtx.save();
+    frameCtx.globalCompositeOperation = "destination-out";
+    frameCtx.drawImage(maskCanvas, 0, 0);
+    frameCtx.restore();
+    isEditFrameDirtyRef.current = true;
+    return true;
+  }, []);
+
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure = 1) => {
       const frameCtx = editFrameCtxRef.current;
@@ -757,26 +875,65 @@ export default function AnimationPreviewContent() {
         pressureEnabled,
       );
 
-      frameCtx.save();
-      if (isEraser) {
-        frameCtx.globalCompositeOperation = "destination-out";
+      const selection = magicWandSelectionRef.current;
+      const selectionMaskCanvas = magicWandMaskCanvasRef.current;
+
+      if (selection && selectionMaskCanvas) {
+        if (
+          selection.width !== frameCanvas.width
+          || selection.height !== frameCanvas.height
+          || !isMagicWandPixelSelected(selection, x, y)
+        ) {
+          return false;
+        }
+
+        const dabBuffer = ensureDabBufferCanvas(frameCanvas.width, frameCanvas.height);
+        if (!dabBuffer) return false;
+
+        dabBuffer.ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+        sharedDrawDab(dabBuffer.ctx, {
+          x,
+          y,
+          radius: params.size / 2,
+          hardness: brushHardness / 100,
+          color,
+          alpha: params.opacity * params.flow,
+          isEraser,
+        });
+
+        dabBuffer.ctx.save();
+        dabBuffer.ctx.globalCompositeOperation = "destination-in";
+        dabBuffer.ctx.drawImage(selectionMaskCanvas, 0, 0);
+        dabBuffer.ctx.restore();
+
+        frameCtx.save();
+        if (isEraser) {
+          frameCtx.globalCompositeOperation = "destination-out";
+        }
+        frameCtx.drawImage(dabBuffer.canvas, 0, 0);
+        frameCtx.restore();
+      } else {
+        frameCtx.save();
+        if (isEraser) {
+          frameCtx.globalCompositeOperation = "destination-out";
+        }
+
+        sharedDrawDab(frameCtx, {
+          x,
+          y,
+          radius: params.size / 2,
+          hardness: brushHardness / 100,
+          color,
+          alpha: params.opacity * params.flow,
+          isEraser,
+        });
+
+        frameCtx.restore();
       }
-
-      sharedDrawDab(frameCtx, {
-        x,
-        y,
-        radius: params.size / 2,
-        hardness: brushHardness / 100,
-        color,
-        alpha: params.opacity * params.flow,
-        isEraser,
-      });
-
-      frameCtx.restore();
       isEditFrameDirtyRef.current = true;
       return true;
     },
-    [activePreset, brushHardness, brushSize, pressureEnabled],
+    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, pressureEnabled],
   );
 
   const pickColorFromComposited = useCallback(
@@ -858,6 +1015,22 @@ export default function AnimationPreviewContent() {
         e.preventDefault();
         setIsPanning(true);
       }
+
+      if (!isInteractiveElement && !e.repeat && (e.key === "Delete" || e.key === "Backspace")) {
+        if (magicWandSelectionRef.current && magicWandMaskCanvasRef.current) {
+          e.preventDefault();
+          pushHistory();
+          if (clearSelectedPixels()) {
+            requestRender();
+            commitFrameEdits();
+          }
+        }
+      }
+
+      if (!isInteractiveElement && e.key === "Escape" && magicWandSelectionRef.current) {
+        e.preventDefault();
+        clearMagicWandSelection();
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -874,7 +1047,7 @@ export default function AnimationPreviewContent() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [animEndPanDrag]);
+  }, [animEndPanDrag, clearMagicWandSelection, clearSelectedPixels, commitFrameEdits, pushHistory, requestRender]);
 
   // Hand tool or spacebar pan
   const isHandMode = toolMode === "hand" || isPanning;
@@ -1025,6 +1198,15 @@ export default function AnimationPreviewContent() {
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (!coords) return;
 
+      if (isMagicWandTool) {
+        applyMagicWandSelection(coords.x, coords.y);
+        return;
+      }
+
+      if (!isBrushEditMode) {
+        return;
+      }
+
       if (!hasDrawn) {
         pushHistory();
         setHasDrawn(true);
@@ -1059,12 +1241,15 @@ export default function AnimationPreviewContent() {
       cropArea,
       setCropArea,
       isEditMode,
+      isBrushEditMode,
+      isMagicWandTool,
       editableFrame,
       getPixelCoordinates,
       hasDrawn,
       pushHistory,
       isPlaying,
       setIsPlaying,
+      applyMagicWandSelection,
       drawPixel,
       brushColor,
       isEraserTool,
@@ -1323,6 +1508,9 @@ export default function AnimationPreviewContent() {
     if (isEyedropperTool) {
       return "crosshair";
     }
+    if (isMagicWandTool) {
+      return "crosshair";
+    }
     if (toolMode === "crop") {
       return isDraggingCrop
         ? cropDragRef.current.mode === "move"
@@ -1390,7 +1578,7 @@ export default function AnimationPreviewContent() {
                   onPointerLeave={handlePreviewCanvasPointerLeave}
                   className="block relative"
                   style={{
-                    cursor: isEditMode ? "none" : getCursor(),
+                    cursor: isBrushEditMode ? "none" : getCursor(),
                     pointerEvents: isHandMode ? "none" : "auto",
                     touchAction: "none",
                   }}
