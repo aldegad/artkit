@@ -16,6 +16,7 @@ import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorag
 import { loadMediaBlob } from "../utils/mediaStorage";
 import { saveVideoAutosave } from "../utils/videoAutosave";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
+import { TIMELINE } from "../constants";
 
 interface UseVideoProjectLibraryOptions {
   storageProvider: VideoStorageProvider;
@@ -96,6 +97,20 @@ function normalizeLoadedClip(clip: Clip): Clip {
     scaleX,
     scaleY,
     transformKeyframes,
+  };
+}
+
+function sanitizeTimelineView(viewState: TimelineViewState | undefined): TimelineViewState {
+  const base = viewState || INITIAL_TIMELINE_VIEW;
+  const zoom = Number.isFinite(base.zoom) ? base.zoom : INITIAL_TIMELINE_VIEW.zoom;
+  const scrollX = Number.isFinite(base.scrollX) ? base.scrollX : 0;
+  const scrollY = Number.isFinite(base.scrollY) ? base.scrollY : 0;
+  return {
+    ...INITIAL_TIMELINE_VIEW,
+    ...base,
+    zoom: Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, zoom)),
+    scrollX: Math.max(0, scrollX),
+    scrollY: Math.max(0, scrollY),
   };
 }
 
@@ -202,10 +217,12 @@ export function useVideoProjectLibrary(
       restoreClips(restoredClips);
       restoreMasks(loadedProject.masks || []);
 
-      if (loaded.timelineView) {
-        setViewState(loaded.timelineView);
-      }
-      const restoredTime = typeof loaded.currentTime === "number" ? loaded.currentTime : 0;
+      const normalizedTimelineView = sanitizeTimelineView(loaded.timelineView);
+      setViewState(normalizedTimelineView);
+      const restoredTime = Math.max(
+        0,
+        Number.isFinite(loaded.currentTime) ? loaded.currentTime : 0
+      );
       seek(restoredTime);
       const duration = Math.max(loadedDuration, 0.001);
       const targetLoop = loaded.playbackRange?.loop ?? false;
@@ -248,7 +265,7 @@ export function useVideoProjectLibrary(
             tracks: loadedProject.tracks,
             clips: restoredClips,
             masks: loadedProject.masks || [],
-            timelineView: loaded.timelineView || INITIAL_TIMELINE_VIEW,
+            timelineView: normalizedTimelineView,
             currentTime: persistedCurrentTime,
             playbackRange: normalizedPlaybackRange,
             toolMode,

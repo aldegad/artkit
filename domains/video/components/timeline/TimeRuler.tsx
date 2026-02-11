@@ -128,8 +128,9 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
         const mins = Math.floor(safeTime / 60);
         const secs = Math.floor(safeTime % 60);
         const label = mins > 0 ? `${mins}:${secs.toString().padStart(2, "0")}` : `${secs}s`;
+        const labelX = Math.max(10, Math.min(width - 10, x));
         ctx.fillStyle = colors.rulerText;
-        ctx.fillText(label, x, height - 9);
+        ctx.fillText(label, labelX, height - 9);
       }
     }
 
