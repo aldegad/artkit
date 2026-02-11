@@ -12,23 +12,18 @@ import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKey
 import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
 import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelection";
 import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
+import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimation";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
+import { drawMagicWandOverlay } from "../utils/magicWandOverlay";
 import {
   drawScaledImage,
   safeReleasePointerCapture,
   safeSetPointerCapture,
   type CanvasScaleScratch,
 } from "@/shared/utils";
-import {
-  drawMagicWandSelectionOutline,
-} from "@/shared/utils/magicWand";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
-
-const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
-const MAGIC_WAND_OUTLINE_DASH = [4, 4];
-const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
@@ -167,29 +162,13 @@ export default function FramePreviewContent() {
         && selection.width === sourceCanvas.width
         && selection.height === sourceCanvas.height
       ) {
-        const dashCycle = MAGIC_WAND_OUTLINE_DASH.reduce((sum, value) => sum + value, 0);
-        const antsOffset = dashCycle > 0
-          ? -((performance.now() / MAGIC_WAND_OUTLINE_SPEED_MS) % dashCycle)
-          : 0;
-
-        ctx.save();
-        ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
-        ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
-        ctx.restore();
-
-        drawMagicWandSelectionOutline(ctx, selection, {
+        drawMagicWandOverlay({
+          ctx,
+          selection,
+          selectionMaskCanvas,
           zoom,
-          color: "rgba(0, 0, 0, 0.9)",
-          lineWidth: 2,
-          dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: antsOffset,
-        });
-        drawMagicWandSelectionOutline(ctx, selection, {
-          zoom,
-          color: "rgba(255, 255, 255, 0.95)",
-          lineWidth: 1,
-          dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: antsOffset + (dashCycle / 2),
+          width: w,
+          height: h,
         });
       }
     });
@@ -201,19 +180,10 @@ export default function FramePreviewContent() {
     });
   }, [onFrameViewportChange, requestRender]);
 
-  useEffect(() => {
-    let rafId = 0;
-    const animateSelectionOutline = () => {
-      if (magicWandSelectionRef.current) {
-        requestRender();
-      }
-      rafId = window.requestAnimationFrame(animateSelectionOutline);
-    };
-    rafId = window.requestAnimationFrame(animateSelectionOutline);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [requestRender]);
+  useMagicWandOutlineAnimation({
+    hasSelection: hasMagicWandSelection,
+    requestRender,
+  });
 
   const commitFrameEdits = useCallback(() => {
     const frameId = currentFrameIdRef.current;
