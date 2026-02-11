@@ -492,16 +492,6 @@ export default function AnimationPreviewContent() {
     };
   }, [requestRender]);
 
-  // Preset colors for quick selection
-  const presetColors = [
-    { color: "#000000", label: t.colorBlack },
-    { color: "#FFFFFF", label: t.colorWhite },
-    { color: "#808080", label: t.colorGray },
-    { color: "#87CEEB", label: t.colorSky },
-    { color: "#90EE90", label: t.colorGreen },
-    { color: "#FFB6C1", label: t.colorPink },
-  ];
-
   // Handle background image upload
   const handleBgImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1721,7 +1711,7 @@ export default function AnimationPreviewContent() {
                 >
                   <div className="p-3 space-y-2 min-w-[200px]">
                     <div className="text-xs text-text-secondary font-medium">{t.background}</div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => setBgType("checkerboard")}
                         className={`w-6 h-6 rounded border-2 checkerboard transition-colors ${
@@ -1729,22 +1719,6 @@ export default function AnimationPreviewContent() {
                         }`}
                         title={t.transparent}
                       />
-                      {presetColors.map(({ color, label }) => (
-                        <button
-                          key={color}
-                          onClick={() => {
-                            setBgType("solid");
-                            setBgColor(color);
-                          }}
-                          className={`w-6 h-6 rounded border-2 transition-colors ${
-                            bgType === "solid" && bgColor === color
-                              ? "border-accent-primary"
-                              : "border-border-default"
-                          }`}
-                          style={{ backgroundColor: color }}
-                          title={label}
-                        />
-                      ))}
                       <input
                         type="color"
                         value={bgColor}
@@ -1752,9 +1726,12 @@ export default function AnimationPreviewContent() {
                           setBgType("solid");
                           setBgColor(e.target.value);
                         }}
-                        className="w-6 h-6 rounded cursor-pointer border-0 p-0"
+                        className={`w-6 h-6 rounded cursor-pointer border-2 p-0 ${
+                          bgType === "solid" ? "border-accent-primary" : "border-border-default"
+                        }`}
                         title={t.customColor}
                       />
+                      <span className="text-[10px] text-text-tertiary font-mono">{bgColor}</span>
                     </div>
                     <div className="border-t border-border-default pt-2">
                       <button
