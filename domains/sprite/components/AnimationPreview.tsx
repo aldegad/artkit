@@ -31,6 +31,7 @@ import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSessio
 import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimation";
 import { useSpritePanPointerSession } from "../hooks/useSpritePanPointerSession";
 import { useSpritePreviewImportHandlers } from "../hooks/useSpritePreviewImportHandlers";
+import { useSpritePreviewPointerHandlers } from "../hooks/useSpritePreviewPointerHandlers";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
@@ -38,8 +39,6 @@ import { drawMagicWandOverlay } from "../utils/magicWandOverlay";
 import {
   drawScaledImage,
   clampZoom,
-  safeReleasePointerCapture,
-  safeSetPointerCapture,
   type CanvasScaleScratch,
   zoomAtPoint,
 } from "@/shared/utils";
@@ -150,8 +149,6 @@ export default function AnimationPreviewContent() {
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [hasCompositedFrame, setHasCompositedFrame] = useState(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
-  const [isOverCanvas, setIsOverCanvas] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -757,16 +754,6 @@ export default function AnimationPreviewContent() {
     resetHasDrawn();
   }, [editableFrame?.id, activeTrackId, resetHasDrawn]);
 
-  useEffect(() => {
-    if (!isEditMode) {
-      commitFrameEdits();
-      cancelBrushStroke();
-      setCursorPos(null);
-      setIsOverCanvas(false);
-      requestRender();
-    }
-  }, [isEditMode, cancelBrushStroke, commitFrameEdits, requestRender]);
-
   const pickColorFromComposited = useCallback(
     (clientX: number, clientY: number) => {
       const sourceCanvas = compositedCanvasRef.current;
@@ -868,151 +855,52 @@ export default function AnimationPreviewContent() {
     },
   });
 
-  const handlePreviewCanvasPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.add(e.pointerId);
-      }
+  const {
+    cursorPos,
+    isOverCanvas,
+    resetPointerOverlayState,
+    handlePreviewCanvasPointerDown,
+    handlePreviewCanvasPointerMove,
+    handlePreviewCanvasPointerUp,
+    handlePreviewCanvasPointerEnter,
+    handlePreviewCanvasPointerLeave,
+  } = useSpritePreviewPointerHandlers({
+    canvasRef,
+    activeTouchPointerIdsRef,
+    isPanLocked,
+    isHandMode,
+    isZoomTool,
+    isEyedropperTool,
+    isEditMode,
+    isBrushEditMode,
+    isMagicWandTool,
+    isAiSelecting,
+    isPlaying,
+    isDrawing,
+    editableFrame,
+    zoomAtCursor,
+    pickColorFromComposited,
+    handleCropPointerDown,
+    handleCropPointerMove,
+    handleCropPointerUp,
+    cancelCropDrag,
+    applyMagicWandSelection,
+    startBrushStroke,
+    continueBrushStroke,
+    endBrushStroke,
+    cancelBrushStroke,
+    getPixelCoordinates,
+    setIsPlaying,
+  });
 
-      if (activeTouchPointerIdsRef.current.size > 1) {
-        cancelBrushStroke();
-        return;
-      }
-
-      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
-      if (isTouchPanOnlyInput || isHandMode) {
-        return;
-      }
-
-      if (isZoomTool) {
-        zoomAtCursor(e);
-        return;
-      }
-
-      if (isEyedropperTool) {
-        pickColorFromComposited(e.clientX, e.clientY);
-        return;
-      }
-
-      if (handleCropPointerDown(e)) {
-        e.preventDefault();
-        safeSetPointerCapture(e.currentTarget, e.pointerId);
-        return;
-      }
-
-      if (!isEditMode || !editableFrame) {
-        return;
-      }
-
-      const coords = getPixelCoordinates(e.clientX, e.clientY);
-      if (!coords) return;
-
-      if (isMagicWandTool) {
-        if (isAiSelecting) {
-          return;
-        }
-        void applyMagicWandSelection(coords.x, coords.y);
-        return;
-      }
-
-      if (!isBrushEditMode) {
-        return;
-      }
-
-      if (isPlaying) {
-        setIsPlaying(false);
-      }
-
-      startBrushStroke(e, coords);
-      safeSetPointerCapture(e.currentTarget, e.pointerId);
-    },
-    [
-      isPanLocked,
-      isHandMode,
-      isZoomTool,
-      zoomAtCursor,
-      isEyedropperTool,
-      pickColorFromComposited,
-      handleCropPointerDown,
-      isEditMode,
-      isBrushEditMode,
-      isMagicWandTool,
-      isAiSelecting,
-      editableFrame,
-      getPixelCoordinates,
-      isPlaying,
-      setIsPlaying,
-      applyMagicWandSelection,
-      startBrushStroke,
-      cancelBrushStroke,
-    ],
-  );
-
-  const handlePreviewCanvasPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-      }
-
-      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
-        return;
-      }
-
-      if (handleCropPointerMove(e)) {
-        return;
-      }
-
-      if (!isEditMode || !isDrawing || !editableFrame) {
-        return;
-      }
-
-      const coords = getPixelCoordinates(e.clientX, e.clientY);
-      if (!coords) return;
-      continueBrushStroke(e, coords);
-    },
-    [
-      handleCropPointerMove,
-      isEditMode,
-      isDrawing,
-      editableFrame,
-      getPixelCoordinates,
-      continueBrushStroke,
-    ],
-  );
-
-  const handlePreviewCanvasPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.delete(e.pointerId);
-      }
-
-      safeReleasePointerCapture(e.currentTarget, e.pointerId);
-
-      endBrushStroke(e.pointerId);
-      handleCropPointerUp();
-    },
-    [endBrushStroke, handleCropPointerUp],
-  );
-
-  const handlePreviewCanvasPointerEnter = useCallback(() => {
-    setIsOverCanvas(true);
-  }, []);
-
-  const handlePreviewCanvasPointerLeave = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.delete(e.pointerId);
-      }
-      setIsOverCanvas(false);
-      setCursorPos(null);
-
-      endBrushStroke(e.pointerId);
-      cancelCropDrag();
-    },
-    [cancelCropDrag, endBrushStroke],
-  );
+  useEffect(() => {
+    if (!isEditMode) {
+      commitFrameEdits();
+      cancelBrushStroke();
+      resetPointerOverlayState();
+      requestRender();
+    }
+  }, [isEditMode, cancelBrushStroke, commitFrameEdits, requestRender, resetPointerOverlayState]);
 
   const hasVisibleCanvas = isEditMode ? Boolean(editFrameCanvasRef.current) : hasCompositedFrame;
   const previewPan = viewportSync.zoom >= 1
