@@ -418,7 +418,12 @@ export default function AnimationPreviewContent() {
         ctx,
         sourceCanvas,
         { x: 0, y: 0, width: w, height: h },
-        { mode: "pixel-art", scratch: scaleScratchRef.current },
+        {
+          mode: "pixel-art",
+          smoothingQuality: "low",
+          progressiveMinify: false,
+          scratch: scaleScratchRef.current,
+        },
       );
 
       const selection = magicWandSelectionRef.current;
