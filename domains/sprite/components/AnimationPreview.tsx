@@ -30,6 +30,7 @@ import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelectio
 import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
 import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimation";
 import { useSpritePanPointerSession } from "../hooks/useSpritePanPointerSession";
+import { useSpritePreviewImportHandlers } from "../hooks/useSpritePreviewImportHandlers";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
@@ -145,7 +146,6 @@ export default function AnimationPreviewContent() {
   const { t } = useLanguage();
 
   const [isPanning, setIsPanning] = useState(false);
-  const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
@@ -490,81 +490,18 @@ export default function AnimationPreviewContent() {
     e.target.value = "";
   }, []);
 
-  // File drag-and-drop import
-  const handleFileDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setIsFileDragOver(true);
-  }, []);
-
-  const handleFileDragLeave = useCallback((e: React.DragEvent) => {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setIsFileDragOver(false);
-  }, []);
-
-  const importImageFilesAsTrack = useCallback((imageFiles: File[]) => {
-    if (imageFiles.length === 0) return;
-
-    pushHistory();
-    const loadPromises = imageFiles.map(
-      (file) =>
-        new Promise<{ imageData: string; name: string }>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            resolve({
-              imageData: ev.target?.result as string,
-              name: file.name.replace(/\.[^/.]+$/, ""),
-            });
-          };
-          reader.readAsDataURL(file);
-        })
-    );
-    Promise.all(loadPromises).then((results) => {
-      const newFrames = results.map((r, idx) => ({
-        id: Date.now() + idx,
-        points: [] as { x: number; y: number }[],
-        name: r.name,
-        imageData: r.imageData,
-        offset: { x: 0, y: 0 },
-      }));
-      addTrack("Image Import", newFrames);
-    });
-  }, [addTrack, pushHistory]);
-
-  const handleFileDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsFileDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length === 0) return;
-
-    // Check for video files
-    const videoFile = files.find((f) => f.type.startsWith("video/"));
-    if (videoFile) {
-      setPendingVideoFile(videoFile);
-      setIsVideoImportOpen(true);
-      return;
-    }
-
-    // Handle image files -> create new track
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    importImageFilesAsTrack(imageFiles);
-  }, [importImageFilesAsTrack, setPendingVideoFile, setIsVideoImportOpen]);
-
-  // Handle file select from ImageDropZone (click-to-browse or drag-drop on empty state)
-  const handleFileSelect = useCallback((files: File[]) => {
-    if (files.length === 0) return;
-
-    const videoFile = files.find((f) => f.type.startsWith("video/"));
-    if (videoFile) {
-      setPendingVideoFile(videoFile);
-      setIsVideoImportOpen(true);
-      return;
-    }
-
-    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    importImageFilesAsTrack(imageFiles);
-  }, [importImageFilesAsTrack, setPendingVideoFile, setIsVideoImportOpen]);
+  const {
+    isFileDragOver,
+    handleFileDragOver,
+    handleFileDragLeave,
+    handleFileDrop,
+    handleFileSelect,
+  } = useSpritePreviewImportHandlers({
+    addTrack,
+    pushHistory,
+    setPendingVideoFile,
+    setIsVideoImportOpen,
+  });
 
   // Composite current frame from all tracks
   useEffect(() => {
