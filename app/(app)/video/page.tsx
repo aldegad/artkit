@@ -1069,39 +1069,47 @@ function VideoEditorContent() {
     return true;
   }, [clips, playback.currentTime, project.canvasSize, selectedClipIds, startMaskEdit]);
 
-  // Handle mask tool toggle
-  const handleToolModeChange = useCallback((mode: typeof toolMode) => {
-    if (mode === "transform" && toolMode !== "transform" && previousToolModeRef.current === null) {
+  const syncTransformToolModeMemory = useCallback((nextMode: typeof toolMode) => {
+    if (nextMode === "transform" && toolMode !== "transform" && previousToolModeRef.current === null) {
       previousToolModeRef.current = toolMode;
+      return;
     }
-    if (mode !== "transform" && toolMode === "transform") {
+    if (nextMode !== "transform" && toolMode === "transform") {
       previousToolModeRef.current = null;
     }
+  }, [toolMode]);
 
-    if (mode === "mask") {
+  const syncMaskEditingForToolMode = useCallback((nextMode: typeof toolMode) => {
+    if (nextMode === "mask") {
       tryStartMaskEditFromSelection();
+      return;
     }
-    if (mode !== "mask" && isEditingMask) {
+    if (isEditingMask) {
       endMaskEdit();
     }
-    if (mode === "crop" && !cropArea) {
-      setCropArea({
-        x: 0,
-        y: 0,
-        width: project.canvasSize.width,
-        height: project.canvasSize.height,
-      });
-    }
+  }, [endMaskEdit, isEditingMask, tryStartMaskEditFromSelection]);
+
+  const ensureCropAreaForToolMode = useCallback((nextMode: typeof toolMode) => {
+    if (nextMode !== "crop" || cropArea) return;
+    setCropArea({
+      x: 0,
+      y: 0,
+      width: project.canvasSize.width,
+      height: project.canvasSize.height,
+    });
+  }, [cropArea, project.canvasSize.height, project.canvasSize.width, setCropArea]);
+
+  // Handle mask tool toggle
+  const handleToolModeChange = useCallback((mode: typeof toolMode) => {
+    syncTransformToolModeMemory(mode);
+    syncMaskEditingForToolMode(mode);
+    ensureCropAreaForToolMode(mode);
     setToolMode(mode);
   }, [
+    syncTransformToolModeMemory,
+    syncMaskEditingForToolMode,
+    ensureCropAreaForToolMode,
     setToolMode,
-    cropArea,
-    setCropArea,
-    project.canvasSize,
-    isEditingMask,
-    endMaskEdit,
-    toolMode,
-    tryStartMaskEditFromSelection,
   ]);
 
   const handleStartTransformShortcut = useCallback(() => {
