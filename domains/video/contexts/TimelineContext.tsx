@@ -142,6 +142,11 @@ function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[])
   return candidate;
 }
 
+function getDefaultTrackName(existingTracks: VideoTrack[], type: "video" | "audio"): string {
+  const countForType = existingTracks.filter((track) => track.type === type).length + 1;
+  return type === "audio" ? `Audio ${countForType}` : `Video ${countForType}`;
+}
+
 function reindexTracksForZOrder(tracks: VideoTrack[]): VideoTrack[] {
   // Top track (index 0) gets highest zIndex (foreground).
   return tracks.map((track, index) => ({ ...track, zIndex: tracks.length - 1 - index }));
@@ -397,6 +402,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     updateProjectDuration();
   }, [setClips, updateProjectDuration]);
 
+  const appendTrack = useCallback((track: VideoTrack) => {
+    setTracks((prev) => {
+      const updated = [...prev, track];
+      return reindexTracksForZOrder(updated);
+    });
+  }, [setTracks]);
+
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
@@ -643,19 +655,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Track management
   const addTrack = useCallback((name?: string, type: "video" | "audio" = "video"): string => {
-    const countForType = tracks.filter((track) => track.type === type).length + 1;
-    const fallbackName = type === "audio" ? `Audio ${countForType}` : `Video ${countForType}`;
     const newTrack = createVideoTrack(
-      name || fallbackName,
+      name || getDefaultTrackName(tracks, type),
       0, // New track starts at bottom (background)
       type
     );
-    setTracks((prev) => {
-      const updated = [...prev, newTrack];
-      return reindexTracksForZOrder(updated);
-    });
+    appendTrack(newTrack);
     return newTrack.id;
-  }, [tracks]);
+  }, [tracks, appendTrack]);
 
   const duplicateTrack = useCallback((trackId: string): string | null => {
     const sourceTrack = tracks.find((track) => track.id === trackId);
@@ -946,19 +953,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     if (!trackId) {
       // Create a new track for the duplicate
       const duplicateTrackType = sourceClip.type === "audio" ? "audio" : "video";
-      const duplicateTrackCount = tracks.filter((track) => track.type === duplicateTrackType).length + 1;
-      const duplicateTrackName = duplicateTrackType === "audio"
-        ? `Audio ${duplicateTrackCount}`
-        : `Video ${duplicateTrackCount}`;
       const newTrack = createVideoTrack(
-        duplicateTrackName,
+        getDefaultTrackName(tracks, duplicateTrackType),
         0,
         duplicateTrackType
       );
-      setTracks((prev) => {
-        const updated = [...prev, newTrack];
-        return reindexTracksForZOrder(updated);
-      });
+      appendTrack(newTrack);
       trackId = newTrack.id;
     }
 
@@ -987,7 +987,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
     updateClipsWithDuration((prev) => [...prev, newClip]);
     return newClip.id;
-  }, [clips, tracks, updateClipsWithDuration]);
+  }, [clips, tracks, appendTrack, updateClipsWithDuration]);
 
   // Add pre-formed clips (for paste)
   const addClips = useCallback((newClips: Clip[]) => {
