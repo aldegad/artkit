@@ -22,7 +22,7 @@ import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore } from "../stores";
+import { useSpriteViewportStore, useSpriteUIStore, useSpriteTrackStore, useSpriteToolStore } from "../stores";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
@@ -325,6 +325,7 @@ export default function AnimationPreviewContent() {
 
   // ---- Sync viewport to Zustand store for autosave (debounced, no subscription) ----
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
+  const setMagicWandSelectionActive = useSpriteToolStore((s) => s.setMagicWandSelectionActive);
   useCanvasViewportPersistence({
     onViewportChange: onAnimViewportChange,
     setZoom: setAnimVpZoom,
@@ -349,8 +350,9 @@ export default function AnimationPreviewContent() {
     magicWandSelectionRef.current = null;
     magicWandMaskCanvasRef.current = null;
     magicWandSeedRef.current = null;
+    setMagicWandSelectionActive("animation-preview", false);
     requestRender();
-  }, [requestRender]);
+  }, [requestRender, setMagicWandSelectionActive]);
 
   const ensureDabBufferCanvas = useCallback((width: number, height: number) => {
     if (
@@ -921,8 +923,15 @@ export default function AnimationPreviewContent() {
     magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
       feather: magicWandFeather,
     });
+    setMagicWandSelectionActive("animation-preview", true);
     requestRender();
-  }, [clearMagicWandSelection, magicWandFeather, magicWandTolerance, requestRender]);
+  }, [
+    clearMagicWandSelection,
+    magicWandFeather,
+    magicWandTolerance,
+    requestRender,
+    setMagicWandSelectionActive,
+  ]);
 
   useEffect(() => {
     const seed = magicWandSeedRef.current;
@@ -952,8 +961,21 @@ export default function AnimationPreviewContent() {
     magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
       feather: magicWandFeather,
     });
+    setMagicWandSelectionActive("animation-preview", true);
     requestRender();
-  }, [clearMagicWandSelection, magicWandFeather, magicWandTolerance, requestRender]);
+  }, [
+    clearMagicWandSelection,
+    magicWandFeather,
+    magicWandTolerance,
+    requestRender,
+    setMagicWandSelectionActive,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      setMagicWandSelectionActive("animation-preview", false);
+    };
+  }, [setMagicWandSelectionActive]);
 
   const clearSelectedPixels = useCallback(() => {
     const frameCtx = editFrameCtxRef.current;
