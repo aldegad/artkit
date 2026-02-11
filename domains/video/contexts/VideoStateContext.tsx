@@ -76,7 +76,7 @@ interface VideoStateContextValue extends VideoState {
   setPlaybackRate: (rate: number) => void;
   toggleLoop: () => void;
   setLoopRange: (start: number, end: number, enableLoop?: boolean) => void;
-  clearLoopRange: () => void;
+  clearLoopRange: (durationHint?: number) => void;
 
   // Tool actions
   setToolMode: (mode: VideoToolMode) => void;
@@ -404,8 +404,12 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     playbackTick.emit(current);
   }, []);
 
-  const clearLoopRange = useCallback(() => {
-    const duration = projectDurationRef.current;
+  const clearLoopRange = useCallback((durationHint?: number) => {
+    const hintedDuration =
+      typeof durationHint === "number" && Number.isFinite(durationHint)
+        ? Math.max(0, durationHint)
+        : null;
+    const duration = hintedDuration ?? projectDurationRef.current;
     const current = Math.max(0, Math.min(currentTimeRef.current, duration));
     currentTimeRef.current = current;
 
