@@ -127,7 +127,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
           OUT
         </button>
         <button
-          onClick={clearLoopRange}
+          onClick={() => clearLoopRange()}
           className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
           title="Clear playback range"
         >

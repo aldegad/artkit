@@ -548,7 +548,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             } else {
               // Autosave can omit playbackRange when user cleared IN/OUT.
               // In that case, explicitly restore a cleared range.
-              clearLoopRange();
+              clearLoopRange(durationHint);
               seek(restoredTime);
             }
           }, 0);
