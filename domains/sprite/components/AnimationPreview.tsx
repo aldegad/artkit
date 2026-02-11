@@ -270,6 +270,7 @@ export default function AnimationPreviewContent() {
     setPan: setAnimVpPan,
     getZoom: getAnimVpZoom,
     getPan: getAnimVpPan,
+    fitToContainer: fitAnimVpToContainer,
     startPanDrag: animStartPanDrag,
     updatePanDrag: animUpdatePanDrag,
     endPanDrag: animEndPanDrag,
@@ -285,9 +286,10 @@ export default function AnimationPreviewContent() {
       setZoom: setAnimVpZoom,
       setPan: setAnimVpPan,
       getZoom: getAnimVpZoom,
+      fitToContainer: fitAnimVpToContainer,
     });
     return () => store.unregisterAnimPreviewVpApi();
-  }, [setAnimVpZoom, setAnimVpPan, getAnimVpZoom]);
+  }, [setAnimVpZoom, setAnimVpPan, getAnimVpZoom, fitAnimVpToContainer]);
 
   // ---- Real-time zoom sync to store (for toolbar NumberScrubber display) ----
   useEffect(() => {

@@ -31,7 +31,6 @@ import {
 } from "@/domains/sprite";
 import type { SavedSpriteProject, SpriteTrack } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
-import { SPRITE_PREVIEW_VIEWPORT } from "@/domains/sprite/constants";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
@@ -1229,8 +1228,7 @@ function SpriteEditorMain() {
         }}
         onFitToScreen={() => {
           if (!animPreviewVpApi) return;
-          animPreviewVpApi.setZoom(SPRITE_PREVIEW_VIEWPORT.INITIAL_ANIM_ZOOM);
-          animPreviewVpApi.setPan({ x: 0, y: 0 });
+          animPreviewVpApi.fitToContainer();
         }}
       />
 
