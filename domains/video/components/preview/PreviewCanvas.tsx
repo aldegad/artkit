@@ -90,6 +90,29 @@ function createPlaybackPerfStats() {
   };
 }
 
+function resetPlaybackPerfStatsWindow(stats: ReturnType<typeof createPlaybackPerfStats>) {
+  stats.renderedFrames = 0;
+  stats.skippedByCap = 0;
+  stats.longTickCount = 0;
+  stats.cacheFrames = 0;
+  stats.liveFrames = 0;
+}
+
+function countActiveVisualLayersAtTime(
+  tracks: ReturnType<typeof useTimeline>["tracks"],
+  getClipAtTime: ReturnType<typeof useTimeline>["getClipAtTime"],
+  time: number,
+): number {
+  let activeVisualLayers = 0;
+  for (const track of tracks) {
+    if (!track.visible) continue;
+    const clip = getClipAtTime(track.id, time);
+    if (!clip || !clip.visible || clip.type === "audio") continue;
+    activeVisualLayers += 1;
+  }
+  return activeVisualLayers;
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -336,13 +359,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ? stats.cacheFrames / totalCompositedFrames
       : 0;
 
-    let activeVisualLayers = 0;
-    for (const track of tracks) {
-      if (!track.visible) continue;
-      const clip = getClipAtTime(track.id, currentTimeRef.current);
-      if (!clip || !clip.visible || clip.type === "audio") continue;
-      activeVisualLayers += 1;
-    }
+    const activeVisualLayers = countActiveVisualLayersAtTime(
+      tracks,
+      getClipAtTime,
+      currentTimeRef.current,
+    );
 
     console.info("[VideoPreviewPerf]", {
       draftMode: previewPerf.draftMode,
@@ -358,11 +379,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     });
 
     stats.windowStartMs = now;
-    stats.renderedFrames = 0;
-    stats.skippedByCap = 0;
-    stats.longTickCount = 0;
-    stats.cacheFrames = 0;
-    stats.liveFrames = 0;
+    resetPlaybackPerfStatsWindow(stats);
   }, [
     previewPerf.debugLogs,
     previewPerf.draftMode,
