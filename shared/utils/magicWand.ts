@@ -25,6 +25,7 @@ export interface MagicWandOutlineOptions {
   color?: string;
   lineWidth?: number;
   dash?: number[];
+  dashOffset?: number;
 }
 
 interface RgbaPixel {
@@ -286,6 +287,7 @@ export function drawMagicWandSelectionOutline(
   ctx.lineWidth = options?.lineWidth ?? Math.max(1, Math.min(2, zoom * 0.15));
   const dash = options?.dash ?? [4, 4];
   ctx.setLineDash(dash.length > 0 ? dash : []);
+  ctx.lineDashOffset = Number.isFinite(options?.dashOffset) ? (options?.dashOffset as number) : 0;
   ctx.stroke(path);
   ctx.restore();
 }
