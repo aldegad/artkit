@@ -13,7 +13,7 @@ import { cn } from "@/shared/utils/cn";
 import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PRE_RENDER } from "../../constants";
-import { Clip, VideoTrack, getClipScaleX, getClipScaleY } from "../../types";
+import { getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
@@ -30,6 +30,7 @@ import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
 import { resolvePreviewCanvasCursor } from "./previewCanvasCursor";
 import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
 import { usePreviewClipDragSession } from "./usePreviewClipDragSession";
+import { usePreviewCoordinateHelpers } from "./usePreviewCoordinateHelpers";
 import {
   getLoopFrameBounds,
   createPlaybackPerfStats,
@@ -808,77 +809,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.strokeRect(offsetX, offsetY, previewWidth, previewHeight);
   };
 
-  const clampToCanvas = useCallback((point: { x: number; y: number }) => {
-    return {
-      x: Math.max(0, Math.min(project.canvasSize.width, point.x)),
-      y: Math.max(0, Math.min(project.canvasSize.height, point.y)),
-    };
-  }, [project.canvasSize.height, project.canvasSize.width]);
-
-  const screenToProject = useCallback((clientX: number, clientY: number, allowOutside: boolean = false) => {
-    if (!previewContainerRef.current) return null;
-    const point = vpScreenToContent({ x: clientX, y: clientY });
-
-    if (!allowOutside && (
-      point.x < 0
-      || point.y < 0
-      || point.x > project.canvasSize.width
-      || point.y > project.canvasSize.height
-    )) {
-      return null;
-    }
-
-    return point;
-  }, [previewContainerRef, vpScreenToContent, project.canvasSize.width, project.canvasSize.height]);
-
-  // Mask uses project coordinates (not clip-local) since it's track-level
-  const screenToMaskCoords = useCallback((clientX: number, clientY: number) => {
-    const point = screenToProject(clientX, clientY, true);
-    if (!point) return null;
-    return {
-      x: Math.max(0, Math.min(project.canvasSize.width, point.x)),
-      y: Math.max(0, Math.min(project.canvasSize.height, point.y)),
-    };
-  }, [screenToProject, project.canvasSize]);
-
-  const hitTestClipAtPoint = useCallback((point: { x: number; y: number }): Clip | null => {
-    const tracksById = new Map(tracks.map((track) => [track.id, track]));
-    // Top track (index 0) is foreground — check it first for hit testing
-    const sortedTracks = [...tracks];
-
-    for (const track of sortedTracks) {
-      if (!track.visible || track.locked) continue;
-      const clip = getClipAtTime(track.id, currentTimeRef.current);
-      if (!clip || !clip.visible || clip.type === "audio") continue;
-
-      const position = resolveClipPositionAtTimelineTime(clip, currentTimeRef.current);
-      const width = clip.sourceSize.width * getClipScaleX(clip);
-      const height = clip.sourceSize.height * getClipScaleY(clip);
-      const centerX = position.x + width / 2;
-      const centerY = position.y + height / 2;
-      const angle = ((clip.rotation || 0) * Math.PI) / 180;
-
-      const dx = point.x - centerX;
-      const dy = point.y - centerY;
-      const cos = Math.cos(-angle);
-      const sin = Math.sin(-angle);
-      const localX = dx * cos - dy * sin;
-      const localY = dx * sin + dy * cos;
-
-      const inside =
-        localX >= -width / 2 &&
-        localX <= width / 2 &&
-        localY >= -height / 2 &&
-        localY <= height / 2;
-
-      const trackState = tracksById.get(clip.trackId);
-      if (inside && trackState && !trackState.locked) {
-        return clip;
-      }
-    }
-
-    return null;
-  }, [tracks, getClipAtTime, currentTimeRef]);
+  const { clampToCanvas, screenToProject, screenToMaskCoords, hitTestClipAtPoint } = usePreviewCoordinateHelpers({
+    projectSize: project.canvasSize,
+    previewContainerRef,
+    vpScreenToContent,
+    tracks,
+    getClipAtTime,
+    currentTimeRef,
+  });
 
   const transformTool = useClipTransformTool({
     clips,
