@@ -42,6 +42,7 @@ import {
 } from "@/shared/utils";
 import {
   computeMagicWandSelection,
+  computeMagicWandSelectionFromAlphaMask,
   createMagicWandMaskCanvas,
   drawMagicWandSelectionOutline,
   isMagicWandPixelSelected,
@@ -49,6 +50,7 @@ import {
 } from "@/shared/utils/magicWand";
 import { ASPECT_RATIO_VALUES } from "@/shared/types/aspectRatio";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
+import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
 
 const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
 const MAGIC_WAND_OUTLINE_DASH = [4, 4];
@@ -138,6 +140,7 @@ export default function AnimationPreviewContent() {
     canvasExpandMode,
     magicWandTolerance,
     magicWandFeather,
+    magicWandSelectionMode,
   } = useEditorTools();
   const canvasSize = useSpriteUIStore((s) => s.canvasSize);
   const {
@@ -164,6 +167,7 @@ export default function AnimationPreviewContent() {
   const [isOverCanvas, setIsOverCanvas] = useState(false);
   const [cropCursor, setCropCursor] = useState<string>("crosshair");
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [isAiSelecting, setIsAiSelecting] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -199,6 +203,9 @@ export default function AnimationPreviewContent() {
   const currentEditTrackIdRef = useRef<string | null>(null);
   const currentEditFrameIdRef = useRef<number | null>(null);
   const isEditFrameDirtyRef = useRef(false);
+  const aiSelectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const aiSelectionFrameKeyRef = useRef<string | null>(null);
+  const aiSelectionTaskIdRef = useRef(0);
 
   const currentFrameIndex = storeFrameIndex;
   const activeFrame = activeTrackFrames[currentFrameIndex];
@@ -353,6 +360,11 @@ export default function AnimationPreviewContent() {
     setMagicWandSelectionActive("animation-preview", false);
     requestRender();
   }, [requestRender, setMagicWandSelectionActive]);
+
+  const invalidateAiSelectionCache = useCallback(() => {
+    aiSelectionCanvasRef.current = null;
+    aiSelectionFrameKeyRef.current = null;
+  }, []);
 
   const ensureDabBufferCanvas = useCallback((width: number, height: number) => {
     if (
@@ -707,6 +719,10 @@ export default function AnimationPreviewContent() {
 
   // Keep editable frame canvas in sync with active frame.
   useEffect(() => {
+    aiSelectionTaskIdRef.current += 1;
+    setIsAiSelecting(false);
+    invalidateAiSelectionCache();
+
     const nextFrameId = editableFrame?.id ?? null;
     const nextTrackId = editableFrame ? activeTrackId : null;
 
@@ -759,7 +775,7 @@ export default function AnimationPreviewContent() {
     return () => {
       cancelled = true;
     };
-  }, [editableFrame?.id, editableFrame?.imageData, activeTrackId, clearMagicWandSelection, commitFrameEdits, requestRender]);
+  }, [editableFrame?.id, editableFrame?.imageData, activeTrackId, clearMagicWandSelection, commitFrameEdits, invalidateAiSelectionCache, requestRender]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -897,13 +913,68 @@ export default function AnimationPreviewContent() {
     });
   }, [toolMode, cropArea, getCropCanvasBounds, setCropArea, hasCompositedFrame, currentVisualIndex]);
 
-  const applyMagicWandSelection = useCallback((x: number, y: number) => {
+  const applyMagicWandSelection = useCallback(async (x: number, y: number) => {
     const frameCtx = editFrameCtxRef.current;
     const frameCanvas = editFrameCanvasRef.current;
     if (!frameCtx || !frameCanvas) return;
 
     if (x < 0 || y < 0 || x >= frameCanvas.width || y >= frameCanvas.height) {
       clearMagicWandSelection();
+      return;
+    }
+
+    if (magicWandSelectionMode === "ai") {
+      const taskId = aiSelectionTaskIdRef.current + 1;
+      aiSelectionTaskIdRef.current = taskId;
+      setIsAiSelecting(true);
+
+      try {
+        const frameKey = `${currentEditTrackIdRef.current ?? "none"}:${currentEditFrameIdRef.current ?? -1}`;
+        let aiCanvas = aiSelectionCanvasRef.current;
+        if (
+          !aiCanvas
+          || aiSelectionFrameKeyRef.current !== frameKey
+          || aiCanvas.width !== frameCanvas.width
+          || aiCanvas.height !== frameCanvas.height
+        ) {
+          aiCanvas = await removeBackgroundFromCanvas(frameCanvas);
+          if (aiSelectionTaskIdRef.current !== taskId) {
+            return;
+          }
+          aiSelectionCanvasRef.current = aiCanvas;
+          aiSelectionFrameKeyRef.current = frameKey;
+        }
+
+        const aiCtx = aiCanvas.getContext("2d");
+        if (!aiCtx) {
+          clearMagicWandSelection();
+          return;
+        }
+
+        const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
+        const selection = computeMagicWandSelectionFromAlphaMask(alphaImage, x, y, {
+          connectedOnly: true,
+        });
+
+        if (!selection) {
+          clearMagicWandSelection();
+          return;
+        }
+
+        magicWandSeedRef.current = { x, y };
+        magicWandSelectionRef.current = selection;
+        magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
+          feather: magicWandFeather,
+        });
+        requestRender();
+      } catch (error) {
+        console.error("AI selection failed:", error);
+        clearMagicWandSelection();
+      } finally {
+        if (aiSelectionTaskIdRef.current === taskId) {
+          setIsAiSelecting(false);
+        }
+      }
       return;
     }
 
@@ -928,6 +999,7 @@ export default function AnimationPreviewContent() {
   }, [
     clearMagicWandSelection,
     magicWandFeather,
+    magicWandSelectionMode,
     magicWandTolerance,
     requestRender,
     setMagicWandSelectionActive,
@@ -946,11 +1018,32 @@ export default function AnimationPreviewContent() {
       return;
     }
 
-    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-    const selection = computeMagicWandSelection(imageData, seed.x, seed.y, {
-      tolerance: magicWandTolerance,
-      connectedOnly: true,
-    });
+    const selection = magicWandSelectionMode === "ai"
+      ? (() => {
+          const aiCanvas = aiSelectionCanvasRef.current;
+          if (
+            !aiCanvas
+            || aiCanvas.width !== frameCanvas.width
+            || aiCanvas.height !== frameCanvas.height
+          ) {
+            return null;
+          }
+          const aiCtx = aiCanvas.getContext("2d");
+          if (!aiCtx) {
+            return null;
+          }
+          const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
+          return computeMagicWandSelectionFromAlphaMask(alphaImage, seed.x, seed.y, {
+            connectedOnly: true,
+          });
+        })()
+      : (() => {
+          const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
+          return computeMagicWandSelection(imageData, seed.x, seed.y, {
+            tolerance: magicWandTolerance,
+            connectedOnly: true,
+          });
+        })();
 
     if (!selection) {
       clearMagicWandSelection();
@@ -966,6 +1059,7 @@ export default function AnimationPreviewContent() {
   }, [
     clearMagicWandSelection,
     magicWandFeather,
+    magicWandSelectionMode,
     magicWandTolerance,
     requestRender,
     setMagicWandSelectionActive,
@@ -987,8 +1081,9 @@ export default function AnimationPreviewContent() {
     frameCtx.drawImage(maskCanvas, 0, 0);
     frameCtx.restore();
     isEditFrameDirtyRef.current = true;
+    invalidateAiSelectionCache();
     return true;
-  }, []);
+  }, [invalidateAiSelectionCache]);
 
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure = 1) => {
@@ -1059,9 +1154,10 @@ export default function AnimationPreviewContent() {
         frameCtx.restore();
       }
       isEditFrameDirtyRef.current = true;
+      invalidateAiSelectionCache();
       return true;
     },
-    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, pressureEnabled],
+    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
   );
 
   const pickColorFromComposited = useCallback(
@@ -1328,7 +1424,10 @@ export default function AnimationPreviewContent() {
       if (!coords) return;
 
       if (isMagicWandTool) {
-        applyMagicWandSelection(coords.x, coords.y);
+        if (isAiSelecting) {
+          return;
+        }
+        void applyMagicWandSelection(coords.x, coords.y);
         return;
       }
 
@@ -1372,6 +1471,7 @@ export default function AnimationPreviewContent() {
       isEditMode,
       isBrushEditMode,
       isMagicWandTool,
+      isAiSelecting,
       editableFrame,
       getPixelCoordinates,
       hasDrawn,
@@ -1631,6 +1731,9 @@ export default function AnimationPreviewContent() {
 
   // Cursor selection
   const getCursor = () => {
+    if (isAiSelecting) {
+      return "progress";
+    }
     if (isHandMode) {
       return animIsPanDragging() ? "grabbing" : "grab";
     }

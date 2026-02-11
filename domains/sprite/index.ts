@@ -48,6 +48,7 @@ export type {
   SpriteFrame,
   SpriteTrack,
   SpriteToolMode,
+  MagicWandSelectionMode,
   FrameEditToolMode,
   TimelineMode,
   SavedSpriteProject,
