@@ -730,6 +730,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       canvas.style.height = `${height}px`;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     const colors = getCanvasColorsSync();
     // Cache getComputedStyle results to avoid per-frame style recalculation
     if (!cssColorsRef.current) {
@@ -873,6 +875,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             }
             const tmpCtx = tmpCanvas.getContext("2d");
             if (tmpCtx) {
+              tmpCtx.imageSmoothingEnabled = true;
+              tmpCtx.imageSmoothingQuality = "high";
               tmpCtx.clearRect(0, 0, maskW, maskH);
               tmpCtx.globalCompositeOperation = "source-over";
               tmpCtx.globalAlpha = 1;
@@ -906,6 +910,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               }
               const overlayCtx = overlayCanvas.getContext("2d");
               if (overlayCtx) {
+                overlayCtx.imageSmoothingEnabled = true;
+                overlayCtx.imageSmoothingQuality = "high";
                 overlayCtx.clearRect(0, 0, maskW, maskH);
                 overlayCtx.globalCompositeOperation = "source-over";
                 overlayCtx.drawImage(clipMaskSource, 0, 0, maskW, maskH);

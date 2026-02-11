@@ -49,6 +49,8 @@ export function renderCompositeFrame(
 
   const { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight } = renderRect;
   const scale = previewWidth / projectSize.width;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   // Draw bottom track first (background), top track last (foreground).
   // tracks[0] is the topmost track in the timeline.
@@ -137,6 +139,8 @@ export function renderCompositeFrame(
       }
       const tmpCtx = maskTempCanvas.getContext("2d");
       if (tmpCtx) {
+        tmpCtx.imageSmoothingEnabled = true;
+        tmpCtx.imageSmoothingQuality = "high";
         tmpCtx.clearRect(0, 0, maskW, maskH);
         tmpCtx.globalCompositeOperation = "source-over";
         tmpCtx.globalAlpha = 1;
