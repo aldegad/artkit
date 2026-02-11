@@ -30,8 +30,7 @@ import {
   useSpriteExport,
 } from "@/domains/sprite";
 import type { SavedSpriteProject, SpriteTrack } from "@/domains/sprite";
-import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
-
+import { useSpriteTrackStore } from "@/domains/sprite/stores";
 import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
@@ -1211,7 +1210,6 @@ function SpriteEditorMain() {
         setSpriteToolMode={setSpriteToolMode}
         isPanLocked={isPanLocked}
         onTogglePanLock={() => setIsPanLocked(!isPanLocked)}
-        onFitToScreen={useSpriteViewportStore.getState().requestFit}
         isRemovingBackground={isRemovingBackground}
         isInterpolating={isInterpolating}
         hasFramesWithImage={frames.some((f) => Boolean(f.imageData))}

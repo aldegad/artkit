@@ -35,10 +35,6 @@ interface SpriteViewportStore {
   // Computed
   getTransformParams: () => { scale: number; zoom: number; pan: Point };
 
-  // Fit trigger (increment to request fitToContainer from canvas)
-  fitTrigger: number;
-  requestFit: () => void;
-
   // Reset
   reset: () => void;
 }
@@ -58,7 +54,6 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
   animPreviewPan: { x: 0, y: 0 },
   frameEditZoom: 0,
   frameEditPan: { x: 0, y: 0 },
-  fitTrigger: 0,
 
   // Actions
   setZoom: (zoomOrFn) =>
@@ -85,8 +80,6 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
   setFrameEditZoom: (zoom) => set({ frameEditZoom: zoom }),
   setFrameEditPan: (pan) => set({ frameEditPan: pan }),
 
-  requestFit: () => set((state) => ({ fitTrigger: state.fitTrigger + 1 })),
-
   // Computed
   getTransformParams: () => {
     const { scale, zoom, pan } = get();
@@ -105,6 +98,5 @@ export const useSpriteViewportStore = create<SpriteViewportStore>((set, get) => 
       animPreviewPan: { x: 0, y: 0 },
       frameEditZoom: 0,
       frameEditPan: { x: 0, y: 0 },
-      fitTrigger: 0,
     }),
 }));
