@@ -270,6 +270,111 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [clips, masks]
   );
 
+  const clearMaskSelectionState = useCallback(() => {
+    if (isEditingMask) {
+      endMaskEdit();
+      return;
+    }
+    deselectMask();
+  }, [isEditingMask, endMaskEdit, deselectMask]);
+
+  const startClipMoveDrag = useCallback((options: {
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    clipId: string;
+    items: DragItem[];
+    x: number;
+    contentY: number;
+    time: number;
+    clipStart: number;
+    clipDuration: number;
+    clipTrimIn: number;
+  }) => {
+    capturePointer(options.pointerId, options.clientX, options.clientY);
+    isLiftedRef.current = true;
+    setDragState({
+      type: "clip-move",
+      clipId: options.clipId,
+      items: options.items,
+      startX: options.x,
+      startY: options.contentY,
+      startTime: options.time,
+      originalClipStart: options.clipStart,
+      originalClipDuration: options.clipDuration,
+      originalTrimIn: options.clipTrimIn,
+    });
+  }, [capturePointer]);
+
+  const splitClipWithRazor = useCallback((clip: Clip, splitCursorTime: number): Clip | null => {
+    const rawSplitTime = Math.max(clip.startTime, Math.min(splitCursorTime, clip.startTime + clip.duration));
+    const snappedSplitTime = snapToPoints(rawSplitTime, {
+      excludeClipIds: new Set([clip.id]),
+    });
+    const splitTime = Math.max(
+      clip.startTime,
+      Math.min(snappedSplitTime, clip.startTime + clip.duration)
+    );
+    const splitOffset = splitTime - clip.startTime;
+
+    // Ignore split at very edges
+    if (splitOffset <= TIMELINE.CLIP_MIN_DURATION || clip.duration - splitOffset <= TIMELINE.CLIP_MIN_DURATION) {
+      return null;
+    }
+
+    saveToHistory();
+
+    const firstDuration = splitOffset;
+    const secondDuration = clip.duration - splitOffset;
+    const firstTransformKeyframes = sliceClipPositionKeyframes(
+      clip,
+      0,
+      firstDuration,
+      { includeStart: true, includeEnd: true }
+    );
+    const secondTransformKeyframes = sliceClipPositionKeyframes(
+      clip,
+      splitOffset,
+      secondDuration,
+      { includeStart: true, includeEnd: false }
+    );
+    const firstPosition = firstTransformKeyframes?.position?.[0]?.value || clip.position;
+    const secondPosition = secondTransformKeyframes?.position?.[0]?.value || clip.position;
+
+    const firstClip: Clip = {
+      ...clip,
+      id: crypto.randomUUID(),
+      duration: firstDuration,
+      trimOut: clip.trimIn + firstDuration,
+      sourceSize: { ...clip.sourceSize },
+      position: { ...firstPosition },
+      transformKeyframes: firstTransformKeyframes,
+    };
+
+    const secondClip: Clip = {
+      ...clip,
+      id: crypto.randomUUID(),
+      name: `${clip.name} (2)`,
+      startTime: splitTime,
+      duration: secondDuration,
+      trimIn: clip.trimIn + splitOffset,
+      sourceSize: { ...clip.sourceSize },
+      position: { ...secondPosition },
+      transformKeyframes: secondTransformKeyframes,
+    };
+
+    void Promise.all([
+      copyMediaBlob(clip.id, firstClip.id),
+      copyMediaBlob(clip.id, secondClip.id),
+    ]).catch((error) => {
+      console.error("Failed to copy media blob on razor split:", error);
+    });
+
+    removeClip(clip.id);
+    addClips([firstClip, secondClip]);
+    return secondClip;
+  }, [snapToPoints, saveToHistory, removeClip, addClips]);
+
   /** Cancel any pending long-press timer */
   const cancelLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -313,21 +418,22 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       // Select and lift the clip.
       selectClip(clip.id, false);
       saveToHistory();
-      isLiftedRef.current = true;
       setLiftedClipId(clip.id);
       if (navigator.vibrate) navigator.vibrate(30);
 
       const items = buildDragItems([clip.id], []);
-      setDragState({
-        type: "clip-move",
+      startClipMoveDrag({
+        pointerId: pending.pointerId,
+        clientX: pending.clientX,
+        clientY: pending.clientY,
         clipId: clip.id,
         items,
-        startX: pending.x,
-        startY: pending.contentY,
-        startTime: pending.time,
-        originalClipStart: clip.startTime,
-        originalClipDuration: clip.duration,
-        originalTrimIn: clip.trimIn,
+        x: pending.x,
+        contentY: pending.contentY,
+        time: pending.time,
+        clipStart: clip.startTime,
+        clipDuration: clip.duration,
+        clipTrimIn: clip.trimIn,
       });
       setTouchPending(null);
     },
@@ -466,26 +572,14 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         if (result) {
           const { clip, handle } = result;
 
-          if (handle === "start" && (toolMode === "select" || toolMode === "trim")) {
+          if (
+            (handle === "start" || handle === "end")
+            && (toolMode === "select" || toolMode === "trim")
+          ) {
             capturePointer(e.pointerId, e.clientX, e.clientY);
             saveToHistory();
             setDragState({
-              type: "clip-trim-start",
-              clipId: clip.id,
-              items: [],
-              startX: x,
-              startY: contentY,
-              startTime: time,
-              originalClipStart: clip.startTime,
-              originalClipDuration: clip.duration,
-              originalTrimIn: clip.trimIn,
-            });
-            selectClip(clip.id, e.shiftKey);
-          } else if (handle === "end" && (toolMode === "select" || toolMode === "trim")) {
-            capturePointer(e.pointerId, e.clientX, e.clientY);
-            saveToHistory();
-            setDragState({
-              type: "clip-trim-end",
+              type: handle === "start" ? "clip-trim-start" : "clip-trim-end",
               clipId: clip.id,
               items: [],
               startX: x,
@@ -498,73 +592,10 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
             selectClip(clip.id, e.shiftKey);
           } else if (handle === "body") {
             if (toolMode === "razor") {
-              // Split clip at cursor
-              const rawSplitTime = Math.max(clip.startTime, Math.min(time, clip.startTime + clip.duration));
-              const snappedSplitTime = snapToPoints(rawSplitTime, {
-                excludeClipIds: new Set([clip.id]),
-              });
-              const splitTime = Math.max(
-                clip.startTime,
-                Math.min(snappedSplitTime, clip.startTime + clip.duration)
-              );
-              const splitOffset = splitTime - clip.startTime;
-
-              // Ignore split at very edges
-              if (splitOffset <= TIMELINE.CLIP_MIN_DURATION || clip.duration - splitOffset <= TIMELINE.CLIP_MIN_DURATION) {
-                return;
+              const splitResult = splitClipWithRazor(clip, time);
+              if (splitResult) {
+                selectClip(splitResult.id, false);
               }
-
-              saveToHistory();
-
-              const firstDuration = splitOffset;
-              const secondDuration = clip.duration - splitOffset;
-              const firstTransformKeyframes = sliceClipPositionKeyframes(
-                clip,
-                0,
-                firstDuration,
-                { includeStart: true, includeEnd: true }
-              );
-              const secondTransformKeyframes = sliceClipPositionKeyframes(
-                clip,
-                splitOffset,
-                secondDuration,
-                { includeStart: true, includeEnd: false }
-              );
-              const firstPosition = firstTransformKeyframes?.position?.[0]?.value || clip.position;
-              const secondPosition = secondTransformKeyframes?.position?.[0]?.value || clip.position;
-
-              const firstClip: Clip = {
-                ...clip,
-                id: crypto.randomUUID(),
-                duration: firstDuration,
-                trimOut: clip.trimIn + firstDuration,
-                sourceSize: { ...clip.sourceSize },
-                position: { ...firstPosition },
-                transformKeyframes: firstTransformKeyframes,
-              };
-
-              const secondClip: Clip = {
-                ...clip,
-                id: crypto.randomUUID(),
-                name: `${clip.name} (2)`,
-                startTime: splitTime,
-                duration: secondDuration,
-                trimIn: clip.trimIn + splitOffset,
-                sourceSize: { ...clip.sourceSize },
-                position: { ...secondPosition },
-                transformKeyframes: secondTransformKeyframes,
-              };
-
-              void Promise.all([
-                copyMediaBlob(clip.id, firstClip.id),
-                copyMediaBlob(clip.id, secondClip.id),
-              ]).catch((error) => {
-                console.error("Failed to copy media blob on razor split:", error);
-              });
-
-              removeClip(clip.id);
-              addClips([firstClip, secondClip]);
-              selectClip(secondClip.id, false);
             } else {
               saveToHistory();
 
@@ -585,12 +616,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
                 activeClipIds = [clip.id];
                 activeMaskIds = [];
                 selectClip(clip.id, false);
-                // Clear mask active/editing state
-                if (isEditingMask) {
-                  endMaskEdit();
-                } else {
-                  deselectMask();
-                }
+                clearMaskSelectionState();
               }
 
               let primaryClipId = clip.id;
@@ -633,36 +659,34 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
                   }
                 }
 
-                isLiftedRef.current = true;
-                capturePointer(e.pointerId, e.clientX, e.clientY);
-
-                setDragState({
-                  type: "clip-move",
+                startClipMoveDrag({
+                  pointerId: e.pointerId,
+                  clientX: e.clientX,
+                  clientY: e.clientY,
                   clipId: primaryClipId,
                   items,
-                  startX: x,
-                  startY: contentY,
-                  startTime: time,
-                  originalClipStart: clip.startTime,
-                  originalClipDuration: clip.duration,
-                  originalTrimIn: clip.trimIn,
+                  x,
+                  contentY,
+                  time,
+                  clipStart: clip.startTime,
+                  clipDuration: clip.duration,
+                  clipTrimIn: clip.trimIn,
                 });
               } else {
                 // Normal drag: move all selected items
-                capturePointer(e.pointerId, e.clientX, e.clientY);
                 const items = buildDragItems(activeClipIds, activeMaskIds);
-                isLiftedRef.current = true;
-
-                setDragState({
-                  type: "clip-move",
+                startClipMoveDrag({
+                  pointerId: e.pointerId,
+                  clientX: e.clientX,
+                  clientY: e.clientY,
                   clipId: primaryClipId,
                   items,
-                  startX: x,
-                  startY: contentY,
-                  startTime: time,
-                  originalClipStart: clip.startTime,
-                  originalClipDuration: clip.duration,
-                  originalTrimIn: clip.trimIn,
+                  x,
+                  contentY,
+                  time,
+                  clipStart: clip.startTime,
+                  clipDuration: clip.duration,
+                  clipTrimIn: clip.trimIn,
                 });
               }
             }
@@ -673,12 +697,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
           seek(seekTime);
           ensureTimeVisibleOnLeft(seekTime);
           deselectAll();
-          // Clear mask active/editing state
-          if (isEditingMask) {
-            endMaskEdit();
-          } else {
-            deselectMask();
-          }
+          clearMaskSelectionState();
           capturePointer(e.pointerId, e.clientX, e.clientY);
           setDragState({
             type: "playhead",
@@ -710,20 +729,16 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       deselectAll,
       duplicateClip,
       duplicateMask,
-      removeClip,
-      addClips,
       saveToHistory,
       clips,
       masks,
       buildDragItems,
-      cancelLongPress,
       capturePointer,
-      deselectMask,
-      endMaskEdit,
-      isEditingMask,
+      clearMaskSelectionState,
       ensureTimeVisibleOnLeft,
+      splitClipWithRazor,
+      startClipMoveDrag,
       timelineViewportRef,
-      snapToPoints,
     ]
   );
 
