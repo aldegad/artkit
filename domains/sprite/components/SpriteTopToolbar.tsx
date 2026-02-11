@@ -23,7 +23,6 @@ interface SpriteTopToolbarProps {
   setSpriteToolMode: (mode: SpriteToolMode) => void;
   isPanLocked: boolean;
   onTogglePanLock: () => void;
-  onFitToScreen?: () => void;
   isRemovingBackground: boolean;
   isInterpolating: boolean;
   hasFramesWithImage: boolean;
@@ -41,7 +40,6 @@ export default function SpriteTopToolbar({
   setSpriteToolMode,
   isPanLocked,
   onTogglePanLock,
-  onFitToScreen,
   isRemovingBackground,
   isInterpolating,
   hasFramesWithImage,
@@ -107,90 +105,6 @@ export default function SpriteTopToolbar({
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.brush}</span>
-                <span className="text-text-tertiary text-[11px]">{t.brushToolTip}</span>
-              </div>
-            }
-            shortcut="B"
-          >
-            <button
-              onClick={() => setSpriteToolMode("brush")}
-              className={`p-1.5 rounded transition-colors ${
-                toolMode === "brush"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover"
-              }`}
-            >
-              <BrushIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.eraser}</span>
-                <span className="text-text-tertiary text-[11px]">{t.eraserToolTip}</span>
-              </div>
-            }
-            shortcut="E"
-          >
-            <button
-              onClick={() => setSpriteToolMode("eraser")}
-              className={`p-1.5 rounded transition-colors ${
-                toolMode === "eraser"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover"
-              }`}
-            >
-              <EraserIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.magicWand}</span>
-                <span className="text-text-tertiary text-[11px]">{t.magicWandToolTip}</span>
-              </div>
-            }
-            shortcut="W"
-          >
-            <button
-              onClick={() => setSpriteToolMode("magicwand")}
-              className={`p-1.5 rounded transition-colors ${
-                toolMode === "magicwand"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover"
-              }`}
-            >
-              <MagicWandIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.eyedropper}</span>
-                <span className="text-text-tertiary text-[11px]">{t.eyedropperToolTip}</span>
-              </div>
-            }
-            shortcut="I"
-          >
-            <button
-              onClick={() => setSpriteToolMode("eyedropper")}
-              className={`p-1.5 rounded transition-colors ${
-                toolMode === "eyedropper"
-                  ? "bg-accent-primary text-white"
-                  : "hover:bg-interactive-hover"
-              }`}
-            >
-              <EyedropperIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
                 <span className="font-medium">{t.zoomInOut}</span>
                 <span className="text-text-tertiary text-[11px]">{t.zoomToolTip}</span>
               </div>
@@ -236,13 +150,96 @@ export default function SpriteTopToolbar({
             </button>
           </Tooltip>
 
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.brush}</span>
+                <span className="text-text-tertiary text-[11px]">{t.brushToolTip}</span>
+              </div>
+            }
+            shortcut="B"
+          >
+            <button
+              onClick={() => setSpriteToolMode("brush")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "brush"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <BrushIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.eraser}</span>
+                <span className="text-text-tertiary text-[11px]">{t.eraserToolTip}</span>
+              </div>
+            }
+            shortcut="E"
+          >
+            <button
+              onClick={() => setSpriteToolMode("eraser")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "eraser"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <EraserIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.eyedropper}</span>
+                <span className="text-text-tertiary text-[11px]">{t.eyedropperToolTip}</span>
+              </div>
+            }
+            shortcut="I"
+          >
+            <button
+              onClick={() => setSpriteToolMode("eyedropper")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "eyedropper"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <EyedropperIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.magicWand}</span>
+                <span className="text-text-tertiary text-[11px]">{t.magicWandToolTip}</span>
+              </div>
+            }
+            shortcut="W"
+          >
+            <button
+              onClick={() => setSpriteToolMode("magicwand")}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "magicwand"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <MagicWandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
           <div className="w-px bg-border-default mx-0.5" />
 
           <PanZoomToolbarButtons
             isPanLocked={isPanLocked}
             onTogglePanLock={onTogglePanLock}
-            onFitToScreen={onFitToScreen}
-            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff, fitToScreen: t.fitToScreen }}
+            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff }}
           />
 
           <div className="w-px bg-border-default mx-0.5" />
