@@ -76,6 +76,19 @@ function getEightResizeHandles(x: number, y: number, width: number, height: numb
   ];
 }
 
+function createPlaybackPerfStats() {
+  return {
+    windowStartMs: 0,
+    lastTickMs: 0,
+    lastRenderMs: 0,
+    renderedFrames: 0,
+    skippedByCap: 0,
+    longTickCount: 0,
+    cacheFrames: 0,
+    liveFrames: 0,
+  };
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -108,16 +121,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
   previewPerf.preRenderEnabled = previewPreRenderEnabled;
-  const playbackPerfRef = useRef({
-    windowStartMs: 0,
-    lastTickMs: 0,
-    lastRenderMs: 0,
-    renderedFrames: 0,
-    skippedByCap: 0,
-    longTickCount: 0,
-    cacheFrames: 0,
-    liveFrames: 0,
-  });
+  const playbackPerfRef = useRef(createPlaybackPerfStats());
   const syncMediaRef = useRef<(() => void) | null>(null);
   const syncMediaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlaybackTickTimeRef = useRef<number | null>(null);
@@ -1417,16 +1421,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   useEffect(() => {
     if (playback.isPlaying) return;
-    playbackPerfRef.current = {
-      windowStartMs: 0,
-      lastTickMs: 0,
-      lastRenderMs: 0,
-      renderedFrames: 0,
-      skippedByCap: 0,
-      longTickCount: 0,
-      cacheFrames: 0,
-      liveFrames: 0,
-    };
+    playbackPerfRef.current = createPlaybackPerfStats();
   }, [playback.isPlaying]);
 
   // Render on structural changes (tracks, clips, selection, etc.)
