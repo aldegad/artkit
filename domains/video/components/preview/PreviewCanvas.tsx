@@ -15,7 +15,7 @@ import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } fro
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
-import { Clip, VideoClip, getClipScaleX, getClipScaleY } from "../../types";
+import { Clip, getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
@@ -30,6 +30,7 @@ import { usePreviewViewportBridge } from "./usePreviewViewportBridge";
 import { useMaskInteractionSession } from "./useMaskInteractionSession";
 import { useCropInteractionSession } from "./useCropInteractionSession";
 import { usePreviewMediaPlaybackSync } from "./usePreviewMediaPlaybackSync";
+import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -387,41 +388,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     lastPlaybackTickTimeRef,
     wasPlayingRef,
   });
-  // Setup video ready listeners - trigger render via rAF only when paused (scrubbing)
-  useEffect(() => {
-    const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
-    const cleanupFns: (() => void)[] = [];
-
-    const scheduleRenderFromMediaReady = () => {
-      // During playback, the playback loop already drives rendering
-      if (wasPlayingRef.current) return;
-      // During pre-rendering, the pre-render loop seeks video elements to
-      // different times. Don't re-render in response — it would fight over
-      // video element currentTime and cause frame drops.
-      if (isPreRenderingRef.current) return;
-      scheduleRender();
-    };
-
-    for (const clip of videoClips) {
-      const video = videoElementsRef.current?.get(clip.id);
-      if (video) {
-        video.addEventListener("canplay", scheduleRenderFromMediaReady);
-        video.addEventListener("seeked", scheduleRenderFromMediaReady);
-        video.addEventListener("loadeddata", scheduleRenderFromMediaReady);
-
-        cleanupFns.push(() => {
-          video.removeEventListener("canplay", scheduleRenderFromMediaReady);
-          video.removeEventListener("seeked", scheduleRenderFromMediaReady);
-          video.removeEventListener("loadeddata", scheduleRenderFromMediaReady);
-        });
-      }
-    }
-
-    return () => {
-      cancelAnimationFrame(renderRequestRef.current);
-      cleanupFns.forEach((fn) => fn());
-    };
-  }, [clips, videoElementsRef, isPreRenderingRef, scheduleRender]);
+  usePreviewMediaReadyRender({
+    clips,
+    videoElementsRef,
+    isPreRenderingRef,
+    wasPlayingRef,
+    scheduleRender,
+    renderRequestRef,
+  });
 
   // Draw checkerboard with cached CanvasPattern to avoid per-frame tile loops.
   const drawCheckerboard = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
