@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { useLanguage } from "@/shared/contexts/LanguageContext";
+import { showErrorToast } from "@/shared/components";
 import { MusicNoteIcon } from "@/shared/components/icons";
 
 const ACCEPTED_AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".oga"] as const;
@@ -46,7 +47,7 @@ export function AudioDropZone() {
         await loadAudio(file);
       } catch (error) {
         console.error("[SoundEditor] Failed to load dropped media:", error);
-        alert(`${t.importFailed}: ${toErrorMessage(error)}`);
+        showErrorToast(`${t.importFailed}: ${toErrorMessage(error)}`);
       }
     },
     [loadAudio, t]
@@ -68,7 +69,7 @@ export function AudioDropZone() {
           await loadAudio(file);
         } catch (error) {
           console.error("[SoundEditor] Failed to load selected media:", error);
-          alert(`${t.importFailed}: ${toErrorMessage(error)}`);
+          showErrorToast(`${t.importFailed}: ${toErrorMessage(error)}`);
         }
       }
       if (fileInputRef.current) {

@@ -2,6 +2,7 @@
 
 import { useCallback, useState, type RefObject } from "react";
 import { Size } from "@/shared/types";
+import { showErrorToast } from "@/shared/components";
 import type { PreviewViewportAPI } from "../contexts/VideoRefsContext";
 import { VideoTrack } from "../types";
 import { saveMediaBlob } from "../utils/mediaStorage";
@@ -58,7 +59,7 @@ export function useCaptureFrameToImageLayer(
       const captureTime = Math.max(0, currentTime);
       const frameBlob = await viewportApi.captureCompositeFrame(captureTime);
       if (!frameBlob) {
-        alert("Failed to capture current frame.");
+        showErrorToast("Failed to capture current frame.");
         return;
       }
 
@@ -85,7 +86,7 @@ export function useCaptureFrameToImageLayer(
       clearSelectedMasks();
     } catch (error) {
       console.error("Frame capture failed:", error);
-      alert(`Failed to capture current frame: ${(error as Error).message}`);
+      showErrorToast(`Failed to capture current frame: ${(error as Error).message}`);
     } finally {
       setIsCapturingFrame(false);
     }

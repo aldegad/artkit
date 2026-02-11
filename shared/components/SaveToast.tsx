@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckIcon } from "./icons";
+import { useEffect, useRef } from "react";
+import {
+  dismissToast,
+  showProgressToast,
+  showSuccessToast,
+  updateToast,
+} from "./ToastProvider";
 
 // ============================================
 // Types
@@ -16,6 +21,12 @@ interface SaveToastProps {
   savingLabel?: string;
   /** Label shown on save success */
   savedLabel?: string;
+  /** Optional progress information for save operation */
+  progress?: {
+    current: number;
+    total: number;
+    detail?: string;
+  } | null;
 }
 
 // ============================================
@@ -27,52 +38,69 @@ export function SaveToast({
   saveCount,
   savingLabel = "Saving…",
   savedLabel = "Saved",
+  progress = null,
 }: SaveToastProps) {
-  const [visible, setVisible] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const savingToastIdRef = useRef<string | null>(null);
+  const initializedRef = useRef(false);
+  const lastSaveCountRef = useRef(saveCount);
 
-  // Show spinner while saving
   useEffect(() => {
-    if (isSaving) {
-      setVisible(true);
-      setShowSuccess(false);
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      lastSaveCountRef.current = saveCount;
+      return;
     }
-  }, [isSaving]);
 
-  // Show success briefly when save completes
+    if (saveCount > lastSaveCountRef.current) {
+      if (savingToastIdRef.current) {
+        dismissToast(savingToastIdRef.current);
+        savingToastIdRef.current = null;
+      }
+      showSuccessToast({
+        title: savedLabel,
+        duration: 1500,
+      });
+    }
+    lastSaveCountRef.current = saveCount;
+  }, [saveCount, savedLabel]);
+
   useEffect(() => {
-    if (saveCount === 0) return;
-    setShowSuccess(true);
-    setVisible(true);
+    if (!isSaving) {
+      if (savingToastIdRef.current) {
+        dismissToast(savingToastIdRef.current);
+        savingToastIdRef.current = null;
+      }
+      return;
+    }
 
-    const timer = setTimeout(() => {
-      setVisible(false);
-      setShowSuccess(false);
-    }, 1500);
+    const nextProgress = progress && progress.total > 0
+      ? Math.max(0, Math.min(100, (progress.current / progress.total) * 100))
+      : undefined;
 
-    return () => clearTimeout(timer);
-  }, [saveCount]);
+    if (!savingToastIdRef.current) {
+      savingToastIdRef.current = showProgressToast({
+        title: savingLabel,
+        description: progress?.detail,
+        progress: nextProgress,
+      });
+      return;
+    }
 
-  if (!visible) return null;
+    updateToast(savingToastIdRef.current, {
+      title: savingLabel,
+      description: progress?.detail,
+      progress: nextProgress,
+      duration: null,
+    });
+  }, [isSaving, progress, savingLabel]);
 
-  return (
-    <div
-      style={{ animation: "saveToastIn 200ms ease-out" }}
-      className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg border border-border-default bg-surface-primary text-sm text-text-secondary"
-    >
-      {showSuccess ? (
-        <>
-          <div className="w-4 h-4 rounded-full bg-green-500/20 flex items-center justify-center">
-            <CheckIcon className="w-3 h-3 text-green-500" />
-          </div>
-          <span>{savedLabel}</span>
-        </>
-      ) : (
-        <>
-          <div className="w-4 h-4 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
-          <span>{savingLabel}</span>
-        </>
-      )}
-    </div>
-  );
+  useEffect(() => {
+    return () => {
+      if (savingToastIdRef.current) {
+        dismissToast(savingToastIdRef.current);
+      }
+    };
+  }, []);
+
+  return null;
 }
