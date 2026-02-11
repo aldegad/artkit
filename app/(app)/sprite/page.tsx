@@ -28,16 +28,15 @@ import {
   FrameInterpolationModals,
   SpriteExportModal,
   useSpriteExport,
+  useSpriteProjectFileActions,
 } from "@/domains/sprite";
-import type { SavedSpriteProject, SpriteTrack } from "@/domains/sprite";
+import type { SpriteTrack } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
-import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
-import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import {
   HeaderContent,
@@ -287,13 +286,7 @@ function SpriteEditorMain() {
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
 
-  // Save feedback state
-  const [isSaving, setIsSaving] = useState(false);
   const [isResampling, setIsResampling] = useState(false);
-  const [saveCount, setSaveCount] = useState(0);
-  const [saveProgress, setSaveProgress] = useState<SpriteSaveLoadProgress | null>(null);
-  const [isProjectLoading, setIsProjectLoading] = useState(false);
-  const [loadProgress, setLoadProgress] = useState<SpriteSaveLoadProgress | null>(null);
 
   // Video import modal state is now in the UI store (pendingVideoFile, isVideoImportOpen)
 
@@ -354,33 +347,9 @@ function SpriteEditorMain() {
       interpolationProgress: t.interpolationProgress,
     },
   });
-  const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [localProjectCount, setLocalProjectCount] = useState(0);
   const [cloudProjectCount, setCloudProjectCount] = useState(0);
-  const saveInFlightRef = useRef(false);
-  const currentProjectIdRef = useRef<string | null>(currentProjectId);
-
-  useEffect(() => {
-    currentProjectIdRef.current = currentProjectId;
-  }, [currentProjectId]);
-
-  // Load saved projects when storage provider changes (login/logout)
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const projects = await storageProvider.getAllProjects();
-        setSavedSpriteProjects(projects);
-
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-      } catch (e) {
-        console.error("Failed to load saved projects:", e);
-      }
-    };
-
-    loadProjects();
-  }, [storageProvider, setSavedSpriteProjects]);
 
   // Check local/cloud conflicts when user logs in
   useEffect(() => {
@@ -488,6 +457,54 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
+  const {
+    isSaving,
+    saveCount,
+    saveProgress,
+    isProjectLoading,
+    loadProgress,
+    storageInfo,
+    refreshProjects,
+    saveProject,
+    saveProjectAs,
+    loadProject,
+    deleteProject,
+    handleNewProject,
+  } = useSpriteProjectFileActions({
+    storageProvider,
+    projectName,
+    currentProjectId,
+    imageSrc,
+    firstFrameImage,
+    imageSize,
+    canvasSize,
+    tracks,
+    allFrames,
+    nextFrameId,
+    fps,
+    framesCount: frames.length,
+    setSavedSpriteProjects,
+    setCurrentProjectId,
+    setProjectName,
+    setImageSrc,
+    setImageSize,
+    setCanvasSize,
+    restoreTracks,
+    setCurrentPoints,
+    imageRef,
+    setScale,
+    setIsProjectListOpen,
+    newProject,
+    t: {
+      enterProjectName: t.enterProjectName,
+      saveFailed: t.saveFailed,
+      deleteConfirm: t.deleteConfirm,
+      deleteFailed: t.deleteFailed,
+      newLabel: t.new || "New",
+      newProjectConfirm: t.newProjectConfirm,
+      cancelLabel: t.cancel || "Cancel",
+    },
+  });
 
   useEffect(() => {
     if (imageSize.width > 0 && imageSize.height > 0) {
@@ -879,226 +896,6 @@ function SpriteEditorMain() {
     }
   }, [hasRenderableFrames, tracks, projectName, fps, t.exportFailed, exportMp4, startProgress, endProgress]);
 
-  // Save project (overwrite if existing, create new if not)
-  const saveProject = useCallback(async () => {
-    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
-      return;
-    }
-    if (saveInFlightRef.current) return;
-    saveInFlightRef.current = true;
-
-    const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
-    const saveImageSrc = imageSrc || firstFrameImage || "";
-    const existingProjectId = currentProjectIdRef.current;
-    const resolvedProjectId = existingProjectId || crypto.randomUUID();
-    currentProjectIdRef.current = resolvedProjectId;
-    const projectToSave: SavedSpriteProject = {
-      id: resolvedProjectId,
-      name,
-      imageSrc: saveImageSrc,
-      imageSize: imageSize,
-      canvasSize: canvasSize ?? undefined,
-      exportFrameSize: canvasSize ?? undefined,
-      tracks,
-      nextFrameId,
-      fps,
-      savedAt: Date.now(),
-    };
-
-    setIsSaving(true);
-    setSaveProgress(null);
-    try {
-      await storageProvider.saveProject(projectToSave, setSaveProgress);
-      setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
-        existingProjectId
-          ? prev.map((p) => (p.id === resolvedProjectId ? projectToSave : p))
-          : [projectToSave, ...prev],
-      );
-      setCurrentProjectId(resolvedProjectId);
-      currentProjectIdRef.current = resolvedProjectId;
-
-      const info = await storageProvider.getStorageInfo();
-      setStorageInfo(info);
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Save failed:", error);
-      showErrorToast(`${t.saveFailed}: ${(error as Error).message}`);
-    } finally {
-      saveInFlightRef.current = false;
-      setIsSaving(false);
-      setSaveProgress(null);
-    }
-  }, [
-    t,
-    imageSrc,
-    imageSize,
-    tracks,
-    allFrames,
-    firstFrameImage,
-    projectName,
-    canvasSize,
-    nextFrameId,
-    fps,
-    storageProvider,
-    setSavedSpriteProjects,
-    setCurrentProjectId,
-  ]);
-
-  // Save project as new (always create new project)
-  const saveProjectAs = useCallback(async () => {
-    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
-      return;
-    }
-    if (saveInFlightRef.current) return;
-    saveInFlightRef.current = true;
-
-    const inputName = prompt(t.enterProjectName, projectName || "");
-    if (inputName === null) {
-      saveInFlightRef.current = false;
-      return;
-    }
-
-    const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
-    const newId = crypto.randomUUID();
-    const saveImageSrc = imageSrc || firstFrameImage || "";
-
-    const newProj = {
-      id: newId,
-      name,
-      imageSrc: saveImageSrc,
-      imageSize: imageSize,
-      canvasSize: canvasSize ?? undefined,
-      exportFrameSize: canvasSize ?? undefined,
-      tracks,
-      nextFrameId,
-      fps,
-      savedAt: Date.now(),
-    };
-
-    setIsSaving(true);
-    setSaveProgress(null);
-    try {
-      await storageProvider.saveProject(newProj, setSaveProgress);
-      setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
-      setCurrentProjectId(newId);
-      currentProjectIdRef.current = newId;
-      setProjectName(name);
-
-      const info = await storageProvider.getStorageInfo();
-      setStorageInfo(info);
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Save failed:", error);
-      showErrorToast(`${t.saveFailed}: ${(error as Error).message}`);
-    } finally {
-      saveInFlightRef.current = false;
-      setIsSaving(false);
-      setSaveProgress(null);
-    }
-  }, [
-    imageSrc,
-    imageSize,
-    tracks,
-    allFrames,
-    firstFrameImage,
-    projectName,
-    canvasSize,
-    nextFrameId,
-    fps,
-    storageProvider,
-    setSavedSpriteProjects,
-    setCurrentProjectId,
-    setProjectName,
-    t,
-  ]);
-
-  // Load project by id (supports cloud metadata-only list)
-  const loadProject = useCallback(
-    async (projectMeta: (typeof savedProjects)[0]) => {
-      const trackStore = useSpriteTrackStore.getState();
-      trackStore.setIsPlaying(false);
-      trackStore.setCurrentFrameIndex(0);
-      setIsProjectLoading(true);
-      setLoadProgress(null);
-      try {
-        const project = await storageProvider.getProject(projectMeta.id, setLoadProgress);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-
-        setImageSrc(project.imageSrc);
-        setImageSize(project.imageSize);
-        setCanvasSize(project.canvasSize ?? project.exportFrameSize ?? null);
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const raw = project as any;
-        const tracks = Array.isArray(project.tracks)
-          ? project.tracks
-          : migrateFramesToTracks(raw.frames ?? []);
-        restoreTracks(tracks, project.nextFrameId);
-        setProjectName(project.name);
-        setCurrentProjectId(project.id);
-        setCurrentPoints([]);
-
-        const img = new Image();
-        img.onload = () => {
-          imageRef.current = img;
-          const maxWidth = 900;
-          const newScale = Math.min(maxWidth / img.width, 1);
-          setScale(newScale);
-        };
-        img.src = project.imageSrc;
-
-        setIsProjectListOpen(false);
-      } catch (error) {
-        console.error("Load failed:", error);
-        showErrorToast((error as Error).message);
-      } finally {
-        setIsProjectLoading(false);
-        setLoadProgress(null);
-      }
-    },
-    [
-      storageProvider,
-      setImageSrc,
-      setImageSize,
-      setCanvasSize,
-      restoreTracks,
-      setProjectName,
-      setCurrentProjectId,
-      setCurrentPoints,
-      imageRef,
-      setScale,
-      setIsProjectListOpen,
-    ],
-  );
-
-  // Delete project
-  const deleteProject = useCallback(
-    async (projectId: string) => {
-      const shouldDelete = await confirmDialog(t.deleteConfirm);
-      if (!shouldDelete) return;
-
-      setIsProjectLoading(true);
-      setLoadProgress(null);
-      try {
-        await storageProvider.deleteProject(projectId);
-        setSavedSpriteProjects((prev) => prev.filter((p) => p.id !== projectId));
-
-        // Update storage info
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-      } catch (error) {
-        console.error("Delete failed:", error);
-        showErrorToast(`${t.deleteFailed}: ${(error as Error).message}`);
-      } finally {
-        setIsProjectLoading(false);
-        setLoadProgress(null);
-      }
-    },
-    [storageProvider, setSavedSpriteProjects, t],
-  );
-
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
     setSpriteToolMode,
@@ -1120,21 +917,6 @@ function SpriteEditorMain() {
       setSpriteToolMode("select");
     }
   }, [toolMode, setSpriteToolMode]);
-
-  // Handle new project with confirmation
-  const handleNew = useCallback(async () => {
-    if (frames.length > 0 || imageSrc) {
-      const shouldCreate = await confirmDialog({
-        title: t.new || "New Project",
-        message: t.newProjectConfirm,
-        confirmLabel: t.new || "New",
-        cancelLabel: t.cancel || "Cancel",
-      });
-      if (!shouldCreate) return;
-    }
-    setCanvasSize(null);
-    newProject();
-  }, [frames.length, imageSrc, t.cancel, t.new, t.newProjectConfirm, newProject, setCanvasSize]);
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
@@ -1179,7 +961,7 @@ function SpriteEditorMain() {
         title={t.spriteEditor}
         menuBar={
           <SpriteMenuBar
-            onNew={handleNew}
+            onNew={handleNewProject}
             onLoad={() => setIsProjectListOpen(true)}
             onSave={saveProject}
             onSaveAs={saveProjectAs}
@@ -1351,15 +1133,13 @@ function SpriteEditorMain() {
         onKeepCloud={async () => {
           await clearLocalProjects();
           setShowSyncDialog(false);
-          const projects = await storageProvider.getAllProjects();
-          setSavedSpriteProjects(projects);
+          await refreshProjects();
         }}
         onKeepLocal={async () => {
           if (user) {
             await clearCloudProjects(user);
             await uploadLocalProjectsToCloud(user);
-            const projects = await storageProvider.getAllProjects();
-            setSavedSpriteProjects(projects);
+            await refreshProjects();
           }
           setShowSyncDialog(false);
         }}
