@@ -679,36 +679,33 @@ function VideoEditorContent() {
     mediaFileInputRef.current?.click();
   }, []);
 
+  const shouldUseMaskHistory = useCallback((): boolean => {
+    return (
+      toolMode === "mask"
+      || isEditingMask
+      || activeMaskId !== null
+      || selectedMaskIds.length > 0
+    );
+  }, [toolMode, isEditingMask, activeMaskId, selectedMaskIds.length]);
+
   // Edit menu handlers
   const handleUndo = useCallback(() => {
-    const shouldUndoMask = canUndoMask && (
-      toolMode === "mask" ||
-      isEditingMask ||
-      activeMaskId !== null ||
-      selectedMaskIds.length > 0
-    );
-    if (shouldUndoMask) {
+    if (canUndoMask && shouldUseMaskHistory()) {
       undoMask();
       return;
     }
     undo();
     deselectAll();
-  }, [canUndoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, undoMask, undo, deselectAll]);
+  }, [canUndoMask, undoMask, undo, deselectAll, shouldUseMaskHistory]);
 
   const handleRedo = useCallback(() => {
-    const shouldRedoMask = canRedoMask && (
-      toolMode === "mask" ||
-      isEditingMask ||
-      activeMaskId !== null ||
-      selectedMaskIds.length > 0
-    );
-    if (shouldRedoMask) {
+    if (canRedoMask && shouldUseMaskHistory()) {
       redoMask();
       return;
     }
     redo();
     deselectAll();
-  }, [canRedoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, redoMask, redo, deselectAll]);
+  }, [canRedoMask, redoMask, redo, deselectAll, shouldUseMaskHistory]);
 
   const handleDeleteSelectedPositionKeyframe = useCallback((): boolean => {
     if (!selectedPositionKeyframe) return false;
