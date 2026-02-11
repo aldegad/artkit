@@ -157,6 +157,7 @@ interface Translations {
   openLayerPanel: string;
   size: string;
   hardness: string;
+  feather: string;
   presets: string;
   pressure: string;
   builtIn: string;
@@ -519,6 +520,7 @@ const translations: Record<Language, Translations> = {
     openLayerPanel: "레이어 패널 열기",
     size: "크기",
     hardness: "경도",
+    feather: "패더",
     presets: "프리셋",
     pressure: "압력",
     builtIn: "기본",
@@ -879,6 +881,7 @@ const translations: Record<Language, Translations> = {
     openLayerPanel: "Open Layer Panel",
     size: "Size",
     hardness: "Hardness",
+    feather: "Feather",
     presets: "Presets",
     pressure: "Pressure",
     builtIn: "Built-in",

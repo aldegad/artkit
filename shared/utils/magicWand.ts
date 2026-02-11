@@ -18,6 +18,10 @@ export interface MagicWandSelectionOptions {
   connectedOnly?: boolean;
 }
 
+export interface MagicWandMaskCanvasOptions {
+  feather?: number;
+}
+
 export interface MagicWandOutlineOptions {
   zoom?: number;
   offsetX?: number;
@@ -36,10 +40,16 @@ interface RgbaPixel {
 }
 
 const DEFAULT_TOLERANCE = 24;
+const MAX_FEATHER = 32;
 
 function clampTolerance(value: number | undefined): number {
   if (!Number.isFinite(value)) return DEFAULT_TOLERANCE;
   return Math.max(0, Math.min(255, Math.round(value as number)));
+}
+
+function clampFeather(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(MAX_FEATHER, Math.round(value as number)));
 }
 
 function getPixel(data: Uint8ClampedArray, index: number): RgbaPixel {
@@ -188,14 +198,17 @@ export function computeMagicWandSelection(
   };
 }
 
-export function createMagicWandMaskCanvas(selection: MagicWandSelection): HTMLCanvasElement {
+export function createMagicWandMaskCanvas(
+  selection: MagicWandSelection,
+  options?: MagicWandMaskCanvasOptions,
+): HTMLCanvasElement {
   const { width, height, mask } = selection;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = width;
+  baseCanvas.height = height;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
+  const baseCtx = baseCanvas.getContext("2d");
+  if (!baseCtx) {
     throw new Error("Failed to create magic wand mask canvas.");
   }
 
@@ -209,8 +222,26 @@ export function createMagicWandMaskCanvas(selection: MagicWandSelection): HTMLCa
     pixels[offset + 3] = 255;
   }
 
-  ctx.putImageData(new ImageData(pixels, width, height), 0, 0);
-  return canvas;
+  baseCtx.putImageData(new ImageData(pixels, width, height), 0, 0);
+
+  const feather = clampFeather(options?.feather);
+  if (feather <= 0) {
+    return baseCanvas;
+  }
+
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = width;
+  outputCanvas.height = height;
+
+  const outputCtx = outputCanvas.getContext("2d");
+  if (!outputCtx) {
+    return baseCanvas;
+  }
+
+  outputCtx.filter = `blur(${feather}px)`;
+  outputCtx.drawImage(baseCanvas, 0, 0);
+  outputCtx.filter = "none";
+  return outputCanvas;
 }
 
 export function drawMagicWandSelectionOutline(

@@ -88,6 +88,10 @@ function SpriteEditorMain() {
     setLockCropAspect,
     canvasExpandMode,
     setCanvasExpandMode,
+    magicWandTolerance,
+    setMagicWandTolerance,
+    magicWandFeather,
+    setMagicWandFeather,
   } = useEditorTools();
   const {
     brushColor,
@@ -910,6 +914,10 @@ function SpriteEditorMain() {
         setBrushSize={setBrushSize}
         brushHardness={brushHardness}
         setBrushHardness={setBrushHardness}
+        magicWandTolerance={magicWandTolerance}
+        setMagicWandTolerance={setMagicWandTolerance}
+        magicWandFeather={magicWandFeather}
+        setMagicWandFeather={setMagicWandFeather}
         activePreset={activePreset}
         setActivePreset={setActivePreset}
         presets={presets}
@@ -935,6 +943,8 @@ function SpriteEditorMain() {
         labels={{
           size: t.size,
           hardness: t.hardness,
+          tolerance: t.tolerance,
+          feather: t.feather,
           colorPickerTip: t.colorPickerTip,
           brush: t.brush,
           eraser: t.eraser,
