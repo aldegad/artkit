@@ -136,6 +136,32 @@ interface GapInterpolationClipBuildResult {
   persistTasks: Promise<void>[];
 }
 
+interface UseGapInterpolationActionsOptions {
+  analysis: GapInterpolationAnalysis;
+  isPlaying: boolean;
+  pause: () => void;
+  frameRate: number;
+  quality: RifeInterpolationQuality;
+  interpolationProgressLabel?: string;
+  savingLabel?: string;
+  failedLabel?: string;
+  saveToHistory: () => void;
+  addClips: (newClips: Clip[]) => void;
+  selectClips: (clipIds: string[]) => void;
+}
+
+interface UseGapInterpolationActionsResult {
+  showInterpolationModal: boolean;
+  setShowInterpolationModal: (value: boolean) => void;
+  interpolationSteps: number;
+  setInterpolationSteps: (steps: number) => void;
+  isInterpolatingGap: boolean;
+  gapInterpolationProgress: number;
+  gapInterpolationStatus: string;
+  handleInterpolateClipGap: () => void;
+  handleConfirmInterpolation: () => Promise<void>;
+}
+
 interface VideoEditorTranslationSource {
   file?: string;
   edit?: string;
@@ -313,6 +339,142 @@ async function buildGapInterpolationClips(
   }
 
   return { createdClips, persistTasks };
+}
+
+function useGapInterpolationActions(
+  options: UseGapInterpolationActionsOptions
+): UseGapInterpolationActionsResult {
+  const {
+    analysis,
+    isPlaying,
+    pause,
+    frameRate,
+    quality,
+    interpolationProgressLabel,
+    savingLabel,
+    failedLabel,
+    saveToHistory,
+    addClips,
+    selectClips,
+  } = options;
+
+  const [showInterpolationModal, setShowInterpolationModal] = useState(false);
+  const [interpolationSteps, setInterpolationStepsState] = useState(1);
+  const [isInterpolatingGap, setIsInterpolatingGap] = useState(false);
+  const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
+  const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
+
+  const setInterpolationSteps = useCallback((steps: number) => {
+    setInterpolationStepsState(Math.max(1, Math.min(VIDEO_GAP_INTERPOLATION_MAX_STEPS, Math.round(steps))));
+  }, []);
+
+  const handleInterpolateClipGap = useCallback(() => {
+    if (isInterpolatingGap) return;
+
+    if (!analysis.ready || !analysis.firstClip || !analysis.secondClip) {
+      showInfoToast(getGapInterpolationIssueMessage(analysis.issue));
+      return;
+    }
+
+    setInterpolationSteps(analysis.suggestedSteps);
+    setShowInterpolationModal(true);
+  }, [analysis, isInterpolatingGap, setInterpolationSteps]);
+
+  const handleConfirmInterpolation = useCallback(async () => {
+    if (!analysis.ready || !analysis.firstClip || !analysis.secondClip) return;
+
+    const { firstClip, secondClip, gapDuration } = analysis;
+    setShowInterpolationModal(false);
+
+    if (isPlaying) {
+      pause();
+    }
+
+    setIsInterpolatingGap(true);
+    setGapInterpolationProgress(0);
+    setGapInterpolationStatus(interpolationProgressLabel || "Interpolating frames");
+
+    try {
+      const [fromFrame, toFrame] = await Promise.all([
+        captureClipBoundaryFrame(firstClip, "end", frameRate),
+        captureClipBoundaryFrame(secondClip, "start", frameRate),
+      ]);
+
+      const outputSize = {
+        width: Math.max(fromFrame.size.width, toFrame.size.width),
+        height: Math.max(fromFrame.size.height, toFrame.size.height),
+      };
+
+      const generatedFrames = await interpolateFramesWithAI({
+        fromImageData: fromFrame.dataUrl,
+        toImageData: toFrame.dataUrl,
+        steps: interpolationSteps,
+        quality,
+        onProgress: (progress, status) => {
+          setGapInterpolationProgress(Math.max(0, Math.min(90, progress)));
+          setGapInterpolationStatus(status || (interpolationProgressLabel || "Interpolating frames"));
+        },
+      });
+
+      if (generatedFrames.length === 0) {
+        throw new Error("No interpolation frames generated.");
+      }
+
+      setGapInterpolationProgress(92);
+      setGapInterpolationStatus(savingLabel || "Saving...");
+      const { createdClips, persistTasks } = await buildGapInterpolationClips({
+        generatedFrames,
+        firstClip,
+        secondClip,
+        gapDuration,
+        outputSize,
+      });
+
+      saveToHistory();
+      addClips(createdClips);
+      selectClips(createdClips.map((clip) => clip.id));
+
+      await Promise.all(persistTasks);
+
+      setGapInterpolationProgress(100);
+      setGapInterpolationStatus("Done");
+    } catch (error) {
+      console.error("Video gap interpolation failed:", error);
+      setGapInterpolationStatus("Failed");
+      showErrorToast(failedLabel || "Frame interpolation failed. Please try again.");
+    } finally {
+      setIsInterpolatingGap(false);
+      window.setTimeout(() => {
+        setGapInterpolationProgress(0);
+        setGapInterpolationStatus("");
+      }, 1500);
+    }
+  }, [
+    analysis,
+    isPlaying,
+    pause,
+    interpolationProgressLabel,
+    savingLabel,
+    failedLabel,
+    frameRate,
+    interpolationSteps,
+    quality,
+    saveToHistory,
+    addClips,
+    selectClips,
+  ]);
+
+  return {
+    showInterpolationModal,
+    setShowInterpolationModal,
+    interpolationSteps,
+    setInterpolationSteps,
+    isInterpolatingGap,
+    gapInterpolationProgress,
+    gapInterpolationStatus,
+    handleInterpolateClipGap,
+    handleConfirmInterpolation,
+  };
 }
 
 async function captureVideoFrame(sourceUrl: string, sourceTime: number): Promise<FrameSnapshot> {
@@ -598,11 +760,6 @@ function VideoEditorContent() {
   const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality,
   );
-  const [showInterpolationModal, setShowInterpolationModal] = useState(false);
-  const [interpolationSteps, setInterpolationSteps] = useState(1);
-  const [isInterpolatingGap, setIsInterpolatingGap] = useState(false);
-  const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
-  const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
   const audioHistorySavedRef = useRef(false);
   const [saveCount, setSaveCount] = useState(0);
 
@@ -781,6 +938,29 @@ function VideoEditorContent() {
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
     [clips, selectedClipIds, project.frameRate],
   );
+  const {
+    showInterpolationModal,
+    setShowInterpolationModal,
+    interpolationSteps,
+    setInterpolationSteps,
+    isInterpolatingGap,
+    gapInterpolationProgress,
+    gapInterpolationStatus,
+    handleInterpolateClipGap,
+    handleConfirmInterpolation,
+  } = useGapInterpolationActions({
+    analysis: gapInterpolationAnalysis,
+    isPlaying: playback.isPlaying,
+    pause,
+    frameRate: project.frameRate,
+    quality: videoInterpolationQuality,
+    interpolationProgressLabel: t.interpolationProgress,
+    savingLabel: t.saving,
+    failedLabel: t.interpolationFailed,
+    saveToHistory,
+    addClips,
+    selectClips,
+  });
   const isTimelineVisible = isPanelOpen("timeline");
   const canUndoAny = canUndo || canUndoMask;
   const canRedoAny = canRedo || canRedoMask;
@@ -923,102 +1103,6 @@ function VideoEditorContent() {
     endMaskEdit,
     deleteSelectedPositionKeyframe: handleDeleteSelectedPositionKeyframe,
   });
-
-  const handleInterpolateClipGap = useCallback(() => {
-    if (isInterpolatingGap) return;
-
-    if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) {
-      showInfoToast(getGapInterpolationIssueMessage(gapInterpolationAnalysis.issue));
-      return;
-    }
-
-    setInterpolationSteps(gapInterpolationAnalysis.suggestedSteps);
-    setShowInterpolationModal(true);
-  }, [isInterpolatingGap, gapInterpolationAnalysis]);
-
-  const handleConfirmInterpolation = useCallback(async () => {
-    if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) return;
-
-    const { firstClip, secondClip, gapDuration } = gapInterpolationAnalysis;
-    setShowInterpolationModal(false);
-
-    if (playback.isPlaying) {
-      pause();
-    }
-
-    setIsInterpolatingGap(true);
-    setGapInterpolationProgress(0);
-    setGapInterpolationStatus(t.interpolationProgress || "Interpolating frames");
-
-    try {
-      const [fromFrame, toFrame] = await Promise.all([
-        captureClipBoundaryFrame(firstClip, "end", project.frameRate),
-        captureClipBoundaryFrame(secondClip, "start", project.frameRate),
-      ]);
-
-      const outputSize = {
-        width: Math.max(fromFrame.size.width, toFrame.size.width),
-        height: Math.max(fromFrame.size.height, toFrame.size.height),
-      };
-
-      const generatedFrames = await interpolateFramesWithAI({
-        fromImageData: fromFrame.dataUrl,
-        toImageData: toFrame.dataUrl,
-        steps: interpolationSteps,
-        quality: videoInterpolationQuality,
-        onProgress: (progress, status) => {
-          setGapInterpolationProgress(Math.max(0, Math.min(90, progress)));
-          setGapInterpolationStatus(status || (t.interpolationProgress || "Interpolating frames"));
-        },
-      });
-
-      if (generatedFrames.length === 0) {
-        throw new Error("No interpolation frames generated.");
-      }
-
-      setGapInterpolationProgress(92);
-      setGapInterpolationStatus(t.saving || "Saving...");
-      const { createdClips, persistTasks } = await buildGapInterpolationClips({
-        generatedFrames,
-        firstClip,
-        secondClip,
-        gapDuration,
-        outputSize,
-      });
-
-      saveToHistory();
-      addClips(createdClips);
-      selectClips(createdClips.map((clip) => clip.id));
-
-      await Promise.all(persistTasks);
-
-      setGapInterpolationProgress(100);
-      setGapInterpolationStatus("Done");
-    } catch (error) {
-      console.error("Video gap interpolation failed:", error);
-      setGapInterpolationStatus("Failed");
-      showErrorToast(t.interpolationFailed || "Frame interpolation failed. Please try again.");
-    } finally {
-      setIsInterpolatingGap(false);
-      window.setTimeout(() => {
-        setGapInterpolationProgress(0);
-        setGapInterpolationStatus("");
-      }, 1500);
-    }
-  }, [
-    gapInterpolationAnalysis,
-    playback.isPlaying,
-    pause,
-    interpolationSteps,
-    videoInterpolationQuality,
-    t.interpolationProgress,
-    t.saving,
-    t.interpolationFailed,
-    project.frameRate,
-    saveToHistory,
-    addClips,
-    selectClips,
-  ]);
 
   const beginAudioAdjustment = useCallback(() => {
     if (audioHistorySavedRef.current) return;
