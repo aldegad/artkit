@@ -1559,13 +1559,14 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         upsertClipPositionKeyframeAtTimelineTime(
           clipSnapshot,
           currentTimeRef.current,
-          nextPosition,
-          { ensureInitialKeyframe: true }
+          nextPosition
         )
       );
+      scheduleRender();
       return;
     }
     updateClip(clipId, { position: nextPosition });
+    scheduleRender();
   }, [vpUpdatePanDrag, screenToProject, canvasExpandMode, clampToCanvas, project.canvasSize.width, project.canvasSize.height, setCropArea, isDraggingClip, updateClip, screenToMaskCoords, continueDraw, toolMode, isEditingMask, previewContainerRef, transformTool, scheduleRender, autoKeyframeEnabled, currentTimeRef]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {

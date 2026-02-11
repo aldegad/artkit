@@ -12,8 +12,6 @@ import {
   getClipPositionKeyframes,
   moveClipPositionKeyframeToTimelineTime,
   removeClipPositionKeyframeById,
-  resolveClipPositionAtTimelineTime,
-  upsertClipPositionKeyframeAtTimelineTime,
 } from "../../utils/clipTransformKeyframes";
 
 interface TrackProps {
@@ -110,29 +108,8 @@ export function Track({
     const laneX = clamp(e.clientX - rect.left, 0, rect.width);
     const timelineTime = Math.max(0, pixelToTime(laneX));
 
-    const targetClip = visualClips.find((clip) => {
-      return timelineTime >= clip.startTime && timelineTime <= clip.startTime + clip.duration;
-    });
-
-    if (!targetClip) {
-      seek(timelineTime);
-      return;
-    }
-
-    const position = resolveClipPositionAtTimelineTime(targetClip, timelineTime);
-    saveToHistory();
-    selectClip(targetClip.id, false);
     seek(timelineTime);
-    updateClip(
-      targetClip.id,
-      upsertClipPositionKeyframeAtTimelineTime(
-        targetClip,
-        timelineTime,
-        position,
-        { ensureInitialKeyframe: true }
-      )
-    );
-  }, [pixelToTime, saveToHistory, seek, selectClip, setSelectedPositionKeyframe, updateClip, visualClips]);
+  }, [pixelToTime, seek, setSelectedPositionKeyframe]);
 
   const handleTransformLanePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const drag = keyframeDragRef.current;
@@ -327,6 +304,8 @@ export function Track({
                     selectedPositionKeyframe?.clipId === clip.id
                     && selectedPositionKeyframe.keyframeId === point.keyframe.id;
 
+                  const markerX = Math.max(8, point.x);
+
                   return (
                     <button
                       key={`${clip.id}-${point.keyframe.id}`}
@@ -334,14 +313,14 @@ export function Track({
                       onPointerDown={(e) => handleKeyframePointerDown(e, clip, point.keyframe.id, point.globalTime)}
                       title={`t=${point.globalTime.toFixed(2)}s, x=${Math.round(point.keyframe.value.x)}, y=${Math.round(point.keyframe.value.y)}${"\n"}Drag: move, Alt+Click: remove`}
                       className={cn(
-                        "absolute w-3 h-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border pointer-events-auto",
+                        "absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 rotate-45 border pointer-events-auto",
                         isSelectedKeyframe
                           ? "bg-accent-primary border-accent-primary shadow-[0_0_0_2px_rgba(59,130,246,0.25)]"
                           : isPlayheadKeyframe
                             ? "bg-accent-primary/80 border-accent-primary"
                             : "bg-white border-black/35 hover:bg-accent-primary/75"
                       )}
-                      style={{ left: point.x, top: markerY }}
+                      style={{ left: markerX, top: markerY }}
                     />
                   );
                 })}
