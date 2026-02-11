@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { SpriteFrame } from "../types";
-import { Modal, SpinnerIcon } from "../../../shared/components";
+import { Modal, SpinnerIcon, showInfoToast } from "../../../shared/components";
 import { VideoCameraIcon, CheckIcon } from "../../../shared/components/icons";
 
 // ============================================
@@ -140,7 +140,7 @@ export default function VideoImportModal({
     if (!video || !videoSrc) return;
     const duration = Number.isFinite(video.duration) ? video.duration : videoDuration;
     if (!(duration > 0)) {
-      alert("This video cannot be decoded in the browser. Please use MP4 or MOV (H.264).");
+      showInfoToast("This video cannot be decoded in the browser. Please use MP4 or MOV (H.264).");
       return;
     }
 

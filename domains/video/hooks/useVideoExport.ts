@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { showErrorToast } from "@/shared/components";
 import { downloadBlob } from "@/shared/utils";
 import {
   getClipScaleX,
@@ -366,7 +367,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
     exportCanvas.height = project.canvasSize.height;
     const exportCtx = exportCanvas.getContext("2d");
     if (!exportCtx) {
-      alert(`${exportFailedLabel}: export canvas unavailable`);
+      showErrorToast(`${exportFailedLabel}: export canvas unavailable`);
       return;
     }
     exportCtx.imageSmoothingEnabled = true;
@@ -708,7 +709,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       });
     } catch (error) {
       console.error("Video export failed:", error);
-      alert(`${exportFailedLabel}: ${(error as Error).message}`);
+      showErrorToast(`${exportFailedLabel}: ${(error as Error).message}`);
     } finally {
       try {
         const ffmpeg = ffmpegRef.current;

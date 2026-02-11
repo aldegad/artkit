@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
-import { Tooltip, Scrollbar, NumberScrubber } from "@/shared/components";
+import { Tooltip, Scrollbar, NumberScrubber, Popover } from "@/shared/components";
 import {
   BackgroundRemovalIcon,
   UndoIcon,
@@ -28,7 +28,7 @@ export interface EditorActionToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   showRotateMenu: boolean;
-  onToggleRotateMenu: () => void;
+  onRotateMenuOpenChange: (open: boolean) => void;
   onRotateLeft: () => void;
   onRotateRight: () => void;
   zoom: number;
@@ -54,7 +54,7 @@ export function EditorActionToolbar({
   onUndo,
   onRedo,
   showRotateMenu,
-  onToggleRotateMenu,
+  onRotateMenuOpenChange,
   onRotateLeft,
   onRotateRight,
   zoom,
@@ -154,34 +154,38 @@ export function EditorActionToolbar({
 
         <div className="h-4 w-px bg-border-default mx-1" />
 
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
-          <Tooltip content={t.rotate}>
+        <Popover
+          trigger={(
             <button
-              onClick={onToggleRotateMenu}
               className={`p-1 hover:bg-interactive-hover rounded transition-colors ${showRotateMenu ? "bg-interactive-hover" : ""}`}
+              title={t.rotate}
             >
               <RotateIcon className="w-4 h-4" />
             </button>
-          </Tooltip>
-          {showRotateMenu && (
-            <div className="absolute top-full left-0 mt-1 bg-surface-primary border border-border-default rounded-lg shadow-lg z-50 p-1 min-w-max">
-              <button
-                onClick={onRotateLeft}
-                className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
-              >
-                <UndoIcon className="w-4 h-4" />
-                {t.rotateLeft} 90°
-              </button>
-              <button
-                onClick={onRotateRight}
-                className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
-              >
-                <RedoIcon className="w-4 h-4" />
-                {t.rotateRight} 90°
-              </button>
-            </div>
           )}
-        </div>
+          open={showRotateMenu}
+          onOpenChange={onRotateMenuOpenChange}
+          align="start"
+          side="bottom"
+          sideOffset={4}
+          closeOnScroll={false}
+          className="p-1 min-w-max"
+        >
+          <button
+            onClick={onRotateLeft}
+            className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
+          >
+            <UndoIcon className="w-4 h-4" />
+            {t.rotateLeft} 90°
+          </button>
+          <button
+            onClick={onRotateRight}
+            className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-interactive-hover rounded text-sm text-left"
+          >
+            <RedoIcon className="w-4 h-4" />
+            {t.rotateRight} 90°
+          </button>
+        </Popover>
 
         <div className="h-4 w-px bg-border-default mx-1" />
 

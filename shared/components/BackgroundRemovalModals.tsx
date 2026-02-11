@@ -1,5 +1,6 @@
 "use client";
 
+import { Modal } from "./Modal";
 import { PersonIcon, SpinnerIcon } from "./icons";
 
 // ============================================
@@ -45,67 +46,77 @@ export function BackgroundRemovalModals({
   translations: t,
   hasSelection,
 }: BackgroundRemovalModalsProps) {
+  const confirmTitle = (
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 rounded-full bg-accent-primary/20 flex items-center justify-center">
+        <PersonIcon className="w-5 h-5 text-accent-primary" />
+      </div>
+      <h3 className="text-lg font-semibold text-text-primary">{t.title}</h3>
+    </div>
+  );
+
+  const confirmFooter = (
+    <div className="flex gap-2 justify-end">
+      <button
+        onClick={onCloseConfirm}
+        className="px-4 py-2 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
+      >
+        {t.cancel}
+      </button>
+      <button
+        onClick={onConfirm}
+        className="px-4 py-2 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors"
+      >
+        {t.confirm}
+      </button>
+    </div>
+  );
+
   return (
     <>
-      {/* Background Removal Confirmation Popup */}
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-primary rounded-lg p-6 shadow-xl max-w-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-accent-primary/20 flex items-center justify-center">
-                <PersonIcon className="w-5 h-5 text-accent-primary" />
-              </div>
-              <h3 className="text-lg font-semibold text-text-primary">
-                {t.title}
-              </h3>
-            </div>
-            <p className="text-text-secondary text-sm mb-2">{t.description}</p>
-            {t.selectionNote && hasSelection !== undefined && (
-              <p className="text-text-tertiary text-xs mb-4">
-                {t.selectionNote}
-              </p>
-            )}
-            <p className="text-text-tertiary text-xs mb-4">{t.downloadNote}</p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={onCloseConfirm}
-                className="px-4 py-2 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
-              >
-                {t.cancel}
-              </button>
-              <button
-                onClick={onConfirm}
-                className="px-4 py-2 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors"
-              >
-                {t.confirm}
-              </button>
-            </div>
-          </div>
-        </div>
+        <Modal
+          isOpen={showConfirm}
+          onClose={onCloseConfirm}
+          title={confirmTitle}
+          width="420px"
+          maxHeight="85vh"
+          contentClassName="px-6 py-4 space-y-2"
+          footer={confirmFooter}
+        >
+          <p className="text-text-secondary text-sm">{t.description}</p>
+          {t.selectionNote && hasSelection !== undefined && (
+            <p className="text-text-tertiary text-xs">{t.selectionNote}</p>
+          )}
+          <p className="text-text-tertiary text-xs">{t.downloadNote}</p>
+        </Modal>
       )}
 
-      {/* Background Removal Loading Overlay */}
       {isRemoving && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-surface-primary rounded-lg p-6 shadow-xl flex flex-col items-center gap-4 min-w-[280px]">
-            <div className="relative">
-              <SpinnerIcon className="w-12 h-12 text-accent-primary" />
-            </div>
-            <div className="text-center">
-              <p className="text-text-primary font-medium">{t.title}</p>
+        <Modal
+          isOpen={isRemoving}
+          onClose={() => {}}
+          title={t.title}
+          width="320px"
+          closeOnBackdropClick={false}
+          closeOnEscape={false}
+          hideCloseButton
+          contentClassName="px-6 py-5"
+        >
+          <div className="flex flex-col items-center gap-4">
+            <SpinnerIcon className="w-12 h-12 text-accent-primary" />
+            <div className="text-center w-full">
               <p className="text-text-secondary text-sm mt-1">{status}</p>
               <div className="mt-3 w-full bg-surface-secondary rounded-full h-2 overflow-hidden">
                 <div
                   className="bg-accent-primary h-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
                 />
               </div>
-              <p className="text-text-tertiary text-xs mt-2">
-                {Math.round(progress)}%
-              </p>
+              <p className="text-text-tertiary text-xs mt-2">{Math.round(progress)}%</p>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   );
