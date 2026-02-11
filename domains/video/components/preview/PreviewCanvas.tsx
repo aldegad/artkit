@@ -63,6 +63,19 @@ function getLoopFrameBounds(
   return { minFrame, maxFrame: exclusiveEndFrame - 1 };
 }
 
+function getEightResizeHandles(x: number, y: number, width: number, height: number): Array<{ x: number; y: number }> {
+  return [
+    { x, y },
+    { x: x + width / 2, y },
+    { x: x + width, y },
+    { x: x + width, y: y + height / 2 },
+    { x: x + width, y: y + height },
+    { x: x + width / 2, y: y + height },
+    { x, y: y + height },
+    { x, y: y + height / 2 },
+  ];
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
   const {
@@ -949,16 +962,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
       // 8 resize handles (corners + midpoints)
       const handleSize = 10;
-      const handles = [
-        { x: cropX, y: cropY },
-        { x: cropX + cropW / 2, y: cropY },
-        { x: cropX + cropW, y: cropY },
-        { x: cropX + cropW, y: cropY + cropH / 2 },
-        { x: cropX + cropW, y: cropY + cropH },
-        { x: cropX + cropW / 2, y: cropY + cropH },
-        { x: cropX, y: cropY + cropH },
-        { x: cropX, y: cropY + cropH / 2 },
-      ];
+      const handles = getEightResizeHandles(cropX, cropY, cropW, cropH);
       ctx.fillStyle = colors.selection;
       for (const handle of handles) {
         ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
@@ -981,16 +985,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ctx.strokeRect(transformX, transformY, transformW, transformH);
 
       const handleSize = 10;
-      const handles = [
-        { x: transformX, y: transformY },
-        { x: transformX + transformW / 2, y: transformY },
-        { x: transformX + transformW, y: transformY },
-        { x: transformX + transformW, y: transformY + transformH / 2 },
-        { x: transformX + transformW, y: transformY + transformH },
-        { x: transformX + transformW / 2, y: transformY + transformH },
-        { x: transformX, y: transformY + transformH },
-        { x: transformX, y: transformY + transformH / 2 },
-      ];
+      const handles = getEightResizeHandles(transformX, transformY, transformW, transformH);
 
       ctx.fillStyle = colors.selection;
       ctx.strokeStyle = colors.textOnColor;
