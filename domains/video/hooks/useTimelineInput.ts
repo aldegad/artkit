@@ -548,28 +548,31 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     },
   });
 
+  const handleTimelineWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = tracksContainerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      setZoomFromWheelAtPixel(e.deltaY, x);
+      return;
+    }
+
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      const delta = e.shiftKey ? e.deltaY : e.deltaX;
+      panByPixels(delta);
+    }
+  }, [tracksContainerRef, setZoomFromWheelAtPixel, panByPixels]);
+
   useEffect(() => {
     const target = containerRef?.current ?? tracksContainerRef.current;
     if (!target) return;
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const rect = tracksContainerRef.current?.getBoundingClientRect();
-        if (!rect) return;
-
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        setZoomFromWheelAtPixel(e.deltaY, x);
-      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault();
-        const delta = e.shiftKey ? e.deltaY : e.deltaX;
-        panByPixels(delta);
-      }
-    };
-
-    target.addEventListener("wheel", handleWheel, { passive: false });
-    return () => target.removeEventListener("wheel", handleWheel);
-  }, [containerRef, tracksContainerRef, timelineViewportRef, setZoomFromWheelAtPixel, panByPixels]);
+    target.addEventListener("wheel", handleTimelineWheel, { passive: false });
+    return () => target.removeEventListener("wheel", handleTimelineWheel);
+  }, [containerRef, tracksContainerRef, handleTimelineWheel]);
 
   const seekAndKeepVisible = useCallback((time: number) => {
     const seekTime = Math.max(0, time);
