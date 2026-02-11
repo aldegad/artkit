@@ -12,7 +12,6 @@ interface UseEditorToolbarModelsOptions {
 
 interface UseEditorToolbarModelsReturn {
   showToolbars: boolean;
-  showPanModeToggle: boolean;
   actionToolbarProps: EditorActionToolbarProps;
   toolOptionsBarProps: EditorToolOptionsBarProps;
 }
@@ -25,7 +24,6 @@ export function useEditorToolbarModels(
   return useMemo(
     () => ({
       showToolbars: hasLayers,
-      showPanModeToggle: hasLayers,
       actionToolbarProps,
       toolOptionsBarProps,
     }),

@@ -13,7 +13,6 @@ export * from "./layout";
 // Menu and toolbar
 export { default as VideoMenuBar } from "./VideoMenuBar";
 export { default as VideoToolbar } from "./VideoToolbar";
-export { default as VideoPanModeToggle } from "./VideoPanModeToggle";
 export { default as VideoProjectListModal } from "./VideoProjectListModal";
 
 // Export modal

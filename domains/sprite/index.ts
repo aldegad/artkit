@@ -31,7 +31,6 @@ export {
   SpriteSheetImportModal,
   SpriteMenuBar,
   SpriteTopToolbar,
-  SpritePanModeToggle,
   SpriteToolOptionsBar,
   VideoImportModal,
   FrameBackgroundRemovalModals,

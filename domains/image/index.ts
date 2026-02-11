@@ -31,7 +31,6 @@ export { LayersPanelContent } from "./components";
 export { CanvasPanelContent } from "./components";
 export { EditorActionToolbar } from "./components";
 export { BrushPresetSelector } from "./components/toolbars/BrushPresetSelector";
-export { PanModeToggle } from "./components/toolbars/PanModeToggle";
 
 // Contexts
 export { EditorLayersProvider, useEditorLayers } from "./contexts";

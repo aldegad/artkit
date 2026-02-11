@@ -1,6 +1,6 @@
 "use client";
 
-import { Scrollbar, Tooltip } from "@/shared/components";
+import { Scrollbar, Tooltip, PanZoomToolbarButtons } from "@/shared/components";
 import { useLanguage } from "@/shared/contexts";
 import {
   BrushIcon,
@@ -21,6 +21,9 @@ import type { SpriteToolMode } from "../types";
 interface SpriteTopToolbarProps {
   toolMode: SpriteToolMode;
   setSpriteToolMode: (mode: SpriteToolMode) => void;
+  isPanLocked: boolean;
+  onTogglePanLock: () => void;
+  onFitToScreen?: () => void;
   isRemovingBackground: boolean;
   isInterpolating: boolean;
   hasFramesWithImage: boolean;
@@ -36,6 +39,9 @@ interface SpriteTopToolbarProps {
 export default function SpriteTopToolbar({
   toolMode,
   setSpriteToolMode,
+  isPanLocked,
+  onTogglePanLock,
+  onFitToScreen,
   isRemovingBackground,
   isInterpolating,
   hasFramesWithImage,
@@ -229,6 +235,15 @@ export default function SpriteTopToolbar({
               <CropIcon className="w-4 h-4" />
             </button>
           </Tooltip>
+
+          <div className="w-px bg-border-default mx-0.5" />
+
+          <PanZoomToolbarButtons
+            isPanLocked={isPanLocked}
+            onTogglePanLock={onTogglePanLock}
+            onFitToScreen={onFitToScreen}
+            translations={{ panLockOn: t.panLockOn, panLockOff: t.panLockOff, fitToScreen: t.fitToScreen }}
+          />
 
           <div className="w-px bg-border-default mx-0.5" />
 
