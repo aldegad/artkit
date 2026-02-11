@@ -13,6 +13,7 @@ export interface AutosaveData extends BaseAutosaveData {
   currentProjectId?: string | null;
   imageSrc: string | null;
   imageSize: Size;
+  canvasSize?: Size;
   tracks: SpriteTrack[];
   nextFrameId: number;
   fps: number;
