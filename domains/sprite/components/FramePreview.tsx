@@ -13,6 +13,7 @@ import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
 import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelection";
 import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
 import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimation";
+import { useSpritePanPointerSession } from "../hooks/useSpritePanPointerSession";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
 import { drawMagicWandOverlay } from "../utils/magicWandOverlay";
@@ -55,7 +56,6 @@ export default function FramePreviewContent() {
   const scaleScratchRef = useRef<CanvasScaleScratch>({ primary: null, secondary: null });
   const currentFrameIdRef = useRef<number | null>(null);
   const isFrameDirtyRef = useRef(false);
-  const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
   const { ensureDabBufferCanvas, resetDabBufferCanvas } = useDabBufferCanvas();
 
   const validFrames = frames.filter((f) => f.imageData);
@@ -343,56 +343,23 @@ export default function FramePreviewContent() {
     onClearSelection: clearMagicWandSelection,
   });
 
-  const handleContainerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.add(e.pointerId);
-      }
-
-      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
-      if (isTouchPanOnlyInput && !e.isPrimary) {
-        return;
-      }
-
-      if (activeTouchPointerIdsRef.current.size > 1) {
-        frameEndPanDrag();
-        return;
-      }
-
-      if (isPanning || toolMode === "hand" || isTouchPanOnlyInput) {
-        e.preventDefault();
-        frameStartPanDrag({ x: e.clientX, y: e.clientY });
-      }
-    },
-    [isPanning, toolMode, isPanLocked, frameStartPanDrag, frameEndPanDrag]
-  );
-
-  const handleContainerPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
-        frameEndPanDrag();
-        return;
-      }
-
-      if (frameIsPanDragging()) {
-        frameUpdatePanDrag({ x: e.clientX, y: e.clientY });
-      }
-    },
-    [frameIsPanDragging, frameUpdatePanDrag, frameEndPanDrag]
-  );
-
-  const handleContainerPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.delete(e.pointerId);
-      }
-      if (activeTouchPointerIdsRef.current.size <= 1) {
-        frameEndPanDrag();
-      }
+  const {
+    activeTouchPointerIdsRef,
+    handleContainerPointerDown,
+    handleContainerPointerMove,
+    handleContainerPointerUp,
+  } = useSpritePanPointerSession({
+    isPanLocked,
+    isPanning,
+    isHandTool: toolMode === "hand",
+    startPanDrag: frameStartPanDrag,
+    updatePanDrag: frameUpdatePanDrag,
+    endPanDrag: frameEndPanDrag,
+    isPanDragging: frameIsPanDragging,
+    onContainerPointerUp: (e) => {
       endBrushStroke(e.pointerId);
     },
-    [frameEndPanDrag, endBrushStroke]
-  );
+  });
 
   const handleCanvasPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {

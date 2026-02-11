@@ -9,3 +9,4 @@ export { useSpriteExport } from "./useSpriteExport";
 export { useSpriteMagicWandSelection } from "./useSpriteMagicWandSelection";
 export { useSpriteBrushStrokeSession } from "./useSpriteBrushStrokeSession";
 export { useMagicWandOutlineAnimation } from "./useMagicWandOutlineAnimation";
+export { useSpritePanPointerSession } from "./useSpritePanPointerSession";
