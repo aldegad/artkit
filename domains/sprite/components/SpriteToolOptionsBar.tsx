@@ -63,6 +63,10 @@ interface SpriteToolOptionsBarProps {
   };
 }
 
+function formatFeatherPx(value: number): string {
+  return Number.isInteger(value) ? `${value}px` : `${value.toFixed(1)}px`;
+}
+
 export default function SpriteToolOptionsBar({
   toolMode,
   brushColor,
@@ -210,12 +214,12 @@ export default function SpriteToolOptionsBar({
 
             <NumberScrubber
               value={magicWandFeather}
-              onChange={(value) => setMagicWandFeather(Math.round(value))}
+              onChange={setMagicWandFeather}
               min={0}
               max={32}
-              step={1}
+              step={0.5}
               label={`${labels.feather}:`}
-              format={(value) => `${Math.round(value)}px`}
+              format={formatFeatherPx}
               size="sm"
               editable
             />

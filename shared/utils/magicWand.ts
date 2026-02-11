@@ -49,7 +49,8 @@ function clampTolerance(value: number | undefined): number {
 
 function clampFeather(value: number | undefined): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(MAX_FEATHER, Math.round(value as number)));
+  const clamped = Math.max(0, Math.min(MAX_FEATHER, value as number));
+  return Math.round(clamped * 2) / 2;
 }
 
 function getPixel(data: Uint8ClampedArray, index: number): RgbaPixel {
