@@ -16,6 +16,7 @@ interface FrameCardProps {
   isPlaying: boolean;
   isCurrent: boolean;
   isSelected: boolean;
+  hasMultiSelection: boolean;
   isDragOver: boolean;
   isDragged: boolean;
   isEditingOffset: boolean;
@@ -35,6 +36,7 @@ const FrameCard = memo(function FrameCard({
   isPlaying,
   isCurrent,
   isSelected,
+  hasMultiSelection,
   isDragOver,
   isDragged,
   isEditingOffset,
@@ -59,7 +61,7 @@ const FrameCard = memo(function FrameCard({
       className={`
         relative rounded-lg border-2 transition-all
         ${timelineMode === "reorder" ? "cursor-grab active:cursor-grabbing" : "cursor-move"}
-        ${isPlaying && isCurrent ? "border-accent-warning shadow-sm shadow-accent-warning/30" : isSelected ? "border-accent-warning/60 bg-accent-warning/15" : isCurrent ? "border-accent-primary shadow-sm" : "border-border-default"}
+        ${isPlaying && isCurrent ? "border-accent-warning shadow-sm shadow-accent-warning/30" : isCurrent ? "border-accent-primary shadow-sm" : (hasMultiSelection && isSelected) ? "border-accent-warning/60 bg-accent-warning/15" : "border-border-default"}
         ${isDragOver ? "border-accent-primary! scale-105" : ""}
         ${isDragged ? "opacity-50" : ""}
         ${isEditingOffset ? "border-accent-warning!" : ""}
@@ -108,7 +110,7 @@ const FrameCard = memo(function FrameCard({
 export default function FrameStrip() {
   const {
     frames, setFrames, nextFrameId, setNextFrameId,
-    setSelectedFrameId,
+    selectedFrameId, setSelectedFrameId,
     selectedFrameIds, setSelectedFrameIds,
     toggleSelectedFrameId, selectFrameRange,
   } = useEditorFramesMeta();
@@ -178,6 +180,43 @@ export default function FrameStrip() {
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [isPlaying]);
+
+  // Keep single selection aligned to active preview frame.
+  // Preserve multi-selection for batch operations.
+  useEffect(() => {
+    if (isPlaying) return;
+
+    if (frames.length === 0) {
+      if (selectedFrameId !== null || selectedFrameIds.length > 0) {
+        setSelectedFrameId(null);
+        setSelectedFrameIds([]);
+      }
+      return;
+    }
+
+    if (selectedFrameIds.length > 1) return;
+
+    const boundedIndex = Math.max(0, Math.min(displayCurrentFrameIndex, frames.length - 1));
+    const currentFrameId = frames[boundedIndex]?.id ?? null;
+    if (currentFrameId === null) return;
+
+    const alreadySynced =
+      selectedFrameId === currentFrameId
+      && selectedFrameIds.length === 1
+      && selectedFrameIds[0] === currentFrameId;
+    if (alreadySynced) return;
+
+    setSelectedFrameId(currentFrameId);
+    setSelectedFrameIds([currentFrameId]);
+  }, [
+    displayCurrentFrameIndex,
+    frames,
+    isPlaying,
+    selectedFrameId,
+    selectedFrameIds,
+    setSelectedFrameId,
+    setSelectedFrameIds,
+  ]);
 
   useEffect(() => {
     const isInteractiveElement = (target: EventTarget | null) => {
@@ -1093,6 +1132,7 @@ export default function FrameStrip() {
                   isPlaying={isPlaying}
                   isCurrent={idx === displayCurrentFrameIndex}
                   isSelected={selectedFrameIdSet.has(frame.id)}
+                  hasMultiSelection={selectedFrameIds.length > 1}
                   isDragOver={dragOverIndex === idx}
                   isDragged={draggedFrameId === frame.id}
                   isEditingOffset={editingOffsetFrameId === frame.id}
