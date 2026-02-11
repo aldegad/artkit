@@ -27,12 +27,12 @@ import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKey
 import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
 import { useSpriteCropInteractionSession } from "../hooks/useSpriteCropInteractionSession";
 import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelection";
+import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
-import { drawInterpolatedStroke, drawSpriteBrushPixel } from "../utils/brushDrawing";
+import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import {
   drawScaledImage,
   clampZoom,
-  getPointerPressure,
   safeReleasePointerCapture,
   safeSetPointerCapture,
   type CanvasScaleScratch,
@@ -152,8 +152,6 @@ export default function AnimationPreviewContent() {
   const [bgColor, setBgColor] = useState("#000000");
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [hasCompositedFrame, setHasCompositedFrame] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
 
@@ -161,8 +159,6 @@ export default function AnimationPreviewContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
-  const drawingPointerIdRef = useRef<number | null>(null);
-  const lastMousePosRef = useRef({ x: 0, y: 0 });
 
   // Keep the latest composited frame as a canvas to avoid image re-decoding per frame.
   const compositedCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -675,8 +671,6 @@ export default function AnimationPreviewContent() {
       commitFrameEdits();
     }
 
-    setHasDrawn(false);
-
     if (!editableFrame?.imageData) {
       editFrameCanvasRef.current = null;
       editFrameCtxRef.current = null;
@@ -717,17 +711,6 @@ export default function AnimationPreviewContent() {
       cancelled = true;
     };
   }, [editableFrame?.id, editableFrame?.imageData, activeTrackId, clearMagicWandSelection, commitFrameEdits, invalidateAiSelectionCache, requestRender, resetDabBufferCanvas]);
-
-  useEffect(() => {
-    if (!isEditMode) {
-      commitFrameEdits();
-      drawingPointerIdRef.current = null;
-      setIsDrawing(false);
-      setCursorPos(null);
-      setIsOverCanvas(false);
-      requestRender();
-    }
-  }, [isEditMode, commitFrameEdits, requestRender]);
 
   // Flush frame edits on unmount.
   useEffect(() => {
@@ -888,6 +871,34 @@ export default function AnimationPreviewContent() {
     [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
   );
 
+  const {
+    isDrawing,
+    resetHasDrawn,
+    startBrushStroke,
+    continueBrushStroke,
+    endBrushStroke,
+    cancelBrushStroke,
+  } = useSpriteBrushStrokeSession({
+    pushHistory,
+    drawAt: (x, y, pressure) => drawPixel(x, y, brushColor, isEraserTool, pressure),
+    requestRender,
+    commitStroke: commitFrameEdits,
+  });
+
+  useEffect(() => {
+    resetHasDrawn();
+  }, [editableFrame?.id, activeTrackId, resetHasDrawn]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      commitFrameEdits();
+      cancelBrushStroke();
+      setCursorPos(null);
+      setIsOverCanvas(false);
+      requestRender();
+    }
+  }, [isEditMode, cancelBrushStroke, commitFrameEdits, requestRender]);
+
   const pickColorFromComposited = useCallback(
     (clientX: number, clientY: number) => {
       const sourceCanvas = compositedCanvasRef.current;
@@ -1018,13 +1029,9 @@ export default function AnimationPreviewContent() {
       if (activeTouchPointerIdsRef.current.size <= 1) {
         animEndPanDrag();
       }
-      if (drawingPointerIdRef.current === e.pointerId) {
-        drawingPointerIdRef.current = null;
-        setIsDrawing(false);
-        commitFrameEdits();
-      }
+      endBrushStroke(e.pointerId);
     },
-    [animEndPanDrag, commitFrameEdits],
+    [animEndPanDrag, endBrushStroke],
   );
 
   const handlePreviewCanvasPointerDown = useCallback(
@@ -1034,7 +1041,7 @@ export default function AnimationPreviewContent() {
       }
 
       if (activeTouchPointerIdsRef.current.size > 1) {
-        setIsDrawing(false);
+        cancelBrushStroke();
         return;
       }
 
@@ -1078,24 +1085,11 @@ export default function AnimationPreviewContent() {
         return;
       }
 
-      if (!hasDrawn) {
-        pushHistory();
-        setHasDrawn(true);
-      }
-
       if (isPlaying) {
         setIsPlaying(false);
       }
 
-      drawingPointerIdRef.current = e.pointerId;
-      setIsDrawing(true);
-      const pressure = getPointerPressure(e);
-
-      if (drawPixel(coords.x, coords.y, brushColor, isEraserTool, pressure)) {
-        requestRender();
-      }
-      lastMousePosRef.current = { x: coords.x, y: coords.y };
-
+      startBrushStroke(e, coords);
       safeSetPointerCapture(e.currentTarget, e.pointerId);
     },
     [
@@ -1112,15 +1106,11 @@ export default function AnimationPreviewContent() {
       isAiSelecting,
       editableFrame,
       getPixelCoordinates,
-      hasDrawn,
-      pushHistory,
       isPlaying,
       setIsPlaying,
       applyMagicWandSelection,
-      drawPixel,
-      brushColor,
-      isEraserTool,
-      requestRender,
+      startBrushStroke,
+      cancelBrushStroke,
     ],
   );
 
@@ -1140,26 +1130,13 @@ export default function AnimationPreviewContent() {
         return;
       }
 
-      if (!isEditMode || !isDrawing || drawingPointerIdRef.current !== e.pointerId || !editableFrame) {
+      if (!isEditMode || !isDrawing || !editableFrame) {
         return;
       }
 
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (!coords) return;
-
-      const pressure = getPointerPressure(e);
-      const didInterpolate = drawInterpolatedStroke({
-        from: lastMousePosRef.current,
-        to: coords,
-        drawAt: (x, y) => {
-          drawPixel(x, y, brushColor, isEraserTool, pressure);
-        },
-      });
-      if (didInterpolate) {
-        requestRender();
-      }
-
-      lastMousePosRef.current = { x: coords.x, y: coords.y };
+      continueBrushStroke(e, coords);
     },
     [
       handleCropPointerMove,
@@ -1167,10 +1144,7 @@ export default function AnimationPreviewContent() {
       isDrawing,
       editableFrame,
       getPixelCoordinates,
-      drawPixel,
-      brushColor,
-      isEraserTool,
-      requestRender,
+      continueBrushStroke,
     ],
   );
 
@@ -1182,14 +1156,10 @@ export default function AnimationPreviewContent() {
 
       safeReleasePointerCapture(e.currentTarget, e.pointerId);
 
-      if (drawingPointerIdRef.current === e.pointerId) {
-        drawingPointerIdRef.current = null;
-        setIsDrawing(false);
-        commitFrameEdits();
-      }
+      endBrushStroke(e.pointerId);
       handleCropPointerUp();
     },
-    [commitFrameEdits, handleCropPointerUp],
+    [endBrushStroke, handleCropPointerUp],
   );
 
   const handlePreviewCanvasPointerEnter = useCallback(() => {
@@ -1204,16 +1174,10 @@ export default function AnimationPreviewContent() {
       setIsOverCanvas(false);
       setCursorPos(null);
 
-      if (drawingPointerIdRef.current === e.pointerId) {
-        drawingPointerIdRef.current = null;
-        setIsDrawing(false);
-        commitFrameEdits();
-      }
-      if (e.pointerId !== drawingPointerIdRef.current) {
-        cancelCropDrag();
-      }
+      endBrushStroke(e.pointerId);
+      cancelCropDrag();
     },
-    [cancelCropDrag, commitFrameEdits],
+    [cancelCropDrag, endBrushStroke],
   );
 
   const hasVisibleCanvas = isEditMode ? Boolean(editFrameCanvasRef.current) : hasCompositedFrame;
