@@ -53,6 +53,7 @@ import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
 const MAGIC_WAND_OUTLINE_DASH = [4, 4];
 const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
+const FIT_TO_SCREEN_PADDING = 40;
 
 // ============================================
 // Frame Indicator (editable)
@@ -270,7 +271,6 @@ export default function AnimationPreviewContent() {
     setPan: setAnimVpPan,
     getZoom: getAnimVpZoom,
     getPan: getAnimVpPan,
-    fitToContainer: fitAnimVpToContainer,
     startPanDrag: animStartPanDrag,
     updatePanDrag: animUpdatePanDrag,
     endPanDrag: animEndPanDrag,
@@ -279,6 +279,30 @@ export default function AnimationPreviewContent() {
     pinchRef: animPinchRef,
   } = viewport;
 
+  const fitAnimPreviewToContainer = useCallback(
+    (padding?: number, maxScale?: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const sourceCanvas = isEditMode
+        ? editFrameCanvasRef.current
+        : compositedCanvasRef.current;
+      const sourceWidth = sourceCanvas?.width ?? canvasSize?.width ?? 0;
+      const sourceHeight = sourceCanvas?.height ?? canvasSize?.height ?? 0;
+      if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+      const p = padding ?? FIT_TO_SCREEN_PADDING;
+      const maxWidth = container.clientWidth - p;
+      const maxHeight = container.clientHeight - p;
+      if (maxWidth <= 0 || maxHeight <= 0) return;
+
+      const fitZoom = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale ?? 1);
+      setAnimVpZoom(fitZoom);
+      setAnimVpPan({ x: 0, y: 0 });
+    },
+    [canvasSize?.height, canvasSize?.width, isEditMode, setAnimVpPan, setAnimVpZoom],
+  );
+
   // ---- Register viewport API to store (for toolbar zoom/fit control) ----
   useEffect(() => {
     const store = useSpriteViewportStore.getState();
@@ -286,10 +310,10 @@ export default function AnimationPreviewContent() {
       setZoom: setAnimVpZoom,
       setPan: setAnimVpPan,
       getZoom: getAnimVpZoom,
-      fitToContainer: fitAnimVpToContainer,
+      fitToContainer: fitAnimPreviewToContainer,
     });
     return () => store.unregisterAnimPreviewVpApi();
-  }, [setAnimVpZoom, setAnimVpPan, getAnimVpZoom, fitAnimVpToContainer]);
+  }, [setAnimVpZoom, setAnimVpPan, getAnimVpZoom, fitAnimPreviewToContainer]);
 
   // ---- Real-time zoom sync to store (for toolbar NumberScrubber display) ----
   useEffect(() => {
