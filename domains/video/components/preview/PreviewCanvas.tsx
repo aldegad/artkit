@@ -31,6 +31,7 @@ import { useCropInteractionSession } from "./useCropInteractionSession";
 import { usePreviewMediaPlaybackSync } from "./usePreviewMediaPlaybackSync";
 import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 import { usePreviewPlaybackRenderTick } from "./usePreviewPlaybackRenderTick";
+import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
 
 interface PreviewCanvasProps {
   className?: string;
@@ -1250,45 +1251,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     });
   }, [onVideoViewportChange, scheduleRender]);
 
-  // Handle resize — recalculate fit scale via viewport, then re-render
-  useEffect(() => {
-    const container = previewContainerRef.current;
-    if (!container) return;
-
-    const updateContainerRect = (width: number, height: number) => {
-      containerRectRef.current = { width, height };
-    };
-
-    const initialRect = container.getBoundingClientRect();
-    updateContainerRect(initialRect.width, initialRect.height);
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const observedRect = entries[0]?.contentRect;
-      const width = observedRect?.width ?? containerRectRef.current.width;
-      const height = observedRect?.height ?? containerRectRef.current.height;
-      updateContainerRect(width, height);
-
-      const { zoom, pan } = vpGetTransform();
-      if (zoom === 1 && pan.x === 0 && pan.y === 0) {
-        // Default view — fit to container
-        vpFitToContainer(40);
-      } else {
-        // User has zoomed/panned — only update baseScale
-        const padding = 40;
-        const maxW = width - padding * 2;
-        const maxH = height - padding * 2;
-        const pw = project.canvasSize.width;
-        const ph = project.canvasSize.height;
-        if (maxW > 0 && maxH > 0 && pw > 0 && ph > 0) {
-          vpSetBaseScale(Math.min(maxW / pw, maxH / ph));
-        }
-      }
-      requestAnimationFrame(() => renderRef.current());
-    });
-
-    resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
-  }, [previewContainerRef, vpGetTransform, vpFitToContainer, vpSetBaseScale, project.canvasSize.width, project.canvasSize.height]);
+  usePreviewResizeObserver({
+    previewContainerRef,
+    containerRectRef,
+    getTransform: vpGetTransform,
+    fitToContainer: vpFitToContainer,
+    setBaseScale: vpSetBaseScale,
+    projectCanvasSize: project.canvasSize,
+    renderRef,
+  });
 
   return (
     <div
