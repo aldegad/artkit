@@ -934,6 +934,7 @@ function SpriteEditorMain() {
           colorPickerTip: t.colorPickerTip,
           brush: t.brush,
           eraser: t.eraser,
+          magicWand: t.magicWand,
           eyedropper: t.eyedropper,
           zoomInOut: t.zoomInOut,
           frame: t.frame,
@@ -944,6 +945,7 @@ function SpriteEditorMain() {
           builtIn: t.builtIn,
           zoomToolTip: t.zoomToolTip,
           cropToolTip: t.cropToolTip,
+          magicWandToolTip: t.magicWandToolTip,
         }}
       />
 

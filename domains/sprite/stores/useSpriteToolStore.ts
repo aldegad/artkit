@@ -78,7 +78,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   // Tool Actions
   setSpriteToolMode: (mode) =>
     set(() => {
-      if (mode === "brush" || mode === "eraser" || mode === "eyedropper" || mode === "zoom") {
+      if (mode === "brush" || mode === "eraser" || mode === "magicwand" || mode === "eyedropper" || mode === "zoom") {
         return {
           toolMode: mode,
           frameEditToolMode: mode,

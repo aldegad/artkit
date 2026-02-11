@@ -127,6 +127,7 @@ interface Translations {
   zoom: string;
   brush: string;
   eraser: string;
+  magicWand: string;
   eyedropper: string;
   stamp: string;
   marquee: string;
@@ -198,6 +199,7 @@ interface Translations {
   cloneStampToolTip: string;
   cropToolTip: string;
   zoomToolTip: string;
+  magicWandToolTip: string;
   moveToolTip: string;
 
   // Timeline
@@ -486,6 +488,7 @@ const translations: Record<Language, Translations> = {
     zoom: "확대",
     brush: "브러시",
     eraser: "지우개",
+    magicWand: "마법봉",
     eyedropper: "스포이드",
     stamp: "도장",
     marquee: "선택",
@@ -557,6 +560,7 @@ const translations: Record<Language, Translations> = {
     cloneStampToolTip: "Alt+클릭으로 복제 소스 지정",
     cropToolTip: "영역 지정 후 Export로 잘라내기",
     zoomToolTip: "클릭: 확대 | Alt+클릭: 축소",
+    magicWandToolTip: "클릭한 픽셀과 연결된 유사 색상 영역 선택",
     moveToolTip: "선택 영역 이동",
 
     // Timeline
@@ -843,6 +847,7 @@ const translations: Record<Language, Translations> = {
     zoom: "Zoom",
     brush: "Brush",
     eraser: "Eraser",
+    magicWand: "Magic Wand",
     eyedropper: "Eyedropper",
     stamp: "Stamp",
     marquee: "Marquee",
@@ -914,6 +919,7 @@ const translations: Record<Language, Translations> = {
     cloneStampToolTip: "Alt+click to set clone source",
     cropToolTip: "Select area and export to crop",
     zoomToolTip: "Click: Zoom in | Alt+click: Zoom out",
+    magicWandToolTip: "Select connected pixels similar to clicked color",
     moveToolTip: "Move selection",
 
     // Timeline
