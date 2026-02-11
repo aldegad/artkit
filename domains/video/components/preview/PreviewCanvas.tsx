@@ -223,11 +223,16 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isPanningRef.current = false;
   }, [vpEndPanDrag]);
 
-  const startPanDragFromPointer = useCallback((target: EventTarget | null, pointerId: number, clientX: number, clientY: number) => {
-    safeSetPointerCapture(target, pointerId);
-    vpStartPanDrag({ x: clientX, y: clientY });
+  const preventAndCapturePointer = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    safeSetPointerCapture(e.currentTarget, e.pointerId);
+  }, []);
+
+  const startPanDragFromPointer = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    preventAndCapturePointer(e);
+    vpStartPanDrag({ x: e.clientX, y: e.clientY });
     isPanningRef.current = true;
-  }, [vpStartPanDrag]);
+  }, [preventAndCapturePointer, vpStartPanDrag]);
 
   const dragStateRef = useRef<{
     clipId: string | null;
@@ -1200,15 +1205,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     // Middle mouse button drag for pan
     if (e.button === 1) {
-      e.preventDefault();
-      startPanDragFromPointer(e.currentTarget, e.pointerId, e.clientX, e.clientY);
+      startPanDragFromPointer(e);
       return;
     }
 
     const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
     if (isTouchPanOnlyInput && e.button === 0) {
-      e.preventDefault();
-      startPanDragFromPointer(e.currentTarget, e.pointerId, e.clientX, e.clientY);
+      startPanDragFromPointer(e);
       return;
     }
 
@@ -1220,31 +1223,27 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     if (isHandMode && e.button === 0) {
-      e.preventDefault();
-      startPanDragFromPointer(e.currentTarget, e.pointerId, e.clientX, e.clientY);
+      startPanDragFromPointer(e);
       return;
     }
 
     if (isEditingMask && activeTrackId) {
       const handledMask = handleMaskPointerDown(e);
       if (handledMask) {
-        e.preventDefault();
-        safeSetPointerCapture(e.currentTarget, e.pointerId);
+        preventAndCapturePointer(e);
       }
       return;
     }
 
     if (handleCropPointerDown(e)) {
-      e.preventDefault();
-      safeSetPointerCapture(e.currentTarget, e.pointerId);
+      preventAndCapturePointer(e);
       return;
     }
 
     if (toolMode === "transform") {
       const handled = transformTool.handlePointerDown(e);
       if (handled) {
-        e.preventDefault();
-        safeSetPointerCapture(e.currentTarget, e.pointerId);
+        preventAndCapturePointer(e);
       }
       return;
     }
@@ -1257,8 +1256,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const hitClip = hitTestClipAtPoint(point);
     if (!hitClip || hitClip.type === "audio") return;
 
-    e.preventDefault();
-    safeSetPointerCapture(e.currentTarget, e.pointerId);
+    preventAndCapturePointer(e);
     saveToHistory();
     selectClip(hitClip.id, false);
     dragStateRef.current = {
@@ -1281,6 +1279,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     handleCropPointerDown,
     screenToProject,
     hitTestClipAtPoint,
+    preventAndCapturePointer,
     saveToHistory,
     selectClip,
     transformTool,
