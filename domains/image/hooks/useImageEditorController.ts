@@ -60,6 +60,8 @@ export function useImageEditorController() {
     closeFloatingWindow,
     removePanel,
     layoutState,
+    panelHeadersVisible,
+    togglePanelHeaders,
   } = useEditorLayout();
   const isLayersOpen = isPanelOpen("layers");
 
@@ -738,6 +740,8 @@ export function useImageEditorController() {
     setLockGuides,
     setSnapToGuides,
     onClearGuides: clearAllGuides,
+    panelHeadersVisible,
+    onTogglePanelHeaders: togglePanelHeaders,
     translations: uiText.menu,
   });
 

@@ -28,13 +28,14 @@ export default function Panel({ node }: PanelProps) {
     updateDropTarget,
     registerPanelRef,
     unregisterPanelRef,
+    panelHeadersVisible,
   } = useLayout();
   const config = useLayoutConfig();
   const panelRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<DockPosition>(null);
   const isCollapsed = isDockedPanelCollapsed(node.id);
 
-  const showHeader = config.isPanelHeaderVisible(node.panelId);
+  const showHeader = config.isPanelHeaderVisible(node.panelId) && panelHeadersVisible;
   const title = config.getPanelTitle(node.panelId);
 
   // Subscribe to panel updates for re-rendering when panel content changes

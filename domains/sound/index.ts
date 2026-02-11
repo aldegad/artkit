@@ -11,7 +11,7 @@ export {
 } from "./components";
 
 // Context
-export { SoundEditorProvider, useSoundEditor } from "./contexts";
+export { SoundEditorProvider, useSoundEditor, SoundLayoutProvider, useSoundLayout } from "./contexts";
 
 // Types
 export type {
