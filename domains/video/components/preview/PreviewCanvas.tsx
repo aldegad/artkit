@@ -30,38 +30,18 @@ import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
 import { resolvePreviewCanvasCursor } from "./previewCanvasCursor";
 import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
 import { usePreviewClipDragSession } from "./usePreviewClipDragSession";
+import {
+  getLoopFrameBounds,
+  createPlaybackPerfStats,
+  resetPlaybackPerfStatsWindow,
+  countActiveVisualLayersAtTime,
+} from "./previewPlaybackStats";
 
 interface PreviewCanvasProps {
   className?: string;
 }
 
 const SAMPLE_FRAME_EPSILON = 1e-6;
-
-function getLoopFrameBounds(
-  loop: boolean,
-  loopStart: number,
-  loopEnd: number,
-  duration: number
-): { minFrame: number; maxFrame: number } | null {
-  if (!loop) return null;
-
-  const safeDuration = Math.max(0, duration);
-  const rangeStart = Math.max(0, Math.min(loopStart, safeDuration));
-  const hasRange = loopEnd > rangeStart + 0.001;
-  const rangeEnd = hasRange
-    ? Math.max(rangeStart + 0.001, Math.min(loopEnd, safeDuration))
-    : safeDuration;
-
-  // Keep sampled frames inside [loopStart, loopEnd) to avoid one-frame flashes
-  // from just before IN when loop points are not aligned to frame boundaries.
-  const minFrame = Math.max(0, Math.ceil(rangeStart * PRE_RENDER.FRAME_RATE - SAMPLE_FRAME_EPSILON));
-  const exclusiveEndFrame = Math.max(
-    minFrame + 1,
-    Math.ceil(rangeEnd * PRE_RENDER.FRAME_RATE - SAMPLE_FRAME_EPSILON)
-  );
-
-  return { minFrame, maxFrame: exclusiveEndFrame - 1 };
-}
 
 function getEightResizeHandles(x: number, y: number, width: number, height: number): Array<{ x: number; y: number }> {
   return [
@@ -74,42 +54,6 @@ function getEightResizeHandles(x: number, y: number, width: number, height: numb
     { x, y: y + height },
     { x, y: y + height / 2 },
   ];
-}
-
-function createPlaybackPerfStats() {
-  return {
-    windowStartMs: 0,
-    lastTickMs: 0,
-    lastRenderMs: 0,
-    renderedFrames: 0,
-    skippedByCap: 0,
-    longTickCount: 0,
-    cacheFrames: 0,
-    liveFrames: 0,
-  };
-}
-
-function resetPlaybackPerfStatsWindow(stats: ReturnType<typeof createPlaybackPerfStats>) {
-  stats.renderedFrames = 0;
-  stats.skippedByCap = 0;
-  stats.longTickCount = 0;
-  stats.cacheFrames = 0;
-  stats.liveFrames = 0;
-}
-
-function countActiveVisualLayersAtTime(
-  tracks: VideoTrack[],
-  getClipAtTime: (trackId: string, time: number) => Clip | null,
-  time: number,
-): number {
-  let activeVisualLayers = 0;
-  for (const track of tracks) {
-    if (!track.visible) continue;
-    const clip = getClipAtTime(track.id, time);
-    if (!clip || !clip.visible || clip.type === "audio") continue;
-    activeVisualLayers += 1;
-  }
-  return activeVisualLayers;
 }
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
