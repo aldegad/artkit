@@ -30,6 +30,7 @@ import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelectio
 import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
+import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
 import {
   drawScaledImage,
   clampZoom,
@@ -759,27 +760,7 @@ export default function AnimationPreviewContent() {
     (clientX: number, clientY: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return null;
-
-      const rect = canvas.getBoundingClientRect();
-      const style = getComputedStyle(canvas);
-      const borderLeft = parseFloat(style.borderLeftWidth) || 0;
-      const borderTop = parseFloat(style.borderTopWidth) || 0;
-      const borderRight = parseFloat(style.borderRightWidth) || 0;
-      const borderBottom = parseFloat(style.borderBottomWidth) || 0;
-
-      const contentWidth = rect.width - borderLeft - borderRight;
-      const contentHeight = rect.height - borderTop - borderBottom;
-
-      if (contentWidth <= 0 || contentHeight <= 0) return null;
-
-      const scaleX = canvas.width / contentWidth;
-      const scaleY = canvas.height / contentHeight;
-      const zoom = getAnimVpZoom();
-
-      const x = Math.floor(((clientX - rect.left - borderLeft) * scaleX) / zoom);
-      const y = Math.floor(((clientY - rect.top - borderTop) * scaleY) / zoom);
-
-      return { x, y };
+      return getCanvasPixelCoordinates(canvas, clientX, clientY, getAnimVpZoom());
     },
     [getAnimVpZoom],
   );
