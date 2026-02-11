@@ -114,6 +114,108 @@ function sanitizeTimelineView(viewState: TimelineViewState | undefined): Timelin
   };
 }
 
+function buildClipIdsBySourceId(clips: Clip[]): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const clip of clips) {
+    if (!clip.sourceId) continue;
+    const ids = result.get(clip.sourceId) || [];
+    ids.push(clip.id);
+    result.set(clip.sourceId, ids);
+  }
+  return result;
+}
+
+async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip[]> {
+  const clipIdsBySourceId = buildClipIdsBySourceId(normalizedClips);
+  const sourceBlobCache = new Map<string, Blob>();
+  const restoredClips: Clip[] = [];
+
+  for (const clip of normalizedClips) {
+    let blob = await loadMediaBlob(clip.id);
+    if (!blob && clip.sourceId) {
+      blob = sourceBlobCache.get(clip.sourceId) || null;
+      if (!blob) {
+        const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
+        for (const candidateId of candidateIds) {
+          if (candidateId === clip.id) continue;
+          const candidateBlob = await loadMediaBlob(candidateId);
+          if (candidateBlob) {
+            blob = candidateBlob;
+            sourceBlobCache.set(clip.sourceId, candidateBlob);
+            break;
+          }
+        }
+      }
+    }
+
+    if (blob) {
+      if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
+        sourceBlobCache.set(clip.sourceId, blob);
+      }
+      const newUrl = URL.createObjectURL(blob);
+      restoredClips.push({ ...clip, sourceUrl: newUrl });
+      continue;
+    }
+
+    // Skip stale blob: URLs that cannot be restored.
+    if (!clip.sourceUrl.startsWith("blob:")) {
+      restoredClips.push(clip);
+    }
+  }
+
+  return restoredClips;
+}
+
+interface NormalizedLoadedPlayback {
+  timelineView: TimelineViewState;
+  persistedCurrentTime: number;
+  duration: number;
+  loop: boolean;
+  loopStart: number;
+  loopEnd: number;
+  playbackRange: SavedVideoProject["playbackRange"];
+}
+
+function normalizeLoadedPlayback(
+  loaded: SavedVideoProject,
+  loadedDuration: number,
+): NormalizedLoadedPlayback {
+  const timelineView = sanitizeTimelineView(loaded.timelineView);
+  const restoredTime = Math.max(0, Number.isFinite(loaded.currentTime) ? loaded.currentTime : 0);
+  const duration = Math.max(loadedDuration, 0.001);
+
+  const loop = loaded.playbackRange?.loop ?? false;
+  const loopStart = Math.max(0, Math.min(loaded.playbackRange?.loopStart ?? 0, duration));
+  const loopEnd = Math.max(
+    loopStart + 0.001,
+    Math.min(loaded.playbackRange?.loopEnd ?? duration, duration),
+  );
+
+  const persistedCurrentTime = loop
+    ? Math.max(loopStart, Math.min(restoredTime, loopEnd))
+    : Math.max(0, Math.min(restoredTime, duration));
+
+  const shouldPersistPlaybackRange =
+    loop || loopStart > 0.001 || loopEnd < duration - 0.001;
+  const playbackRange = shouldPersistPlaybackRange
+    ? {
+        loop,
+        loopStart,
+        loopEnd,
+      }
+    : undefined;
+
+  return {
+    timelineView,
+    persistedCurrentTime,
+    duration,
+    loop,
+    loopStart,
+    loopEnd,
+    playbackRange,
+  };
+}
+
 export function useVideoProjectLibrary(
   options: UseVideoProjectLibraryOptions
 ): UseVideoProjectLibraryReturn {
@@ -165,104 +267,43 @@ export function useVideoProjectLibrary(
 
       const loadedProject = loaded.project;
       const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
-      const clipIdsBySourceId = new Map<string, string[]>();
-      for (const clip of normalizedClips) {
-        if (!clip.sourceId) continue;
-        const ids = clipIdsBySourceId.get(clip.sourceId) || [];
-        ids.push(clip.id);
-        clipIdsBySourceId.set(clip.sourceId, ids);
-      }
-      const sourceBlobCache = new Map<string, Blob>();
-
-      const restoredClips: Clip[] = [];
-      for (const clip of normalizedClips) {
-        let blob = await loadMediaBlob(clip.id);
-        if (!blob && clip.sourceId) {
-          blob = sourceBlobCache.get(clip.sourceId) || null;
-          if (!blob) {
-            const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
-            for (const candidateId of candidateIds) {
-              if (candidateId === clip.id) continue;
-              const candidateBlob = await loadMediaBlob(candidateId);
-              if (candidateBlob) {
-                blob = candidateBlob;
-                sourceBlobCache.set(clip.sourceId, candidateBlob);
-                break;
-              }
-            }
-          }
-        }
-        if (blob) {
-          if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
-            sourceBlobCache.set(clip.sourceId, blob);
-          }
-          const newUrl = URL.createObjectURL(blob);
-          restoredClips.push({ ...clip, sourceUrl: newUrl });
-        } else if (!clip.sourceUrl.startsWith("blob:")) {
-          restoredClips.push(clip);
-        }
-      }
+      const restoredClips = await restoreClipsWithLocalMedia(normalizedClips);
+      const restoredMasks = loadedProject.masks || [];
 
       const loadedDuration = calculateProjectDuration(restoredClips);
-      setProjectName(loaded.name);
-      setProject({
+      const normalizedPlayback = normalizeLoadedPlayback(loaded, loadedDuration);
+      const restoredProject: VideoProject = {
         ...loadedProject,
         name: loaded.name,
         tracks: loadedProject.tracks,
         clips: restoredClips,
         duration: loadedDuration,
-      });
+      };
+
+      setProjectName(loaded.name);
+      setProject(restoredProject);
       restoreTracks(loadedProject.tracks);
       restoreClips(restoredClips);
-      restoreMasks(loadedProject.masks || []);
-
-      const normalizedTimelineView = sanitizeTimelineView(loaded.timelineView);
-      setViewState(normalizedTimelineView);
-      const restoredTime = Math.max(
-        0,
-        Number.isFinite(loaded.currentTime) ? loaded.currentTime : 0
+      restoreMasks(restoredMasks);
+      setViewState(normalizedPlayback.timelineView);
+      setLoopRange(
+        normalizedPlayback.loopStart,
+        normalizedPlayback.loopEnd,
+        normalizedPlayback.loop,
+        normalizedPlayback.duration,
       );
-      seek(restoredTime);
-      const duration = Math.max(loadedDuration, 0.001);
-      const targetLoop = loaded.playbackRange?.loop ?? false;
-      const targetStart = Math.max(0, Math.min(loaded.playbackRange?.loopStart ?? 0, duration));
-      const targetEnd = Math.max(
-        targetStart + 0.001,
-        Math.min(loaded.playbackRange?.loopEnd ?? duration, duration)
-      );
-      const persistedCurrentTime = targetLoop
-        ? Math.max(targetStart, Math.min(restoredTime, targetEnd))
-        : Math.max(0, Math.min(restoredTime, duration));
-
-      const shouldPersistPlaybackRange =
-        targetLoop || targetStart > 0.001 || targetEnd < duration - 0.001;
-      const normalizedPlaybackRange = shouldPersistPlaybackRange
-        ? {
-            loop: targetLoop,
-            loopStart: targetStart,
-            loopEnd: targetEnd,
-          }
-        : undefined;
-
-      setLoopRange(targetStart, targetEnd, targetLoop, duration);
-      seek(persistedCurrentTime);
+      seek(normalizedPlayback.persistedCurrentTime);
 
       try {
         await saveVideoAutosave({
-          project: {
-            ...loadedProject,
-            name: loaded.name,
-            tracks: loadedProject.tracks,
-            clips: restoredClips,
-            duration: loadedDuration,
-          },
+          project: restoredProject,
           projectName: loaded.name,
           tracks: loadedProject.tracks,
           clips: restoredClips,
-          masks: loadedProject.masks || [],
-          timelineView: normalizedTimelineView,
-          currentTime: persistedCurrentTime,
-          playbackRange: normalizedPlaybackRange,
+          masks: restoredMasks,
+          timelineView: normalizedPlayback.timelineView,
+          currentTime: normalizedPlayback.persistedCurrentTime,
+          playbackRange: normalizedPlayback.playbackRange,
           toolMode,
           autoKeyframeEnabled,
           selectedClipIds: [],
