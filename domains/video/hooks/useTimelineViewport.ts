@@ -36,7 +36,7 @@ export function useTimelineViewport() {
 
   const setScrollXImmediate = useCallback(
     (scrollX: number): number => {
-      const nextScrollX = Math.max(0, scrollX);
+      const nextScrollX = Math.max(0, Number.isFinite(scrollX) ? scrollX : 0);
       stateRef.current = { ...stateRef.current, scrollX: nextScrollX };
       setScrollX(nextScrollX);
       return nextScrollX;

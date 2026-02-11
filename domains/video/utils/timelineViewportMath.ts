@@ -1,19 +1,26 @@
 const MIN_TIMELINE_ZOOM = 0.001;
 
 export function normalizeTimelineZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return MIN_TIMELINE_ZOOM;
   return Math.max(MIN_TIMELINE_ZOOM, zoom);
 }
 
 export function timelineTimeToPixel(time: number, scrollX: number, zoom: number): number {
-  return (time - scrollX) * normalizeTimelineZoom(zoom);
+  const safeTime = Number.isFinite(time) ? time : 0;
+  const safeScrollX = Math.max(0, Number.isFinite(scrollX) ? scrollX : 0);
+  return (safeTime - safeScrollX) * normalizeTimelineZoom(zoom);
 }
 
 export function pixelToTimelineTime(pixel: number, scrollX: number, zoom: number): number {
-  return scrollX + pixel / normalizeTimelineZoom(zoom);
+  const safePixel = Number.isFinite(pixel) ? pixel : 0;
+  const safeScrollX = Math.max(0, Number.isFinite(scrollX) ? scrollX : 0);
+  return safeScrollX + safePixel / normalizeTimelineZoom(zoom);
 }
 
 export function panTimelineScrollXByPixels(scrollX: number, deltaPixels: number, zoom: number): number {
-  return Math.max(0, scrollX + deltaPixels / normalizeTimelineZoom(zoom));
+  const safeScrollX = Math.max(0, Number.isFinite(scrollX) ? scrollX : 0);
+  const safeDeltaPixels = Number.isFinite(deltaPixels) ? deltaPixels : 0;
+  return Math.max(0, safeScrollX + safeDeltaPixels / normalizeTimelineZoom(zoom));
 }
 
 export function zoomTimelineAtPixel(
@@ -22,8 +29,9 @@ export function zoomTimelineAtPixel(
   nextZoom: number,
   anchorPixel: number
 ): number {
-  const currentTimeAtAnchor = pixelToTimelineTime(anchorPixel, scrollX, currentZoom);
-  return Math.max(0, currentTimeAtAnchor - anchorPixel / normalizeTimelineZoom(nextZoom));
+  const safeAnchor = Number.isFinite(anchorPixel) ? anchorPixel : 0;
+  const currentTimeAtAnchor = pixelToTimelineTime(safeAnchor, scrollX, currentZoom);
+  return Math.max(0, currentTimeAtAnchor - safeAnchor / normalizeTimelineZoom(nextZoom));
 }
 
 export function timelineScrollXFromGestureAnchor(

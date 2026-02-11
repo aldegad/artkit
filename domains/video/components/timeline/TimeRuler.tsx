@@ -20,6 +20,8 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const { seek, currentTimeRef, playback, project, setLoopRange } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
   const { ensureTimeVisibleOnLeft } = useTimelineViewport();
+  const safeScrollX = Math.max(0, Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0);
+  const safeZoom = Math.max(TIMELINE.MIN_ZOOM, Number.isFinite(viewState.zoom) ? viewState.zoom : TIMELINE.DEFAULT_ZOOM);
 
   const duration = Math.max(project.duration, 0);
   const rangeStart = Math.max(0, Math.min(playback.loopStart, duration));
@@ -78,7 +80,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     }
 
     // Calculate tick interval based on zoom
-    const pixelsPerSecond = viewState.zoom;
+    const pixelsPerSecond = safeZoom;
     let tickInterval = 1; // seconds
     let majorTickInterval = 5;
 
@@ -100,7 +102,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     }
 
     // Draw ticks
-    const startTime = Math.max(0, Math.floor(viewState.scrollX / tickInterval) * tickInterval);
+    const startTime = Math.max(0, Math.floor(safeScrollX / tickInterval) * tickInterval);
     const endTime = pixelToTime(width);
 
     ctx.font = "10px system-ui, sans-serif";
@@ -142,7 +144,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       ctx.closePath();
       ctx.fill();
     }
-  }, [viewState.zoom, viewState.scrollX, timeToPixel, pixelToTime, currentTimeRef, hasCustomRange, rangeStart, rangeEnd]);
+  }, [safeZoom, safeScrollX, timeToPixel, pixelToTime, currentTimeRef, hasCustomRange, rangeStart, rangeEnd]);
 
   // Seek at a given clientX position
   const seekAtX = useCallback(
