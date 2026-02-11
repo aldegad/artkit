@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { MinusIcon, PlusIcon, ZoomInIcon, ZoomOutIcon } from "./icons";
 import { cn } from "@/shared/utils/cn";
 import { useDeferredPointerGesture } from "@/shared/hooks";
+import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
 interface NumberScrubberProps {
   value: number;
@@ -52,6 +53,11 @@ export function NumberScrubber({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const [dragPending, setDragPending] = useState<NumberScrubPendingState | null>(null);
+  const valueRef = useRef<HTMLSpanElement | null>(null);
+  const dragDeltaXRef = useRef(0);
+  const dragLastClientXRef = useRef(0);
+  const dragPointerIdRef = useRef<number | null>(null);
+  const pointerLockActiveRef = useRef(false);
 
   const isMultiplicative = typeof step === "object" && "multiply" in step;
   const linearStep = typeof step === "number" ? step : 1;
@@ -78,9 +84,16 @@ export function NumberScrubber({
   }, [disabled, isMultiplicative, value, multiplyFactor, linearStep, min, max, onChange]);
 
   const handlePointerDown = useCallback(
-    (e: React.PointerEvent) => {
+    (e: React.PointerEvent<HTMLSpanElement>) => {
       if (disabled || isEditing) return;
       e.preventDefault();
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
+
+      dragDeltaXRef.current = 0;
+      dragLastClientXRef.current = e.clientX;
+      dragPointerIdRef.current = e.pointerId;
+      pointerLockActiveRef.current = false;
+
       document.body.style.cursor = "ew-resize";
       setDragPending({
         pointerId: e.pointerId,
@@ -88,6 +101,14 @@ export function NumberScrubber({
         clientY: e.clientY,
         startValue: value,
       });
+
+      if (e.pointerType !== "touch" && typeof e.currentTarget.requestPointerLock === "function") {
+        try {
+          e.currentTarget.requestPointerLock();
+        } catch {
+          // Pointer lock can fail on unsupported contexts; dragging still works without it.
+        }
+      }
     },
     [disabled, isEditing, value]
   );
@@ -96,7 +117,19 @@ export function NumberScrubber({
     pending: dragPending,
     thresholdPx: 0,
     onMoveResolved: ({ pending, event }) => {
-      const deltaX = event.clientX - pending.clientX;
+      const isPointerLocked = document.pointerLockElement === valueRef.current;
+      if (isPointerLocked) {
+        dragDeltaXRef.current += event.movementX;
+      } else if (pointerLockActiveRef.current) {
+        dragLastClientXRef.current = event.clientX;
+      } else {
+        dragDeltaXRef.current += event.clientX - dragLastClientXRef.current;
+      }
+
+      dragLastClientXRef.current = event.clientX;
+      pointerLockActiveRef.current = isPointerLocked;
+      const deltaX = dragDeltaXRef.current;
+
       if (isMultiplicative) {
         const steps = Math.round(deltaX / dragSensitivity);
         let newValue = pending.startValue;
@@ -112,14 +145,28 @@ export function NumberScrubber({
         onChange(clamp(Math.round(newValue / linearStep) * linearStep, min, max));
       }
     },
-    onEnd: () => {
+    onEnd: (pending) => {
       setDragPending(null);
+      safeReleasePointerCapture(valueRef.current, pending.pointerId);
+      if (document.pointerLockElement === valueRef.current) {
+        document.exitPointerLock();
+      }
+      dragDeltaXRef.current = 0;
+      dragPointerIdRef.current = null;
+      pointerLockActiveRef.current = false;
       document.body.style.cursor = "";
     },
   });
 
   useEffect(() => {
     return () => {
+      const pointerId = dragPointerIdRef.current;
+      if (pointerId !== null) {
+        safeReleasePointerCapture(valueRef.current, pointerId);
+      }
+      if (document.pointerLockElement === valueRef.current) {
+        document.exitPointerLock();
+      }
       document.body.style.cursor = "";
     };
   }, []);
@@ -185,10 +232,11 @@ export function NumberScrubber({
         />
       ) : (
         <span
+          ref={valueRef}
           onPointerDown={handlePointerDown}
           onDoubleClick={editable ? handleDoubleClick : undefined}
           className={cn(
-            "text-xs text-center text-text-primary select-none",
+            "text-xs text-center text-text-primary select-none touch-none",
             !disabled && "cursor-ew-resize",
             valueWidth ?? (size === "sm" ? "min-w-[32px]" : "min-w-[40px]")
           )}
