@@ -1116,6 +1116,17 @@ function VideoEditorContent() {
     };
   }, [pause, playback.isPlaying]);
 
+  const tryStartMaskEditFromSelection = useCallback((): boolean => {
+    if (selectedClipIds.length === 0) return false;
+    const selected = clips.filter((clip) => selectedClipIds.includes(clip.id) && clip.type !== "audio");
+    if (selected.length === 0) return false;
+
+    const maskStart = Math.min(...selected.map((clip) => clip.startTime));
+    const maskEnd = Math.max(...selected.map((clip) => clip.startTime + clip.duration));
+    startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
+    return true;
+  }, [clips, playback.currentTime, project.canvasSize, selectedClipIds, startMaskEdit]);
+
   // Handle mask tool toggle
   const handleToolModeChange = useCallback((mode: typeof toolMode) => {
     if (mode === "transform" && toolMode !== "transform" && previousToolModeRef.current === null) {
@@ -1125,13 +1136,8 @@ function VideoEditorContent() {
       previousToolModeRef.current = null;
     }
 
-    if (mode === "mask" && selectedClipIds.length > 0) {
-      const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
-      if (selected.length > 0) {
-        const maskStart = Math.min(...selected.map((c) => c.startTime));
-        const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
-        startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
-      }
+    if (mode === "mask") {
+      tryStartMaskEditFromSelection();
     }
     if (mode !== "mask" && isEditingMask) {
       endMaskEdit();
@@ -1145,7 +1151,16 @@ function VideoEditorContent() {
       });
     }
     setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime, isEditingMask, endMaskEdit, toolMode]);
+  }, [
+    setToolMode,
+    cropArea,
+    setCropArea,
+    project.canvasSize,
+    isEditingMask,
+    endMaskEdit,
+    toolMode,
+    tryStartMaskEditFromSelection,
+  ]);
 
   const handleStartTransformShortcut = useCallback(() => {
     if (!selectedVisualClip) return;
@@ -1200,16 +1215,9 @@ function VideoEditorContent() {
   useEffect(() => {
     if (!postRestorationRef.current) return;
     if (toolMode !== "mask") return;
-    if (selectedClipIds.length === 0) return;
     if (isEditingMask) return; // already editing
-
-    const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
-    if (selected.length > 0) {
-      const maskStart = Math.min(...selected.map((c) => c.startTime));
-      const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
-      startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
-    }
-  }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
+    tryStartMaskEditFromSelection();
+  }, [toolMode, isEditingMask, tryStartMaskEditFromSelection]);
 
 
   // Keyboard shortcuts
