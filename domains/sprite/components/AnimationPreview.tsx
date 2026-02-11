@@ -502,6 +502,35 @@ export default function AnimationPreviewContent() {
     setIsFileDragOver(false);
   }, []);
 
+  const importImageFilesAsTrack = useCallback((imageFiles: File[]) => {
+    if (imageFiles.length === 0) return;
+
+    pushHistory();
+    const loadPromises = imageFiles.map(
+      (file) =>
+        new Promise<{ imageData: string; name: string }>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            resolve({
+              imageData: ev.target?.result as string,
+              name: file.name.replace(/\.[^/.]+$/, ""),
+            });
+          };
+          reader.readAsDataURL(file);
+        })
+    );
+    Promise.all(loadPromises).then((results) => {
+      const newFrames = results.map((r, idx) => ({
+        id: Date.now() + idx,
+        points: [] as { x: number; y: number }[],
+        name: r.name,
+        imageData: r.imageData,
+        offset: { x: 0, y: 0 },
+      }));
+      addTrack("Image Import", newFrames);
+    });
+  }, [addTrack, pushHistory]);
+
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsFileDragOver(false);
@@ -519,33 +548,8 @@ export default function AnimationPreviewContent() {
 
     // Handle image files -> create new track
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length > 0) {
-      pushHistory();
-      const loadPromises = imageFiles.map(
-        (file) =>
-          new Promise<{ imageData: string; name: string }>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-              resolve({
-                imageData: ev.target?.result as string,
-                name: file.name.replace(/\.[^/.]+$/, ""),
-              });
-            };
-            reader.readAsDataURL(file);
-          })
-      );
-      Promise.all(loadPromises).then((results) => {
-        const newFrames = results.map((r, idx) => ({
-          id: Date.now() + idx,
-          points: [] as { x: number; y: number }[],
-          name: r.name,
-          imageData: r.imageData,
-          offset: { x: 0, y: 0 },
-        }));
-        addTrack("Image Import", newFrames);
-      });
-    }
-  }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
+    importImageFilesAsTrack(imageFiles);
+  }, [importImageFilesAsTrack, setPendingVideoFile, setIsVideoImportOpen]);
 
   // Handle file select from ImageDropZone (click-to-browse or drag-drop on empty state)
   const handleFileSelect = useCallback((files: File[]) => {
@@ -559,33 +563,8 @@ export default function AnimationPreviewContent() {
     }
 
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-    if (imageFiles.length > 0) {
-      pushHistory();
-      const loadPromises = imageFiles.map(
-        (file) =>
-          new Promise<{ imageData: string; name: string }>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-              resolve({
-                imageData: ev.target?.result as string,
-                name: file.name.replace(/\.[^/.]+$/, ""),
-              });
-            };
-            reader.readAsDataURL(file);
-          })
-      );
-      Promise.all(loadPromises).then((results) => {
-        const newFrames = results.map((r, idx) => ({
-          id: Date.now() + idx,
-          points: [] as { x: number; y: number }[],
-          name: r.name,
-          imageData: r.imageData,
-          offset: { x: 0, y: 0 },
-        }));
-        addTrack("Image Import", newFrames);
-      });
-    }
-  }, [addTrack, pushHistory, setPendingVideoFile, setIsVideoImportOpen]);
+    importImageFilesAsTrack(imageFiles);
+  }, [importImageFilesAsTrack, setPendingVideoFile, setIsVideoImportOpen]);
 
   // Composite current frame from all tracks
   useEffect(() => {
