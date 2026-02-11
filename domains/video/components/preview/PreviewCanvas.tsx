@@ -15,7 +15,7 @@ import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } fro
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
-import { Clip, getClipScaleX, getClipScaleY } from "../../types";
+import { Clip, VideoTrack, getClipScaleX, getClipScaleY } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
@@ -99,8 +99,8 @@ function resetPlaybackPerfStatsWindow(stats: ReturnType<typeof createPlaybackPer
 }
 
 function countActiveVisualLayersAtTime(
-  tracks: ReturnType<typeof useTimeline>["tracks"],
-  getClipAtTime: ReturnType<typeof useTimeline>["getClipAtTime"],
+  tracks: VideoTrack[],
+  getClipAtTime: (trackId: string, time: number) => Clip | null,
   time: number,
 ): number {
   let activeVisualLayers = 0;
