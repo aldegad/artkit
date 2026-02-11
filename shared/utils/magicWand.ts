@@ -16,6 +16,8 @@ export interface MagicWandSelection {
 export interface MagicWandSelectionOptions {
   tolerance?: number;
   connectedOnly?: boolean;
+  ignoreAlpha?: boolean;
+  colorMetric?: "rgba" | "hsv";
 }
 
 export interface MagicWandAlphaSelectionOptions {
@@ -42,6 +44,12 @@ interface RgbaPixel {
   g: number;
   b: number;
   a: number;
+}
+
+interface HsvPixel {
+  h: number;
+  s: number;
+  v: number;
 }
 
 const DEFAULT_TOLERANCE = 24;
@@ -74,13 +82,83 @@ function getPixel(data: Uint8ClampedArray, index: number): RgbaPixel {
   };
 }
 
-function isWithinTolerance(data: Uint8ClampedArray, index: number, seed: RgbaPixel, tolerance: number): boolean {
+function rgbToHsv(r: number, g: number, b: number): HsvPixel {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+
+  let h = 0;
+  if (delta > 0) {
+    if (max === rn) {
+      h = ((gn - bn) / delta) % 6;
+    } else if (max === gn) {
+      h = (bn - rn) / delta + 2;
+    } else {
+      h = (rn - gn) / delta + 4;
+    }
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+
+  const s = max === 0 ? 0 : delta / max;
+  return { h, s, v: max };
+}
+
+function hueDistanceNormalized(a: number, b: number): number {
+  const diff = Math.abs(a - b);
+  return Math.min(diff, 360 - diff) / 180;
+}
+
+function isWithinColorToleranceHsv(
+  data: Uint8ClampedArray,
+  index: number,
+  seedHsv: HsvPixel,
+  tolerance: number,
+): boolean {
   const offset = index * 4;
+  const hsv = rgbToHsv(data[offset], data[offset + 1], data[offset + 2]);
+
+  const normalizedTolerance = tolerance / 255;
+  const hueLimit = Math.min(1, normalizedTolerance * 1.8 + 0.02);
+  const satLimit = Math.min(1, normalizedTolerance * 1.35 + 0.02);
+  const valueLimit = Math.min(1, normalizedTolerance * 3 + 0.05);
+
+  const satDiff = Math.abs(hsv.s - seedHsv.s);
+  const valueDiff = Math.abs(hsv.v - seedHsv.v);
+
+  // If either side is near-neutral (gray/white/black), hue is unstable.
+  // In this case require tight saturation/value similarity.
+  if (seedHsv.s < 0.06 || hsv.s < 0.06) {
+    return satDiff <= satLimit * 0.75 && valueDiff <= valueLimit;
+  }
+
+  const hueDiff = hueDistanceNormalized(hsv.h, seedHsv.h);
+  return hueDiff <= hueLimit && satDiff <= satLimit && valueDiff <= valueLimit;
+}
+
+function isWithinTolerance(
+  data: Uint8ClampedArray,
+  index: number,
+  seed: RgbaPixel,
+  tolerance: number,
+  options: MagicWandSelectionOptions | undefined,
+  seedHsv: HsvPixel | null,
+): boolean {
+  if (options?.colorMetric === "hsv" && seedHsv) {
+    return isWithinColorToleranceHsv(data, index, seedHsv, tolerance);
+  }
+
+  const offset = index * 4;
+  const ignoreAlpha = options?.ignoreAlpha === true;
   return (
     Math.abs(data[offset] - seed.r) <= tolerance
     && Math.abs(data[offset + 1] - seed.g) <= tolerance
     && Math.abs(data[offset + 2] - seed.b) <= tolerance
-    && Math.abs(data[offset + 3] - seed.a) <= tolerance
+    && (ignoreAlpha || Math.abs(data[offset + 3] - seed.a) <= tolerance)
   );
 }
 
@@ -118,6 +196,9 @@ export function computeMagicWandSelection(
   const data = imageData.data;
   const seedIndex = y * width + x;
   const seedPixel = getPixel(data, seedIndex);
+  const seedHsv = options?.colorMetric === "hsv"
+    ? rgbToHsv(seedPixel.r, seedPixel.g, seedPixel.b)
+    : null;
 
   const mask = new Uint8Array(total);
   let selectedCount = 0;
@@ -137,7 +218,7 @@ export function computeMagicWandSelection(
 
     while (head < tail) {
       const index = queue[head++];
-      if (!isWithinTolerance(data, index, seedPixel, tolerance)) {
+      if (!isWithinTolerance(data, index, seedPixel, tolerance, options, seedHsv)) {
         continue;
       }
 
@@ -180,7 +261,7 @@ export function computeMagicWandSelection(
     }
   } else {
     for (let index = 0; index < total; index++) {
-      if (!isWithinTolerance(data, index, seedPixel, tolerance)) {
+      if (!isWithinTolerance(data, index, seedPixel, tolerance, options, seedHsv)) {
         continue;
       }
 

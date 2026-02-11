@@ -975,6 +975,8 @@ export default function AnimationPreviewContent() {
     const selection = computeMagicWandSelection(imageData, x, y, {
       tolerance: magicWandTolerance,
       connectedOnly: true,
+      ignoreAlpha: true,
+      colorMetric: "hsv",
     });
 
     if (!selection) {
@@ -1027,6 +1029,8 @@ export default function AnimationPreviewContent() {
           return computeMagicWandSelection(imageData, seed.x, seed.y, {
             tolerance: magicWandTolerance,
             connectedOnly: true,
+            ignoreAlpha: true,
+            colorMetric: "hsv",
           });
         })();
 
