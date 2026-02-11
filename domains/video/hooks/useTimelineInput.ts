@@ -765,6 +765,101 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     ]
   );
 
+  const handlePlayheadDragMove = useCallback((time: number) => {
+    const seekTime = Math.max(0, time);
+    seek(seekTime);
+    // Auto-scroll to keep playhead visible when seeking before visible area
+    ensureTimeVisibleOnLeft(seekTime);
+  }, [seek, ensureTimeVisibleOnLeft]);
+
+  const handleClipMoveDrag = useCallback((options: {
+    drag: DragState;
+    x: number;
+    contentY: number;
+    deltaTime: number;
+  }) => {
+    const { drag, x, contentY, deltaTime } = options;
+    if (!drag.clipId || drag.items.length === 0) return;
+
+    // Cancel long-press timer if user starts moving (horizontal or vertical)
+    if (longPressTimerRef.current) {
+      const dx = Math.abs(x - drag.startX);
+      const dy = Math.abs(contentY - drag.startY);
+      if (dx > 5 || dy > 5) {
+        cancelLongPress();
+      }
+    }
+
+    const primaryClip = clips.find((candidate) => candidate.id === drag.clipId);
+    if (!primaryClip) return;
+
+    const movingClipIds = new Set(
+      drag.items
+        .filter((item) => item.type === "clip")
+        .map((item) => item.id)
+    );
+
+    const rawStart = Math.max(0, drag.originalClipStart + deltaTime);
+    const snappedStart = snapToPoints(rawStart, {
+      excludeClipIds: movingClipIds,
+    });
+    // Also snap end edge: if end snaps, adjust start accordingly
+    const rawEnd = rawStart + drag.originalClipDuration;
+    const snappedEnd = snapToPoints(rawEnd, {
+      excludeClipIds: movingClipIds,
+    });
+    const endAdjusted = Math.max(0, snappedEnd - drag.originalClipDuration);
+    // Use whichever snap is closer
+    const startDelta = Math.abs(snappedStart - rawStart);
+    const endDelta = Math.abs(snappedEnd - rawEnd);
+    const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
+
+    // Time delta from primary clip's original position
+    const timeDelta = finalStart - drag.originalClipStart;
+
+    // Move all items by the same time delta
+    for (const item of drag.items) {
+      const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
+      if (item.type === "clip") {
+        const clip = clips.find((candidate) => candidate.id === item.id);
+        if (clip) {
+          // Cross-track: only if lifted (mouse always, touch after long-press)
+          const targetTrackId = item.id === drag.clipId && isLiftedRef.current
+            ? (getTrackAtY(contentY).trackId || clip.trackId)
+            : clip.trackId;
+          moveClip(item.id, targetTrackId, newStartTime, [...movingClipIds]);
+        }
+      } else {
+        const mask = masks.get(item.id);
+        if (mask) {
+          updateMaskTime(item.id, newStartTime, mask.duration);
+        }
+      }
+    }
+  }, [cancelLongPress, clips, getTrackAtY, masks, moveClip, snapToPoints, updateMaskTime]);
+
+  const handleClipTrimStartDrag = useCallback((drag: DragState, deltaTime: number) => {
+    if (!drag.clipId) return;
+    if (!clips.some((candidate) => candidate.id === drag.clipId)) return;
+    const rawTrimStart = Math.max(0, drag.originalClipStart + deltaTime);
+    const maxStart = drag.originalClipStart + drag.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
+    const clampedStart = Math.min(rawTrimStart, maxStart);
+    trimClipStart(drag.clipId, snapToPoints(clampedStart, {
+      excludeClipIds: new Set([drag.clipId]),
+    }));
+  }, [clips, trimClipStart, snapToPoints]);
+
+  const handleClipTrimEndDrag = useCallback((drag: DragState, deltaTime: number) => {
+    if (!drag.clipId) return;
+    if (!clips.some((candidate) => candidate.id === drag.clipId)) return;
+    const rawTrimEnd = drag.originalClipStart + drag.originalClipDuration + deltaTime;
+    const minEnd = drag.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
+    const clampedEnd = Math.max(rawTrimEnd, minEnd);
+    trimClipEnd(drag.clipId, snapToPoints(clampedEnd, {
+      excludeClipIds: new Set([drag.clipId]),
+    }));
+  }, [clips, trimClipEnd, snapToPoints]);
+
   // Ref to hold the latest drag-move handler (avoids stale closures in document listener)
   const moveHandlerRef = useRef<(e: PointerEvent) => void>(() => {});
   moveHandlerRef.current = (e: PointerEvent) => {
@@ -777,98 +872,27 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     const deltaTime = time - dragState.startTime;
 
     switch (dragState.type) {
-      case "playhead": {
-        const seekTime = Math.max(0, time);
-        seek(seekTime);
-        // Auto-scroll to keep playhead visible when seeking before visible area
-        ensureTimeVisibleOnLeft(seekTime);
+      case "playhead":
+        handlePlayheadDragMove(time);
         break;
-      }
-
-      case "clip-move": {
-        if (!dragState.clipId || dragState.items.length === 0) break;
-
-        // Cancel long-press timer if user starts moving (horizontal or vertical)
-        if (longPressTimerRef.current) {
-          const dx = Math.abs(x - dragState.startX);
-          const dy = Math.abs(contentY - dragState.startY);
-          if (dx > 5 || dy > 5) {
-            cancelLongPress();
-          }
-        }
-
-        // Calculate snap based on primary clip
-        const primaryClip = clips.find((cl) => cl.id === dragState.clipId);
-        if (!primaryClip) break;
-
-        const movingClipIds = new Set(
-          dragState.items
-            .filter((item) => item.type === "clip")
-            .map((item) => item.id)
-        );
-
-        const rawStart = Math.max(0, dragState.originalClipStart + deltaTime);
-        const snappedStart = snapToPoints(rawStart, {
-          excludeClipIds: movingClipIds,
+      case "clip-move":
+        handleClipMoveDrag({
+          drag: dragState,
+          x,
+          contentY,
+          deltaTime,
         });
-        // Also snap end edge: if end snaps, adjust start accordingly
-        const rawEnd = rawStart + dragState.originalClipDuration;
-        const snappedEnd = snapToPoints(rawEnd, {
-          excludeClipIds: movingClipIds,
-        });
-        const endAdjusted = Math.max(0, snappedEnd - dragState.originalClipDuration);
-        // Use whichever snap is closer
-        const startDelta = Math.abs(snappedStart - rawStart);
-        const endDelta = Math.abs(snappedEnd - rawEnd);
-        const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
-
-        // Time delta from primary clip's original position
-        const timeDelta = finalStart - dragState.originalClipStart;
-
-        // Move all items by the same time delta
-        for (const item of dragState.items) {
-          const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
-          if (item.type === "clip") {
-            const c = clips.find((cl) => cl.id === item.id);
-            if (c) {
-              // Cross-track: only if lifted (mouse always, touch after long-press)
-              const targetTrackId = item.id === dragState.clipId && isLiftedRef.current
-                ? (getTrackAtY(contentY).trackId || c.trackId)
-                : c.trackId;
-              moveClip(item.id, targetTrackId, newStartTime, [...movingClipIds]);
-            }
-          } else if (item.type === "mask") {
-            const m = masks.get(item.id);
-            if (m) {
-              updateMaskTime(item.id, newStartTime, m.duration);
-            }
-          }
-        }
         break;
-      }
 
       case "clip-trim-start":
-        if (dragState.clipId) {
-          if (!clips.some((candidate) => candidate.id === dragState.clipId)) break;
-          const rawTrimStart = Math.max(0, dragState.originalClipStart + deltaTime);
-          const maxStart = dragState.originalClipStart + dragState.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
-          const clampedStart = Math.min(rawTrimStart, maxStart);
-          trimClipStart(dragState.clipId, snapToPoints(clampedStart, {
-            excludeClipIds: new Set([dragState.clipId]),
-          }));
-        }
+        handleClipTrimStartDrag(dragState, deltaTime);
         break;
 
       case "clip-trim-end":
-        if (dragState.clipId) {
-          if (!clips.some((candidate) => candidate.id === dragState.clipId)) break;
-          const rawTrimEnd = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
-          const minEnd = dragState.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
-          const clampedEnd = Math.max(rawTrimEnd, minEnd);
-          trimClipEnd(dragState.clipId, snapToPoints(clampedEnd, {
-            excludeClipIds: new Set([dragState.clipId]),
-          }));
-        }
+        handleClipTrimEndDrag(dragState, deltaTime);
+        break;
+
+      default:
         break;
     }
   };
