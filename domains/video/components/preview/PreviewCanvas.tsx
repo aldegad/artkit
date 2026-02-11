@@ -11,7 +11,7 @@ import {
   useClipTransformTool,
 } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import { drawScaledImage, getPointerPressure, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { PREVIEW, PLAYBACK, PRE_RENDER } from "../../constants";
@@ -1302,7 +1302,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         if (region) {
           applyMaskRegionClip(region);
         }
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        const pressure = getPointerPressure(e);
         startDraw(maskCoords.x, maskCoords.y, pressure);
         isMaskDrawingRef.current = true;
       }
@@ -1451,7 +1451,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (isMaskDrawingRef.current) {
       const maskCoords = screenToMaskCoords(e.clientX, e.clientY);
       if (maskCoords) {
-        const pressure = e.pointerType === "pen" ? Math.max(0.01, e.pressure || 1) : 1;
+        const pressure = getPointerPressure(e);
         continueDraw(maskCoords.x, maskCoords.y, pressure);
         scheduleRender();
       }
