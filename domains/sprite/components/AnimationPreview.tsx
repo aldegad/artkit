@@ -32,6 +32,7 @@ import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimat
 import { useSpritePanPointerSession } from "../hooks/useSpritePanPointerSession";
 import { useSpritePreviewImportHandlers } from "../hooks/useSpritePreviewImportHandlers";
 import { useSpritePreviewPointerHandlers } from "../hooks/useSpritePreviewPointerHandlers";
+import { useSpritePreviewBackgroundState } from "../hooks/useSpritePreviewBackgroundState";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
@@ -145,9 +146,7 @@ export default function AnimationPreviewContent() {
   const { t } = useLanguage();
 
   const [isPanning, setIsPanning] = useState(false);
-  const [bgType, setBgType] = useState<"checkerboard" | "solid" | "image">("checkerboard");
-  const [bgColor, setBgColor] = useState("#000000");
-  const [bgImage, setBgImage] = useState<string | null>(null);
+  const { bgType, setBgType, bgColor, setBgColor, bgImage, setBgImage, handleBgImageUpload } = useSpritePreviewBackgroundState();
   const [hasCompositedFrame, setHasCompositedFrame] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -469,23 +468,6 @@ export default function AnimationPreviewContent() {
     hasSelection: hasMagicWandSelection,
     requestRender,
   });
-
-  // Handle background image upload
-  const handleBgImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const src = event.target?.result as string;
-      setBgImage(src);
-      setBgType("image");
-    };
-    reader.readAsDataURL(file);
-
-    // Reset input so same file can be selected again
-    e.target.value = "";
-  }, []);
 
   const {
     isFileDragOver,

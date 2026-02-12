@@ -52,6 +52,7 @@ export {
   useFrameStripSkipActions,
   useSpriteResampleActions,
   useFrameStripTransformActions,
+  useSpritePreviewBackgroundState,
 } from "./hooks";
 
 // Types
