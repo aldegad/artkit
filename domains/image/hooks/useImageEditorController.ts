@@ -344,6 +344,7 @@ export function useImageEditorController() {
     editCanvasRef,
     layers,
     activeLayerId,
+    zoom,
     saveToHistory,
     selection,
     guides,
