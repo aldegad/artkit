@@ -21,6 +21,7 @@ export interface EditorAutosaveData extends BaseAutosaveData {
   brushSize: number;
   brushColor: string;
   brushHardness: number;
+  brushOpacity?: number; // Optional for backward compatibility
   guides?: Guide[]; // Optional for backward compatibility
   // UI state (optional for backward compatibility)
   showRulers?: boolean;
