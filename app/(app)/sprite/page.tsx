@@ -435,6 +435,10 @@ function SpriteEditorMain() {
     saveProject,
     saveProjectAs,
     toolMode,
+    brushSize,
+    setBrushSize,
+    magicWandTolerance,
+    setMagicWandTolerance,
     applyCrop: handleApplyCrop,
     clearCrop: handleClearCrop,
   });
