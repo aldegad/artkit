@@ -112,6 +112,7 @@ export interface BrushHandlerOptions extends BaseHandlerOptions {
 export interface SelectionHandlerOptions extends BaseHandlerOptions {
   activeLayerPosition?: { x: number; y: number } | null;
   selection: CropArea | null;
+  selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
   isMovingSelection: boolean;
   setIsMovingSelection: (value: boolean) => void;
@@ -141,6 +142,7 @@ export interface CropHandlerOptions extends BaseHandlerOptions {
 
 export interface MoveHandlerOptions extends BaseHandlerOptions {
   selection: CropArea | null;
+  selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
   floatingLayerRef: RefObject<FloatingLayer | null>;
   dragStartOriginRef: RefObject<Point | null>;

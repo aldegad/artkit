@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
 import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
-import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
+import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
 
 // ============================================
 // Layer Thumbnail Component (memoized)
@@ -175,6 +175,7 @@ export default function LayersPanelContent() {
     toggleLayerVisibility,
     toggleLayerLock,
     duplicateLayer,
+    mergeLayerDown,
     deleteLayer,
     renameLayer,
     updateLayerOpacity,
@@ -238,6 +239,7 @@ export default function LayersPanelContent() {
 
   // Get effective selected count
   const effectiveSelectedCount = selectedLayerIds.length > 0 ? selectedLayerIds.length : (activeLayerId ? 1 : 0);
+  const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -286,11 +288,10 @@ export default function LayersPanelContent() {
             <p className="text-xs mt-1">{t.clickAddLayerToStart}</p>
           </div>
         ) : (
-          [...layers]
-            .sort((a, b) => b.zIndex - a.zIndex)
-            .map((layer) => {
+          sortedLayers.map((layer, index) => {
               const isSelected = isLayerSelected(layer.id);
               const isActive = activeLayerId === layer.id;
+              const canMergeDown = index < sortedLayers.length - 1;
 
               return (
                 <div
@@ -425,6 +426,17 @@ export default function LayersPanelContent() {
                       title={t.duplicateLayer}
                     >
                       <DuplicateIcon className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        mergeLayerDown(layer.id);
+                      }}
+                      disabled={!canMergeDown}
+                      className="p-1 rounded text-text-quaternary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                      title={t.mergeDown}
+                    >
+                      <MergeDownIcon className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={(e) => {

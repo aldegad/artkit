@@ -4,6 +4,7 @@ import { useEffect, RefObject } from "react";
 import { CropArea, EditorToolMode } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { shouldIgnoreKeyEvent } from "@/shared/utils/keyboard";
+import { applyFeatherToImageData } from "../utils/selectionFeather";
 import {
   BRUSH_SIZE_SHORTCUTS,
   ZOOM_SHORTCUTS,
@@ -41,9 +42,11 @@ interface UseKeyboardShortcutsOptions {
 
   // Selection state (from useSelectionTool)
   selection: CropArea | null;
+  selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
   clipboardRef: RefObject<ImageData | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
+  activeLayerPosition?: { x: number; y: number } | null;
 
   // Transform state (from useTransformTool)
   isTransformActive?: boolean;
@@ -66,7 +69,7 @@ interface UseKeyboardShortcutsOptions {
 export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void {
   // Get state and setters from EditorStateContext
   const {
-    state: { rotation, canvasSize, isProjectListOpen },
+    state: { isProjectListOpen },
     setToolMode,
     setIsSpacePressed,
     setZoom,
@@ -75,7 +78,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
   } = useEditorState();
 
   // Get refs from EditorRefsContext
-  const { canvasRef, imageRef, editCanvasRef } = useEditorRefs();
+  const { editCanvasRef } = useEditorRefs();
 
   // Props from other hooks (still required as options)
   const {
@@ -84,9 +87,11 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     undo,
     redo,
     selection,
+    selectionFeather,
     setSelection,
     clipboardRef,
     floatingLayerRef,
+    activeLayerPosition,
     isTransformActive = false,
     cancelTransform,
     getDisplayDimensions,
@@ -168,11 +173,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       // Copy (Cmd+C)
       if (matchesShortcut(e, CLIPBOARD_SHORTCUTS.copy) && selection) {
         e.preventDefault();
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        const img = imageRef.current;
         const editCanvas = editCanvasRef.current;
-        if (!canvas || !ctx || !img) return;
+        if (!editCanvas) return;
 
         const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
@@ -183,24 +185,20 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         const compositeCtx = compositeCanvas.getContext("2d");
         if (!compositeCtx) return;
 
-        // Draw rotated original
-        compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-        compositeCtx.rotate((rotation * Math.PI) / 180);
-        compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-        compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-
-        // Draw edits
-        if (editCanvas) {
-          compositeCtx.drawImage(editCanvas, 0, 0);
-        }
+        const layerPosX = activeLayerPosition?.x || 0;
+        const layerPosY = activeLayerPosition?.y || 0;
+        compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
 
         // Copy selection to clipboard
-        const imageData = compositeCtx.getImageData(
+        const selectionWidth = Math.max(1, Math.round(selection.width));
+        const selectionHeight = Math.max(1, Math.round(selection.height));
+        let imageData = compositeCtx.getImageData(
           Math.round(selection.x),
           Math.round(selection.y),
-          Math.round(selection.width),
-          Math.round(selection.height)
+          selectionWidth,
+          selectionHeight
         );
+        imageData = applyFeatherToImageData(imageData, selectionFeather);
         (clipboardRef as { current: ImageData | null }).current = imageData;
       }
 
@@ -225,19 +223,15 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         tempCtx.putImageData(clipData, 0, 0);
 
         // Paste at center or at current selection position
-        const pasteX = selection ? selection.x : (displayWidth - clipData.width) / 2;
-        const pasteY = selection ? selection.y : (displayHeight - clipData.height) / 2;
+        const pasteX = Math.round(selection ? selection.x : (displayWidth - clipData.width) / 2);
+        const pasteY = Math.round(selection ? selection.y : (displayHeight - clipData.height) / 2);
+        const layerPosX = activeLayerPosition?.x || 0;
+        const layerPosY = activeLayerPosition?.y || 0;
+        const localPasteX = pasteX - layerPosX;
+        const localPasteY = pasteY - layerPosY;
 
-        ctx.drawImage(tempCanvas, pasteX, pasteY);
-
-        // Create floating layer for move operation
-        (floatingLayerRef as { current: FloatingLayer | null }).current = {
-          imageData: clipData,
-          x: pasteX,
-          y: pasteY,
-          originX: pasteX,
-          originY: pasteY,
-        };
+        ctx.drawImage(tempCanvas, localPasteX, localPasteY);
+        (floatingLayerRef as { current: FloatingLayer | null }).current = null;
 
         // Update selection to new position
         setSelection({
@@ -284,18 +278,16 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     undo,
     redo,
     selection,
+    selectionFeather,
     setSelection,
     clipboardRef,
     floatingLayerRef,
     isTransformActive,
     cancelTransform,
-    canvasRef,
-    imageRef,
     editCanvasRef,
     getDisplayDimensions,
-    rotation,
-    canvasSize,
     saveToHistory,
+    activeLayerPosition,
     isProjectListOpen,
     setIsProjectListOpen,
   ]);

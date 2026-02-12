@@ -74,6 +74,7 @@ export {
   LockClosedIcon,
   LockOpenIcon,
   DuplicateIcon,
+  MergeDownIcon,
   AlignLeftIcon,
   AlignCenterHIcon,
   AlignRightIcon,

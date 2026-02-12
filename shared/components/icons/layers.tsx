@@ -31,6 +31,14 @@ export const DuplicateIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) =>
   </svg>
 );
 
+export const MergeDownIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="5" y="5" width="14" height="5" rx="1.5" strokeWidth={1.8} />
+    <rect x="5" y="15" width="14" height="4" rx="1.5" strokeWidth={1.8} />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 10.5v3.5m0 0l2-2m-2 2l-2-2" />
+  </svg>
+);
+
 export const AlignLeftIcon: React.FC<IconProps> = ({ className = "w-3.5 h-3.5" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <line x1="4" y1="4" x2="4" y2="20" />

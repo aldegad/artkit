@@ -22,6 +22,8 @@ export interface EditorToolOptionsProps {
   brushColor: string;
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   stampSource: Point | null;
+  selectionFeather: number;
+  setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
   // Preset props
   activePreset: BrushPreset;
   presets: BrushPreset[];
@@ -60,6 +62,7 @@ export interface EditorToolOptionsProps {
     color: string;
     source: string;
     altClickToSetSource: string;
+    feather: string;
     presets: string;
     pressure: string;
     builtIn: string;
@@ -81,6 +84,8 @@ export function EditorToolOptions({
   brushColor,
   setBrushColor,
   stampSource,
+  selectionFeather,
+  setSelectionFeather,
   activePreset,
   presets,
   onSelectPreset,
@@ -213,6 +218,21 @@ export function EditorToolOptions({
             </span>
           )}
         </>
+      )}
+
+      {toolMode === "marquee" && (
+        <div className="flex items-center gap-2">
+          <NumberScrubber
+            value={selectionFeather}
+            onChange={(v) => setSelectionFeather(Math.max(0, Math.round(v)))}
+            min={0}
+            max={200}
+            step={1}
+            label={`${t.feather}:`}
+            format={(v) => `${Math.round(v)}px`}
+            size="sm"
+          />
+        </div>
       )}
 
       {/* Crop ratio and canvas resize controls */}
@@ -382,7 +402,7 @@ export function EditorToolOptions({
       )}
 
       {/* Default message when no tool-specific controls */}
-      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && toolMode !== "transform" && (
+      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && toolMode !== "transform" && toolMode !== "marquee" && (
         <span className="text-xs text-text-tertiary">{currentToolName}</span>
       )}
       </div>
