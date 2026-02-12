@@ -6,8 +6,10 @@ import { useLanguage } from "../../../shared/contexts";
 import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
 import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, PlusIcon, FlipIcon, RotateIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
-import { useSpriteTrackStore, useSpriteToolStore } from "../stores";
-import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
+import { useSpriteTrackStore } from "../stores";
+import { useFrameStripSkipActions } from "../hooks/useFrameStripSkipActions";
+import { useFrameStripTransformActions } from "../hooks/useFrameStripTransformActions";
+import { useFrameStripImportHandlers } from "../hooks/useFrameStripImportHandlers";
 
 interface FrameCardProps {
   frame: SpriteFrame;
@@ -117,7 +119,6 @@ export default function FrameStrip() {
   const setCurrentFrameIndex = useSpriteTrackStore((s) => s.setCurrentFrameIndex);
   const { isPlaying, setIsPlaying } = useEditorAnimation();
   const { timelineMode, setTimelineMode, toolMode } = useEditorTools();
-  const hasMagicWandSelection = useSpriteToolStore((s) => s.hasMagicWandSelection);
   const { pushHistory } = useEditorHistory();
   const { addTrack, activeTrackId, insertEmptyFrameToTrack } = useEditorTracks();
   const {
@@ -125,12 +126,10 @@ export default function FrameStrip() {
     editingOffsetFrameId, setEditingOffsetFrameId, offsetDragStart, setOffsetDragStart,
   } = useEditorDrag();
 
-  const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [isSkipToggleMode, setIsSkipToggleMode] = useState(false);
   const [nthValue, setNthValue] = useState(2);
   const [keepCount, setKeepCount] = useState(1);
-  const [isFlippingFrames, setIsFlippingFrames] = useState(false);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
   const isOffsetKeyboardNudgeActiveRef = useRef(false);
   const { t } = useLanguage();
@@ -505,8 +504,7 @@ export default function FrameStrip() {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isInteractiveElement(e.target)) return;
-      // In wand mode, only block frame deletion while an active wand selection exists.
-      if (toolMode === "magicwand" && hasMagicWandSelection) return;
+      if (toolMode !== "select" && toolMode !== "hand") return;
       if (frames.length === 0) return;
 
       e.preventDefault();
@@ -515,7 +513,7 @@ export default function FrameStrip() {
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [deleteActiveFrame, frames.length, hasMagicWandSelection, toolMode]);
+  }, [deleteActiveFrame, frames.length, toolMode]);
 
   const addEmptyFrame = useCallback(() => {
     if (!activeTrackId) return;
@@ -542,238 +540,51 @@ export default function FrameStrip() {
     setIsPlaying,
   ]);
 
-  // Toggle disabled on a single frame
-  const toggleFrameDisabled = useCallback(
-    (frameId: number) => {
-      const currentFrameIndex = getCurrentFrameIndex();
-      pushHistory();
-      const newFrames = frames.map((f: SpriteFrame) =>
-        f.id === frameId ? { ...f, disabled: !f.disabled } : f,
-      );
-      setFrames(newFrames);
-
-      // Auto-advance if current frame becomes disabled
-      if (newFrames[currentFrameIndex]?.disabled) {
-        const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
-        if (next >= 0) {
-          setCurrentFrameIndex(next);
-        } else {
-          const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
-          if (first >= 0) setCurrentFrameIndex(first);
-        }
-      }
-    },
-    [frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex],
-  );
-
-  // Toggle disabled on selected frames (batch)
-  const toggleSelectedFramesDisabled = useCallback(() => {
-    const currentFrameIndex = getCurrentFrameIndex();
-    if (selectedFrameIds.length === 0) return;
-    pushHistory();
-    // If any selected frame is enabled, disable all; otherwise enable all
-    const anyEnabled = frames.some(
-      (f: SpriteFrame) => selectedFrameIds.includes(f.id) && !f.disabled,
-    );
-    const newFrames = frames.map((f: SpriteFrame) =>
-      selectedFrameIds.includes(f.id) ? { ...f, disabled: anyEnabled } : f,
-    );
-    setFrames(newFrames);
-
-    // Auto-advance if current frame becomes disabled
-    if (newFrames[currentFrameIndex]?.disabled) {
-      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i > currentFrameIndex && !f.disabled);
-      if (next >= 0) {
-        setCurrentFrameIndex(next);
-      } else {
-        const first = newFrames.findIndex((f: SpriteFrame) => !f.disabled);
-        if (first >= 0) setCurrentFrameIndex(first);
-      }
-    }
-  }, [selectedFrameIds, frames, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex]);
-
-  const flipSelectedFrames = useCallback(
-    async (direction: FrameFlipDirection) => {
-      if (isFlippingFrames || selectedFrameIds.length === 0) return;
-
-      const selectedSet = new Set(selectedFrameIds);
-      const framesToFlip = frames.filter(
-        (frame: SpriteFrame) => selectedSet.has(frame.id) && Boolean(frame.imageData),
-      );
-
-      if (framesToFlip.length === 0) return;
-
-      setIsFlippingFrames(true);
-      try {
-        const flippedResults = await Promise.all(
-          framesToFlip.map(async (frame: SpriteFrame) => {
-            try {
-              const flippedImageData = await flipFrameImageData(frame.imageData!, direction);
-              return { id: frame.id, imageData: flippedImageData };
-            } catch (error) {
-              console.error(`Failed to flip frame ${frame.id}`, error);
-              return null;
-            }
-          }),
-        );
-
-        const flippedById = new Map<number, string>();
-        for (const result of flippedResults) {
-          if (result) {
-            flippedById.set(result.id, result.imageData);
-          }
-        }
-
-        if (flippedById.size === 0) return;
-
-        pushHistory();
-        setIsPlaying(false);
-        setFrames((prev: SpriteFrame[]) =>
-          prev.map((frame: SpriteFrame) => {
-            const flippedImageData = flippedById.get(frame.id);
-            return flippedImageData ? { ...frame, imageData: flippedImageData } : frame;
-          }),
-        );
-      } finally {
-        setIsFlippingFrames(false);
-      }
-    },
-    [frames, isFlippingFrames, pushHistory, selectedFrameIds, setFrames, setIsPlaying],
-  );
-
-  const reverseSelectedFrames = useCallback(() => {
-    if (selectedFrameIds.length < 2) return;
-
-    const selectedSet = new Set(selectedFrameIds);
-    const selectedFrames = frames.filter((frame: SpriteFrame) => selectedSet.has(frame.id));
-    if (selectedFrames.length < 2) return;
-
-    const currentFrameIndex = getCurrentFrameIndex();
-    const currentFrameId = frames[currentFrameIndex]?.id ?? null;
-    const reversedSelectedFrames = [...selectedFrames].reverse();
-    let reverseIdx = 0;
-
-    pushHistory();
-    setIsPlaying(false);
-    const newFrames = frames.map((frame: SpriteFrame) =>
-      selectedSet.has(frame.id) ? reversedSelectedFrames[reverseIdx++] : frame,
-    );
-    setFrames(newFrames);
-
-    if (currentFrameId !== null) {
-      const nextCurrentFrameIndex = newFrames.findIndex((frame: SpriteFrame) => frame.id === currentFrameId);
-      if (nextCurrentFrameIndex >= 0) {
-        setCurrentFrameIndex(nextCurrentFrameIndex);
-      }
-    }
-  }, [
-    selectedFrameIds,
+  const {
+    disabledCount,
+    toggleFrameDisabled,
+    toggleSelectedFramesDisabled,
+    applyNthSkip,
+    clearAllDisabled,
+    deleteDisabledFrames,
+  } = useFrameStripSkipActions({
     frames,
+    selectedFrameIds,
+    nthValue,
+    keepCount,
     getCurrentFrameIndex,
     pushHistory,
-    setIsPlaying,
     setFrames,
     setCurrentFrameIndex,
-  ]);
-
-  // Nth skip: keep M frames out of every N (e.g. keep 1/3, keep 2/4)
-  const applyNthSkip = useCallback(() => {
-    const currentFrameIndex = getCurrentFrameIndex();
-    if (frames.length === 0 || nthValue < 2 || keepCount < 1 || keepCount >= nthValue) return;
-    pushHistory();
-    const startIndex = currentFrameIndex;
-    const newFrames = frames.map((f: SpriteFrame, idx: number) => {
-      const relativeIdx = idx - startIndex;
-      if (relativeIdx < 0) return f; // keep frames before start unchanged
-      const posInGroup = relativeIdx % nthValue;
-      const shouldKeep = posInGroup < keepCount;
-      return { ...f, disabled: !shouldKeep };
-    });
-    setFrames(newFrames);
-
-    // Auto-advance if current frame becomes disabled
-    if (newFrames[currentFrameIndex]?.disabled) {
-      const next = newFrames.findIndex((f: SpriteFrame, i: number) => i >= currentFrameIndex && !f.disabled);
-      if (next >= 0) setCurrentFrameIndex(next);
-    }
-  }, [frames, getCurrentFrameIndex, nthValue, keepCount, pushHistory, setFrames, setCurrentFrameIndex]);
-
-  // Clear all disabled states
-  const clearAllDisabled = useCallback(() => {
-    const hasDisabled = frames.some((f: SpriteFrame) => f.disabled);
-    if (!hasDisabled) return;
-    pushHistory();
-    setFrames((prev: SpriteFrame[]) =>
-      prev.map((f: SpriteFrame) => (f.disabled ? { ...f, disabled: false } : f)),
-    );
-  }, [frames, pushHistory, setFrames]);
-
-  // File drag & drop
-  const handleFileDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsFileDragOver(true);
-    }
-  }, []);
-
-  const handleFileDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsFileDragOver(false);
-  }, []);
-
-  const handleFileDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsFileDragOver(false);
-
-      const files = Array.from(e.dataTransfer.files).filter((file) =>
-        file.type.startsWith("image/"),
-      );
-      if (files.length === 0) return;
-
-      files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-      pushHistory();
-
-      let currentId = nextFrameId;
-      const newFrames: SpriteFrame[] = [];
-
-      for (const file of files) {
-        await new Promise<void>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const imageData = event.target?.result as string;
-            const img = new Image();
-            img.onload = () => {
-              newFrames.push({
-                id: currentId,
-                points: [
-                  { x: 0, y: 0 },
-                  { x: img.width, y: 0 },
-                  { x: img.width, y: img.height },
-                  { x: 0, y: img.height },
-                ],
-                name: file.name.replace(/\.[^/.]+$/, ""),
-                imageData,
-                offset: { x: 0, y: 0 },
-              });
-              currentId++;
-              resolve();
-            };
-            img.src = imageData;
-          };
-          reader.readAsDataURL(file);
-        });
-      }
-
-      addTrack("Image Import", newFrames);
-      setNextFrameId(currentId);
-      setCurrentFrameIndex(0);
-    },
-    [nextFrameId, setNextFrameId, pushHistory, setCurrentFrameIndex, addTrack],
-  );
+    setSelectedFrameIds,
+    setSelectedFrameId,
+    setIsPlaying,
+  });
+  const {
+    isFlippingFrames,
+    flipSelectedFrames,
+    reverseSelectedFrames,
+  } = useFrameStripTransformActions({
+    frames,
+    selectedFrameIds,
+    getCurrentFrameIndex,
+    pushHistory,
+    setFrames,
+    setIsPlaying,
+    setCurrentFrameIndex,
+  });
+  const {
+    isFileDragOver,
+    handleFileDragOver,
+    handleFileDragLeave,
+    handleFileDrop,
+  } = useFrameStripImportHandlers({
+    nextFrameId,
+    pushHistory,
+    setNextFrameId,
+    setCurrentFrameIndex,
+    addTrack,
+  });
 
   const handleFrameClick = useCallback(
     (e: React.MouseEvent, idx: number, frame: SpriteFrame) => {
@@ -802,28 +613,6 @@ export default function FrameStrip() {
     },
     [setIsPlaying, isSkipToggleMode, toggleFrameDisabled, selectFrameRange, toggleSelectedFrameId, setSelectedFrameIds, setCurrentFrameIndex, setSelectedFrameId],
   );
-
-  // Count disabled frames
-  const disabledCount = useMemo(
-    () => frames.filter((f: SpriteFrame) => f.disabled).length,
-    [frames],
-  );
-
-  // Delete all disabled (skipped) frames
-  const deleteDisabledFrames = useCallback(() => {
-    const currentFrameIndex = getCurrentFrameIndex();
-    if (disabledCount === 0) return;
-    pushHistory();
-    const newFrames = frames.filter((f: SpriteFrame) => !f.disabled);
-    setFrames(newFrames);
-    if (currentFrameIndex >= newFrames.length && newFrames.length > 0) {
-      setCurrentFrameIndex(newFrames.length - 1);
-    } else if (newFrames.length === 0) {
-      setCurrentFrameIndex(0);
-    }
-    setSelectedFrameIds([]);
-    setSelectedFrameId(null);
-  }, [frames, disabledCount, getCurrentFrameIndex, pushHistory, setFrames, setCurrentFrameIndex, setSelectedFrameIds, setSelectedFrameId]);
 
   // Determine which frames to display
   const displayFrames = useMemo(

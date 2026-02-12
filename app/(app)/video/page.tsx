@@ -10,9 +10,7 @@ import {
   Scrollbar,
   CanvasCropControls,
   PanLockFloatingButton,
-  confirmDialog,
   showErrorToast,
-  showInfoToast,
 } from "@/shared/components";
 import {
   VolumeOnIcon,
@@ -36,6 +34,7 @@ import {
   useVideoExport,
   VideoMenuBar,
   VideoToolbar,
+  VideoCanvasSizeEditor,
   VideoExportModal,
   VideoInterpolationModal,
   MaskControls,
@@ -46,17 +45,12 @@ import {
   clearVideoPanelComponents,
   VideoPreviewPanelContent,
   VideoTimelinePanelContent,
-  clearVideoAutosave,
-  saveMediaBlob,
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
   SUPPORTED_AUDIO_FORMATS,
-  createImageClip,
   TIMELINE,
   MASK_BRUSH,
   type Clip,
-  type SavedVideoProject,
-  type VideoToolMode,
 } from "@/domains/video";
 import {
   useVideoKeyboardShortcuts,
@@ -65,19 +59,30 @@ import {
   useVideoProjectLibrary,
   useVideoClipboardActions,
   useVideoCropActions,
+  usePreviewViewportState,
+  useVideoToolModeHandlers,
+  useGapInterpolationActions,
+  analyzeGapInterpolationSelection,
+  useMaskRestoreSync,
+  useVideoFileActions,
+  useSelectedClipAudioActions,
+  useVideoEditActions,
 } from "@/domains/video/hooks";
 import {
   getClipPositionKeyframes,
-  removeClipPositionKeyframeById,
 } from "@/domains/video/utils/clipTransformKeyframes";
+import {
+  createVideoMenuTranslations,
+  createVideoToolbarTranslations,
+} from "@/domains/video/utils/editorTranslations";
 import { getVideoStorageProvider } from "@/domains/video/services/videoProjectStorage";
 import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, type AspectRatio } from "@/shared/types/aspectRatio";
 import {
-  interpolateFramesWithAI,
   type RifeInterpolationQuality,
 } from "@/shared/ai/frameInterpolation";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
+import { useHorizontalWheelCapture } from "@/shared/hooks";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -98,222 +103,18 @@ function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | n
   return null;
 }
 
-const VIDEO_GAP_INTERPOLATION_MAX_STEPS = 180;
-const VIDEO_GAP_INTERPOLATION_MIN_GAP = 0.0001;
-const VIDEO_SEEK_EPSILON = 1 / 600;
-
-type GapInterpolationIssue =
-  | "select_two_visual_clips"
-  | "same_track_required"
-  | "gap_required"
-  | "gap_blocked";
-
-interface GapInterpolationAnalysis {
-  ready: boolean;
-  issue?: GapInterpolationIssue;
-  firstClip?: Clip;
-  secondClip?: Clip;
-  gapDuration: number;
-  suggestedSteps: number;
-}
-
-interface FrameSnapshot {
-  dataUrl: string;
-  size: { width: number; height: number };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function estimateGapInterpolationSteps(gapDuration: number, frameRate: number): number {
-  const fps = Math.max(1, Math.round(frameRate || 30));
-  const estimated = Math.round(gapDuration * fps);
-  return Math.max(1, Math.min(VIDEO_GAP_INTERPOLATION_MAX_STEPS, estimated));
-}
-
-function analyzeGapInterpolationSelection(
+function findValidPositionKeyframeClip(
   clips: Clip[],
-  selectedClipIds: string[],
-  frameRate: number,
-): GapInterpolationAnalysis {
-  const selectedVisual = clips
-    .filter((clip) => selectedClipIds.includes(clip.id) && clip.type !== "audio")
-    .sort((a, b) => a.startTime - b.startTime);
+  selection: { clipId: string; keyframeId: string } | null
+): Clip | null {
+  if (!selection) return null;
+  const clip = clips.find((candidate) => candidate.id === selection.clipId);
+  if (!clip || clip.type === "audio") return null;
 
-  if (selectedVisual.length !== 2) {
-    return { ready: false, issue: "select_two_visual_clips", gapDuration: 0, suggestedSteps: 0 };
-  }
-
-  const [firstClip, secondClip] = selectedVisual;
-  if (firstClip.trackId !== secondClip.trackId) {
-    return {
-      ready: false,
-      issue: "same_track_required",
-      firstClip,
-      secondClip,
-      gapDuration: 0,
-      suggestedSteps: 0,
-    };
-  }
-
-  const firstEnd = firstClip.startTime + firstClip.duration;
-  const gapDuration = secondClip.startTime - firstEnd;
-  if (gapDuration <= VIDEO_GAP_INTERPOLATION_MIN_GAP) {
-    return {
-      ready: false,
-      issue: "gap_required",
-      firstClip,
-      secondClip,
-      gapDuration,
-      suggestedSteps: 0,
-    };
-  }
-
-  const selectedSet = new Set(selectedVisual.map((clip) => clip.id));
-  const hasBlockingClip = clips.some((clip) => {
-    if (clip.trackId !== firstClip.trackId) return false;
-    if (selectedSet.has(clip.id)) return false;
-    const clipEnd = clip.startTime + clip.duration;
-    return clip.startTime < secondClip.startTime && clipEnd > firstEnd;
-  });
-
-  if (hasBlockingClip) {
-    return {
-      ready: false,
-      issue: "gap_blocked",
-      firstClip,
-      secondClip,
-      gapDuration,
-      suggestedSteps: 0,
-    };
-  }
-
-  return {
-    ready: true,
-    firstClip,
-    secondClip,
-    gapDuration,
-    suggestedSteps: estimateGapInterpolationSteps(gapDuration, frameRate),
-  };
-}
-
-async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const response = await fetch(dataUrl);
-  if (!response.ok) {
-    throw new Error("Failed to convert generated frame to blob.");
-  }
-  return response.blob();
-}
-
-async function captureVideoFrame(sourceUrl: string, sourceTime: number): Promise<FrameSnapshot> {
-  const video = document.createElement("video");
-  video.preload = "auto";
-  video.muted = true;
-  video.playsInline = true;
-  if (!sourceUrl.startsWith("blob:") && !sourceUrl.startsWith("data:")) {
-    video.crossOrigin = "anonymous";
-  }
-
-  const waitForMetadata = async () => {
-    if (video.readyState >= 1 && Number.isFinite(video.duration)) return;
-    await new Promise<void>((resolve, reject) => {
-      const onLoadedMetadata = () => {
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error("Failed to load video metadata for interpolation."));
-      };
-      const cleanup = () => {
-        video.removeEventListener("loadedmetadata", onLoadedMetadata);
-        video.removeEventListener("error", onError);
-      };
-      video.addEventListener("loadedmetadata", onLoadedMetadata);
-      video.addEventListener("error", onError);
-      video.load();
-    });
-  };
-
-  const seekTo = async (time: number) => {
-    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-    const clamped = clamp(time, 0, Math.max(0, duration - VIDEO_SEEK_EPSILON));
-    if (Math.abs(video.currentTime - clamped) <= VIDEO_SEEK_EPSILON) return;
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        cleanup();
-        reject(new Error("Video seek timeout during interpolation."));
-      }, 5000);
-      const onSeeked = () => {
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error("Failed to seek video frame for interpolation."));
-      };
-      const cleanup = () => {
-        window.clearTimeout(timer);
-        video.removeEventListener("seeked", onSeeked);
-        video.removeEventListener("error", onError);
-      };
-      video.addEventListener("seeked", onSeeked);
-      video.addEventListener("error", onError);
-      video.currentTime = clamped;
-    });
-  };
-
-  video.src = sourceUrl;
-
-  try {
-    await waitForMetadata();
-    await seekTo(sourceTime);
-
-    const width = video.videoWidth || 1;
-    const height = video.videoHeight || 1;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Failed to create interpolation frame canvas.");
-    }
-
-    ctx.drawImage(video, 0, 0, width, height);
-    return {
-      dataUrl: canvas.toDataURL("image/png"),
-      size: { width, height },
-    };
-  } finally {
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
-  }
-}
-
-async function captureClipBoundaryFrame(clip: Clip, boundary: "start" | "end", frameRate: number): Promise<FrameSnapshot> {
-  if (clip.type === "audio") {
-    throw new Error("Audio clips are not supported for visual interpolation.");
-  }
-
-  if (clip.type === "image") {
-    return {
-      dataUrl: clip.imageData || clip.sourceUrl,
-      size: { ...clip.sourceSize },
-    };
-  }
-
-  const fps = Math.max(1, frameRate || 30);
-  const frameStep = 1 / fps;
-  const sourceStart = clip.trimIn;
-  const sourceEnd = Math.max(sourceStart, clip.trimOut - VIDEO_SEEK_EPSILON);
-  const sourceTime = boundary === "end"
-    ? clamp(sourceStart + clip.duration - frameStep, sourceStart, sourceEnd)
-    : clamp(sourceStart, sourceStart, sourceEnd);
-
-  return captureVideoFrame(clip.sourceUrl, sourceTime);
+  const hasKeyframe = getClipPositionKeyframes(clip).some(
+    (keyframe) => keyframe.id === selection.keyframeId
+  );
+  return hasKeyframe ? clip : null;
 }
 
 function VideoDockableArea() {
@@ -435,13 +236,6 @@ function VideoEditorContent() {
   const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality,
   );
-  const [showInterpolationModal, setShowInterpolationModal] = useState(false);
-  const [interpolationSteps, setInterpolationSteps] = useState(1);
-  const [isInterpolatingGap, setIsInterpolatingGap] = useState(false);
-  const [gapInterpolationProgress, setGapInterpolationProgress] = useState(0);
-  const [gapInterpolationStatus, setGapInterpolationStatus] = useState("");
-  const audioHistorySavedRef = useRef(false);
-  const [saveCount, setSaveCount] = useState(0);
 
   const {
     currentProjectId,
@@ -548,42 +342,17 @@ function VideoEditorContent() {
     };
   }, []);
 
-  // Restore masks from autosave into MaskContext after autosave finishes loading
-  // postRestorationRef prevents auto-start mask edit from firing during initial load
-  const masksRestoredRef = useRef(false);
-  const postRestorationRef = useRef(false);
-  useEffect(() => {
-    if (!isAutosaveInitialized || masksRestoredRef.current) return;
-    masksRestoredRef.current = true;
-    if (project.masks && project.masks.length > 0) {
-      restoreMasks(project.masks);
-    }
-    // Allow auto-start mask edit only after masks are restored and rendered
-    const timer = setTimeout(() => {
-      postRestorationRef.current = true;
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [isAutosaveInitialized, project.masks, restoreMasks]);
-
-  // After autosave restore: sync selectedMaskIds → MaskContext.activeMaskId
-  // so that MaskControls shows when a mask was selected at save time
-  const maskSelectionSyncedRef = useRef(false);
-  useEffect(() => {
-    if (!masksRestoredRef.current || maskSelectionSyncedRef.current) return;
-    if (masksMap.size > 0 && selectedMaskIds.length > 0) {
-      maskSelectionSyncedRef.current = true;
-      selectMask(selectedMaskIds[0]);
-    }
-  }, [masksMap, selectedMaskIds, selectMask]);
-
-  // Sync MaskContext masks → project.masks (MaskContext is the single source of truth)
-  useEffect(() => {
-    if (!masksRestoredRef.current) return;
-    setProject({
-      ...projectRef.current,
-      masks: masksArray,
-    });
-  }, [masksArray, setProject]);
+  const { postRestorationRef } = useMaskRestoreSync({
+    isAutosaveInitialized,
+    projectMasks: project.masks,
+    restoreMasks,
+    masksMap,
+    selectedMaskIds,
+    selectMask,
+    masksArray,
+    setProject,
+    projectRef,
+  });
 
   // Auto-switch to mask tool when entering mask edit mode (e.g., double-click mask clip)
   useEffect(() => {
@@ -598,142 +367,94 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const selectedPositionKeyframeClip = useMemo(
+    () => findValidPositionKeyframeClip(clips, selectedPositionKeyframe),
+    [clips, selectedPositionKeyframe]
+  );
 
   useEffect(() => {
-    if (!selectedPositionKeyframe) return;
-    const clip = clips.find((candidate) => candidate.id === selectedPositionKeyframe.clipId);
-    if (!clip || clip.type === "audio") {
-      setSelectedPositionKeyframe(null);
-      return;
-    }
-    const hasKeyframe = getClipPositionKeyframes(clip).some(
-      (keyframe) => keyframe.id === selectedPositionKeyframe.keyframeId
-    );
-    if (!hasKeyframe) {
+    if (selectedPositionKeyframe && !selectedPositionKeyframeClip) {
       setSelectedPositionKeyframe(null);
     }
-  }, [clips, selectedPositionKeyframe, setSelectedPositionKeyframe]);
+  }, [selectedPositionKeyframe, selectedPositionKeyframeClip, setSelectedPositionKeyframe]);
 
   const gapInterpolationAnalysis = useMemo(
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
     [clips, selectedClipIds, project.frameRate],
   );
+  const {
+    showInterpolationModal,
+    setShowInterpolationModal,
+    interpolationSteps,
+    setInterpolationSteps,
+    isInterpolatingGap,
+    gapInterpolationProgress,
+    gapInterpolationStatus,
+    handleInterpolateClipGap,
+    handleConfirmInterpolation,
+  } = useGapInterpolationActions({
+    analysis: gapInterpolationAnalysis,
+    isPlaying: playback.isPlaying,
+    pause,
+    frameRate: project.frameRate,
+    quality: videoInterpolationQuality,
+    interpolationProgressLabel: t.interpolationProgress,
+    savingLabel: t.saving,
+    failedLabel: t.interpolationFailed,
+    saveToHistory,
+    addClips,
+    selectClips,
+  });
   const isTimelineVisible = isPanelOpen("timeline");
   const canUndoAny = canUndo || canUndoMask;
   const canRedoAny = canRedo || canRedoMask;
 
   const { importFiles: importMediaFiles } = useMediaImport();
+  const {
+    saveCount,
+    handleNew,
+    handleOpen,
+    handleSave,
+    handleSaveAs,
+    handleLoadProject,
+    handleDeleteProject,
+    handleImportMedia,
+  } = useVideoFileActions({
+    newLabel: t.new,
+    newProjectConfirm: t.newProjectConfirm,
+    cancelLabel: t.cancel,
+    projectName,
+    setProjectName,
+    saveProject,
+    saveAsProject,
+    openProjectList,
+    loadProject,
+    deleteProject,
+    mediaFileInputRef,
+  });
 
-  // Menu handlers
-  const handleNew = useCallback(async () => {
-    const shouldCreate = await confirmDialog({
-      title: t.new || "New Project",
-      message: t.newProjectConfirm,
-      confirmLabel: t.new || "New",
-      cancelLabel: t.cancel || "Cancel",
-    });
-    if (!shouldCreate) return;
-    await clearVideoAutosave();
-    window.location.reload();
-  }, [t]);
-
-  const handleOpen = useCallback(() => {
-    openProjectList();
-  }, [openProjectList]);
-
-  const handleSave = useCallback(async () => {
-    try {
-      await saveProject();
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      showErrorToast(`Save failed: ${(error as Error).message}`);
-    }
-  }, [saveProject]);
-
-  const handleSaveAs = useCallback(async () => {
-    const suggestedName = projectName || "Untitled Project";
-    const nextName = window.prompt("Project name", suggestedName);
-    if (!nextName) return;
-
-    setProjectName(nextName);
-    try {
-      await saveAsProject(nextName);
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      showErrorToast(`Save failed: ${(error as Error).message}`);
-    }
-  }, [projectName, setProjectName, saveAsProject]);
-
-  const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
-    await loadProject(projectMeta);
-  }, [loadProject]);
-
-  const handleDeleteProject = useCallback(async (id: string) => {
-    await deleteProject(id);
-  }, [deleteProject]);
-
-  const handleImportMedia = useCallback(() => {
-    mediaFileInputRef.current?.click();
-  }, []);
-
-  // Edit menu handlers
-  const handleUndo = useCallback(() => {
-    const shouldUndoMask = canUndoMask && (
-      toolMode === "mask" ||
-      isEditingMask ||
-      activeMaskId !== null ||
-      selectedMaskIds.length > 0
-    );
-    if (shouldUndoMask) {
-      undoMask();
-      return;
-    }
-    undo();
-    deselectAll();
-  }, [canUndoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, undoMask, undo, deselectAll]);
-
-  const handleRedo = useCallback(() => {
-    const shouldRedoMask = canRedoMask && (
-      toolMode === "mask" ||
-      isEditingMask ||
-      activeMaskId !== null ||
-      selectedMaskIds.length > 0
-    );
-    if (shouldRedoMask) {
-      redoMask();
-      return;
-    }
-    redo();
-    deselectAll();
-  }, [canRedoMask, toolMode, isEditingMask, activeMaskId, selectedMaskIds.length, redoMask, redo, deselectAll]);
-
-  const handleDeleteSelectedPositionKeyframe = useCallback((): boolean => {
-    if (!selectedPositionKeyframe) return false;
-
-    const clip = clips.find((candidate) => candidate.id === selectedPositionKeyframe.clipId);
-    if (!clip || clip.type === "audio") {
-      setSelectedPositionKeyframe(null);
-      return true;
-    }
-
-    const hasKeyframe = getClipPositionKeyframes(clip).some(
-      (keyframe) => keyframe.id === selectedPositionKeyframe.keyframeId
-    );
-    if (!hasKeyframe) {
-      setSelectedPositionKeyframe(null);
-      return true;
-    }
-
-    saveToHistory();
-    const result = removeClipPositionKeyframeById(clip, selectedPositionKeyframe.keyframeId);
-    if (result.removed) {
-      updateClip(clip.id, result.updates);
-    }
-    setSelectedPositionKeyframe(null);
-    return result.removed;
-  }, [clips, saveToHistory, selectedPositionKeyframe, setSelectedPositionKeyframe, updateClip]);
+  const {
+    handleUndo,
+    handleRedo,
+    handleDeleteSelectedPositionKeyframe,
+  } = useVideoEditActions({
+    toolMode,
+    isEditingMask,
+    activeMaskId,
+    selectedMaskCount: selectedMaskIds.length,
+    canUndoMask,
+    canRedoMask,
+    undoMask,
+    redoMask,
+    undo,
+    redo,
+    deselectAll,
+    selectedPositionKeyframe,
+    selectedPositionKeyframeClip,
+    clearSelectedPositionKeyframe: () => setSelectedPositionKeyframe(null),
+    saveToHistory,
+    updateClip,
+  });
 
   const {
     handleCopy,
@@ -766,167 +487,16 @@ function VideoEditorContent() {
     deleteSelectedPositionKeyframe: handleDeleteSelectedPositionKeyframe,
   });
 
-  const handleInterpolateClipGap = useCallback(() => {
-    if (isInterpolatingGap) return;
-
-    if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) {
-      switch (gapInterpolationAnalysis.issue) {
-        case "same_track_required":
-          showInfoToast("Select 2 clips on the same track.");
-          break;
-        case "gap_required":
-          showInfoToast("No empty gap between selected clips.");
-          break;
-        case "gap_blocked":
-          showInfoToast("The gap is occupied by another clip.");
-          break;
-        default:
-          showInfoToast("Select exactly 2 visual clips for interpolation.");
-          break;
-      }
-      return;
-    }
-
-    setInterpolationSteps(gapInterpolationAnalysis.suggestedSteps);
-    setShowInterpolationModal(true);
-  }, [isInterpolatingGap, gapInterpolationAnalysis]);
-
-  const handleConfirmInterpolation = useCallback(async () => {
-    if (!gapInterpolationAnalysis.ready || !gapInterpolationAnalysis.firstClip || !gapInterpolationAnalysis.secondClip) return;
-
-    const { firstClip, secondClip, gapDuration } = gapInterpolationAnalysis;
-    setShowInterpolationModal(false);
-
-    if (playback.isPlaying) {
-      pause();
-    }
-
-    setIsInterpolatingGap(true);
-    setGapInterpolationProgress(0);
-    setGapInterpolationStatus(t.interpolationProgress || "Interpolating frames");
-
-    try {
-      const [fromFrame, toFrame] = await Promise.all([
-        captureClipBoundaryFrame(firstClip, "end", project.frameRate),
-        captureClipBoundaryFrame(secondClip, "start", project.frameRate),
-      ]);
-
-      const outputSize = {
-        width: Math.max(fromFrame.size.width, toFrame.size.width),
-        height: Math.max(fromFrame.size.height, toFrame.size.height),
-      };
-
-      const generatedFrames = await interpolateFramesWithAI({
-        fromImageData: fromFrame.dataUrl,
-        toImageData: toFrame.dataUrl,
-        steps: interpolationSteps,
-        quality: videoInterpolationQuality,
-        onProgress: (progress, status) => {
-          setGapInterpolationProgress(Math.max(0, Math.min(90, progress)));
-          setGapInterpolationStatus(status || (t.interpolationProgress || "Interpolating frames"));
-        },
-      });
-
-      if (generatedFrames.length === 0) {
-        throw new Error("No interpolation frames generated.");
-      }
-
-      setGapInterpolationProgress(92);
-      setGapInterpolationStatus(t.saving || "Saving...");
-
-      const createdClips: Clip[] = [];
-      const persistTasks: Promise<void>[] = [];
-      const frameDuration = gapDuration / generatedFrames.length;
-      let nextStart = firstClip.startTime + firstClip.duration;
-
-      for (let i = 0; i < generatedFrames.length; i++) {
-        const imageData = generatedFrames[i];
-        const blob = await dataUrlToBlob(imageData);
-        const sourceUrl = URL.createObjectURL(blob);
-        const duration = i === generatedFrames.length - 1
-          ? Math.max(VIDEO_GAP_INTERPOLATION_MIN_GAP, secondClip.startTime - nextStart)
-          : frameDuration;
-
-        const clip = createImageClip(
-          firstClip.trackId,
-          sourceUrl,
-          outputSize,
-          nextStart,
-          duration,
-        );
-        clip.name = `${firstClip.name} • AI ${i + 1}/${generatedFrames.length}`;
-        clip.imageData = imageData;
-        createdClips.push(clip);
-        nextStart += duration;
-
-        persistTasks.push(
-          saveMediaBlob(clip.id, blob).catch((error) => {
-            console.error("Failed to save interpolated media blob:", error);
-          })
-        );
-      }
-
-      saveToHistory();
-      addClips(createdClips);
-      selectClips(createdClips.map((clip) => clip.id));
-
-      await Promise.all(persistTasks);
-
-      setGapInterpolationProgress(100);
-      setGapInterpolationStatus("Done");
-    } catch (error) {
-      console.error("Video gap interpolation failed:", error);
-      setGapInterpolationStatus("Failed");
-      showErrorToast(t.interpolationFailed || "Frame interpolation failed. Please try again.");
-    } finally {
-      setIsInterpolatingGap(false);
-      window.setTimeout(() => {
-        setGapInterpolationProgress(0);
-        setGapInterpolationStatus("");
-      }, 1500);
-    }
-  }, [
-    gapInterpolationAnalysis,
-    playback.isPlaying,
-    pause,
-    interpolationSteps,
-    videoInterpolationQuality,
-    t.interpolationProgress,
-    t.saving,
-    t.interpolationFailed,
-    project.frameRate,
+  const {
+    beginAudioAdjustment,
+    endAudioAdjustment,
+    handleToggleSelectedClipMute,
+    handleSelectedClipVolumeChange,
+  } = useSelectedClipAudioActions({
+    selectedAudioClip,
     saveToHistory,
-    addClips,
-    selectClips,
-  ]);
-
-  const beginAudioAdjustment = useCallback(() => {
-    if (audioHistorySavedRef.current) return;
-    saveToHistory();
-    audioHistorySavedRef.current = true;
-  }, [saveToHistory]);
-
-  const endAudioAdjustment = useCallback(() => {
-    audioHistorySavedRef.current = false;
-  }, []);
-
-  const handleToggleSelectedClipMute = useCallback(() => {
-    if (!selectedAudioClip) return;
-    saveToHistory();
-    updateClip(selectedAudioClip.id, {
-      audioMuted: !(selectedAudioClip.audioMuted ?? false),
-    });
-  }, [selectedAudioClip, saveToHistory, updateClip]);
-
-  const handleSelectedClipVolumeChange = useCallback(
-    (volume: number) => {
-      if (!selectedAudioClip) return;
-      updateClip(selectedAudioClip.id, {
-        audioVolume: Math.max(0, Math.min(100, volume)),
-      });
-    },
-    [selectedAudioClip, updateClip]
-  );
+    updateClip,
+  });
 
   const {
     handleSelectAllCrop,
@@ -972,69 +542,12 @@ function VideoEditorContent() {
     setScrollX(0);
   }, [project.duration, setZoom, setScrollX]);
 
-  // Preview transform state (synced from PreviewCanvas viewport)
-  const [previewTransformState, setPreviewTransformState] = useState<{
-    isActive: boolean;
-    clipId: string | null;
-    aspectRatio: AspectRatio;
-  }>({
-    isActive: false,
-    clipId: null,
-    aspectRatio: "free",
-  });
-  const previousToolModeRef = useRef<VideoToolMode | null>(null);
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let rafId: number | null = null;
-
-    const attach = () => {
-      const api = previewViewportRef.current;
-      if (!api) {
-        rafId = requestAnimationFrame(attach);
-        return;
-      }
-      unsubscribe = api.onTransformChange((next) => setPreviewTransformState(next));
-    };
-
-    attach();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      unsubscribe?.();
-    };
-  }, [previewViewportRef]);
-
-  // Preview zoom state (synced from PreviewCanvas viewport)
-  const [previewZoom, setPreviewZoomState] = useState(1);
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let rafId: number | null = null;
-
-    const attach = () => {
-      const api = previewViewportRef.current;
-      if (!api) {
-        rafId = requestAnimationFrame(attach);
-        return;
-      }
-      unsubscribe = api.onZoomChange((z) => setPreviewZoomState(z));
-    };
-
-    attach();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      unsubscribe?.();
-    };
-  }, [previewViewportRef]);
-
-  const setPreviewZoom = useCallback((zoomOrFn: number | ((z: number) => number)) => {
-    const api = previewViewportRef.current;
-    if (!api) return;
-    const next = typeof zoomOrFn === "function" ? zoomOrFn(api.getZoom()) : zoomOrFn;
-    api.setZoom(next);
-  }, [previewViewportRef]);
-
-  const handlePreviewFit = useCallback(() => {
-    previewViewportRef.current?.fitToContainer();
-  }, [previewViewportRef]);
+  const {
+    previewTransformState,
+    previewZoom,
+    setPreviewZoom,
+    handlePreviewFit,
+  } = usePreviewViewportState(previewViewportRef);
 
   const clearSelectedMasks = useCallback(() => {
     selectMasksForTimeline([]);
@@ -1051,18 +564,9 @@ function VideoEditorContent() {
     selectClips,
     clearSelectedMasks,
   });
-  // Canvas size adjustment
-  const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
-  const [isEditingCanvasSize, setIsEditingCanvasSize] = useState(false);
-
-  const handleCanvasSizeSubmit = useCallback(() => {
-    const w = parseInt(canvasSizeInput.w, 10);
-    const h = parseInt(canvasSizeInput.h, 10);
-    if (w > 0 && h > 0 && w <= 7680 && h <= 7680) {
-      setProject({ ...project, canvasSize: { width: w, height: h } });
-    }
-    setIsEditingCanvasSize(false);
-  }, [canvasSizeInput, setProject, project]);
+  const handleApplyCanvasSize = useCallback((width: number, height: number) => {
+    setProject({ ...project, canvasSize: { width, height } });
+  }, [project, setProject]);
 
   const handleToggleTimeline = useCallback(() => {
     const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
@@ -1116,74 +620,32 @@ function VideoEditorContent() {
     };
   }, [pause, playback.isPlaying]);
 
-  // Handle mask tool toggle
-  const handleToolModeChange = useCallback((mode: typeof toolMode) => {
-    if (mode === "transform" && toolMode !== "transform" && previousToolModeRef.current === null) {
-      previousToolModeRef.current = toolMode;
-    }
-    if (mode !== "transform" && toolMode === "transform") {
-      previousToolModeRef.current = null;
-    }
+  const {
+    tryStartMaskEditFromSelection,
+    handleToolModeChange,
+    handleStartTransformShortcut,
+    handleApplyTransform,
+    handleCancelTransform,
+    handleSetTransformAspectRatio,
+    handleNudgeTransform,
+  } = useVideoToolModeHandlers({
+    toolMode,
+    setToolMode,
+    selectedClipIds,
+    clips,
+    projectCanvasSize: project.canvasSize,
+    playbackCurrentTime: playback.currentTime,
+    startMaskEdit,
+    isEditingMask,
+    endMaskEdit,
+    cropArea,
+    setCropArea,
+    previewViewportRef,
+  });
 
-    if (mode === "mask" && selectedClipIds.length > 0) {
-      const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
-      if (selected.length > 0) {
-        const maskStart = Math.min(...selected.map((c) => c.startTime));
-        const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
-        startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
-      }
-    }
-    if (mode !== "mask" && isEditingMask) {
-      endMaskEdit();
-    }
-    if (mode === "crop" && !cropArea) {
-      setCropArea({
-        x: 0,
-        y: 0,
-        width: project.canvasSize.width,
-        height: project.canvasSize.height,
-      });
-    }
-    setToolMode(mode);
-  }, [selectedClipIds, clips, startMaskEdit, setToolMode, cropArea, setCropArea, project.canvasSize, playback.currentTime, isEditingMask, endMaskEdit, toolMode]);
-
-  const handleStartTransformShortcut = useCallback(() => {
-    if (!selectedVisualClip) return;
-    if (toolMode !== "transform") {
-      previousToolModeRef.current = toolMode;
-      handleToolModeChange("transform");
-      return;
-    }
-    previewViewportRef.current?.startTransformForSelection();
-  }, [selectedVisualClip, toolMode, handleToolModeChange, previewViewportRef]);
-
-  const handleApplyTransform = useCallback(() => {
-    previewViewportRef.current?.applyTransform();
-    if (previousToolModeRef.current) {
-      setToolMode(previousToolModeRef.current);
-      previousToolModeRef.current = null;
-    } else {
-      setToolMode("select");
-    }
-  }, [previewViewportRef, setToolMode]);
-
-  const handleCancelTransform = useCallback(() => {
-    previewViewportRef.current?.cancelTransform();
-    if (previousToolModeRef.current) {
-      setToolMode(previousToolModeRef.current);
-      previousToolModeRef.current = null;
-    } else {
-      setToolMode("select");
-    }
-  }, [previewViewportRef, setToolMode]);
-
-  const handleSetTransformAspectRatio = useCallback((ratio: AspectRatio) => {
-    previewViewportRef.current?.setTransformAspectRatio(ratio);
-  }, [previewViewportRef]);
-
-  const handleNudgeTransform = useCallback((dx: number, dy: number) => {
-    return previewViewportRef.current?.nudgeTransform(dx, dy) ?? false;
-  }, [previewViewportRef]);
+  const handleStartTransformShortcutAction = useCallback(() => {
+    handleStartTransformShortcut(Boolean(selectedVisualClip));
+  }, [handleStartTransformShortcut, selectedVisualClip]);
 
   const handleAdjustMaskBrushSize = useCallback((delta: number) => {
     if (toolMode !== "mask") return;
@@ -1200,16 +662,9 @@ function VideoEditorContent() {
   useEffect(() => {
     if (!postRestorationRef.current) return;
     if (toolMode !== "mask") return;
-    if (selectedClipIds.length === 0) return;
     if (isEditingMask) return; // already editing
-
-    const selected = clips.filter((c) => selectedClipIds.includes(c.id) && c.type !== "audio");
-    if (selected.length > 0) {
-      const maskStart = Math.min(...selected.map((c) => c.startTime));
-      const maskEnd = Math.max(...selected.map((c) => c.startTime + c.duration));
-      startMaskEdit(selected[0].trackId, project.canvasSize, playback.currentTime, maskStart, maskEnd - maskStart);
-    }
-  }, [toolMode, selectedClipIds, clips, isEditingMask, startMaskEdit, project.canvasSize, playback.currentTime]);
+    tryStartMaskEditFromSelection();
+  }, [toolMode, isEditingMask, tryStartMaskEditFromSelection]);
 
 
   // Keyboard shortcuts
@@ -1233,7 +688,7 @@ function VideoEditorContent() {
     handleFitToScreen,
     handleApplyCrop,
     isTransformActive: previewTransformState.isActive,
-    handleStartTransformShortcut,
+    handleStartTransformShortcut: handleStartTransformShortcutAction,
     handleApplyTransform,
     handleCancelTransform,
     handleNudgeTransform,
@@ -1249,94 +704,10 @@ function VideoEditorContent() {
   });
 
   // Prevent browser history swipe gestures while preserving editor-local horizontal scroll.
-  useEffect(() => {
-    const root = editorRootRef.current;
-    if (!root) return;
+  useHorizontalWheelCapture({ rootRef: editorRootRef });
 
-    const isHorizontallyScrollable = (el: HTMLElement): boolean => {
-      if (el.scrollWidth <= el.clientWidth + 1) return false;
-      const overflowX = window.getComputedStyle(el).overflowX;
-      return overflowX === "auto" || overflowX === "scroll" || overflowX === "overlay";
-    };
-
-    const findHorizontalScrollContainer = (start: HTMLElement): HTMLElement | null => {
-      let node: HTMLElement | null = start;
-      while (node && node !== root) {
-        if (isHorizontallyScrollable(node)) return node;
-        node = node.parentElement;
-      }
-      return isHorizontallyScrollable(root) ? root : null;
-    };
-
-    const handleWheelCapture = (event: WheelEvent) => {
-      if (event.ctrlKey || event.metaKey) return;
-      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
-      const target = event.target;
-      if (!(target instanceof HTMLElement) || !root.contains(target)) return;
-
-      const scrollContainer = findHorizontalScrollContainer(target);
-      if (scrollContainer) {
-        scrollContainer.scrollLeft += event.deltaX;
-      }
-
-      event.preventDefault();
-    };
-
-    document.addEventListener("wheel", handleWheelCapture, { passive: false, capture: true });
-    return () => {
-      document.removeEventListener("wheel", handleWheelCapture, { capture: true });
-    };
-  }, []);
-
-  const menuTranslations = {
-    file: t.file,
-    edit: t.edit,
-    view: t.view,
-    window: t.window,
-    settings: t.settings,
-    new: t.new,
-    load: t.load,
-    save: t.save,
-    saveAs: t.saveAs,
-    importMedia: t.importMedia,
-    exportVideo: t.exportVideo,
-    undo: t.undo,
-    redo: t.redo,
-    cut: t.cut,
-    copy: t.copy,
-    paste: t.paste,
-    delete: t.delete,
-    zoomIn: t.zoomIn,
-    zoomOut: t.zoomOut,
-    fitToScreen: t.fitToScreen,
-    panelHeaders: t.panelHeaders,
-    timeline: t.timeline,
-    previewVideoCache: t.previewVideoCache,
-    resetLayout: t.resetLayout,
-  };
-
-  const toolbarTranslations = {
-    select: t.select,
-    selectDesc: t.selectDesc,
-    transform: "Transform",
-    transformDesc: "Scale and move clip content",
-    hand: t.hand,
-    handDesc: t.handToolTip,
-    zoomInOut: t.zoomInOut,
-    zoomToolTip: t.zoomToolTip,
-    trim: t.trim,
-    trimDesc: t.trimDesc,
-    razor: t.razor,
-    razorDesc: t.razorDesc,
-    crop: t.crop,
-    cropDesc: t.cropToolTip || "Crop and expand canvas",
-    mask: t.mask,
-    maskDesc: t.maskDesc,
-    frameInterpolation: t.frameInterpolation,
-    frameInterpolationDescription: t.frameInterpolationDescription,
-    delete: t.delete,
-    fitToScreen: t.fitToScreen,
-  };
+  const menuTranslations = useMemo(() => createVideoMenuTranslations(t), [t]);
+  const toolbarTranslations = useMemo(() => createVideoToolbarTranslations(t), [t]);
 
   return (
     <div
@@ -1549,50 +920,11 @@ function VideoEditorContent() {
 
         {/* Canvas size */}
         <div className="flex items-center gap-1 shrink-0">
-          {isEditingCanvasSize ? (
-            <form
-              className="flex items-center gap-0.5"
-              onSubmit={(e) => { e.preventDefault(); handleCanvasSizeSubmit(); }}
-            >
-              <input
-                type="number"
-                defaultValue={project.canvasSize.width}
-                onChange={(e) => setCanvasSizeInput((p) => ({ ...p, w: e.target.value }))}
-                onFocus={(e) => e.target.select()}
-                autoFocus
-                className="w-14 px-1 py-0.5 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary text-center focus:outline-none focus:border-accent-primary"
-                min={1}
-                max={7680}
-              />
-              <span className="text-xs text-text-quaternary">x</span>
-              <input
-                type="number"
-                defaultValue={project.canvasSize.height}
-                onChange={(e) => setCanvasSizeInput((p) => ({ ...p, h: e.target.value }))}
-                onFocus={(e) => e.target.select()}
-                className="w-14 px-1 py-0.5 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary text-center focus:outline-none focus:border-accent-primary"
-                min={1}
-                max={7680}
-              />
-              <button type="submit" className="px-1.5 py-0.5 text-[10px] rounded bg-accent-primary text-white hover:bg-accent-hover transition-colors">
-                OK
-              </button>
-              <button type="button" onClick={() => setIsEditingCanvasSize(false)} className="px-1.5 py-0.5 text-[10px] rounded bg-surface-tertiary text-text-secondary hover:bg-interactive-hover transition-colors">
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => {
-                setCanvasSizeInput({ w: String(project.canvasSize.width), h: String(project.canvasSize.height) });
-                setIsEditingCanvasSize(true);
-              }}
-              className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
-              title="Change canvas size"
-            >
-              {project.canvasSize.width}x{project.canvasSize.height}
-            </button>
-          )}
+          <VideoCanvasSizeEditor
+            canvasWidth={project.canvasSize.width}
+            canvasHeight={project.canvasSize.height}
+            onApplyCanvasSize={handleApplyCanvasSize}
+          />
         </div>
 
       </div>

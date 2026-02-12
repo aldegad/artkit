@@ -27,140 +27,31 @@ import {
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
   SpriteExportModal,
-  SpriteResampleModal,
   useSpriteExport,
+  useSpriteProjectFileActions,
+  useSpriteProjectSync,
+  useSpriteExportActions,
+  useSpriteCropActions,
+  useSpriteResampleActions,
 } from "@/domains/sprite";
-import type { SavedSpriteProject, SpriteTrack, SpriteResampleSettings, SpriteResampleQuality } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
-import { migrateFramesToTracks } from "@/domains/sprite/utils/migration";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
-import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import {
   HeaderContent,
   SaveToast,
   LoadingOverlay,
   PanLockFloatingButton,
-  confirmDialog,
-  showErrorToast,
-  showInfoToast,
 } from "@/shared/components";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
   getSpriteStorageProvider,
-  hasLocalProjects,
-  checkCloudProjects,
-  uploadLocalProjectsToCloud,
-  clearLocalProjects,
-  clearCloudProjects,
 } from "@/domains/sprite/services/projectStorage";
-import {
-  downloadCompositedFramesAsZip,
-  downloadCompositedSpriteSheet,
-  downloadOptimizedSpriteZip,
-  type SpriteExportFrameSize,
-} from "@/domains/sprite/utils/export";
-
-const MAX_RESAMPLE_DIMENSION = 16384;
-
-function clampResampleDimension(value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.min(MAX_RESAMPLE_DIMENSION, Math.round(value)));
-}
-
-function loadImageFromSource(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Failed to load image."));
-    image.src = src;
-  });
-}
-
-async function resampleImageDataByScale(
-  imageData: string,
-  scaleX: number,
-  scaleY: number,
-  qualityMode: SpriteResampleQuality,
-): Promise<{ dataUrl: string; width: number; height: number }> {
-  const image = await loadImageFromSource(imageData);
-  const width = clampResampleDimension(image.width * scaleX);
-  const height = clampResampleDimension(image.height * scaleY);
-
-  if (width === image.width && height === image.height) {
-    return { dataUrl: imageData, width, height };
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Failed to get 2d context for resampling.");
-  }
-
-  const isDownscale = width < image.width || height < image.height;
-  const smoothingEnabled = qualityMode !== "pixel" && isDownscale;
-  ctx.imageSmoothingEnabled = smoothingEnabled;
-  if (smoothingEnabled) {
-    ctx.imageSmoothingQuality = qualityMode === "smooth" ? "high" : "medium";
-  } else {
-    ctx.imageSmoothingQuality = "low";
-  }
-  ctx.clearRect(0, 0, width, height);
-  ctx.drawImage(image, 0, 0, width, height);
-
-  return {
-    dataUrl: canvas.toDataURL("image/png"),
-    width,
-    height,
-  };
-}
-
-async function estimateCanvasSizeFromTracks(
-  tracks: SpriteTrack[],
-): Promise<SpriteExportFrameSize | null> {
-  const frames = tracks.flatMap((track) => track.frames).filter((frame) => Boolean(frame.imageData));
-  if (frames.length === 0) return null;
-
-  const sizeCache = new Map<string, Promise<{ width: number; height: number } | null>>();
-  const getImageSize = (dataUrl: string) => {
-    const cached = sizeCache.get(dataUrl);
-    if (cached) return cached;
-
-    const promise = loadImageFromSource(dataUrl)
-      .then((image) => ({ width: image.width, height: image.height }))
-      .catch(() => null);
-    sizeCache.set(dataUrl, promise);
-    return promise;
-  };
-
-  let maxRight = 0;
-  let maxBottom = 0;
-
-  await Promise.all(
-    frames.map(async (frame) => {
-      if (!frame.imageData) return;
-      const size = await getImageSize(frame.imageData);
-      if (!size) return;
-      const ox = frame.offset?.x ?? 0;
-      const oy = frame.offset?.y ?? 0;
-      maxRight = Math.max(maxRight, ox + size.width);
-      maxBottom = Math.max(maxBottom, oy + size.height);
-    }),
-  );
-
-  if (maxRight <= 0 || maxBottom <= 0) return null;
-  return {
-    width: clampResampleDimension(maxRight),
-    height: clampResampleDimension(maxBottom),
-  };
-}
+import { type SpriteExportFrameSize } from "@/domains/sprite/utils/export";
 
 // ============================================
 // Main Editor Component
@@ -239,20 +130,11 @@ function SpriteEditorMain() {
 
   // Export
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isResampleModalOpen, setIsResampleModalOpen] = useState(false);
   const [detectedSourceFrameSize, setDetectedSourceFrameSize] = useState<SpriteExportFrameSize | null>(null);
   const { isExporting, exportProgress, exportMp4, startProgress, endProgress } = useSpriteExport();
 
   // Panel visibility states
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
-
-  // Save feedback state
-  const [isSaving, setIsSaving] = useState(false);
-  const [isResampling, setIsResampling] = useState(false);
-  const [saveCount, setSaveCount] = useState(0);
-  const [saveProgress, setSaveProgress] = useState<SpriteSaveLoadProgress | null>(null);
-  const [isProjectLoading, setIsProjectLoading] = useState(false);
-  const [loadProgress, setLoadProgress] = useState<SpriteSaveLoadProgress | null>(null);
 
   // Video import modal state is now in the UI store (pendingVideoFile, isVideoImportOpen)
 
@@ -313,62 +195,6 @@ function SpriteEditorMain() {
       interpolationProgress: t.interpolationProgress,
     },
   });
-  const [storageInfo, setStorageInfo] = useState({ used: 0, quota: 0, percentage: 0 });
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
-  const [localProjectCount, setLocalProjectCount] = useState(0);
-  const [cloudProjectCount, setCloudProjectCount] = useState(0);
-  const saveInFlightRef = useRef(false);
-  const currentProjectIdRef = useRef<string | null>(currentProjectId);
-
-  useEffect(() => {
-    currentProjectIdRef.current = currentProjectId;
-  }, [currentProjectId]);
-
-  // Load saved projects when storage provider changes (login/logout)
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const projects = await storageProvider.getAllProjects();
-        setSavedSpriteProjects(projects);
-
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-      } catch (e) {
-        console.error("Failed to load saved projects:", e);
-      }
-    };
-
-    loadProjects();
-  }, [storageProvider, setSavedSpriteProjects]);
-
-  // Check local/cloud conflicts when user logs in
-  useEffect(() => {
-    const checkSyncConflicts = async () => {
-      if (!user) return;
-
-      try {
-        const hasLocal = await hasLocalProjects();
-        const hasCloud = await checkCloudProjects(user.uid);
-
-        if (hasLocal && hasCloud) {
-          const localProjects = await (await import("@/shared/utils/storage")).getAllProjects();
-          const cloudProjects = await (await import("@/shared/lib/firebase/firebaseSpriteStorage")).getAllSpriteProjectsFromFirebase(user.uid);
-
-          setLocalProjectCount(localProjects.length);
-          setCloudProjectCount(cloudProjects.length);
-          setShowSyncDialog(true);
-        } else if (hasLocal && !hasCloud) {
-          await uploadLocalProjectsToCloud(user);
-          const projects = await storageProvider.getAllProjects();
-          setSavedSpriteProjects(projects);
-        }
-      } catch (error) {
-        console.error("Failed to check sync conflicts:", error);
-      }
-    };
-
-    checkSyncConflicts();
-  }, [user, storageProvider, setSavedSpriteProjects]);
 
   // Image upload handler - sets as main sprite image
   const handleImageUpload = useCallback(
@@ -447,6 +273,65 @@ function SpriteEditorMain() {
   const allFrames = tracks.flatMap((t) => t.frames);
   const firstFrameImage = allFrames.find((f) => f.imageData)?.imageData;
   const hasRenderableFrames = tracks.length > 0 && allFrames.some((f) => f.imageData);
+  const {
+    isSaving,
+    saveCount,
+    saveProgress,
+    isProjectLoading,
+    loadProgress,
+    storageInfo,
+    refreshProjects,
+    saveProject,
+    saveProjectAs,
+    loadProject,
+    deleteProject,
+    handleNewProject,
+  } = useSpriteProjectFileActions({
+    storageProvider,
+    projectName,
+    currentProjectId,
+    imageSrc,
+    firstFrameImage,
+    imageSize,
+    canvasSize,
+    tracks,
+    allFrames,
+    nextFrameId,
+    fps,
+    framesCount: frames.length,
+    setSavedSpriteProjects,
+    setCurrentProjectId,
+    setProjectName,
+    setImageSrc,
+    setImageSize,
+    setCanvasSize,
+    restoreTracks,
+    setCurrentPoints,
+    imageRef,
+    setScale,
+    setIsProjectListOpen,
+    newProject,
+    t: {
+      enterProjectName: t.enterProjectName,
+      saveFailed: t.saveFailed,
+      deleteConfirm: t.deleteConfirm,
+      deleteFailed: t.deleteFailed,
+      newLabel: t.new || "New",
+      newProjectConfirm: t.newProjectConfirm,
+      cancelLabel: t.cancel || "Cancel",
+    },
+  });
+  const {
+    showSyncDialog,
+    localProjectCount,
+    cloudProjectCount,
+    handleKeepCloud,
+    handleKeepLocal,
+    handleCancelSync,
+  } = useSpriteProjectSync({
+    user,
+    refreshProjects,
+  });
 
   useEffect(() => {
     if (imageSize.width > 0 && imageSize.height > 0) {
@@ -496,565 +381,47 @@ function SpriteEditorMain() {
     }
     return null;
   }, [canvasSize, detectedSourceFrameSize, imageSize.width, imageSize.height]);
-
-  const handleSelectAllCrop = useCallback(() => {
-    if (!cropBaseSize) return;
-    setCropArea({
-      x: 0,
-      y: 0,
-      width: cropBaseSize.width,
-      height: cropBaseSize.height,
-    });
-  }, [cropBaseSize, setCropArea]);
-
-  const handleClearCrop = useCallback(() => {
-    setCropArea(null);
-    setCanvasExpandMode(false);
-  }, [setCropArea, setCanvasExpandMode]);
-
-  const handleCropWidthChange = useCallback((newWidth: number) => {
-    if (!cropArea) return;
-    const width = Math.max(10, Math.round(newWidth));
-    if (lockCropAspect && cropArea.width > 0) {
-      const ratio = cropArea.height / cropArea.width;
-      setCropArea({
-        ...cropArea,
-        width,
-        height: Math.max(10, Math.round(width * ratio)),
-      });
-      return;
-    }
-    setCropArea({ ...cropArea, width });
-  }, [cropArea, lockCropAspect, setCropArea]);
-
-  const handleCropHeightChange = useCallback((newHeight: number) => {
-    if (!cropArea) return;
-    const height = Math.max(10, Math.round(newHeight));
-    if (lockCropAspect && cropArea.height > 0) {
-      const ratio = cropArea.width / cropArea.height;
-      setCropArea({
-        ...cropArea,
-        height,
-        width: Math.max(10, Math.round(height * ratio)),
-      });
-      return;
-    }
-    setCropArea({ ...cropArea, height });
-  }, [cropArea, lockCropAspect, setCropArea]);
-
-  const handleExpandToSquare = useCallback(() => {
-    if (!cropArea) return;
-    const maxSide = Math.max(cropArea.width, cropArea.height);
-    setCropArea({
-      ...cropArea,
-      width: Math.round(maxSide),
-      height: Math.round(maxSide),
-    });
-  }, [cropArea, setCropArea]);
-
-  const handleFitToSquare = useCallback(() => {
-    if (!cropArea) return;
-    const minSide = Math.min(cropArea.width, cropArea.height);
-    setCropArea({
-      ...cropArea,
-      width: Math.round(minSide),
-      height: Math.round(minSide),
-    });
-  }, [cropArea, setCropArea]);
-
-  const handleApplyCrop = useCallback(() => {
-    if (!cropArea) return;
-    const width = Math.max(1, Math.round(cropArea.width));
-    const height = Math.max(1, Math.round(cropArea.height));
-    if (width < 2 || height < 2) return;
-
-    const offsetX = Math.round(cropArea.x);
-    const offsetY = Math.round(cropArea.y);
-
-    pushHistory();
-    useSpriteTrackStore.setState((state) => ({
-      tracks: state.tracks.map((track) => ({
-        ...track,
-        frames: track.frames.map((frame) => ({
-          ...frame,
-          offset: {
-            x: (frame.offset?.x ?? 0) - offsetX,
-            y: (frame.offset?.y ?? 0) - offsetY,
-          },
-        })),
-      })),
-      isPlaying: false,
-    }));
-
-    setCanvasSize({ width, height });
-    setCropArea(null);
-    setCanvasExpandMode(false);
-  }, [cropArea, pushHistory, setCropArea, setCanvasExpandMode, setCanvasSize]);
-
-  useEffect(() => {
-    if (toolMode !== "crop") return;
-    if (cropArea) return;
-    if (!cropBaseSize) return;
-
-    setCropArea({
-      x: 0,
-      y: 0,
-      width: cropBaseSize.width,
-      height: cropBaseSize.height,
-    });
-  }, [toolMode, cropArea, cropBaseSize, setCropArea]);
-
-  const handleResampleAllResolution = useCallback(async (settings: SpriteResampleSettings) => {
-    if (isResampling) return;
-
-    const sourceTracks = useSpriteTrackStore.getState().tracks;
-    const hasImageFrames = sourceTracks.some((track) =>
-      track.frames.some((frame) => Boolean(frame.imageData)),
-    );
-    if (!hasImageFrames) {
-      showInfoToast(t.noFramesToSave || "No frames to resample.");
-      return;
-    }
-
-    const estimatedCanvasSize = await estimateCanvasSizeFromTracks(sourceTracks);
-    const currentCanvasSize = canvasSize
-      ? {
-          width: clampResampleDimension(canvasSize.width),
-          height: clampResampleDimension(canvasSize.height),
-        }
-      : estimatedCanvasSize ?? (
-        imageSize.width > 0 && imageSize.height > 0
-          ? {
-              width: clampResampleDimension(imageSize.width),
-              height: clampResampleDimension(imageSize.height),
-            }
-          : null
-      );
-
-    if (!currentCanvasSize) {
-      showInfoToast("리샘플 기준 해상도를 찾지 못했습니다.");
-      return;
-    }
-
-    const nextCanvasSize = settings.frameSize;
-    const qualityMode = settings.quality;
-
-    setIsResampling(true);
-    try {
-      if (
-        nextCanvasSize.width === currentCanvasSize.width
-        && nextCanvasSize.height === currentCanvasSize.height
-      ) {
-        setIsResampleModalOpen(false);
-        return;
-      }
-
-      const currentAspect = currentCanvasSize.width / currentCanvasSize.height;
-      const nextAspect = nextCanvasSize.width / nextCanvasSize.height;
-      if (Math.abs(currentAspect - nextAspect) > 0.0001) {
-        const keepGoing = await confirmDialog({
-          title: "비율 확인",
-          message: "비율이 달라 프레임이 왜곡될 수 있습니다. 계속 진행할까요?",
-          confirmLabel: "계속",
-          cancelLabel: "취소",
-        });
-        if (!keepGoing) return;
-      }
-
-      const scaleX = nextCanvasSize.width / currentCanvasSize.width;
-      const scaleY = nextCanvasSize.height / currentCanvasSize.height;
-
-      const frameResampleCache = new Map<string, Promise<string>>();
-      const resampleFrameImage = (frameImageData: string): Promise<string> => {
-        const cached = frameResampleCache.get(frameImageData);
-        if (cached) return cached;
-
-        const promise = resampleImageDataByScale(frameImageData, scaleX, scaleY, qualityMode)
-          .then((result) => result.dataUrl)
-          .catch((error) => {
-            console.error("Failed to resample frame image:", error);
-            return frameImageData;
-          });
-        frameResampleCache.set(frameImageData, promise);
-        return promise;
-      };
-
-      const resampledTracks: SpriteTrack[] = await Promise.all(
-        sourceTracks.map(async (track) => ({
-          ...track,
-          frames: await Promise.all(
-            track.frames.map(async (frame) => {
-              const nextImageData = frame.imageData
-                ? await resampleFrameImage(frame.imageData)
-                : frame.imageData;
-
-              return {
-                ...frame,
-                imageData: nextImageData,
-                points: frame.points.map((point) => ({
-                  x: Math.round(point.x * scaleX),
-                  y: Math.round(point.y * scaleY),
-                })),
-                offset: {
-                  x: Math.round((frame.offset?.x ?? 0) * scaleX),
-                  y: Math.round((frame.offset?.y ?? 0) * scaleY),
-                },
-              };
-            }),
-          ),
-        })),
-      );
-
-      let nextImageSrc = imageSrc;
-      let nextImageSize = { ...imageSize };
-
-      if (imageSrc) {
-        try {
-          const resampledSource = await resampleImageDataByScale(imageSrc, scaleX, scaleY, qualityMode);
-          nextImageSrc = resampledSource.dataUrl;
-          nextImageSize = {
-            width: resampledSource.width,
-            height: resampledSource.height,
-          };
-        } catch (error) {
-          console.error("Failed to resample source image:", error);
-        }
-      } else if (imageSize.width > 0 && imageSize.height > 0) {
-        nextImageSize = {
-          width: clampResampleDimension(imageSize.width * scaleX),
-          height: clampResampleDimension(imageSize.height * scaleY),
-        };
-      }
-
-      pushHistory();
-      useSpriteTrackStore.setState((state) => ({
-        tracks: resampledTracks,
-        imageSrc: nextImageSrc,
-        imageSize: nextImageSize,
-        currentPoints: state.currentPoints.map((point) => ({
-          x: Math.round(point.x * scaleX),
-          y: Math.round(point.y * scaleY),
-        })),
-        isPlaying: false,
-      }));
-
-      if (nextImageSrc) {
-        const img = new Image();
-        img.onload = () => {
-          imageRef.current = img;
-        };
-        img.src = nextImageSrc;
-      } else {
-        imageRef.current = null;
-      }
-
-      setCanvasSize(nextCanvasSize);
-      setCropArea(null);
-      setCanvasExpandMode(false);
-      setIsResampleModalOpen(false);
-    } catch (error) {
-      console.error("Failed to resample sprite project:", error);
-      showErrorToast((error as Error).message || "전체 해상도 리샘플에 실패했습니다.");
-    } finally {
-      setIsResampling(false);
-    }
-  }, [
+  const {
+    handleSelectAllCrop,
+    handleClearCrop,
+    handleCropWidthChange,
+    handleCropHeightChange,
+    handleExpandToSquare,
+    handleFitToSquare,
+    handleApplyCrop,
+  } = useSpriteCropActions({
+    toolMode,
+    cropArea,
+    cropBaseSize,
+    lockCropAspect,
+    setCropArea,
+    setCanvasExpandMode,
+    setCanvasSize,
+    pushHistory,
+  });
+  const { isResampling, handleResampleAllResolution } = useSpriteResampleActions({
     canvasSize,
     imageRef,
     imageSize,
     imageSrc,
-    isResampling,
-    pushHistory,
-    setCanvasExpandMode,
-    setCropArea,
     setCanvasSize,
-    setIsResampleModalOpen,
-    t.noFramesToSave,
-  ]);
+    setCropArea,
+    setCanvasExpandMode,
+    pushHistory,
+    noFramesToSaveLabel: t.noFramesToSave,
+  });
 
-  // Unified export handler
-  const handleExport = useCallback(async (settings: import("@/domains/sprite/components/SpriteExportModal").SpriteExportSettings) => {
-    if (!hasRenderableFrames) return;
-    const name = settings.fileName.trim() || projectName.trim() || "sprite-project";
-    const resolvedFrameSize = settings.frameSize ?? undefined;
-    try {
-      switch (settings.exportType) {
-        case "zip":
-          await downloadCompositedFramesAsZip(tracks, name, {
-            frameSize: resolvedFrameSize,
-          });
-          break;
-        case "sprite-png":
-          await downloadCompositedSpriteSheet(tracks, name, {
-            frameSize: resolvedFrameSize,
-            padding: settings.padding,
-            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
-          });
-          break;
-        case "sprite-webp":
-          await downloadCompositedSpriteSheet(tracks, name, {
-            format: "webp",
-            frameSize: resolvedFrameSize,
-            padding: settings.padding,
-            backgroundColor: settings.bgTransparent ? undefined : settings.backgroundColor,
-            quality: settings.webpQuality,
-          });
-          break;
-        case "mp4":
-          await exportMp4(tracks, name, {
-            fps: settings.mp4Fps,
-            compression: settings.mp4Compression,
-            backgroundColor: settings.mp4BackgroundColor,
-            loopCount: settings.mp4LoopCount,
-            frameSize: resolvedFrameSize,
-          });
-          break;
-        case "optimized-zip":
-          try {
-            startProgress("Preparing...", 0);
-            await downloadOptimizedSpriteZip(tracks, name, {
-              threshold: settings.optimizedThreshold,
-              target: settings.optimizedTarget,
-              includeGuide: settings.optimizedIncludeGuide,
-              imageFormat: settings.optimizedImageFormat,
-              imageQuality: settings.optimizedWebpQuality,
-              tileSize: settings.optimizedTileSize,
-              fps,
-              frameSize: resolvedFrameSize,
-            }, (p) => {
-              startProgress(p.stage, p.percent, p.detail);
-            });
-          } finally {
-            endProgress();
-          }
-          break;
-      }
-      setIsExportModalOpen(false);
-    } catch (error) {
-      console.error("Export failed:", error);
-      showErrorToast(`${t.exportFailed}: ${(error as Error).message}`);
-    }
-  }, [hasRenderableFrames, tracks, projectName, fps, t.exportFailed, exportMp4, startProgress, endProgress]);
-
-  // Save project (overwrite if existing, create new if not)
-  const saveProject = useCallback(async () => {
-    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
-      return;
-    }
-    if (saveInFlightRef.current) return;
-    saveInFlightRef.current = true;
-
-    const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
-    const saveImageSrc = imageSrc || firstFrameImage || "";
-    const existingProjectId = currentProjectIdRef.current;
-    const resolvedProjectId = existingProjectId || crypto.randomUUID();
-    currentProjectIdRef.current = resolvedProjectId;
-    const projectToSave: SavedSpriteProject = {
-      id: resolvedProjectId,
-      name,
-      imageSrc: saveImageSrc,
-      imageSize: imageSize,
-      canvasSize: canvasSize ?? undefined,
-      exportFrameSize: canvasSize ?? undefined,
-      tracks,
-      nextFrameId,
-      fps,
-      savedAt: Date.now(),
-    };
-
-    setIsSaving(true);
-    setSaveProgress(null);
-    try {
-      await storageProvider.saveProject(projectToSave, setSaveProgress);
-      setSavedSpriteProjects((prev: SavedSpriteProject[]) =>
-        existingProjectId
-          ? prev.map((p) => (p.id === resolvedProjectId ? projectToSave : p))
-          : [projectToSave, ...prev],
-      );
-      setCurrentProjectId(resolvedProjectId);
-      currentProjectIdRef.current = resolvedProjectId;
-
-      const info = await storageProvider.getStorageInfo();
-      setStorageInfo(info);
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Save failed:", error);
-      showErrorToast(`${t.saveFailed}: ${(error as Error).message}`);
-    } finally {
-      saveInFlightRef.current = false;
-      setIsSaving(false);
-      setSaveProgress(null);
-    }
-  }, [
-    t,
-    imageSrc,
-    imageSize,
+  const { handleExport } = useSpriteExportActions({
+    hasRenderableFrames,
     tracks,
-    allFrames,
-    firstFrameImage,
     projectName,
-    canvasSize,
-    nextFrameId,
     fps,
-    storageProvider,
-    setSavedSpriteProjects,
-    setCurrentProjectId,
-  ]);
-
-  // Save project as new (always create new project)
-  const saveProjectAs = useCallback(async () => {
-    if (tracks.length === 0 || !allFrames.some((f) => f.imageData)) {
-      return;
-    }
-    if (saveInFlightRef.current) return;
-    saveInFlightRef.current = true;
-
-    const inputName = prompt(t.enterProjectName, projectName || "");
-    if (inputName === null) {
-      saveInFlightRef.current = false;
-      return;
-    }
-
-    const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
-    const newId = crypto.randomUUID();
-    const saveImageSrc = imageSrc || firstFrameImage || "";
-
-    const newProj = {
-      id: newId,
-      name,
-      imageSrc: saveImageSrc,
-      imageSize: imageSize,
-      canvasSize: canvasSize ?? undefined,
-      exportFrameSize: canvasSize ?? undefined,
-      tracks,
-      nextFrameId,
-      fps,
-      savedAt: Date.now(),
-    };
-
-    setIsSaving(true);
-    setSaveProgress(null);
-    try {
-      await storageProvider.saveProject(newProj, setSaveProgress);
-      setSavedSpriteProjects((prev: SavedSpriteProject[]) => [newProj, ...prev]);
-      setCurrentProjectId(newId);
-      currentProjectIdRef.current = newId;
-      setProjectName(name);
-
-      const info = await storageProvider.getStorageInfo();
-      setStorageInfo(info);
-      setSaveCount((c) => c + 1);
-    } catch (error) {
-      console.error("Save failed:", error);
-      showErrorToast(`${t.saveFailed}: ${(error as Error).message}`);
-    } finally {
-      saveInFlightRef.current = false;
-      setIsSaving(false);
-      setSaveProgress(null);
-    }
-  }, [
-    imageSrc,
-    imageSize,
-    tracks,
-    allFrames,
-    firstFrameImage,
-    projectName,
-    canvasSize,
-    nextFrameId,
-    fps,
-    storageProvider,
-    setSavedSpriteProjects,
-    setCurrentProjectId,
-    setProjectName,
-    t,
-  ]);
-
-  // Load project by id (supports cloud metadata-only list)
-  const loadProject = useCallback(
-    async (projectMeta: (typeof savedProjects)[0]) => {
-      const trackStore = useSpriteTrackStore.getState();
-      trackStore.setIsPlaying(false);
-      trackStore.setCurrentFrameIndex(0);
-      setIsProjectLoading(true);
-      setLoadProgress(null);
-      try {
-        const project = await storageProvider.getProject(projectMeta.id, setLoadProgress);
-        if (!project) {
-          throw new Error("Project not found");
-        }
-
-        setImageSrc(project.imageSrc);
-        setImageSize(project.imageSize);
-        setCanvasSize(project.canvasSize ?? project.exportFrameSize ?? null);
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const raw = project as any;
-        const tracks = Array.isArray(project.tracks)
-          ? project.tracks
-          : migrateFramesToTracks(raw.frames ?? []);
-        restoreTracks(tracks, project.nextFrameId);
-        setProjectName(project.name);
-        setCurrentProjectId(project.id);
-        setCurrentPoints([]);
-
-        const img = new Image();
-        img.onload = () => {
-          imageRef.current = img;
-          const maxWidth = 900;
-          const newScale = Math.min(maxWidth / img.width, 1);
-          setScale(newScale);
-        };
-        img.src = project.imageSrc;
-
-        setIsProjectListOpen(false);
-      } catch (error) {
-        console.error("Load failed:", error);
-        showErrorToast((error as Error).message);
-      } finally {
-        setIsProjectLoading(false);
-        setLoadProgress(null);
-      }
-    },
-    [
-      storageProvider,
-      setImageSrc,
-      setImageSize,
-      setCanvasSize,
-      restoreTracks,
-      setProjectName,
-      setCurrentProjectId,
-      setCurrentPoints,
-      imageRef,
-      setScale,
-      setIsProjectListOpen,
-    ],
-  );
-
-  // Delete project
-  const deleteProject = useCallback(
-    async (projectId: string) => {
-      const shouldDelete = await confirmDialog(t.deleteConfirm);
-      if (!shouldDelete) return;
-
-      setIsProjectLoading(true);
-      setLoadProgress(null);
-      try {
-        await storageProvider.deleteProject(projectId);
-        setSavedSpriteProjects((prev) => prev.filter((p) => p.id !== projectId));
-
-        // Update storage info
-        const info = await storageProvider.getStorageInfo();
-        setStorageInfo(info);
-      } catch (error) {
-        console.error("Delete failed:", error);
-        showErrorToast(`${t.deleteFailed}: ${(error as Error).message}`);
-      } finally {
-        setIsProjectLoading(false);
-        setLoadProgress(null);
-      }
-    },
-    [storageProvider, setSavedSpriteProjects, t],
-  );
+    exportMp4,
+    startProgress,
+    endProgress,
+    closeExportModal: () => setIsExportModalOpen(false),
+    exportFailedLabel: t.exportFailed,
+  });
 
   useSpriteKeyboardShortcuts({
     setIsSpacePressed,
@@ -1068,10 +435,6 @@ function SpriteEditorMain() {
     saveProject,
     saveProjectAs,
     toolMode,
-    brushSize,
-    setBrushSize,
-    magicWandTolerance,
-    setMagicWandTolerance,
     applyCrop: handleApplyCrop,
     clearCrop: handleClearCrop,
   });
@@ -1081,21 +444,6 @@ function SpriteEditorMain() {
       setSpriteToolMode("select");
     }
   }, [toolMode, setSpriteToolMode]);
-
-  // Handle new project with confirmation
-  const handleNew = useCallback(async () => {
-    if (frames.length > 0 || imageSrc) {
-      const shouldCreate = await confirmDialog({
-        title: t.new || "New Project",
-        message: t.newProjectConfirm,
-        confirmLabel: t.new || "New",
-        cancelLabel: t.cancel || "Cancel",
-      });
-      if (!shouldCreate) return;
-    }
-    setCanvasSize(null);
-    newProject();
-  }, [frames.length, imageSrc, t.cancel, t.new, t.newProjectConfirm, newProject, setCanvasSize]);
 
   return (
     <div className="h-full bg-background text-text-primary flex flex-col overflow-hidden relative">
@@ -1140,12 +488,12 @@ function SpriteEditorMain() {
         title={t.spriteEditor}
         menuBar={
           <SpriteMenuBar
-            onNew={handleNew}
+            onNew={handleNewProject}
             onLoad={() => setIsProjectListOpen(true)}
             onSave={saveProject}
             onSaveAs={saveProjectAs}
             onExport={() => setIsExportModalOpen(true)}
-            onResampleAllResolution={() => setIsResampleModalOpen(true)}
+            onResampleAllResolution={() => void handleResampleAllResolution()}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
             onImportVideo={() => setIsVideoImportOpen(true)}
@@ -1309,24 +657,9 @@ function SpriteEditorMain() {
         isOpen={showSyncDialog}
         localCount={localProjectCount}
         cloudCount={cloudProjectCount}
-        onKeepCloud={async () => {
-          await clearLocalProjects();
-          setShowSyncDialog(false);
-          const projects = await storageProvider.getAllProjects();
-          setSavedSpriteProjects(projects);
-        }}
-        onKeepLocal={async () => {
-          if (user) {
-            await clearCloudProjects(user);
-            await uploadLocalProjectsToCloud(user);
-            const projects = await storageProvider.getAllProjects();
-            setSavedSpriteProjects(projects);
-          }
-          setShowSyncDialog(false);
-        }}
-        onCancel={() => {
-          setShowSyncDialog(false);
-        }}
+        onKeepCloud={handleKeepCloud}
+        onKeepLocal={handleKeepLocal}
+        onCancel={handleCancelSync}
       />
 
       {/* Export Modal */}
@@ -1374,31 +707,6 @@ function SpriteEditorMain() {
           exportOptimizedFormatPng: t.exportOptimizedFormatPng,
           exportOptimizedFormatWebp: t.exportOptimizedFormatWebp,
           exportOptimizedTileSize: t.exportOptimizedTileSize,
-        }}
-      />
-
-      <SpriteResampleModal
-        isOpen={isResampleModalOpen}
-        onClose={() => setIsResampleModalOpen(false)}
-        onApply={(settings) => void handleResampleAllResolution(settings)}
-        sourceFrameSize={cropBaseSize}
-        isResampling={isResampling}
-        translations={{
-          title: t.resampleAllResolution,
-          cancel: t.cancel,
-          apply: t.confirm,
-          applying: t.resampling,
-          canvasSize: t.exportCanvasSize,
-          useSourceSize: t.resampleUseCurrentSize,
-          width: t.exportWidth,
-          height: t.exportHeight,
-          keepAspectRatio: t.exportKeepAspectRatio,
-          sizeLimitHint: t.exportCanvasSizeLimit,
-          quality: t.quality,
-          qualitySmooth: t.resampleQualitySmooth,
-          qualityBalanced: t.resampleQualityBalanced,
-          qualityPixel: t.resampleQualityPixel,
-          qualityHint: t.resampleQualityHint,
         }}
       />
 
