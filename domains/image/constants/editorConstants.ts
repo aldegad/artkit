@@ -58,6 +58,8 @@ export const VIEWPORT = {
   MAX_ZOOM: 10,
   /** Wheel/pinch-ish zoom intensity used by canvas viewport */
   WHEEL_ZOOM_FACTOR: 0.1,
+  /** Default fit-to-screen padding around canvas */
+  FIT_PADDING: 27,
   /** Discrete zoom tool / keyboard multipliers */
   ZOOM_STEP_IN: 1.25,
   ZOOM_STEP_OUT: 0.8,

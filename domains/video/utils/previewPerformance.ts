@@ -108,7 +108,8 @@ export function resolvePreviewPerformanceConfig(): PreviewPerformanceConfig {
     isMobileLike,
     draftMode,
     preRenderEnabled,
-    maxCanvasDpr: draftMode ? 1 : 2,
+    // Keep preview sharp on smaller/mobile viewports by avoiding forced DPR=1.
+    maxCanvasDpr: 2,
     playbackRenderFpsCap,
     debugLogs,
   };

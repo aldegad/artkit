@@ -2,6 +2,7 @@
 
 import { MutableRefObject, RefObject, useEffect } from "react";
 import { Size } from "@/shared/types";
+import { PREVIEW } from "../../constants";
 
 interface UsePreviewResizeObserverOptions {
   previewContainerRef: RefObject<HTMLDivElement | null>;
@@ -45,10 +46,10 @@ export function usePreviewResizeObserver(options: UsePreviewResizeObserverOption
       const { zoom, pan } = getTransform();
       if (zoom === 1 && pan.x === 0 && pan.y === 0) {
         // Default view — fit to container.
-        fitToContainer(40);
+        fitToContainer(PREVIEW.FIT_PADDING);
       } else {
         // User has zoomed/panned — only update baseScale.
-        const padding = 40;
+        const padding = PREVIEW.FIT_PADDING;
         const maxW = width - padding * 2;
         const maxH = height - padding * 2;
         const pw = projectCanvasSize.width;

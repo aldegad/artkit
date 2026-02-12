@@ -48,6 +48,16 @@ interface MiddlePanPendingState {
   zoomOnStart: number;
 }
 
+interface PinchPointer {
+  clientX: number;
+  clientY: number;
+}
+
+interface PinchSession {
+  initialDistance: number;
+  initialZoom: number;
+}
+
 interface UseTimelineInputOptions {
   tracksContainerRef: React.RefObject<HTMLDivElement | null>;
   containerRef?: React.RefObject<HTMLDivElement | null>;
@@ -82,6 +92,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const {
     stateRef: timelineViewportRef,
     panByPixels,
+    setZoomAtPixel,
     setZoomFromWheelAtPixel,
     ensureTimeVisibleOnLeft,
     setScrollFromGestureAnchor,
@@ -122,6 +133,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const activePointerIdRef = useRef<number | null>(null);
   const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
   const [middlePanPending, setMiddlePanPending] = useState<MiddlePanPendingState | null>(null);
+  const pinchPointersRef = useRef<Map<number, PinchPointer>>(new Map());
+  const pinchSessionRef = useRef<PinchSession | null>(null);
+  const isPinchingRef = useRef(false);
 
   // Long-press lift state for cross-track touch movement
   const [liftedClipId, setLiftedClipId] = useState<string | null>(null);
@@ -132,6 +146,12 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const [touchPending, setTouchPending] = useState<TouchPendingState | null>(null);
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
+
+  const getPinchDistance = useCallback((first: PinchPointer, second: PinchPointer) => {
+    const dx = first.clientX - second.clientX;
+    const dy = first.clientY - second.clientY;
+    return Math.hypot(dx, dy);
+  }, []);
 
   const clipsByTrackDesc = useMemo(() => {
     const index = new Map<string, Clip[]>();
@@ -529,6 +549,47 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     return () => target.removeEventListener("wheel", handleTimelineWheel);
   }, [containerRef, tracksContainerRef, handleTimelineWheel]);
 
+  useEffect(() => {
+    // Safari trackpad pinch emits gesture events instead of ctrl+wheel.
+    const target = containerRef?.current ?? tracksContainerRef.current;
+    if (!target) return;
+
+    type WebKitGestureEvent = Event & {
+      scale?: number;
+      clientX?: number;
+      preventDefault: () => void;
+    };
+
+    let gestureStartZoom = 1;
+
+    const handleGestureStart = (event: Event) => {
+      const e = event as WebKitGestureEvent;
+      e.preventDefault();
+      gestureStartZoom = Math.max(0.001, timelineViewportRef.current.zoom);
+    };
+
+    const handleGestureChange = (event: Event) => {
+      const e = event as WebKitGestureEvent;
+      e.preventDefault();
+
+      const rect = tracksContainerRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return;
+
+      const scale = Number.isFinite(e.scale) && (e.scale as number) > 0 ? (e.scale as number) : 1;
+      const clientX = Number.isFinite(e.clientX) ? (e.clientX as number) : rect.left + rect.width / 2;
+      const anchorX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+      setZoomAtPixel(gestureStartZoom * scale, anchorX);
+    };
+
+    target.addEventListener("gesturestart", handleGestureStart as EventListener, { passive: false });
+    target.addEventListener("gesturechange", handleGestureChange as EventListener, { passive: false });
+
+    return () => {
+      target.removeEventListener("gesturestart", handleGestureStart as EventListener);
+      target.removeEventListener("gesturechange", handleGestureChange as EventListener);
+    };
+  }, [containerRef, tracksContainerRef, timelineViewportRef, setZoomAtPixel]);
+
   const seekAndKeepVisible = useCallback((time: number) => {
     const seekTime = Math.max(0, time);
     seek(seekTime);
@@ -768,6 +829,33 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
       // ── Touch: defer ALL processing until gesture direction is known ──
       if (e.pointerType === "touch" && e.button === 0) {
+        pinchPointersRef.current.set(e.pointerId, {
+          clientX: e.clientX,
+          clientY: e.clientY,
+        });
+
+        if (pinchPointersRef.current.size >= 2) {
+          e.preventDefault();
+          const pointers = Array.from(pinchPointersRef.current.values());
+          const first = pointers[0];
+          const second = pointers[1];
+          if (first && second) {
+            const initialDistance = getPinchDistance(first, second);
+            if (initialDistance > 0) {
+              pinchSessionRef.current = {
+                initialDistance,
+                initialZoom: Math.max(0.001, timelineViewportRef.current.zoom),
+              };
+              isPinchingRef.current = true;
+              cancelLongPress();
+              setTouchPending(null);
+              releasePointer();
+              setDragState(INITIAL_TIMELINE_DRAG_STATE);
+            }
+          }
+          return;
+        }
+
         handleTouchPointerDown(e, x, contentY, time);
         return;
       }
@@ -777,8 +865,70 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         handlePrimaryPointerDown(e, x, contentY, time);
       }
     },
-    [tracksContainerRef, getContentY, pixelToTime, handleTouchPointerDown, handlePrimaryPointerDown]
+    [
+      tracksContainerRef,
+      getContentY,
+      pixelToTime,
+      getPinchDistance,
+      timelineViewportRef,
+      cancelLongPress,
+      releasePointer,
+      handleTouchPointerDown,
+      handlePrimaryPointerDown,
+    ]
   );
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!pinchPointersRef.current.has(event.pointerId)) return;
+      pinchPointersRef.current.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+
+      if (!isPinchingRef.current || !pinchSessionRef.current) return;
+      if (pinchPointersRef.current.size < 2) return;
+
+      const points = Array.from(pinchPointersRef.current.values());
+      const first = points[0];
+      const second = points[1];
+      if (!first || !second) return;
+
+      const currentDistance = getPinchDistance(first, second);
+      if (currentDistance <= 0) return;
+
+      const rect = tracksContainerRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return;
+
+      const ratio = currentDistance / pinchSessionRef.current.initialDistance;
+      const nextZoom = pinchSessionRef.current.initialZoom * ratio;
+      const centerX = (first.clientX + second.clientX) / 2;
+      const anchorX = Math.max(0, Math.min(centerX - rect.left, rect.width));
+
+      event.preventDefault();
+      setZoomAtPixel(nextZoom, anchorX);
+    };
+
+    const handlePointerEnd = (event: PointerEvent) => {
+      if (!pinchPointersRef.current.has(event.pointerId)) return;
+      pinchPointersRef.current.delete(event.pointerId);
+
+      if (pinchPointersRef.current.size < 2) {
+        isPinchingRef.current = false;
+        pinchSessionRef.current = null;
+      }
+    };
+
+    document.addEventListener("pointermove", handlePointerMove, { passive: false });
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+    };
+  }, [getPinchDistance, tracksContainerRef, setZoomAtPixel]);
 
   const handlePlayheadDragMove = useCallback((time: number) => {
     const seekTime = Math.max(0, time);
@@ -956,6 +1106,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   useEffect(() => {
     return () => {
+      pinchPointersRef.current.clear();
+      pinchSessionRef.current = null;
+      isPinchingRef.current = false;
       releasePointer();
     };
   }, [releasePointer]);
