@@ -6,7 +6,7 @@ import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 import { canvasCache } from "../utils";
-import { CHECKERBOARD, HANDLE_SIZE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
+import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
 
 // ============================================
@@ -608,7 +608,8 @@ export function useCanvasRendering(
       const rotationRadians = (transformRotation * Math.PI) / 180;
       const centerX = transformX + transformW / 2;
       const centerY = transformY + transformH / 2;
-      const rotateHandleOffset = 24 * zoom;
+      const rotateHandleOffset = ROTATE_HANDLE.OFFSET * zoom;
+      const rotateHandleRadius = ROTATE_HANDLE.RADIUS;
       const rotateHandleY = -transformH / 2 - rotateHandleOffset;
 
       ctx.save();
@@ -676,29 +677,44 @@ export function useCanvasRendering(
         ctx.strokeRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
       });
 
-      // Draw rotate handle (top-center)
-      ctx.beginPath();
-      ctx.moveTo(0, -transformH / 2);
-      ctx.lineTo(0, rotateHandleY + 10);
-      ctx.stroke();
-
-      ctx.fillStyle = colors.selection;
-      ctx.beginPath();
-      ctx.arc(0, rotateHandleY, handleSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      // Direction marker for rotation handle
-      ctx.strokeStyle = colors.textOnColor;
+      // Draw rotate handle stem (line from box top to handle)
+      ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(0, rotateHandleY, handleSize / 3, Math.PI * 0.2, Math.PI * 1.35);
+      ctx.moveTo(0, -transformH / 2);
+      ctx.lineTo(0, rotateHandleY + rotateHandleRadius);
       ctx.stroke();
+
+      // Draw rotate handle circle
+      ctx.fillStyle = colors.selection;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(2, rotateHandleY - handleSize / 3);
-      ctx.lineTo(6, rotateHandleY - handleSize / 3 + 2);
-      ctx.lineTo(2, rotateHandleY - handleSize / 3 + 5);
+      ctx.arc(0, rotateHandleY, rotateHandleRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = colors.textOnColor;
       ctx.stroke();
+
+      // Draw rotation arrow icon inside handle
+      const iconR = rotateHandleRadius * 0.55;
+      ctx.strokeStyle = colors.textOnColor;
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      // Arc (~270 degree open circle)
+      ctx.beginPath();
+      ctx.arc(0, rotateHandleY, iconR, -Math.PI * 0.65, Math.PI * 0.85);
+      ctx.stroke();
+      // Arrowhead at the end of the arc
+      const arrowTipX = iconR * Math.cos(-Math.PI * 0.65);
+      const arrowTipY = rotateHandleY + iconR * Math.sin(-Math.PI * 0.65);
+      const arrowSize = rotateHandleRadius * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(arrowTipX - arrowSize * 0.3, arrowTipY - arrowSize);
+      ctx.lineTo(arrowTipX, arrowTipY);
+      ctx.lineTo(arrowTipX + arrowSize, arrowTipY - arrowSize * 0.3);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
 
       ctx.restore();
     }
