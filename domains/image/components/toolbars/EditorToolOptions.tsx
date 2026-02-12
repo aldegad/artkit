@@ -17,6 +17,8 @@ export interface EditorToolOptionsProps {
   setBrushSize: React.Dispatch<React.SetStateAction<number>>;
   brushHardness: number;
   setBrushHardness: React.Dispatch<React.SetStateAction<number>>;
+  brushOpacity: number;
+  setBrushOpacity: React.Dispatch<React.SetStateAction<number>>;
   brushColor: string;
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   stampSource: Point | null;
@@ -54,6 +56,7 @@ export interface EditorToolOptionsProps {
   translations: {
     size: string;
     hardness: string;
+    opacity: string;
     color: string;
     source: string;
     altClickToSetSource: string;
@@ -73,6 +76,8 @@ export function EditorToolOptions({
   setBrushSize,
   brushHardness,
   setBrushHardness,
+  brushOpacity,
+  setBrushOpacity,
   brushColor,
   setBrushColor,
   stampSource,
@@ -169,6 +174,19 @@ export function EditorToolOptions({
               max={100}
               step={1}
               label={`${t.hardness}:`}
+              format={(v) => `${Math.round(v)}%`}
+              size="sm"
+            />
+          )}
+
+          {(toolMode === "brush" || toolMode === "eraser") && (
+            <NumberScrubber
+              value={brushOpacity}
+              onChange={(v) => setBrushOpacity(Math.round(v))}
+              min={1}
+              max={100}
+              step={1}
+              label={`${t.opacity}:`}
               format={(v) => `${Math.round(v)}%`}
               size="sm"
             />

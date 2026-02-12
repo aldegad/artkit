@@ -40,6 +40,7 @@ interface UseImageProjectIOOptions {
   setBrushSize: React.Dispatch<React.SetStateAction<number>>;
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   setBrushHardness: React.Dispatch<React.SetStateAction<number>>;
+  setBrushOpacity: React.Dispatch<React.SetStateAction<number>>;
   setShowRulers: (show: boolean) => void;
   setShowGuides: (show: boolean) => void;
   setLockGuides: (lock: boolean) => void;
@@ -98,6 +99,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     setBrushSize,
     setBrushColor,
     setBrushHardness,
+    setBrushOpacity,
     setShowRulers,
     setShowGuides,
     setLockGuides,
@@ -180,6 +182,9 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
           setBrushSize(data.brushSize);
           setBrushColor(data.brushColor);
           setBrushHardness(data.brushHardness);
+          if (typeof data.brushOpacity === "number") {
+            setBrushOpacity(data.brushOpacity);
+          }
 
           const { width, height } = data.canvasSize;
           await initLayers(width, height, data.layers);
@@ -244,6 +249,10 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
       }
 
       setGuides(project.guides || []);
+      if (typeof project.brushSize === "number") setBrushSize(project.brushSize);
+      if (typeof project.brushColor === "string") setBrushColor(project.brushColor);
+      if (typeof project.brushHardness === "number") setBrushHardness(project.brushHardness);
+      if (typeof project.brushOpacity === "number") setBrushOpacity(project.brushOpacity);
       setIsProjectListOpen(false);
     } finally {
       setIsLoading(false);
@@ -265,6 +274,10 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     editCanvasRef,
     layerCanvasesRef,
     setGuides,
+    setBrushSize,
+    setBrushColor,
+    setBrushHardness,
+    setBrushOpacity,
     setIsProjectListOpen,
   ]);
 

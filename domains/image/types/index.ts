@@ -97,10 +97,10 @@ export interface SavedImageProject {
   brushSize?: number;
   brushColor?: string;
   brushHardness?: number;
+  brushOpacity?: number;
   // UI state (optional for backward compatibility)
   showRulers?: boolean;
   showGuides?: boolean;
   lockGuides?: boolean;
   snapToGuides?: boolean;
 }
-
