@@ -13,8 +13,8 @@ export {
 } from "./rifeInterpolation";
 
 // Brush engine
-export { drawDab, drawLine, parseHexColor } from "./brushEngine";
-export type { DabParams, LineParams } from "./brushEngine";
+export { drawDab, drawLine, eraseDabLinear, eraseLineLinear, eraseByMaskLinear, parseHexColor } from "./brushEngine";
+export type { DabParams, LineParams, EraseDabParams, EraseLineParams, EraseByMaskParams } from "./brushEngine";
 
 // Canvas viewport
 export { ViewportEmitter } from "./viewportEmitter";
