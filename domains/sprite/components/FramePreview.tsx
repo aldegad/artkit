@@ -28,7 +28,15 @@ import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
-  const { brushColor, setBrushColor, brushSize, brushHardness, activePreset, pressureEnabled } = useEditorBrush();
+  const {
+    brushColor,
+    setBrushColor,
+    brushSize,
+    brushHardness,
+    brushOpacity,
+    activePreset,
+    pressureEnabled,
+  } = useEditorBrush();
   const { pushHistory } = useEditorHistory();
   const {
     toolMode,
@@ -275,6 +283,7 @@ export default function FramePreviewContent() {
         activePreset,
         brushSize,
         brushHardness,
+        brushOpacity,
         pressureEnabled,
         selection: magicWandSelectionRef.current,
         selectionMaskCanvas: magicWandMaskCanvasRef.current,
@@ -286,7 +295,15 @@ export default function FramePreviewContent() {
       invalidateAiSelectionCache();
       return true;
     },
-    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
+    [
+      activePreset,
+      brushHardness,
+      brushOpacity,
+      brushSize,
+      ensureDabBufferCanvas,
+      invalidateAiSelectionCache,
+      pressureEnabled,
+    ],
   );
 
   const {

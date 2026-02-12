@@ -494,6 +494,8 @@ export function useEditorBrush() {
   const setBrushSize = useSpriteToolStore((s) => s.setBrushSize);
   const brushHardness = useSpriteToolStore((s) => s.brushHardness);
   const setBrushHardness = useSpriteToolStore((s) => s.setBrushHardness);
+  const brushOpacity = useSpriteToolStore((s) => s.brushOpacity);
+  const setBrushOpacity = useSpriteToolStore((s) => s.setBrushOpacity);
   const activePreset = useSpriteToolStore((s) => s.activePreset);
   const setActivePreset = useSpriteToolStore((s) => s.setActivePreset);
   const presets = useSpriteToolStore((s) => s.presets);
@@ -507,6 +509,8 @@ export function useEditorBrush() {
     setBrushSize,
     brushHardness,
     setBrushHardness,
+    brushOpacity,
+    setBrushOpacity,
     activePreset,
     setActivePreset,
     presets,
