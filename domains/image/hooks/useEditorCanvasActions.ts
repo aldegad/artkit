@@ -68,8 +68,8 @@ export function useEditorCanvasActions(
     const container = containerRef.current;
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
     const padding = VIEWPORT.FIT_PADDING;
-    const maxWidth = container.clientWidth - padding;
-    const maxHeight = container.clientHeight - padding;
+    const maxWidth = container.clientWidth - padding * 2;
+    const maxHeight = container.clientHeight - padding * 2;
     const newZoom = Math.min(maxWidth / displayWidth, maxHeight / displayHeight, 1);
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
@@ -151,8 +151,8 @@ export function useEditorCanvasActions(
       if (!container) return;
 
       const padding = VIEWPORT.FIT_PADDING;
-      const maxWidth = container.clientWidth - padding;
-      const maxHeight = container.clientHeight - padding;
+      const maxWidth = container.clientWidth - padding * 2;
+      const maxHeight = container.clientHeight - padding * 2;
       const fitZoom = Math.min(maxWidth / newWidth, maxHeight / newHeight, 1);
       setZoom(fitZoom);
       setPan({ x: 0, y: 0 });

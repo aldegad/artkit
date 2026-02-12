@@ -6,9 +6,7 @@ import { useVideoCoordinates } from "./useVideoCoordinates";
 import { useTimelineViewport } from "./useTimelineViewport";
 import { Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
-import { copyMediaBlob } from "../utils/mediaStorage";
 import { resolveTimelineClipSelection } from "../utils/timelineSelection";
-import { buildRazorSplitClips } from "../utils/razorSplit";
 import {
   type DragItem,
   type DragState,
@@ -74,8 +72,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     trimClipStart,
     trimClipEnd,
     duplicateClip,
-    removeClip,
-    addClips,
+    splitClipAtTime,
     saveToHistory,
   } = useTimeline();
   const {
@@ -348,30 +345,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }));
   }, [capturePointer]);
 
-  const splitClipWithRazor = useCallback((clip: Clip, splitCursorTime: number): Clip | null => {
-    const splitResult = buildRazorSplitClips({
-      clip,
-      splitCursorTime,
-      snapToPoints,
-    });
-    if (!splitResult) {
-      return null;
-    }
-    const { firstClip, secondClip } = splitResult;
-
-    saveToHistory();
-
-    void Promise.all([
-      copyMediaBlob(clip.id, firstClip.id),
-      copyMediaBlob(clip.id, secondClip.id),
-    ]).catch((error) => {
-      console.error("Failed to copy media blob on razor split:", error);
-    });
-
-    removeClip(clip.id);
-    addClips([firstClip, secondClip]);
-    return secondClip;
-  }, [snapToPoints, saveToHistory, removeClip, addClips]);
+  const splitClipWithRazor = useCallback((clip: Clip, splitCursorTime: number): string | null => {
+    return splitClipAtTime(clip.id, splitCursorTime);
+  }, [splitClipAtTime]);
 
   const duplicateSelectionForDrag = useCallback((options: {
     activeClipIds: string[];
@@ -738,9 +714,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }) => {
     const { event, clip, x, contentY, time } = options;
     if (toolMode === "razor") {
-      const splitResult = splitClipWithRazor(clip, time);
-      if (splitResult) {
-        selectClip(splitResult.id, false);
+      const splitClipId = splitClipWithRazor(clip, time);
+      if (splitClipId) {
+        selectClip(splitClipId, false);
       }
       return;
     }
