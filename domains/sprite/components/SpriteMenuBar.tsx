@@ -18,6 +18,7 @@ interface SpriteMenuBarProps {
   onSave: () => void;
   onSaveAs: () => void;
   onExport: () => void;
+  onExportCurrentFrame: () => void;
   onResampleAllResolution: () => void;
   onImportImage: () => void;
   onImportSheet: () => void;
@@ -29,6 +30,7 @@ interface SpriteMenuBarProps {
   onTogglePanelHeaders: () => void;
   canSave: boolean;
   canExport: boolean;
+  canExportCurrentFrame: boolean;
   canResample: boolean;
   isLoading?: boolean;
   // Edit menu props
@@ -46,6 +48,7 @@ interface SpriteMenuBarProps {
     save: string;
     saveAs: string;
     export: string;
+    exportCurrentFrame: string;
     resampleAllResolution: string;
     importImage: string;
     importSheet: string;
@@ -68,6 +71,7 @@ export default function SpriteMenuBar({
   onSave,
   onSaveAs,
   onExport,
+  onExportCurrentFrame,
   onResampleAllResolution,
   onImportImage,
   onImportSheet,
@@ -79,6 +83,7 @@ export default function SpriteMenuBar({
   onTogglePanelHeaders,
   canSave,
   canExport,
+  canExportCurrentFrame,
   canResample,
   isLoading,
   onUndo,
@@ -99,6 +104,7 @@ export default function SpriteMenuBar({
     { label: t.saveAs, onClick: onSaveAs, disabled: !canSave, shortcut: d(COMMON_SHORTCUTS.saveAs) },
     { divider: true },
     { label: `${t.export}...`, onClick: onExport, disabled: !canExport },
+    { label: t.exportCurrentFrame, onClick: onExportCurrentFrame, disabled: !canExportCurrentFrame },
     { label: `${t.resampleAllResolution}...`, onClick: onResampleAllResolution, disabled: !canResample },
     { divider: true },
     { label: t.importImage, onClick: onImportImage },

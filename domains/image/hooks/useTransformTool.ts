@@ -41,6 +41,8 @@ export interface TransformState {
     width: number;
     height: number;
   } | null;
+  // Rotation in degrees around current bounds center
+  rotation: number;
   // Original image data for single layer (backward compatibility)
   originalImageData: ImageData | null;
   // Per-layer data for multi-layer transform
@@ -58,6 +60,7 @@ export type TransformHandle =
   | "s"
   | "sw"
   | "w"
+  | "rotate"
   | "move"
   | null;
 
@@ -103,6 +106,69 @@ interface UseTransformToolReturn {
 
 // Handle size for interaction detection (from shared constants)
 const HANDLE_HIT_AREA = HANDLE_SIZE_CONST.HIT_AREA;
+const ROTATE_HANDLE_OFFSET = 24;
+const ROTATION_SNAP_STEP = 15;
+
+function toRadians(degrees: number): number {
+  return (degrees * Math.PI) / 180;
+}
+
+function toDegrees(radians: number): number {
+  return (radians * 180) / Math.PI;
+}
+
+function normalizeDegrees(degrees: number): number {
+  const normalized = degrees % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+}
+
+function getBoundsCenter(bounds: NonNullable<TransformState["bounds"]>): Point {
+  return {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  };
+}
+
+function worldToLocalPoint(
+  point: Point,
+  bounds: NonNullable<TransformState["bounds"]>,
+  rotationRadians: number
+): Point {
+  const center = getBoundsCenter(bounds);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  const cos = Math.cos(rotationRadians);
+  const sin = Math.sin(rotationRadians);
+  return {
+    x: dx * cos + dy * sin,
+    y: -dx * sin + dy * cos,
+  };
+}
+
+function localToWorldPoint(
+  point: Point,
+  bounds: NonNullable<TransformState["bounds"]>,
+  rotationRadians: number
+): Point {
+  const center = getBoundsCenter(bounds);
+  const cos = Math.cos(rotationRadians);
+  const sin = Math.sin(rotationRadians);
+  return {
+    x: center.x + point.x * cos - point.y * sin,
+    y: center.y + point.x * sin + point.y * cos,
+  };
+}
+
+function rotatePoint(point: Point, center: Point, rotationRadians: number): Point {
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  const cos = Math.cos(rotationRadians);
+  const sin = Math.sin(rotationRadians);
+  return {
+    x: center.x + dx * cos - dy * sin,
+    y: center.y + dx * sin + dy * cos,
+  };
+}
 
 // ============================================
 // Hook Implementation
@@ -132,6 +198,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     layerPosition: null,
     originalBounds: null,
     bounds: null,
+    rotation: 0,
     originalImageData: null,
     perLayerData: null,
     isSelectionBased: false,
@@ -146,6 +213,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   const dragStartRef = useRef<Point>({ x: 0, y: 0 });
   const originalBoundsOnDragRef = useRef<TransformState["bounds"]>(null);
   const activeHandleRef = useRef<TransformHandle>(null);
+  const dragStartAngleRef = useRef<number>(0);
+  const rotationOnDragStartRef = useRef<number>(0);
 
   // Compute snap sources
   const snapSources = useMemo(() => {
@@ -167,12 +236,26 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   const getHandleAtPosition = useCallback(
     (pos: Point): TransformHandle => {
       if (!transformState.bounds) return null;
-      return getRectHandleAtPosition(pos, transformState.bounds, {
+      const rotationRadians = toRadians(transformState.rotation);
+      const localPoint = worldToLocalPoint(pos, transformState.bounds, rotationRadians);
+      const localRect = {
+        x: -transformState.bounds.width / 2,
+        y: -transformState.bounds.height / 2,
+        width: transformState.bounds.width,
+        height: transformState.bounds.height,
+      };
+      const rotateHandleY = localRect.y - ROTATE_HANDLE_OFFSET;
+      const distanceToRotateHandle = Math.hypot(localPoint.x, localPoint.y - rotateHandleY);
+      if (distanceToRotateHandle <= HANDLE_HIT_AREA) {
+        return "rotate";
+      }
+
+      return getRectHandleAtPosition(localPoint, localRect, {
         handleSize: HANDLE_HIT_AREA,
         includeMove: true,
       }) as TransformHandle;
     },
-    [transformState.bounds]
+    [transformState.bounds, transformState.rotation]
   );
 
   // Helper function to find content bounds in a canvas
@@ -279,6 +362,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         layerPosition: { x: layerPosX, y: layerPosY },
         originalBounds: { ...imageBounds },
         bounds: { ...imageBounds },
+        rotation: 0,
         originalImageData: contentImageData,
         perLayerData,
         isSelectionBased: true,
@@ -368,6 +452,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       layerPosition: singleLayerData?.layerPosition || null,
       originalBounds: { ...combinedBounds },
       bounds: { ...combinedBounds },
+      rotation: 0,
       originalImageData: singleLayerData?.originalImageData || null,
       perLayerData: perLayerData,
       isSelectionBased: false,
@@ -380,6 +465,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     isDraggingRef.current = false;
     activeHandleRef.current = null;
     originalBoundsOnDragRef.current = null;
+    dragStartAngleRef.current = 0;
+    rotationOnDragStartRef.current = 0;
     setActiveHandle(null);
 
     if (!transformState.isActive) {
@@ -390,6 +477,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         layerPosition: null,
         originalBounds: null,
         bounds: null,
+        rotation: 0,
         originalImageData: null,
         perLayerData: null,
         isSelectionBased: false,
@@ -445,6 +533,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       layerPosition: null,
       originalBounds: null,
       bounds: null,
+      rotation: 0,
       originalImageData: null,
       perLayerData: null,
       isSelectionBased: false,
@@ -457,47 +546,60 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     data: PerLayerTransformData,
     scaleX: number,
     scaleY: number,
-    offsetX: number,
-    offsetY: number
+    rotationDegrees: number
   ) => {
     const layerCanvas = layerCanvasesRef.current.get(layerId);
     if (!layerCanvas) return;
 
     const ctx = layerCanvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx || !transformState.originalBounds || !transformState.bounds) return;
 
     const { originalImageData, originalBounds, layerPosition, contentOffset } = data;
+    const rotationRadians = toRadians(rotationDegrees);
+    const targetCenter = getBoundsCenter(transformState.bounds);
 
     // Calculate new bounds for this layer based on scale
-    const newWidth = Math.round(originalBounds.width * scaleX);
-    const newHeight = Math.round(originalBounds.height * scaleY);
+    const newWidth = Math.max(1, Math.round(originalBounds.width * scaleX));
+    const newHeight = Math.max(1, Math.round(originalBounds.height * scaleY));
 
     // Calculate new position (relative offset from combined bounds origin)
-    const relativeX = originalBounds.x - (transformState.originalBounds?.x || 0);
-    const relativeY = originalBounds.y - (transformState.originalBounds?.y || 0);
-    const newX = (transformState.bounds?.x || 0) + relativeX * scaleX;
-    const newY = (transformState.bounds?.y || 0) + relativeY * scaleY;
+    const relativeX = originalBounds.x - transformState.originalBounds.x;
+    const relativeY = originalBounds.y - transformState.originalBounds.y;
+    const scaledX = transformState.bounds.x + relativeX * scaleX;
+    const scaledY = transformState.bounds.y + relativeY * scaleY;
+    const scaledCenter = {
+      x: scaledX + newWidth / 2,
+      y: scaledY + newHeight / 2,
+    };
+    const rotatedCenter =
+      rotationDegrees === 0
+        ? scaledCenter
+        : rotatePoint(scaledCenter, targetCenter, rotationRadians);
 
-    // Convert to canvas-local coordinates
-    const canvasX = newX - layerPosition.x;
-    const canvasY = newY - layerPosition.y;
-
-    // Calculate required canvas size
-    const requiredWidth = Math.max(layerCanvas.width, canvasX + newWidth);
-    const requiredHeight = Math.max(layerCanvas.height, canvasY + newHeight);
-
-    // Handle negative coordinates
-    const localOffsetX = canvasX < 0 ? -canvasX : 0;
-    const localOffsetY = canvasY < 0 ? -canvasY : 0;
+    const absCos = Math.abs(Math.cos(rotationRadians));
+    const absSin = Math.abs(Math.sin(rotationRadians));
+    const rotatedAabbWidth = absCos * newWidth + absSin * newHeight;
+    const rotatedAabbHeight = absSin * newWidth + absCos * newHeight;
+    const aabbLeft = rotatedCenter.x - rotatedAabbWidth / 2 - layerPosition.x;
+    const aabbTop = rotatedCenter.y - rotatedAabbHeight / 2 - layerPosition.y;
+    const aabbRight = aabbLeft + rotatedAabbWidth;
+    const aabbBottom = aabbTop + rotatedAabbHeight;
+    const localOffsetX = aabbLeft < 0 ? Math.ceil(-aabbLeft) : 0;
+    const localOffsetY = aabbTop < 0 ? Math.ceil(-aabbTop) : 0;
+    const requiredWidth = Math.max(
+      layerCanvas.width + localOffsetX,
+      Math.ceil(aabbRight + localOffsetX),
+    );
+    const requiredHeight = Math.max(
+      layerCanvas.height + localOffsetY,
+      Math.ceil(aabbBottom + localOffsetY),
+    );
 
     // Expand canvas if needed
-    if (requiredWidth + localOffsetX > layerCanvas.width || requiredHeight + localOffsetY > layerCanvas.height || localOffsetX > 0 || localOffsetY > 0) {
-      const newCanvasWidth = Math.max(layerCanvas.width, requiredWidth + localOffsetX);
-      const newCanvasHeight = Math.max(layerCanvas.height, requiredHeight + localOffsetY);
-
+    if (requiredWidth !== layerCanvas.width || requiredHeight !== layerCanvas.height) {
       const oldData = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
-      layerCanvas.width = newCanvasWidth;
-      layerCanvas.height = newCanvasHeight;
+      layerCanvas.width = requiredWidth;
+      layerCanvas.height = requiredHeight;
       ctx.putImageData(oldData, localOffsetX, localOffsetY);
     }
 
@@ -517,16 +619,23 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     if (!tempCtx) return;
     tempCtx.putImageData(originalImageData, 0, 0);
 
-    // Draw scaled image
+    // Draw scaled and rotated image around the combined transform center
+    const canvasCenterX = rotatedCenter.x - layerPosition.x + localOffsetX;
+    const canvasCenterY = rotatedCenter.y - layerPosition.y + localOffsetY;
+
+    ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
+    ctx.translate(canvasCenterX, canvasCenterY);
+    ctx.rotate(rotationRadians);
     ctx.drawImage(
       tempCanvas,
-      canvasX + localOffsetX,
-      canvasY + localOffsetY,
+      -newWidth / 2,
+      -newHeight / 2,
       newWidth,
       newHeight
     );
+    ctx.restore();
   }, [transformState.originalBounds, transformState.bounds, layerCanvasesRef]);
 
   // Apply transform
@@ -535,6 +644,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     isDraggingRef.current = false;
     activeHandleRef.current = null;
     originalBoundsOnDragRef.current = null;
+    dragStartAngleRef.current = 0;
+    rotationOnDragStartRef.current = 0;
     setActiveHandle(null);
 
     if (!transformState.isActive || !transformState.bounds || !transformState.originalBounds) {
@@ -545,6 +656,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         layerPosition: null,
         originalBounds: null,
         bounds: null,
+        rotation: 0,
         originalImageData: null,
         perLayerData: null,
         isSelectionBased: false,
@@ -557,45 +669,31 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     // Calculate scale factors
     const scaleX = bounds.width / originalBounds.width;
     const scaleY = bounds.height / originalBounds.height;
-    const offsetX = bounds.x - originalBounds.x;
-    const offsetY = bounds.y - originalBounds.y;
+    const rotationDegrees = transformState.rotation;
 
     // Multi-layer transform: apply to each layer
     if (transformState.perLayerData && transformState.perLayerData.size > 0) {
       transformState.perLayerData.forEach((data, layerId) => {
-        applyTransformToLayer(layerId, data, scaleX, scaleY, offsetX, offsetY);
+        applyTransformToLayer(layerId, data, scaleX, scaleY, rotationDegrees);
       });
     }
     // Backward compatibility: single layer
-    else if (transformState.layerId && transformState.originalImageData) {
-      const layerCanvas = layerCanvasesRef.current.get(transformState.layerId);
-      if (layerCanvas) {
-        const ctx = layerCanvas.getContext("2d");
-        if (ctx) {
-          const layerPosX = transformState.layerPosition?.x || 0;
-          const layerPosY = transformState.layerPosition?.y || 0;
-
-          const origCanvasX = originalBounds.x - layerPosX;
-          const origCanvasY = originalBounds.y - layerPosY;
-          const canvasX = bounds.x - layerPosX;
-          const canvasY = bounds.y - layerPosY;
-
-          // Clear original area
-          ctx.clearRect(origCanvasX, origCanvasY, originalBounds.width, originalBounds.height);
-
-          // Create temp canvas
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = transformState.originalImageData.width;
-          tempCanvas.height = transformState.originalImageData.height;
-          const tempCtx = tempCanvas.getContext("2d");
-          if (tempCtx) {
-            tempCtx.putImageData(transformState.originalImageData, 0, 0);
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = "high";
-            ctx.drawImage(tempCanvas, canvasX, canvasY, bounds.width, bounds.height);
-          }
-        }
-      }
+    else if (transformState.layerId && transformState.originalImageData && transformState.layerPosition) {
+      applyTransformToLayer(
+        transformState.layerId,
+        {
+          originalImageData: transformState.originalImageData,
+          originalBounds,
+          layerPosition: transformState.layerPosition,
+          contentOffset: {
+            x: originalBounds.x - transformState.layerPosition.x,
+            y: originalBounds.y - transformState.layerPosition.y,
+          },
+        },
+        scaleX,
+        scaleY,
+        rotationDegrees
+      );
     }
 
     setTransformState({
@@ -605,6 +703,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       layerPosition: null,
       originalBounds: null,
       bounds: null,
+      rotation: 0,
       originalImageData: null,
       perLayerData: null,
       isSelectionBased: false,
@@ -613,7 +712,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
   // Handle mouse down for transform
   const handleTransformMouseDown = useCallback(
-    (imagePos: Point, modifiers: { shift: boolean; alt: boolean }): TransformHandle => {
+    (imagePos: Point, _modifiers: { shift: boolean; alt: boolean }): TransformHandle => {
       const handle = getHandleAtPosition(imagePos);
 
       if (handle) {
@@ -622,12 +721,22 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         isDraggingRef.current = true;
         dragStartRef.current = imagePos;
         originalBoundsOnDragRef.current = transformState.bounds ? { ...transformState.bounds } : null;
+        rotationOnDragStartRef.current = transformState.rotation;
+
+        if (handle === "rotate" && transformState.bounds) {
+          const center = getBoundsCenter(transformState.bounds);
+          dragStartAngleRef.current = Math.atan2(imagePos.y - center.y, imagePos.x - center.x);
+        } else {
+          dragStartAngleRef.current = 0;
+        }
+
+        setActiveSnapSources([]);
         return handle;
       }
 
       return null;
     },
-    [getHandleAtPosition, transformState.bounds]
+    [getHandleAtPosition, transformState.bounds, transformState.rotation]
   );
 
   // Handle mouse move for transform
@@ -637,10 +746,29 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const currentHandle = activeHandleRef.current;
       if (!isDraggingRef.current || !currentHandle || !originalBoundsOnDragRef.current) return;
 
-      const dx = imagePos.x - dragStartRef.current.x;
-      const dy = imagePos.y - dragStartRef.current.y;
       const orig = originalBoundsOnDragRef.current;
 
+      if (currentHandle === "rotate") {
+        const center = getBoundsCenter(orig);
+        const currentAngle = Math.atan2(imagePos.y - center.y, imagePos.x - center.x);
+        let nextRotation = normalizeDegrees(
+          rotationOnDragStartRef.current + toDegrees(currentAngle - dragStartAngleRef.current)
+        );
+
+        if (modifiers.shift) {
+          nextRotation = Math.round(nextRotation / ROTATION_SNAP_STEP) * ROTATION_SNAP_STEP;
+        }
+
+        setTransformState((prev) => ({
+          ...prev,
+          rotation: normalizeDegrees(nextRotation),
+        }));
+        setActiveSnapSources([]);
+        return;
+      }
+
+      const dx = imagePos.x - dragStartRef.current.x;
+      const dy = imagePos.y - dragStartRef.current.y;
       let newBounds = { ...orig };
 
       if (currentHandle === "move") {
@@ -663,6 +791,12 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
           setActiveSnapSources([]);
         }
       } else {
+        const rotationRadians = toRadians(transformState.rotation);
+        const localStart = worldToLocalPoint(dragStartRef.current, orig, rotationRadians);
+        const localCurrent = worldToLocalPoint(imagePos, orig, rotationRadians);
+        const localDx = localCurrent.x - localStart.x;
+        const localDy = localCurrent.y - localStart.y;
+
         // Resize based on handle
         const fromCenter = modifiers.alt;
         const originalAspect = orig.width / orig.height;
@@ -682,10 +816,16 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             targetAspect = ratioValue;
           }
         }
-        newBounds = resizeRectByHandle(
-          orig,
+        const localRect = {
+          x: -orig.width / 2,
+          y: -orig.height / 2,
+          width: orig.width,
+          height: orig.height,
+        };
+        const resizedLocalRect = resizeRectByHandle(
+          localRect,
           currentHandle as RectHandle,
-          { dx, dy },
+          { dx: localDx, dy: localDy },
           {
             minWidth: 10,
             minHeight: 10,
@@ -694,6 +834,18 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
             fromCenter,
           }
         );
+
+        const localCenter = {
+          x: resizedLocalRect.x + resizedLocalRect.width / 2,
+          y: resizedLocalRect.y + resizedLocalRect.height / 2,
+        };
+        const nextCenter = localToWorldPoint(localCenter, orig, rotationRadians);
+        newBounds = {
+          x: nextCenter.x - resizedLocalRect.width / 2,
+          y: nextCenter.y - resizedLocalRect.height / 2,
+          width: resizedLocalRect.width,
+          height: resizedLocalRect.height,
+        };
       }
 
       setTransformState((prev) => ({
@@ -703,7 +855,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       // Note: Canvas preview is now rendered directly in useCanvasRendering
       // to avoid coordinate mismatch between layerCanvas and transform bounds
     },
-    [aspectRatio, snapEnabled, snapSources]
+    [aspectRatio, snapEnabled, snapSources, transformState.rotation]
   );
 
   // Handle mouse up for transform
@@ -712,6 +864,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     setActiveHandle(null);
     activeHandleRef.current = null;
     originalBoundsOnDragRef.current = null;
+    dragStartAngleRef.current = 0;
+    rotationOnDragStartRef.current = 0;
     setActiveSnapSources([]); // Clear snap indicators on mouse up
   }, []);
 
