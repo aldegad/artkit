@@ -85,6 +85,7 @@ export {
   MaskControls,
   VideoMenuBar,
   VideoToolbar,
+  VideoCanvasSizeEditor,
   VideoExportModal,
   VideoSplitContainer,
   VideoFloatingWindows,
