@@ -76,6 +76,12 @@ interface RectBounds {
   height: number;
 }
 
+interface EraseAlphaCarryState {
+  width: number;
+  height: number;
+  values: Uint8Array;
+}
+
 const eraseMaskScratch: {
   canvas: HTMLCanvasElement | null;
   ctx: CanvasRenderingContext2D | null;
@@ -83,6 +89,8 @@ const eraseMaskScratch: {
   canvas: null,
   ctx: null,
 };
+
+const eraseAlphaCarryScratch = new WeakMap<object, EraseAlphaCarryState>();
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
@@ -153,6 +161,82 @@ function ensureEraseMaskScratch(width: number, height: number): CanvasRenderingC
   return eraseMaskScratch.ctx;
 }
 
+function ensureEraseAlphaCarryState(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): EraseAlphaCarryState | null {
+  const canvasKey = ctx.canvas as object | null;
+  if (!canvasKey) return null;
+
+  const existing = eraseAlphaCarryScratch.get(canvasKey);
+  if (!existing || existing.width !== width || existing.height !== height) {
+    const created: EraseAlphaCarryState = {
+      width,
+      height,
+      values: new Uint8Array(width * height),
+    };
+    eraseAlphaCarryScratch.set(canvasKey, created);
+    return created;
+  }
+
+  return existing;
+}
+
+function applyLinearAlphaErase(
+  target: Uint8ClampedArray,
+  mask: Uint8ClampedArray,
+  bounds: RectBounds,
+  canvasWidth: number,
+  alphaScale: number,
+  carryState: EraseAlphaCarryState | null
+): void {
+  if (alphaScale <= 0) return;
+
+  const rowStride = bounds.width * 4;
+  const carry = carryState?.values ?? null;
+
+  for (let row = 0; row < bounds.height; row += 1) {
+    const rowOffset = row * rowStride;
+    const canvasRowOffset = (bounds.y + row) * canvasWidth + bounds.x;
+
+    for (let col = 0; col < bounds.width; col += 1) {
+      const alphaIndex = rowOffset + col * 4 + 3;
+      const maskAlpha = mask[alphaIndex];
+      if (maskAlpha === 0) continue;
+
+      const targetAlpha = target[alphaIndex];
+      if (targetAlpha === 0) {
+        if (carry) carry[canvasRowOffset + col] = 0;
+        continue;
+      }
+
+      const eraseAmount = maskAlpha * alphaScale;
+      if (eraseAmount <= 0) continue;
+
+      let eraseWhole: number;
+      if (carry) {
+        const pixelIndex = canvasRowOffset + col;
+        const totalEraseFixed = eraseAmount * 256 + carry[pixelIndex];
+        eraseWhole = Math.floor(totalEraseFixed / 256);
+        carry[pixelIndex] = Math.floor(totalEraseFixed - eraseWhole * 256);
+      } else {
+        eraseWhole = Math.round(eraseAmount);
+      }
+
+      if (eraseWhole <= 0) continue;
+
+      const nextAlpha = targetAlpha - eraseWhole;
+      if (nextAlpha <= 0) {
+        target[alphaIndex] = 0;
+        if (carry) carry[canvasRowOffset + col] = 0;
+      } else {
+        target[alphaIndex] = nextAlpha;
+      }
+    }
+  }
+}
+
 function drawEraserShape(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -219,6 +303,7 @@ export function eraseDabLinear(ctx: CanvasRenderingContext2D, p: EraseDabParams)
   if (alpha <= 0 || p.radius <= 0) return;
 
   const { width: canvasWidth, height: canvasHeight } = getCanvasSize(ctx);
+  const carryState = ensureEraseAlphaCarryState(ctx, canvasWidth, canvasHeight);
   const bounds = getDabBounds(p.x, p.y, p.radius, canvasWidth, canvasHeight);
   if (!bounds) return;
 
@@ -237,12 +322,7 @@ export function eraseDabLinear(ctx: CanvasRenderingContext2D, p: EraseDabParams)
     const target = targetImage.data;
     const mask = maskImage.data;
 
-    for (let i = 3; i < target.length; i += 4) {
-      const maskAlpha = mask[i];
-      if (maskAlpha === 0) continue;
-      const eraseAmount = maskAlpha * alpha;
-      target[i] = Math.max(0, target[i] - eraseAmount);
-    }
+    applyLinearAlphaErase(target, mask, bounds, canvasWidth, alpha, carryState);
 
     ctx.putImageData(targetImage, bounds.x, bounds.y);
   } catch {
@@ -276,6 +356,7 @@ export function eraseByMaskLinear(ctx: CanvasRenderingContext2D, p: EraseByMaskP
   if (alphaScale <= 0) return;
 
   const { width: canvasWidth, height: canvasHeight } = getCanvasSize(ctx);
+  const carryState = ensureEraseAlphaCarryState(ctx, canvasWidth, canvasHeight);
   const rawBounds = p.bounds ?? {
     x: 0,
     y: 0,
@@ -291,12 +372,7 @@ export function eraseByMaskLinear(ctx: CanvasRenderingContext2D, p: EraseByMaskP
     const target = targetImage.data;
     const mask = maskImage.data;
 
-    for (let i = 3; i < target.length; i += 4) {
-      const maskAlpha = mask[i];
-      if (maskAlpha === 0) continue;
-      const eraseAmount = maskAlpha * alphaScale;
-      target[i] = Math.max(0, target[i] - eraseAmount);
-    }
+    applyLinearAlphaErase(target, mask, bounds, canvasWidth, alphaScale, carryState);
 
     ctx.putImageData(targetImage, bounds.x, bounds.y);
   } catch {
