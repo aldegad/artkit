@@ -1034,34 +1034,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     };
   }, [releasePointer]);
 
-  // Get cursor style based on position
-  const getCursor = useCallback(
-    (x: number): string => {
-      if (dragState.type !== "none") {
-        switch (dragState.type) {
-          case "clip-trim-start":
-          case "clip-trim-end":
-            return "ew-resize";
-          case "clip-move":
-            return "grabbing";
-          default:
-            return "default";
-        }
-      }
-
-      const result = findClipAtPosition(x, 0);
-      if (result) {
-        if (result.handle === "start" || result.handle === "end") {
-          return "ew-resize";
-        }
-        return "grab";
-      }
-
-      return "default";
-    },
-    [dragState.type, findClipAtPosition]
-  );
-
   /** Move the lifted clip to a different track (called from track-selector UI) */
   const dropClipToTrack = useCallback(
     (targetTrackId: string) => {
@@ -1082,7 +1054,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     dragState,
     handlePointerDown,
     handleContainerPointerDown,
-    getCursor,
     liftedClipId,
     dropClipToTrack,
     cancelLift: resetLift,
