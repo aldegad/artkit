@@ -44,6 +44,7 @@ interface UseKeyboardShortcutsOptions {
   selection: CropArea | null;
   selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
+  clearSelectionPixels?: () => void;
   clipboardRef: RefObject<ImageData | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
   activeLayerPosition?: { x: number; y: number } | null;
@@ -89,6 +90,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     selection,
     selectionFeather,
     setSelection,
+    clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
     activeLayerPosition,
@@ -242,6 +244,12 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         });
       }
 
+      // Delete selection content (Delete / Backspace)
+      if ((e.code === "Delete" || e.code === "Backspace") && selection) {
+        e.preventDefault();
+        clearSelectionPixels?.();
+      }
+
       // Escape to clear selection or close modal
       if (e.code === SPECIAL_SHORTCUTS.cancel) {
         if (isProjectListOpen) {
@@ -280,6 +288,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     selection,
     selectionFeather,
     setSelection,
+    clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
     isTransformActive,

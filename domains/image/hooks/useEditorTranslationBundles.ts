@@ -91,6 +91,7 @@ interface EditorTranslationBundles {
     source: string;
     altClickToSetSource: string;
     feather: string;
+    delete: string;
     presets: string;
     pressure: string;
     builtIn: string;
@@ -168,6 +169,7 @@ export function useEditorTranslationBundles(
         source: source.source,
         altClickToSetSource: source.altClickToSetSource,
         feather: source.feather,
+        delete: source.delete,
         presets: source.presets,
         pressure: source.pressure,
         builtIn: source.builtIn,
