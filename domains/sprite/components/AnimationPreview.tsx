@@ -45,69 +45,11 @@ import {
   zoomAtPoint,
 } from "@/shared/utils";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
+import { AnimationFrameIndicator } from "./AnimationFrameIndicator";
 import { drawSpriteCropOverlay } from "./spriteCropOverlayDrawing";
+import { resolveAnimationPreviewCursor } from "./animationPreviewCursor";
 
 const FIT_TO_SCREEN_PADDING = 40;
-
-// ============================================
-// Frame Indicator (editable)
-// ============================================
-
-function FrameIndicator({
-  currentIndex,
-  maxCount,
-  onChange,
-}: {
-  currentIndex: number;
-  maxCount: number;
-  onChange: (index: number) => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleDoubleClick = () => {
-    setEditValue(String(currentIndex + 1));
-    setIsEditing(true);
-    setTimeout(() => inputRef.current?.select(), 0);
-  };
-
-  const handleSubmit = () => {
-    const num = parseInt(editValue, 10);
-    if (!isNaN(num) && num >= 1 && num <= maxCount) {
-      onChange(num - 1);
-    }
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={handleSubmit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") handleSubmit();
-          if (e.key === "Escape") setIsEditing(false);
-        }}
-        className="w-12 text-xs text-center bg-surface-tertiary border border-border-default rounded px-1 py-0.5"
-        autoFocus
-      />
-    );
-  }
-
-  return (
-    <span
-      onDoubleClick={handleDoubleClick}
-      className="text-xs text-text-secondary cursor-default select-none tabular-nums"
-      title="Double-click to edit"
-    >
-      {currentIndex + 1}/{maxCount}
-    </span>
-  );
-}
 
 // ============================================
 // Component
@@ -810,33 +752,18 @@ export default function AnimationPreviewContent() {
   const previewPan = viewportSync.zoom >= 1
     ? { x: Math.round(viewportSync.pan.x), y: Math.round(viewportSync.pan.y) }
     : viewportSync.pan;
-
-  // Cursor selection
-  const getCursor = () => {
-    if (isAiSelecting) {
-      return "progress";
-    }
-    if (isHandMode) {
-      return animIsPanDragging() ? "grabbing" : "grab";
-    }
-    if (isZoomTool) {
-      return "zoom-in";
-    }
-    if (isEyedropperTool) {
-      return "crosshair";
-    }
-    if (isMagicWandTool) {
-      return "crosshair";
-    }
-    if (toolMode === "crop") {
-      return isDraggingCrop
-        ? cropDragMode === "move"
-          ? "grabbing"
-          : cropCursor
-        : cropCursor;
-    }
-    return "default";
-  };
+  const previewCursor = resolveAnimationPreviewCursor({
+    isAiSelecting,
+    isHandMode,
+    isPanDragging: animIsPanDragging(),
+    isZoomTool,
+    isEyedropperTool,
+    isMagicWandTool,
+    toolMode,
+    isDraggingCrop,
+    cropDragMode,
+    cropCursor,
+  });
 
   return (
     <div className="flex flex-col h-full bg-surface-primary">
@@ -866,7 +793,7 @@ export default function AnimationPreviewContent() {
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            style={{ cursor: getCursor(), touchAction: "none" }}
+            style={{ cursor: previewCursor, touchAction: "none" }}
           >
             {hasVisibleCanvas ? (
               <div
@@ -895,7 +822,7 @@ export default function AnimationPreviewContent() {
                   onPointerLeave={handlePreviewCanvasPointerLeave}
                   className="block relative"
                   style={{
-                    cursor: isBrushEditMode ? "none" : getCursor(),
+                    cursor: isBrushEditMode ? "none" : previewCursor,
                     pointerEvents: isHandMode ? "none" : "auto",
                     touchAction: "none",
                   }}
@@ -939,7 +866,7 @@ export default function AnimationPreviewContent() {
               {/* Left: Frame indicator + Background */}
               <div className="flex items-center gap-1.5">
                 {maxEnabledCount > 0 ? (
-                  <FrameIndicator
+                  <AnimationFrameIndicator
                     currentIndex={currentVisualIndex >= 0 ? currentVisualIndex : 0}
                     maxCount={maxEnabledCount}
                     onChange={(visualIndex) => {
