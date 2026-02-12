@@ -9,6 +9,7 @@ import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
 import { useFrameStripSkipActions } from "../hooks/useFrameStripSkipActions";
 import { useFrameStripTransformActions } from "../hooks/useFrameStripTransformActions";
+import { useFrameStripImportHandlers } from "../hooks/useFrameStripImportHandlers";
 
 interface FrameCardProps {
   frame: SpriteFrame;
@@ -125,7 +126,6 @@ export default function FrameStrip() {
     editingOffsetFrameId, setEditingOffsetFrameId, offsetDragStart, setOffsetDragStart,
   } = useEditorDrag();
 
-  const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [isSkipToggleMode, setIsSkipToggleMode] = useState(false);
   const [nthValue, setNthValue] = useState(2);
@@ -573,73 +573,18 @@ export default function FrameStrip() {
     setIsPlaying,
     setCurrentFrameIndex,
   });
-
-  // File drag & drop
-  const handleFileDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsFileDragOver(true);
-    }
-  }, []);
-
-  const handleFileDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsFileDragOver(false);
-  }, []);
-
-  const handleFileDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsFileDragOver(false);
-
-      const files = Array.from(e.dataTransfer.files).filter((file) =>
-        file.type.startsWith("image/"),
-      );
-      if (files.length === 0) return;
-
-      files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-      pushHistory();
-
-      let currentId = nextFrameId;
-      const newFrames: SpriteFrame[] = [];
-
-      for (const file of files) {
-        await new Promise<void>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const imageData = event.target?.result as string;
-            const img = new Image();
-            img.onload = () => {
-              newFrames.push({
-                id: currentId,
-                points: [
-                  { x: 0, y: 0 },
-                  { x: img.width, y: 0 },
-                  { x: img.width, y: img.height },
-                  { x: 0, y: img.height },
-                ],
-                name: file.name.replace(/\.[^/.]+$/, ""),
-                imageData,
-                offset: { x: 0, y: 0 },
-              });
-              currentId++;
-              resolve();
-            };
-            img.src = imageData;
-          };
-          reader.readAsDataURL(file);
-        });
-      }
-
-      addTrack("Image Import", newFrames);
-      setNextFrameId(currentId);
-      setCurrentFrameIndex(0);
-    },
-    [nextFrameId, setNextFrameId, pushHistory, setCurrentFrameIndex, addTrack],
-  );
+  const {
+    isFileDragOver,
+    handleFileDragOver,
+    handleFileDragLeave,
+    handleFileDrop,
+  } = useFrameStripImportHandlers({
+    nextFrameId,
+    pushHistory,
+    setNextFrameId,
+    setCurrentFrameIndex,
+    addTrack,
+  });
 
   const handleFrameClick = useCallback(
     (e: React.MouseEvent, idx: number, frame: SpriteFrame) => {

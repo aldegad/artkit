@@ -20,3 +20,4 @@ export { useFrameStripSkipActions } from "./useFrameStripSkipActions";
 export { useSpriteResampleActions } from "./useSpriteResampleActions";
 export { useFrameStripTransformActions } from "./useFrameStripTransformActions";
 export { useSpritePreviewBackgroundState } from "./useSpritePreviewBackgroundState";
+export { useFrameStripImportHandlers } from "./useFrameStripImportHandlers";
