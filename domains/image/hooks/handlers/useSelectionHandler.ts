@@ -6,6 +6,7 @@ import { useCallback } from "react";
 import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, SelectionHandlerOptions, FloatingLayer } from "./types";
 import { createRectFromDrag } from "@/shared/utils/rectTransform";
+import { applyFeatherToImageData } from "../../utils/selectionFeather";
 
 export interface UseSelectionHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
@@ -16,11 +17,9 @@ export interface UseSelectionHandlerReturn {
 export function useSelectionHandler(options: SelectionHandlerOptions): UseSelectionHandlerReturn {
   const {
     editCanvasRef,
-    imageRef,
-    rotation,
-    canvasSize,
     activeLayerPosition,
     selection,
+    selectionFeather,
     setSelection,
     setIsMovingSelection,
     setIsDuplicating,
@@ -48,7 +47,6 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
           if (e.altKey) {
             const editCanvas = editCanvasRef.current;
             const ctx2d = editCanvas?.getContext("2d");
-            const img = imageRef.current;
             if (!editCanvas || !ctx2d) return { handled: false };
 
             // Create composite canvas to get the selected area
@@ -58,23 +56,18 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
             const compositeCtx = compositeCanvas.getContext("2d");
             if (!compositeCtx) return { handled: false };
 
-            if (img) {
-              compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-              compositeCtx.rotate((rotation * Math.PI) / 180);
-              compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-              compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-            }
             const layerPosX = activeLayerPosition?.x || 0;
             const layerPosY = activeLayerPosition?.y || 0;
             compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
 
             // Copy selection to floating layer
-            const imageData = compositeCtx.getImageData(
+            let imageData = compositeCtx.getImageData(
               Math.round(selection.x),
               Math.round(selection.y),
               Math.round(selection.width),
               Math.round(selection.height)
             );
+            imageData = applyFeatherToImageData(imageData, selectionFeather);
             (floatingLayerRef as { current: FloatingLayer | null }).current = {
               imageData,
               x: selection.x,
@@ -129,11 +122,9 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
     },
     [
       selection,
+      selectionFeather,
       setSelection,
       editCanvasRef,
-      imageRef,
-      rotation,
-      canvasSize,
       activeLayerPosition,
       floatingLayerRef,
       dragStartOriginRef,

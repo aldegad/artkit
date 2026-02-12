@@ -350,31 +350,75 @@ export function useLayerManagement(
   // Merge paint layer down
   const mergeLayerDown = useCallback(
     (layerId: string) => {
-      const idx = layers.findIndex((l) => l.id === layerId);
-      if (idx === -1 || idx === layers.length - 1) return;
+      const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex);
+      const idx = sortedLayers.findIndex((l) => l.id === layerId);
+      if (idx === -1 || idx === sortedLayers.length - 1) return;
 
-      const upperLayer = layers[idx];
-      const lowerLayer = layers[idx + 1];
+      const upperLayer = sortedLayers[idx];
+      const lowerLayer = sortedLayers[idx + 1];
 
       if (upperLayer.type !== "paint" || lowerLayer.type !== "paint") return;
+      if (upperLayer.locked || lowerLayer.locked) return;
 
-      const upperCanvas = layerCanvasesRef.current.get(layerId);
+      const upperCanvas = layerCanvasesRef.current.get(upperLayer.id);
       const lowerCanvas = layerCanvasesRef.current.get(lowerLayer.id);
 
       if (!upperCanvas || !lowerCanvas) return;
 
       saveToHistory?.();
 
-      const ctx = lowerCanvas.getContext("2d");
-      if (ctx) {
-        ctx.globalAlpha = upperLayer.opacity / 100;
-        ctx.drawImage(upperCanvas, 0, 0);
-        ctx.globalAlpha = 1;
+      const upperPos = upperLayer.position || { x: 0, y: 0 };
+      const lowerPos = lowerLayer.position || { x: 0, y: 0 };
+
+      const minX = Math.min(upperPos.x, lowerPos.x);
+      const minY = Math.min(upperPos.y, lowerPos.y);
+      const maxX = Math.max(upperPos.x + upperCanvas.width, lowerPos.x + lowerCanvas.width);
+      const maxY = Math.max(upperPos.y + upperCanvas.height, lowerPos.y + lowerCanvas.height);
+
+      const mergedWidth = Math.max(1, Math.ceil(maxX - minX));
+      const mergedHeight = Math.max(1, Math.ceil(maxY - minY));
+
+      const mergedCanvas = document.createElement("canvas");
+      mergedCanvas.width = mergedWidth;
+      mergedCanvas.height = mergedHeight;
+      const mergedCtx = mergedCanvas.getContext("2d");
+      if (!mergedCtx) return;
+
+      if (lowerLayer.visible) {
+        mergedCtx.globalAlpha = lowerLayer.opacity / 100;
+        mergedCtx.drawImage(lowerCanvas, lowerPos.x - minX, lowerPos.y - minY);
       }
 
-      deleteLayerInternal(layerId, false);
+      if (upperLayer.visible) {
+        mergedCtx.globalAlpha = upperLayer.opacity / 100;
+        mergedCtx.drawImage(upperCanvas, upperPos.x - minX, upperPos.y - minY);
+      }
+
+      mergedCtx.globalAlpha = 1;
+      layerCanvasesRef.current.set(lowerLayer.id, mergedCanvas);
+      layerCanvasesRef.current.delete(upperLayer.id);
+
+      setLayers((prev) =>
+        prev
+          .filter((layer) => layer.id !== upperLayer.id)
+          .map((layer) =>
+            layer.id === lowerLayer.id
+              ? {
+                  ...layer,
+                  position: { x: minX, y: minY },
+                  opacity: 100,
+                  visible: lowerLayer.visible || upperLayer.visible,
+                  originalSize: { width: mergedWidth, height: mergedHeight },
+                }
+              : layer
+          )
+      );
+
+      setActiveLayerId(lowerLayer.id);
+      setSelectedLayerIds([lowerLayer.id]);
+      editCanvasRef.current = mergedCanvas;
     },
-    [layers, saveToHistory, deleteLayerInternal]
+    [layers, saveToHistory]
   );
 
   // Rotate all layer canvases by degrees (90, -90, 180)

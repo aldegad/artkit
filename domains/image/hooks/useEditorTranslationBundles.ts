@@ -30,6 +30,7 @@ interface EditorTranslationSource {
   fitToScreen: string;
   size: string;
   hardness: string;
+  feather: string;
   opacity: string;
   presets: string;
   pressure: string;
@@ -89,6 +90,7 @@ interface EditorTranslationBundles {
     color: string;
     source: string;
     altClickToSetSource: string;
+    feather: string;
     presets: string;
     pressure: string;
     builtIn: string;
@@ -165,6 +167,7 @@ export function useEditorTranslationBundles(
         color: source.color,
         source: source.source,
         altClickToSetSource: source.altClickToSetSource,
+        feather: source.feather,
         presets: source.presets,
         pressure: source.pressure,
         builtIn: source.builtIn,

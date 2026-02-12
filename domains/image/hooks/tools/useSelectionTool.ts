@@ -27,6 +27,8 @@ interface UseSelectionToolReturn {
   // State
   selection: CropArea | null;
   setSelection: React.Dispatch<React.SetStateAction<CropArea | null>>;
+  selectionFeather: number;
+  setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
   isMovingSelection: boolean;
   setIsMovingSelection: React.Dispatch<React.SetStateAction<boolean>>;
   isDuplicating: boolean;
@@ -78,6 +80,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const [isMovingSelection, setIsMovingSelection] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);
+  const [selectionFeather, setSelectionFeather] = useState(0);
 
   // Refs
   const floatingLayerRef = useRef<FloatingLayer | null>(null);
@@ -298,6 +301,8 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     // State
     selection,
     setSelection,
+    selectionFeather,
+    setSelectionFeather,
     isMovingSelection,
     setIsMovingSelection,
     isDuplicating,

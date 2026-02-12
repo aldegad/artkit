@@ -5,6 +5,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, MoveHandlerOptions, FloatingLayer } from "./types";
+import { applyFeatherToImageData, clearRectWithFeather } from "../../utils/selectionFeather";
 
 export interface UseMoveHandlerReturn {
   isMovingLayer: boolean;
@@ -16,10 +17,8 @@ export interface UseMoveHandlerReturn {
 export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerReturn {
   const {
     editCanvasRef,
-    imageRef,
-    rotation,
-    canvasSize,
     selection,
+    selectionFeather,
     floatingLayerRef,
     dragStartOriginRef,
     setIsMovingSelection,
@@ -57,7 +56,6 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
           if (!floatingLayerRef.current) {
             const editCanvas = editCanvasRef.current;
             const ctx2d = editCanvas?.getContext("2d");
-            const img = imageRef.current;
             if (!editCanvas || !ctx2d) return { handled: false };
 
             // Create composite canvas to get the selected area
@@ -67,23 +65,18 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
             const compositeCtx = compositeCanvas.getContext("2d");
             if (!compositeCtx) return { handled: false };
 
-            if (img) {
-              compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-              compositeCtx.rotate((rotation * Math.PI) / 180);
-              compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-              compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-            }
             const layerPosX = activeLayerPosition?.x || 0;
             const layerPosY = activeLayerPosition?.y || 0;
             compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
 
             // Copy selection to floating layer
-            const imageData = compositeCtx.getImageData(
+            let imageData = compositeCtx.getImageData(
               Math.round(selection.x),
               Math.round(selection.y),
               Math.round(selection.width),
               Math.round(selection.height)
             );
+            imageData = applyFeatherToImageData(imageData, selectionFeather);
             (floatingLayerRef as { current: FloatingLayer | null }).current = {
               imageData,
               x: selection.x,
@@ -97,11 +90,13 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
             // Clear the original selection area (cut operation)
             const clearX = Math.round(selection.x - layerPosX);
             const clearY = Math.round(selection.y - layerPosY);
-            ctx2d.clearRect(
+            clearRectWithFeather(
+              ctx2d,
               clearX,
               clearY,
               Math.round(selection.width),
-              Math.round(selection.height)
+              Math.round(selection.height),
+              selectionFeather
             );
           }
 
@@ -157,12 +152,10 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
     },
     [
       selection,
+      selectionFeather,
       floatingLayerRef,
       dragStartOriginRef,
       editCanvasRef,
-      imageRef,
-      rotation,
-      canvasSize,
       saveToHistory,
       setIsMovingSelection,
       setIsDuplicating,

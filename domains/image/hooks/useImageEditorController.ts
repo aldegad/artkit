@@ -301,6 +301,8 @@ export function useImageEditorController() {
   const {
     selection,
     setSelection,
+    selectionFeather,
+    setSelectionFeather,
     isMovingSelection,
     setIsMovingSelection,
     isDuplicating,
@@ -376,6 +378,7 @@ export function useImageEditorController() {
     editCanvasRef,
     brushColor,
     selection,
+    selectionFeather,
     saveToHistory,
   });
 
@@ -400,6 +403,7 @@ export function useImageEditorController() {
     stampSource,
     setStampSource,
     selection,
+    selectionFeather,
     setSelection,
     isMovingSelection,
     setIsMovingSelection,
@@ -481,6 +485,7 @@ export function useImageEditorController() {
     undo: handleUndo,
     redo: handleRedo,
     selection,
+    selectionFeather,
     setSelection,
     clipboardRef,
     floatingLayerRef,
@@ -488,6 +493,7 @@ export function useImageEditorController() {
     cancelTransform,
     getDisplayDimensions,
     saveToHistory,
+    activeLayerPosition,
     onToolModeChange: handleToolModeChange,
   });
 
@@ -786,6 +792,8 @@ export function useImageEditorController() {
       brushColor,
       setBrushColor,
       stampSource,
+      selectionFeather,
+      setSelectionFeather,
       activePreset,
       presets,
       onSelectPreset: setActivePreset,

@@ -49,6 +49,7 @@ interface UseMouseHandlersOptions {
 
   // Selection functions (from useSelectionTool)
   selection: CropArea | null;
+  selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
   isMovingSelection: boolean;
   setIsMovingSelection: (value: boolean) => void;
@@ -144,6 +145,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     stampSource,
     setStampSource,
     selection,
+    selectionFeather,
     setSelection,
     isMovingSelection,
     setIsMovingSelection,
@@ -232,6 +234,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     ...baseOptions,
     activeLayerPosition,
     selection,
+    selectionFeather,
     setSelection,
     isMovingSelection,
     setIsMovingSelection,
@@ -255,6 +258,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   const moveHandler = useMoveHandler({
     ...baseOptions,
     selection,
+    selectionFeather,
     setSelection,
     floatingLayerRef,
     dragStartOriginRef,

@@ -68,7 +68,7 @@ export function useBrushTool(): UseBrushToolReturn {
     state: { canvasSize, rotation, toolMode },
   } = useEditorState();
 
-  const { editCanvasRef, imageRef } = useEditorRefs();
+  const { editCanvasRef } = useEditorRefs();
 
   const getDisplayDimensions = useCallback(() => {
     const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
@@ -165,11 +165,9 @@ export function useBrushTool(): UseBrushToolReturn {
       const ctx = editCanvas?.getContext("2d");
       if (!editCanvas || !ctx) return;
 
-      const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-      // Clamp to image bounds
-      x = Math.max(0, Math.min(x, displayWidth));
-      y = Math.max(0, Math.min(y, displayHeight));
+      // Clamp to active layer canvas bounds (layer-local coordinates)
+      x = Math.max(0, Math.min(x, editCanvas.width));
+      y = Math.max(0, Math.min(y, editCanvas.height));
 
       // Calculate pressure-adjusted parameters
       const params = calculateDrawingParameters(pressure, activePreset, brushSize, pressureEnabled);
@@ -223,10 +221,7 @@ export function useBrushTool(): UseBrushToolReturn {
           });
         }
       } else if (toolMode === "stamp" && stampSource) {
-        // Clone stamp - copy from source to destination
-        const img = imageRef.current;
-        if (!img) return;
-
+        // Clone stamp - sample from current layer snapshot and paint to destination.
         if (isStart || !lastDrawPoint.current || !stampOffset.current) {
           stampOffset.current = {
             x: x - stampSource.x,
@@ -235,58 +230,68 @@ export function useBrushTool(): UseBrushToolReturn {
         }
         const currentOffset = stampOffset.current ?? { x: 0, y: 0 };
 
-        // Create a temporary canvas to get the original image data at source
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = displayWidth;
-        tempCanvas.height = displayHeight;
-        const tempCtx = tempCanvas.getContext("2d");
-        if (!tempCtx) return;
+        // Snapshot once per call so sampling stays stable while we paint.
+        const sourceCanvas = document.createElement("canvas");
+        sourceCanvas.width = editCanvas.width;
+        sourceCanvas.height = editCanvas.height;
+        const sourceCtx = sourceCanvas.getContext("2d");
+        if (!sourceCtx) return;
+        sourceCtx.drawImage(editCanvas, 0, 0);
 
-        // Draw rotated original image
-        tempCtx.translate(displayWidth / 2, displayHeight / 2);
-        tempCtx.rotate((rotation * Math.PI) / 180);
-        tempCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
+        const drawStampDab = (destX: number, destY: number) => {
+          const sourceX = destX - currentOffset.x;
+          const sourceY = destY - currentOffset.y;
+          const halfBrush = params.size / 2;
 
-        // Get source pixel data
-        const sourceX = x - currentOffset.x;
-        const sourceY = y - currentOffset.y;
-        const halfBrush = params.size / 2;
+          ctx.save();
+          ctx.globalCompositeOperation = "source-over";
+          ctx.globalAlpha = (brushOpacity / 100) * params.opacity * params.flow;
+          ctx.beginPath();
+          ctx.arc(destX, destY, halfBrush, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(
+            sourceCanvas,
+            sourceX - halfBrush,
+            sourceY - halfBrush,
+            params.size,
+            params.size,
+            destX - halfBrush,
+            destY - halfBrush,
+            params.size,
+            params.size
+          );
+          ctx.restore();
+        };
 
-        // Draw circular stamp
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, halfBrush, 0, Math.PI * 2);
-        ctx.clip();
+        if (isStart || !lastDrawPoint.current) {
+          drawStampDab(x, y);
+        } else {
+          const dx = x - lastDrawPoint.current.x;
+          const dy = y - lastDrawPoint.current.y;
+          const distance = Math.hypot(dx, dy);
 
-        // Draw from temp canvas (original) to edit canvas
-        ctx.drawImage(
-          tempCanvas,
-          sourceX - halfBrush,
-          sourceY - halfBrush,
-          params.size,
-          params.size,
-          x - halfBrush,
-          y - halfBrush,
-          params.size,
-          params.size
-        );
-        ctx.restore();
+          if (distance <= 0) {
+            drawStampDab(x, y);
+          } else {
+            const steps = Math.max(1, Math.ceil(distance / lineSpacing));
+            for (let i = 1; i <= steps; i += 1) {
+              const t = i / steps;
+              drawStampDab(lastDrawPoint.current.x + dx * t, lastDrawPoint.current.y + dy * t);
+            }
+          }
+        }
       }
 
       lastDrawPoint.current = { x, y };
     },
     [
       editCanvasRef,
-      imageRef,
       toolMode,
       brushSize,
       brushColor,
       brushHardness,
       brushOpacity,
       stampSource,
-      rotation,
-      canvasSize,
-      getDisplayDimensions,
       activePreset,
       pressureEnabled,
     ]
