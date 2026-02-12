@@ -11,6 +11,8 @@ export default function ImageConverter() {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [quality, setQuality] = useState(0.8);
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("webp");
+  const [resizeEnabled, setResizeEnabled] = useState(false);
+  const [maxSidePx, setMaxSidePx] = useState(1024);
   const [isConverting, setIsConverting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,21 +47,45 @@ export default function ImageConverter() {
     });
   }, []);
 
+  const getTargetSize = useCallback(
+    (width: number, height: number) => {
+      if (!resizeEnabled) {
+        return { width, height };
+      }
+
+      const targetMaxSide = Math.max(1, Math.round(maxSidePx));
+      const sourceMaxSide = Math.max(width, height);
+      if (sourceMaxSide <= targetMaxSide) {
+        return { width, height };
+      }
+
+      const scale = targetMaxSide / sourceMaxSide;
+      return {
+        width: Math.max(1, Math.round(width * scale)),
+        height: Math.max(1, Math.round(height * scale)),
+      };
+    },
+    [maxSidePx, resizeEnabled],
+  );
+
   const convertImage = useCallback(
     async (image: ImageFile): Promise<ImageFile> => {
       return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
+          const targetSize = getTargetSize(img.width, img.height);
           const canvas = document.createElement("canvas");
-          canvas.width = img.width;
-          canvas.height = img.height;
+          canvas.width = targetSize.width;
+          canvas.height = targetSize.height;
           const ctx = canvas.getContext("2d");
           if (!ctx) {
             resolve(image);
             return;
           }
 
-          ctx.drawImage(img, 0, 0);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(img, 0, 0, targetSize.width, targetSize.height);
 
           const mimeType =
             outputFormat === "webp"
@@ -76,6 +102,8 @@ export default function ImageConverter() {
                   ...image,
                   convertedUrl,
                   convertedSize: blob.size,
+                  convertedWidth: targetSize.width,
+                  convertedHeight: targetSize.height,
                   convertedBlob: blob,
                 });
               } else {
@@ -89,12 +117,15 @@ export default function ImageConverter() {
         img.src = image.originalUrl;
       });
     },
-    [quality, outputFormat],
+    [getTargetSize, quality, outputFormat],
   );
 
   const convertAll = useCallback(async () => {
     setIsConverting(true);
     const converted = await Promise.all(images.map(convertImage));
+    images.forEach((image) => {
+      if (image.convertedUrl) URL.revokeObjectURL(image.convertedUrl);
+    });
     setImages(converted);
     setIsConverting(false);
   }, [images, convertImage]);
@@ -192,6 +223,32 @@ export default function ImageConverter() {
           </div>
         )}
 
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-sm text-text-secondary">
+            <input
+              type="checkbox"
+              checked={resizeEnabled}
+              onChange={(e) => setResizeEnabled(e.target.checked)}
+              className="w-3.5 h-3.5 rounded accent-accent-primary"
+            />
+            {t.resize}
+          </label>
+          {resizeEnabled && (
+            <>
+              <span className="text-sm text-text-secondary">{t.maxSidePx}:</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={maxSidePx}
+                onChange={(e) => setMaxSidePx(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+                className="w-20 px-2 py-1 bg-surface-secondary border border-border-default rounded text-sm text-text-primary focus:outline-none focus:border-accent-primary"
+              />
+              <span className="text-xs text-text-tertiary">px</span>
+            </>
+          )}
+        </div>
+
         <div className="h-6 w-px bg-border-default" />
 
         <button
@@ -287,6 +344,9 @@ export default function ImageConverter() {
                   </p>
                   <p className="text-xs text-text-tertiary mt-1">
                     {image.width} × {image.height}
+                    {typeof image.convertedWidth === "number" && typeof image.convertedHeight === "number"
+                      ? ` → ${image.convertedWidth} × ${image.convertedHeight}`
+                      : ""}
                   </p>
                   <div className="flex items-center gap-2 mt-2 text-xs">
                     <span className="text-text-secondary">{formatBytes(image.originalSize)}</span>

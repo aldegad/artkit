@@ -15,6 +15,8 @@ interface SpriteToolOptionsBarProps {
   setBrushSize: (size: number) => void;
   brushHardness: number;
   setBrushHardness: (hardness: number) => void;
+  brushOpacity: number;
+  setBrushOpacity: (opacity: number) => void;
   magicWandTolerance: number;
   setMagicWandTolerance: (tolerance: number) => void;
   magicWandFeather: number;
@@ -45,6 +47,7 @@ interface SpriteToolOptionsBarProps {
   labels: {
     size: string;
     hardness: string;
+    opacity: string;
     tolerance: string;
     feather: string;
     colorPickerTip: string;
@@ -79,6 +82,8 @@ export default function SpriteToolOptionsBar({
   setBrushSize,
   brushHardness,
   setBrushHardness,
+  brushOpacity,
+  setBrushOpacity,
   magicWandTolerance,
   setMagicWandTolerance,
   magicWandFeather,
@@ -168,6 +173,39 @@ export default function SpriteToolOptionsBar({
               }}
             />
 
+            <NumberScrubber
+              value={brushSize}
+              onChange={(value) => setBrushSize(Math.round(value))}
+              min={1}
+              max={200}
+              step={1}
+              label={`${labels.size}:`}
+              size="sm"
+              editable
+            />
+
+            <NumberScrubber
+              value={brushHardness}
+              onChange={(value) => setBrushHardness(Math.round(value))}
+              min={0}
+              max={100}
+              step={1}
+              label={`${labels.hardness}:`}
+              format={(value) => `${Math.round(value)}%`}
+              size="sm"
+            />
+
+            <NumberScrubber
+              value={brushOpacity}
+              onChange={(value) => setBrushOpacity(Math.round(value))}
+              min={1}
+              max={100}
+              step={1}
+              label={`${labels.opacity}:`}
+              format={(value) => `${Math.round(value)}%`}
+              size="sm"
+            />
+
             {toolMode === "brush" && (
               <div className="flex items-center gap-1.5">
                 <input
@@ -190,28 +228,6 @@ export default function SpriteToolOptionsBar({
                 </Tooltip>
               </div>
             )}
-
-            <NumberScrubber
-              value={brushHardness}
-              onChange={(value) => setBrushHardness(Math.round(value))}
-              min={0}
-              max={100}
-              step={1}
-              label={`${labels.hardness}:`}
-              format={(value) => `${Math.round(value)}%`}
-              size="sm"
-            />
-
-            <NumberScrubber
-              value={brushSize}
-              onChange={(value) => setBrushSize(Math.round(value))}
-              min={1}
-              max={200}
-              step={1}
-              label={`${labels.size}:`}
-              size="sm"
-              editable
-            />
           </>
         ) : isMagicWandTool ? (
           <>

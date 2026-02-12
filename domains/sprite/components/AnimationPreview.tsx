@@ -80,6 +80,7 @@ export default function AnimationPreviewContent() {
     setBrushColor,
     brushSize,
     brushHardness,
+    brushOpacity,
     activePreset,
     pressureEnabled,
   } = useEditorBrush();
@@ -566,6 +567,7 @@ export default function AnimationPreviewContent() {
         activePreset,
         brushSize,
         brushHardness,
+        brushOpacity,
         pressureEnabled,
         selection: magicWandSelectionRef.current,
         selectionMaskCanvas: magicWandMaskCanvasRef.current,
@@ -577,7 +579,15 @@ export default function AnimationPreviewContent() {
       invalidateAiSelectionCache();
       return true;
     },
-    [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
+    [
+      activePreset,
+      brushHardness,
+      brushOpacity,
+      brushSize,
+      ensureDabBufferCanvas,
+      invalidateAiSelectionCache,
+      pressureEnabled,
+    ],
   );
 
   const {

@@ -32,6 +32,7 @@ interface SpriteToolStore {
   brushColor: string;
   brushSize: number;
   brushHardness: number;
+  brushOpacity: number;
   magicWandTolerance: number;
   magicWandFeather: number;
   magicWandSelectionActiveBySource: Record<string, boolean>;
@@ -58,6 +59,7 @@ interface SpriteToolStore {
   setBrushColor: (color: string) => void;
   setBrushSize: (size: number) => void;
   setBrushHardness: (hardness: number) => void;
+  setBrushOpacity: (opacity: number) => void;
   setMagicWandTolerance: (tolerance: number) => void;
   setMagicWandFeather: (feather: number) => void;
   setMagicWandSelectionActive: (source: string, active: boolean) => void;
@@ -92,6 +94,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   brushColor: "#000000",
   brushSize: DEFAULT_BRUSH_PRESETS[0].defaultSize,
   brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
+  brushOpacity: 100,
   magicWandTolerance: 24,
   magicWandFeather: 0,
   magicWandSelectionActiveBySource: {},
@@ -143,6 +146,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   setBrushColor: (color) => set({ brushColor: color }),
   setBrushSize: (size) => set({ brushSize: size }),
   setBrushHardness: (hardness) => set({ brushHardness: hardness }),
+  setBrushOpacity: (opacity) => set({ brushOpacity: Math.max(1, Math.min(100, Math.round(opacity))) }),
   setMagicWandTolerance: (tolerance) =>
     set({ magicWandTolerance: Math.max(0, Math.min(255, Math.round(tolerance))) }),
   setMagicWandFeather: (feather) =>
@@ -184,6 +188,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       brushColor: "#000000",
       brushSize: DEFAULT_BRUSH_PRESETS[0].defaultSize,
       brushHardness: DEFAULT_BRUSH_PRESETS[0].defaultHardness,
+      brushOpacity: 100,
       magicWandTolerance: 24,
       magicWandFeather: 0,
       magicWandSelectionActiveBySource: {},
