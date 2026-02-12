@@ -6,7 +6,7 @@ import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 import { canvasCache } from "../utils";
-import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
+import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, FLIP_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
 
 // ============================================
@@ -52,6 +52,7 @@ interface UseCanvasRenderingOptions {
   transformLayerId?: string | null;
   transformOriginalImageData?: ImageData | null;
   transformRotation?: number;
+  transformFlipX?: boolean;
   isSelectionBasedTransform?: boolean;
 
   // Guides (optional)
@@ -106,6 +107,7 @@ export function useCanvasRendering(
     transformLayerId,
     transformOriginalImageData,
     transformRotation = 0,
+    transformFlipX = false,
     isSelectionBasedTransform,
     guides,
     showGuides,
@@ -610,6 +612,8 @@ export function useCanvasRendering(
       const centerY = transformY + transformH / 2;
       const rotateHandleOffset = ROTATE_HANDLE.OFFSET * zoom;
       const rotateHandleRadius = ROTATE_HANDLE.RADIUS;
+      const flipHandleRadius = FLIP_HANDLE.RADIUS;
+      const flipHandleX = -transformW / 2 + FLIP_HANDLE.EDGE_OFFSET;
       const rotateHandleY = -transformH / 2 - rotateHandleOffset;
 
       ctx.save();
@@ -633,6 +637,9 @@ export function useCanvasRendering(
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(rotationRadians);
+        if (transformFlipX) {
+          ctx.scale(-1, 1);
+        }
         ctx.drawImage(
           transformCanvas,
           -transformW / 2,
@@ -676,6 +683,42 @@ export function useCanvasRendering(
         ctx.fillRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
         ctx.strokeRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
       });
+
+      // Draw flip handle circle (left-aligned on top row)
+      const flipHandleActive = transformFlipX;
+      ctx.fillStyle = flipHandleActive ? colors.textOnColor : colors.selection;
+      ctx.strokeStyle = flipHandleActive ? colors.selection : colors.textOnColor;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(flipHandleX, rotateHandleY, flipHandleRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Draw horizontal flip glyph inside the handle
+      const flipGlyphStroke = flipHandleActive ? colors.selection : colors.textOnColor;
+      const flipSpan = flipHandleRadius * 0.72;
+      const flipArrow = flipHandleRadius * 0.34;
+      const flipDivider = flipHandleRadius * 0.56;
+      ctx.strokeStyle = flipGlyphStroke;
+      ctx.lineWidth = 1.7;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(flipHandleX - flipSpan, rotateHandleY);
+      ctx.lineTo(flipHandleX + flipSpan, rotateHandleY);
+      ctx.moveTo(flipHandleX, rotateHandleY - flipDivider);
+      ctx.lineTo(flipHandleX, rotateHandleY + flipDivider);
+      ctx.moveTo(flipHandleX - flipSpan, rotateHandleY);
+      ctx.lineTo(flipHandleX - flipSpan + flipArrow, rotateHandleY - flipArrow);
+      ctx.moveTo(flipHandleX - flipSpan, rotateHandleY);
+      ctx.lineTo(flipHandleX - flipSpan + flipArrow, rotateHandleY + flipArrow);
+      ctx.moveTo(flipHandleX + flipSpan, rotateHandleY);
+      ctx.lineTo(flipHandleX + flipSpan - flipArrow, rotateHandleY - flipArrow);
+      ctx.moveTo(flipHandleX + flipSpan, rotateHandleY);
+      ctx.lineTo(flipHandleX + flipSpan - flipArrow, rotateHandleY + flipArrow);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
 
       // Draw rotate handle stem (line from box top to handle)
       ctx.strokeStyle = colors.selection;
@@ -746,6 +789,7 @@ export function useCanvasRendering(
     transformLayerId,
     transformOriginalImageData,
     transformRotation,
+    transformFlipX,
     isSelectionBasedTransform,
     // Guide-related dependencies
     guides,

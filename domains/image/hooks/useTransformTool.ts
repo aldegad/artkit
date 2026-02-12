@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG, CropArea } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
 import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
-import { HANDLE_SIZE as HANDLE_SIZE_CONST, ROTATE_HANDLE } from "../constants";
+import { HANDLE_SIZE as HANDLE_SIZE_CONST, ROTATE_HANDLE, FLIP_HANDLE } from "../constants";
 
 // ============================================
 // Types
@@ -43,6 +43,8 @@ export interface TransformState {
   } | null;
   // Rotation in degrees around current bounds center
   rotation: number;
+  // Horizontal flip around transform bounds center
+  flipX: boolean;
   // Original image data for single layer (backward compatibility)
   originalImageData: ImageData | null;
   // Per-layer data for multi-layer transform
@@ -61,6 +63,7 @@ export type TransformHandle =
   | "sw"
   | "w"
   | "rotate"
+  | "flip"
   | "move"
   | null;
 
@@ -109,6 +112,8 @@ interface UseTransformToolReturn {
 const HANDLE_HIT_AREA = HANDLE_SIZE_CONST.HIT_AREA;
 const ROTATE_HANDLE_OFFSET = ROTATE_HANDLE.OFFSET;
 const ROTATE_HANDLE_HIT_AREA = ROTATE_HANDLE.HIT_AREA;
+const FLIP_HANDLE_HIT_AREA = FLIP_HANDLE.HIT_AREA;
+const FLIP_HANDLE_EDGE_OFFSET = FLIP_HANDLE.EDGE_OFFSET;
 const ROTATION_SNAP_STEP = 15;
 
 function toRadians(degrees: number): number {
@@ -202,6 +207,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     originalBounds: null,
     bounds: null,
     rotation: 0,
+    flipX: false,
     originalImageData: null,
     perLayerData: null,
     isSelectionBased: false,
@@ -251,10 +257,16 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const interactionZoom = Math.max(0.0001, zoom);
       const rotateHandleHitArea = ROTATE_HANDLE_HIT_AREA / interactionZoom;
       const handleHitArea = HANDLE_HIT_AREA / interactionZoom;
+      const flipHandleHitArea = FLIP_HANDLE_HIT_AREA / interactionZoom;
       const rotateHandleY = localRect.y - ROTATE_HANDLE_OFFSET;
       const distanceToRotateHandle = Math.hypot(localPoint.x, localPoint.y - rotateHandleY);
       if (distanceToRotateHandle <= rotateHandleHitArea) {
         return "rotate";
+      }
+      const flipHandleX = localRect.x + FLIP_HANDLE_EDGE_OFFSET / interactionZoom;
+      const distanceToFlipHandle = Math.hypot(localPoint.x - flipHandleX, localPoint.y - rotateHandleY);
+      if (distanceToFlipHandle <= flipHandleHitArea) {
+        return "flip";
       }
 
       return getRectHandleAtPosition(localPoint, localRect, {
@@ -370,6 +382,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         originalBounds: { ...imageBounds },
         bounds: { ...imageBounds },
         rotation: 0,
+        flipX: false,
         originalImageData: contentImageData,
         perLayerData,
         isSelectionBased: true,
@@ -460,6 +473,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       originalBounds: { ...combinedBounds },
       bounds: { ...combinedBounds },
       rotation: 0,
+      flipX: false,
       originalImageData: singleLayerData?.originalImageData || null,
       perLayerData: perLayerData,
       isSelectionBased: false,
@@ -485,6 +499,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         originalBounds: null,
         bounds: null,
         rotation: 0,
+        flipX: false,
         originalImageData: null,
         perLayerData: null,
         isSelectionBased: false,
@@ -541,6 +556,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       originalBounds: null,
       bounds: null,
       rotation: 0,
+      flipX: false,
       originalImageData: null,
       perLayerData: null,
       isSelectionBased: false,
@@ -553,7 +569,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     data: PerLayerTransformData,
     scaleX: number,
     scaleY: number,
-    rotationDegrees: number
+    rotationDegrees: number,
+    flipX: boolean
   ) => {
     const layerCanvas = layerCanvasesRef.current.get(layerId);
     if (!layerCanvas) return;
@@ -575,7 +592,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     const scaledX = transformState.bounds.x + relativeX * scaleX;
     const scaledY = transformState.bounds.y + relativeY * scaleY;
     const scaledCenter = {
-      x: scaledX + newWidth / 2,
+      x: flipX
+        ? transformState.bounds.x + transformState.bounds.width - (relativeX * scaleX + newWidth / 2)
+        : scaledX + newWidth / 2,
       y: scaledY + newHeight / 2,
     };
     const rotatedCenter =
@@ -635,6 +654,9 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     ctx.imageSmoothingQuality = "high";
     ctx.translate(canvasCenterX, canvasCenterY);
     ctx.rotate(rotationRadians);
+    if (flipX) {
+      ctx.scale(-1, 1);
+    }
     ctx.drawImage(
       tempCanvas,
       -newWidth / 2,
@@ -664,6 +686,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         originalBounds: null,
         bounds: null,
         rotation: 0,
+        flipX: false,
         originalImageData: null,
         perLayerData: null,
         isSelectionBased: false,
@@ -677,11 +700,12 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     const scaleX = bounds.width / originalBounds.width;
     const scaleY = bounds.height / originalBounds.height;
     const rotationDegrees = transformState.rotation;
+    const flipX = transformState.flipX;
 
     // Multi-layer transform: apply to each layer
     if (transformState.perLayerData && transformState.perLayerData.size > 0) {
       transformState.perLayerData.forEach((data, layerId) => {
-        applyTransformToLayer(layerId, data, scaleX, scaleY, rotationDegrees);
+        applyTransformToLayer(layerId, data, scaleX, scaleY, rotationDegrees, flipX);
       });
     }
     // Backward compatibility: single layer
@@ -699,7 +723,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         },
         scaleX,
         scaleY,
-        rotationDegrees
+        rotationDegrees,
+        flipX
       );
     }
 
@@ -711,6 +736,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       originalBounds: null,
       bounds: null,
       rotation: 0,
+      flipX: false,
       originalImageData: null,
       perLayerData: null,
       isSelectionBased: false,
@@ -723,6 +749,15 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const handle = getHandleAtPosition(imagePos);
 
       if (handle) {
+        if (handle === "flip") {
+          setTransformState((prev) => ({
+            ...prev,
+            flipX: !prev.flipX,
+          }));
+          setActiveSnapSources([]);
+          return null;
+        }
+
         setActiveHandle(handle);
         activeHandleRef.current = handle; // Use ref for synchronous access during drag
         isDraggingRef.current = true;

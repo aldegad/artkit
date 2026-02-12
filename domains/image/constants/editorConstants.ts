@@ -39,6 +39,16 @@ export const ROTATE_HANDLE = {
   OFFSET: 100,
 } as const;
 
+/** Flip handle configuration */
+export const FLIP_HANDLE = {
+  /** Visual radius of the flip handle circle */
+  RADIUS: 10,
+  /** Hit area radius for flip handle detection */
+  HIT_AREA: 16,
+  /** Distance from transform box left edge to flip handle center */
+  EDGE_OFFSET: 16,
+} as const;
+
 // ============================================
 // Interaction Thresholds
 // ============================================
