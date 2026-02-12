@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { getStorageProvider } from "../services/projectStorage";
@@ -9,7 +9,7 @@ import {
   useEditorRefs,
   useEditorState,
 } from "../contexts";
-import { createEditorToolButtons, VIEWPORT } from "../constants";
+import { VIEWPORT } from "../constants";
 import { useHistory, HistoryAdapter } from "./useHistory";
 import { useLayerManagement } from "./useLayerManagement";
 import { useBrushTool } from "./useBrushTool";
@@ -47,7 +47,8 @@ import { useEditorCanvasContextValue } from "./useEditorCanvasContextValue";
 import { useEditorTranslationBundles } from "./useEditorTranslationBundles";
 import { useEditorHeaderModel } from "./useEditorHeaderModel";
 import { useEditorOverlayModel } from "./useEditorOverlayModel";
-import { useEditorToolbarModels } from "./useEditorToolbarModels";
+import { useImageEditorUiActions } from "./useImageEditorUiActions";
+import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -75,8 +76,6 @@ export function useImageEditorController() {
   });
 
   const storageProvider = useMemo(() => getStorageProvider(user), [user]);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportMode, setExportMode] = useState<"single" | "layers">("single");
 
   const {
     state: {
@@ -690,31 +689,28 @@ export function useImageEditorController() {
     saveFailedMessage: t.saveFailed,
   });
 
-  const toolButtons = useMemo(() => createEditorToolButtons(t), [t]);
   const hasLayers = layers.length > 0;
   const hasSelectedLayers = selectedLayerIds.length > 0 || activeLayerId !== null;
+  const canUndoNow = canUndo();
+  const canRedoNow = canRedo();
 
-  const openProjectList = useCallback(() => {
-    setIsProjectListOpen(true);
-  }, [setIsProjectListOpen]);
-
-  const openExportSingle = useCallback(() => {
-    setExportMode("single");
-    setShowExportModal(true);
-  }, []);
-
-  const openExportLayers = useCallback(() => {
-    setExportMode("layers");
-    setShowExportModal(true);
-  }, []);
-
-  const openImportImage = useCallback(() => {
-    fileInputRef.current?.click();
-  }, [fileInputRef]);
-
-  const openBackgroundRemovalConfirm = useCallback(() => {
-    setShowBgRemovalConfirm(true);
-  }, [setShowBgRemovalConfirm]);
+  const {
+    showExportModal,
+    setShowExportModal,
+    exportMode,
+    openProjectList,
+    openExportSingle,
+    openExportLayers,
+    openImportImage,
+    openBackgroundRemovalConfirm,
+    togglePanLock,
+  } = useImageEditorUiActions({
+    fileInputRef,
+    setIsProjectListOpen,
+    setShowBgRemovalConfirm,
+    isPanLocked,
+    setIsPanLocked,
+  });
 
   const headerProps = useEditorHeaderModel({
     title: t.imageEditor,
@@ -736,8 +732,8 @@ export function useImageEditorController() {
     isLoading: isLoading || isSaving,
     onUndo: handleUndo,
     onRedo: handleRedo,
-    canUndo: canUndo(),
-    canRedo: canRedo(),
+    canUndo: canUndoNow,
+    canRedo: canRedoNow,
     showRulers,
     showGuides,
     lockGuides,
@@ -752,13 +748,10 @@ export function useImageEditorController() {
     translations: uiText.menu,
   });
 
-  const togglePanLock = useCallback(() => {
-    setIsPanLocked(!isPanLocked);
-  }, [isPanLocked, setIsPanLocked]);
-
-  const actionToolbarProps = useMemo(
-    () => ({
-      toolButtons,
+  const toolbarModels = useImageEditorToolbarProps({
+    hasLayers,
+    toolButtonTranslations: t,
+    actionToolbarConfig: {
       toolMode,
       onToolModeChange: handleToolModeChange,
       onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
@@ -772,29 +765,9 @@ export function useImageEditorController() {
       zoom,
       setZoom,
       onFitToScreen: fitToScreen,
-      translations: uiText.actionToolbar,
-    }),
-    [
-      toolButtons,
-      toolMode,
-      handleToolModeChange,
-      openBackgroundRemovalConfirm,
-      isRemovingBackground,
-      handleUndo,
-      handleRedo,
-      showRotateMenu,
-      setRotateMenuOpen,
-      handleRotateLeft,
-      handleRotateRight,
-      zoom,
-      setZoom,
-      fitToScreen,
-      uiText.actionToolbar,
-    ]
-  );
-
-  const toolOptionsBarProps = useMemo(
-    () => ({
+    },
+    actionToolbarTranslations: uiText.actionToolbar,
+    toolOptionsConfig: {
       toolMode,
       brushSize,
       setBrushSize,
@@ -822,58 +795,14 @@ export function useImageEditorController() {
       expandToSquare,
       fitToSquare,
       onApplyCrop: handleApplyCrop,
-      currentToolName: toolButtons.find((toolButton) => toolButton.mode === toolMode)?.name,
       isTransformActive: transformState.isActive,
       transformAspectRatio,
       setTransformAspectRatio,
       onApplyTransform: applyTransform,
       cancelTransform,
       setToolMode,
-      translations: uiText.toolOptions,
-    }),
-    [
-      toolMode,
-      brushSize,
-      setBrushSize,
-      brushHardness,
-      setBrushHardness,
-      brushColor,
-      setBrushColor,
-      stampSource,
-      activePreset,
-      presets,
-      setActivePreset,
-      deletePreset,
-      pressureEnabled,
-      setPressureEnabled,
-      aspectRatio,
-      setAspectRatio,
-      cropArea,
-      selectAllCrop,
-      clearCrop,
-      canvasExpandMode,
-      setCanvasExpandMode,
-      lockAspect,
-      setLockAspect,
-      setCropSize,
-      expandToSquare,
-      fitToSquare,
-      handleApplyCrop,
-      toolButtons,
-      transformState.isActive,
-      transformAspectRatio,
-      setTransformAspectRatio,
-      applyTransform,
-      cancelTransform,
-      setToolMode,
-      uiText.toolOptions,
-    ]
-  );
-
-  const toolbarModels = useEditorToolbarModels({
-    hasLayers,
-    actionToolbarProps,
-    toolOptionsBarProps,
+    },
+    toolOptionsTranslations: uiText.toolOptions,
   });
 
   const overlaysProps = useEditorOverlayModel({
