@@ -30,7 +30,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
 
   const handleMouseDown = useCallback(
     (ctx: MouseEventContext): HandlerResult => {
-      const { imagePos, activeMode, inBounds, e, displayDimensions } = ctx;
+      const { imagePos, activeMode, e, displayDimensions } = ctx;
       const { width: displayWidth, height: displayHeight } = displayDimensions;
 
       if (activeMode !== "marquee") return { handled: false };
@@ -103,22 +103,22 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
         }
       }
 
-      // Click outside selection or no selection - create new selection
-      if (inBounds) {
-        setSelection(null);
-        (floatingLayerRef as { current: FloatingLayer | null }).current = null;
-        setIsDuplicating(false);
-        const roundedPos = { x: Math.round(imagePos.x), y: Math.round(imagePos.y) };
-        setSelection({ x: roundedPos.x, y: roundedPos.y, width: 0, height: 0 });
+      // Click outside selection (or outside image bounds) starts a new selection.
+      // Start point is clamped so dragging from canvas-outside to inside can select edge-to-edge.
+      setSelection(null);
+      (floatingLayerRef as { current: FloatingLayer | null }).current = null;
+      setIsDuplicating(false);
+      const clampedStart = {
+        x: Math.max(0, Math.min(Math.round(imagePos.x), displayWidth)),
+        y: Math.max(0, Math.min(Math.round(imagePos.y), displayHeight)),
+      };
+      setSelection({ x: clampedStart.x, y: clampedStart.y, width: 0, height: 0 });
 
-        return {
-          handled: true,
-          dragType: "create",
-          dragStart: roundedPos,
-        };
-      }
-
-      return { handled: false };
+      return {
+        handled: true,
+        dragType: "create",
+        dragStart: clampedStart,
+      };
     },
     [
       selection,
