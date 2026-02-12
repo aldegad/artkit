@@ -13,7 +13,7 @@ import {
   saveActivePresetId,
 } from "../constants/brushPresets";
 import { imageToCanvas, ViewContext } from "../utils/coordinateSystem";
-import { drawDab, drawLine } from "@/shared/utils/brushEngine";
+import { drawDab, drawLine, eraseDabLinear, eraseLineLinear } from "@/shared/utils/brushEngine";
 
 // ============================================
 // Types
@@ -193,19 +193,26 @@ export function useBrushTool(): UseBrushToolReturn {
           });
         }
       } else if (toolMode === "eraser") {
-        ctx.globalCompositeOperation = "destination-out";
-
         if (isStart || !lastDrawPoint.current) {
-          drawDab(ctx, dabParams(x, y, true));
+          eraseDabLinear(ctx, {
+            x,
+            y,
+            radius: params.size / 2,
+            hardness: brushHardness / 100,
+            alpha: (brushOpacity / 100) * params.opacity * params.flow,
+          });
         } else {
-          drawLine(ctx, {
+          eraseLineLinear(ctx, {
             from: lastDrawPoint.current,
             to: { x, y },
             spacing: lineSpacing,
-            dab: dabParams(0, 0, true),
+            dab: {
+              radius: params.size / 2,
+              hardness: brushHardness / 100,
+              alpha: (brushOpacity / 100) * params.opacity * params.flow,
+            },
           });
         }
-        ctx.globalCompositeOperation = "source-over";
       } else if (toolMode === "stamp" && stampSource) {
         // Clone stamp - copy from source to destination
         const img = imageRef.current;
