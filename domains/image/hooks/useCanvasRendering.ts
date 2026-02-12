@@ -252,6 +252,11 @@ export function useCanvasRendering(
     }
     ctx.restore();
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
+    ctx.clip();
+
     // Draw all layers sorted by zIndex (lower first = background)
     // Unified layer system renders both image and paint layers in correct order
     const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
@@ -288,6 +293,7 @@ export function useCanvasRendering(
       ctx.drawImage(editCanvas, 0, 0);
       ctx.restore();
     }
+    ctx.restore();
 
     // Draw crop overlay
     if (cropArea && toolMode === "crop") {
@@ -563,6 +569,9 @@ export function useCanvasRendering(
       floatingCtx.putImageData(floating.imageData, 0, 0);
 
       ctx.save();
+      ctx.beginPath();
+      ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
+      ctx.clip();
       ctx.globalAlpha = isDuplicating ? 0.8 : 1.0;
       const floatX = offsetX + floating.x * zoom;
       const floatY = offsetY + floating.y * zoom;
@@ -639,6 +648,9 @@ export function useCanvasRendering(
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
         ctx.save();
+        ctx.beginPath();
+        ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
+        ctx.clip();
         ctx.translate(centerX, centerY);
         ctx.rotate(rotationRadians);
         if (transformFlipX) {
