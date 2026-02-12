@@ -29,6 +29,16 @@ export const HANDLE_SIZE = {
   HIT_AREA: 10,
 } as const;
 
+/** Rotate handle configuration */
+export const ROTATE_HANDLE = {
+  /** Visual radius of the rotate handle circle */
+  RADIUS: 10,
+  /** Hit area radius for rotate handle detection */
+  HIT_AREA: 16,
+  /** Distance from transform box top to rotate handle center */
+  OFFSET: 36,
+} as const;
+
 // ============================================
 // Interaction Thresholds
 // ============================================
