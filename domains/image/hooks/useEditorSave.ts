@@ -32,6 +32,7 @@ export interface UseEditorSaveOptions {
   brushSize: number;
   brushColor: string;
   brushHardness: number;
+  brushOpacity: number;
 
   // UI state
   showRulers: boolean;
@@ -75,6 +76,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     brushSize,
     brushColor,
     brushHardness,
+    brushOpacity,
     showRulers,
     showGuides,
     lockGuides,
@@ -142,6 +144,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
         brushSize,
         brushColor,
         brushHardness,
+        brushOpacity,
         // UI state
         showRulers,
         showGuides,
@@ -163,6 +166,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
       brushSize,
       brushColor,
       brushHardness,
+      brushOpacity,
       showRulers,
       showGuides,
       lockGuides,
@@ -260,6 +264,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
         brushSize,
         brushColor,
         brushHardness,
+        brushOpacity,
         guides: guides.length > 0 ? guides : undefined,
         // UI state
         showRulers,
@@ -289,6 +294,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     brushSize,
     brushColor,
     brushHardness,
+    brushOpacity,
     guides,
     showRulers,
     showGuides,

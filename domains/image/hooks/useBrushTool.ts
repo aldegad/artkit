@@ -27,6 +27,8 @@ interface UseBrushToolReturn {
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   brushHardness: number;
   setBrushHardness: React.Dispatch<React.SetStateAction<number>>;
+  brushOpacity: number;
+  setBrushOpacity: React.Dispatch<React.SetStateAction<number>>;
   stampSource: Point | null;
   setStampSource: React.Dispatch<React.SetStateAction<Point | null>>;
 
@@ -92,6 +94,7 @@ export function useBrushTool(): UseBrushToolReturn {
   const [brushSize, setBrushSize] = useState(() => activePreset.defaultSize);
   const [brushColor, setBrushColor] = useState("#000000");
   const [brushHardness, setBrushHardness] = useState(() => activePreset.defaultHardness);
+  const [brushOpacity, setBrushOpacity] = useState(100);
   const [stampSource, setStampSource] = useState<Point | null>(null);
 
   const lastDrawPoint = useRef<Point | null>(null);
@@ -170,7 +173,7 @@ export function useBrushTool(): UseBrushToolReturn {
         radius: params.size / 2,
         hardness: brushHardness / 100,
         color: brushColor,
-        alpha: params.opacity * params.flow,
+        alpha: (brushOpacity / 100) * params.opacity * params.flow,
         isEraser,
       });
 
@@ -258,6 +261,7 @@ export function useBrushTool(): UseBrushToolReturn {
       brushSize,
       brushColor,
       brushHardness,
+      brushOpacity,
       stampSource,
       rotation,
       canvasSize,
@@ -307,6 +311,8 @@ export function useBrushTool(): UseBrushToolReturn {
     setBrushColor,
     brushHardness,
     setBrushHardness,
+    brushOpacity,
+    setBrushOpacity,
     stampSource,
     setStampSource,
 

@@ -81,6 +81,7 @@ export interface BrushToolState {
   brushSize: number;
   brushColor: string;
   brushHardness: number;
+  brushOpacity: number;
   stampSource: { x: number; y: number } | null;
 }
 
