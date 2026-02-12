@@ -94,3 +94,5 @@ export { useImageEditorController } from "./useImageEditorController";
 export { useEditorHeaderModel } from "./useEditorHeaderModel";
 export { useEditorOverlayModel } from "./useEditorOverlayModel";
 export { useEditorToolbarModels } from "./useEditorToolbarModels";
+export { useImageEditorUiActions } from "./useImageEditorUiActions";
+export { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
