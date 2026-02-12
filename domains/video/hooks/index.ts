@@ -10,6 +10,9 @@ export { useCaptureFrameToImageLayer } from "./useCaptureFrameToImageLayer";
 export { useVideoProjectLibrary } from "./useVideoProjectLibrary";
 export { useVideoClipboardActions } from "./useVideoClipboardActions";
 export { useVideoCropActions } from "./useVideoCropActions";
+export { useVideoFileActions } from "./useVideoFileActions";
+export { useSelectedClipAudioActions } from "./useSelectedClipAudioActions";
+export { useVideoEditActions } from "./useVideoEditActions";
 export { useVideoSave } from "./useVideoSave";
 export { usePlaybackTick, usePlaybackTime } from "./usePlaybackTick";
 export { usePreRenderCache, subscribeCacheStatus, getCacheStatus } from "./usePreRenderCache";
@@ -18,9 +21,17 @@ export { useAudioBufferCache, getAudioBuffer, isAudioBufferReady, getSharedAudio
 export { useWebAudioPlayback } from "./useWebAudioPlayback";
 export { useVideoExport } from "./useVideoExport";
 export { useClipTransformTool } from "./useClipTransformTool";
+export { usePreviewViewportState } from "./usePreviewViewportState";
+export { useVideoToolModeHandlers } from "./useVideoToolModeHandlers";
+export { useGapInterpolationActions, analyzeGapInterpolationSelection } from "./useGapInterpolationActions";
+export { useMaskRestoreSync } from "./useMaskRestoreSync";
 export type {
   ExportProgressState,
   VideoExportFormat,
   VideoExportCompression,
   VideoExportOptions,
 } from "./useVideoExport";
+export type {
+  GapInterpolationAnalysis,
+  GapInterpolationIssue,
+} from "./useGapInterpolationActions";

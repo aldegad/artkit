@@ -1,45 +1,24 @@
 "use client";
 
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { useTimelineViewport } from "./useTimelineViewport";
-import { TimelineDragType, Clip } from "../types";
+import { Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
-import { sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
+import { resolveTimelineClipSelection } from "../utils/timelineSelection";
+import { buildRazorSplitClips } from "../utils/razorSplit";
+import {
+  type DragItem,
+  type DragState,
+  INITIAL_TIMELINE_DRAG_STATE,
+  createClipMoveDragState,
+  createPlayheadDragState,
+  createTrimDragState,
+} from "../utils/timelineDragState";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
-
-interface DragItem {
-  type: "clip" | "mask";
-  id: string;
-  originalStartTime: number;
-}
-
-interface DragState {
-  type: TimelineDragType;
-  clipId: string | null;
-  items: DragItem[];
-  startX: number;
-  startY: number;
-  startTime: number;
-  originalClipStart: number;
-  originalClipDuration: number;
-  originalTrimIn: number;
-}
-
-const INITIAL_DRAG_STATE: DragState = {
-  type: "none",
-  clipId: null,
-  items: [],
-  startX: 0,
-  startY: 0,
-  startTime: 0,
-  originalClipStart: 0,
-  originalClipDuration: 0,
-  originalTrimIn: 0,
-};
 
 // ── Touch pending state ───────────────────────────────────────────────
 interface TouchPendingState {
@@ -139,7 +118,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [viewState.snapEnabled, zoom, clips]
   );
 
-  const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
+  const [dragState, setDragState] = useState<DragState>(INITIAL_TIMELINE_DRAG_STATE);
   const activePointerIdRef = useRef<number | null>(null);
   const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
   const [middlePanPending, setMiddlePanPending] = useState<MiddlePanPendingState | null>(null);
@@ -153,6 +132,30 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const [touchPending, setTouchPending] = useState<TouchPendingState | null>(null);
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
+
+  const clipsByTrackDesc = useMemo(() => {
+    const index = new Map<string, Clip[]>();
+    for (const clip of clips) {
+      const list = index.get(clip.trackId);
+      if (list) {
+        list.push(clip);
+      } else {
+        index.set(clip.trackId, [clip]);
+      }
+    }
+    for (const list of index.values()) {
+      list.sort((a, b) => b.startTime - a.startTime);
+    }
+    return index;
+  }, [clips]);
+
+  const clipsById = useMemo(() => {
+    const index = new Map<string, Clip>();
+    for (const clip of clips) {
+      index.set(clip.id, clip);
+    }
+    return index;
+  }, [clips]);
 
   const capturePointer = useCallback((pointerId: number, clientX: number = 0, clientY: number = 0) => {
     activePointerIdRef.current = pointerId;
@@ -228,9 +231,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (!trackId || inMaskLane || inTransformLane) return null;
 
       const time = pixelToTime(x);
-      const trackClips = clips
-        .filter((clip) => clip.trackId === trackId)
-        .sort((a, b) => b.startTime - a.startTime);
+      const trackClips = clipsByTrackDesc.get(trackId) || [];
 
       for (const clip of trackClips) {
         const clipStartX = timeToPixel(clip.startTime);
@@ -250,7 +251,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       }
       return null;
     },
-    [getTrackAtY, clips, pixelToTime, timeToPixel]
+    [getTrackAtY, clipsByTrackDesc, pixelToTime, timeToPixel]
   );
 
   // Build drag items from selected clips and masks
@@ -258,7 +259,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     (activeClipIds: string[], activeMaskIds: string[]): DragItem[] => {
       const items: DragItem[] = [];
       for (const cid of activeClipIds) {
-        const c = clips.find((cl) => cl.id === cid);
+        const c = clipsById.get(cid);
         if (c) items.push({ type: "clip", id: cid, originalStartTime: c.startTime });
       }
       for (const mid of activeMaskIds) {
@@ -267,8 +268,122 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       }
       return items;
     },
-    [clips, masks]
+    [clipsById, masks]
   );
+
+  const clearMaskSelectionState = useCallback(() => {
+    if (isEditingMask) {
+      endMaskEdit();
+      return;
+    }
+    deselectMask();
+  }, [isEditingMask, endMaskEdit, deselectMask]);
+
+  const startClipMoveDrag = useCallback((options: {
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    clipId: string;
+    items: DragItem[];
+    x: number;
+    contentY: number;
+    time: number;
+    clipStart: number;
+    clipDuration: number;
+    clipTrimIn: number;
+  }) => {
+    capturePointer(options.pointerId, options.clientX, options.clientY);
+    isLiftedRef.current = true;
+    setDragState(createClipMoveDragState({
+      clipId: options.clipId,
+      items: options.items,
+      x: options.x,
+      contentY: options.contentY,
+      time: options.time,
+      clipStart: options.clipStart,
+      clipDuration: options.clipDuration,
+      clipTrimIn: options.clipTrimIn,
+    }));
+  }, [capturePointer]);
+
+  const splitClipWithRazor = useCallback((clip: Clip, splitCursorTime: number): Clip | null => {
+    const splitResult = buildRazorSplitClips({
+      clip,
+      splitCursorTime,
+      snapToPoints,
+    });
+    if (!splitResult) {
+      return null;
+    }
+    const { firstClip, secondClip } = splitResult;
+
+    saveToHistory();
+
+    void Promise.all([
+      copyMediaBlob(clip.id, firstClip.id),
+      copyMediaBlob(clip.id, secondClip.id),
+    ]).catch((error) => {
+      console.error("Failed to copy media blob on razor split:", error);
+    });
+
+    removeClip(clip.id);
+    addClips([firstClip, secondClip]);
+    return secondClip;
+  }, [snapToPoints, saveToHistory, removeClip, addClips]);
+
+  const duplicateSelectionForDrag = useCallback((options: {
+    activeClipIds: string[];
+    activeMaskIds: string[];
+    primaryClipId: string;
+  }): { primaryClipId: string; items: DragItem[] } => {
+    const newClipIds: string[] = [];
+    const newMaskIds: string[] = [];
+
+    for (const clipId of options.activeClipIds) {
+      const duplicatedClipId = duplicateClip(clipId, clipsById.get(clipId)?.trackId);
+      if (duplicatedClipId) {
+        newClipIds.push(duplicatedClipId);
+      }
+    }
+
+    for (const maskId of options.activeMaskIds) {
+      const duplicatedMaskId = duplicateMask(maskId);
+      if (duplicatedMaskId) {
+        newMaskIds.push(duplicatedMaskId);
+      }
+    }
+
+    if (newClipIds.length > 0) {
+      selectClips(newClipIds);
+    }
+    if (newMaskIds.length > 0) {
+      selectMasksForTimeline(newMaskIds);
+    }
+
+    const primaryIndex = options.activeClipIds.indexOf(options.primaryClipId);
+    const resolvedPrimaryClipId = primaryIndex >= 0 && primaryIndex < newClipIds.length
+      ? newClipIds[primaryIndex]
+      : newClipIds[0] || options.primaryClipId;
+
+    const items: DragItem[] = [];
+    for (let i = 0; i < newClipIds.length; i++) {
+      const originalClip = clipsById.get(options.activeClipIds[i]);
+      if (originalClip) {
+        items.push({ type: "clip", id: newClipIds[i], originalStartTime: originalClip.startTime });
+      }
+    }
+    for (let i = 0; i < newMaskIds.length; i++) {
+      const originalMask = masks.get(options.activeMaskIds[i]);
+      if (originalMask) {
+        items.push({ type: "mask", id: newMaskIds[i], originalStartTime: originalMask.startTime });
+      }
+    }
+
+    return {
+      primaryClipId: resolvedPrimaryClipId,
+      items,
+    };
+  }, [clipsById, duplicateClip, duplicateMask, masks, selectClips, selectMasksForTimeline]);
 
   /** Cancel any pending long-press timer */
   const cancelLongPress = useCallback(() => {
@@ -313,21 +428,22 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       // Select and lift the clip.
       selectClip(clip.id, false);
       saveToHistory();
-      isLiftedRef.current = true;
       setLiftedClipId(clip.id);
       if (navigator.vibrate) navigator.vibrate(30);
 
       const items = buildDragItems([clip.id], []);
-      setDragState({
-        type: "clip-move",
+      startClipMoveDrag({
+        pointerId: pending.pointerId,
+        clientX: pending.clientX,
+        clientY: pending.clientY,
         clipId: clip.id,
         items,
-        startX: pending.x,
-        startY: pending.contentY,
-        startTime: pending.time,
-        originalClipStart: clip.startTime,
-        originalClipDuration: clip.duration,
-        originalTrimIn: clip.trimIn,
+        x: pending.x,
+        contentY: pending.contentY,
+        time: pending.time,
+        clipStart: clip.startTime,
+        clipDuration: clip.duration,
+        clipTrimIn: clip.trimIn,
       });
       setTouchPending(null);
     },
@@ -387,28 +503,258 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     },
   });
 
+  const handleTimelineWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = tracksContainerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      setZoomFromWheelAtPixel(e.deltaY, x);
+      return;
+    }
+
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      const delta = e.shiftKey ? e.deltaY : e.deltaX;
+      panByPixels(delta);
+    }
+  }, [tracksContainerRef, setZoomFromWheelAtPixel, panByPixels]);
+
   useEffect(() => {
     const target = containerRef?.current ?? tracksContainerRef.current;
     if (!target) return;
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const rect = tracksContainerRef.current?.getBoundingClientRect();
-        if (!rect) return;
+    target.addEventListener("wheel", handleTimelineWheel, { passive: false });
+    return () => target.removeEventListener("wheel", handleTimelineWheel);
+  }, [containerRef, tracksContainerRef, handleTimelineWheel]);
 
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        setZoomFromWheelAtPixel(e.deltaY, x);
-      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault();
-        const delta = e.shiftKey ? e.deltaY : e.deltaX;
-        panByPixels(delta);
+  const seekAndKeepVisible = useCallback((time: number) => {
+    const seekTime = Math.max(0, time);
+    seek(seekTime);
+    ensureTimeVisibleOnLeft(seekTime);
+  }, [seek, ensureTimeVisibleOnLeft]);
+
+  const handleTouchPointerDown = useCallback((
+    e: React.PointerEvent,
+    x: number,
+    contentY: number,
+    time: number,
+  ) => {
+    const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
+    if (inMaskLane) return; // Let MaskClip handle it
+    if (inTransformLane) {
+      seekAndKeepVisible(time);
+      return;
+    }
+
+    capturePointer(e.pointerId, e.clientX, e.clientY);
+    const timelineViewport = timelineViewportRef.current;
+    const clipResult = findClipAtPosition(x, contentY);
+
+    setTouchPending({
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      scrollXOnStart: timelineViewport.scrollX,
+      zoomOnStart: Math.max(0.001, timelineViewport.zoom),
+      scrollTopOnStart: tracksContainerRef.current?.scrollTop ?? 0,
+      x,
+      contentY,
+      time,
+      clipResult,
+    });
+  }, [capturePointer, findClipAtPosition, getTrackAtY, seekAndKeepVisible, timelineViewportRef, tracksContainerRef]);
+
+  const startPlayheadDrag = useCallback((options: {
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    x: number;
+    contentY: number;
+    time: number;
+  }) => {
+    seekAndKeepVisible(options.time);
+    deselectAll();
+    clearMaskSelectionState();
+    capturePointer(options.pointerId, options.clientX, options.clientY);
+    setDragState(createPlayheadDragState({
+      x: options.x,
+      contentY: options.contentY,
+      time: options.time,
+    }));
+  }, [seekAndKeepVisible, deselectAll, clearMaskSelectionState, capturePointer]);
+
+  const startTrimDrag = useCallback((options: {
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    handle: "start" | "end";
+    clip: Clip;
+    x: number;
+    contentY: number;
+    time: number;
+    shiftKey: boolean;
+  }) => {
+    capturePointer(options.pointerId, options.clientX, options.clientY);
+    saveToHistory();
+    setDragState(createTrimDragState({
+      handle: options.handle,
+      clipId: options.clip.id,
+      x: options.x,
+      contentY: options.contentY,
+      time: options.time,
+      clipStart: options.clip.startTime,
+      clipDuration: options.clip.duration,
+      clipTrimIn: options.clip.trimIn,
+    }));
+    selectClip(options.clip.id, options.shiftKey);
+  }, [capturePointer, saveToHistory, selectClip]);
+
+  const handleClipBodyPointerDown = useCallback((options: {
+    event: React.PointerEvent;
+    clip: Clip;
+    x: number;
+    contentY: number;
+    time: number;
+  }) => {
+    const { event, clip, x, contentY, time } = options;
+    if (toolMode === "razor") {
+      const splitResult = splitClipWithRazor(clip, time);
+      if (splitResult) {
+        selectClip(splitResult.id, false);
       }
-    };
+      return;
+    }
 
-    target.addEventListener("wheel", handleWheel, { passive: false });
-    return () => target.removeEventListener("wheel", handleWheel);
-  }, [containerRef, tracksContainerRef, timelineViewportRef, setZoomFromWheelAtPixel, panByPixels]);
+    saveToHistory();
+    const resolvedSelection = resolveTimelineClipSelection({
+      clipId: clip.id,
+      selectedClipIds,
+      selectedMaskIds,
+      shiftKey: event.shiftKey,
+    });
+    const { activeClipIds, activeMaskIds } = resolvedSelection;
+    if (resolvedSelection.shouldSelectClip) {
+      selectClip(clip.id, resolvedSelection.selectAppend);
+    }
+    if (resolvedSelection.shouldClearMaskSelection) {
+      clearMaskSelectionState();
+    }
+
+    let primaryClipId = clip.id;
+
+    if (event.altKey && toolMode === "select") {
+      // Alt+Drag: duplicate ALL selected items and drag the copies
+      const duplicated = duplicateSelectionForDrag({
+        activeClipIds,
+        activeMaskIds,
+        primaryClipId: clip.id,
+      });
+      primaryClipId = duplicated.primaryClipId;
+
+      startClipMoveDrag({
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        clipId: primaryClipId,
+        items: duplicated.items,
+        x,
+        contentY,
+        time,
+        clipStart: clip.startTime,
+        clipDuration: clip.duration,
+        clipTrimIn: clip.trimIn,
+      });
+      return;
+    }
+
+    // Normal drag: move all selected items
+    const items = buildDragItems(activeClipIds, activeMaskIds);
+    startClipMoveDrag({
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      clipId: primaryClipId,
+      items,
+      x,
+      contentY,
+      time,
+      clipStart: clip.startTime,
+      clipDuration: clip.duration,
+      clipTrimIn: clip.trimIn,
+    });
+  }, [
+    toolMode,
+    splitClipWithRazor,
+    selectClip,
+    saveToHistory,
+    selectedClipIds,
+    selectedMaskIds,
+    clearMaskSelectionState,
+    duplicateSelectionForDrag,
+    startClipMoveDrag,
+    buildDragItems,
+  ]);
+
+  const handlePrimaryPointerDown = useCallback((
+    e: React.PointerEvent,
+    x: number,
+    contentY: number,
+    time: number,
+  ) => {
+    // Check if click is in a mask lane - let MaskClip handle it
+    const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
+    if (inMaskLane) return;
+    if (inTransformLane) {
+      seekAndKeepVisible(time);
+      return;
+    }
+
+    const result = findClipAtPosition(x, contentY);
+    if (!result) {
+      startPlayheadDrag({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        x,
+        contentY,
+        time,
+      });
+      return;
+    }
+
+    const { clip, handle } = result;
+
+    if (
+      (handle === "start" || handle === "end")
+      && (toolMode === "select" || toolMode === "trim")
+    ) {
+      startTrimDrag({
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        handle,
+        clip,
+        x,
+        contentY,
+        time,
+        shiftKey: e.shiftKey,
+      });
+      return;
+    }
+
+    if (handle !== "body") return;
+    handleClipBodyPointerDown({ event: e, clip, x, contentY, time });
+  }, [
+    getTrackAtY,
+    seekAndKeepVisible,
+    findClipAtPosition,
+    startPlayheadDrag,
+    toolMode,
+    startTrimDrag,
+    handleClipBodyPointerDown,
+  ]);
 
   // Handle pointer down (supports mouse, touch, pen)
   const handlePointerDown = useCallback(
@@ -422,314 +768,129 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
       // ── Touch: defer ALL processing until gesture direction is known ──
       if (e.pointerType === "touch" && e.button === 0) {
-        const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
-        if (inMaskLane) return; // Let MaskClip handle it
-        if (inTransformLane) {
-          const seekTime = Math.max(0, time);
-          seek(seekTime);
-          ensureTimeVisibleOnLeft(seekTime);
-          return;
-        }
-        capturePointer(e.pointerId, e.clientX, e.clientY);
-        const timelineViewport = timelineViewportRef.current;
-
-        const clipResult = findClipAtPosition(x, contentY);
-        setTouchPending({
-          pointerId: e.pointerId,
-          clientX: e.clientX,
-          clientY: e.clientY,
-          scrollXOnStart: timelineViewport.scrollX,
-          zoomOnStart: Math.max(0.001, timelineViewport.zoom),
-          scrollTopOnStart: tracksContainerRef.current?.scrollTop ?? 0,
-          x,
-          contentY,
-          time,
-          clipResult,
-        });
+        handleTouchPointerDown(e, x, contentY, time);
         return;
       }
 
       // Left click
       if (e.button === 0) {
-        // Check if click is in a mask lane - let MaskClip handle it
-        const { inMaskLane, inTransformLane } = getTrackAtY(contentY);
-        if (inMaskLane) return;
-        if (inTransformLane) {
-          const seekTime = Math.max(0, time);
-          seek(seekTime);
-          ensureTimeVisibleOnLeft(seekTime);
-          return;
-        }
-
-        const result = findClipAtPosition(x, contentY);
-
-        if (result) {
-          const { clip, handle } = result;
-
-          if (handle === "start" && (toolMode === "select" || toolMode === "trim")) {
-            capturePointer(e.pointerId, e.clientX, e.clientY);
-            saveToHistory();
-            setDragState({
-              type: "clip-trim-start",
-              clipId: clip.id,
-              items: [],
-              startX: x,
-              startY: contentY,
-              startTime: time,
-              originalClipStart: clip.startTime,
-              originalClipDuration: clip.duration,
-              originalTrimIn: clip.trimIn,
-            });
-            selectClip(clip.id, e.shiftKey);
-          } else if (handle === "end" && (toolMode === "select" || toolMode === "trim")) {
-            capturePointer(e.pointerId, e.clientX, e.clientY);
-            saveToHistory();
-            setDragState({
-              type: "clip-trim-end",
-              clipId: clip.id,
-              items: [],
-              startX: x,
-              startY: contentY,
-              startTime: time,
-              originalClipStart: clip.startTime,
-              originalClipDuration: clip.duration,
-              originalTrimIn: clip.trimIn,
-            });
-            selectClip(clip.id, e.shiftKey);
-          } else if (handle === "body") {
-            if (toolMode === "razor") {
-              // Split clip at cursor
-              const rawSplitTime = Math.max(clip.startTime, Math.min(time, clip.startTime + clip.duration));
-              const snappedSplitTime = snapToPoints(rawSplitTime, {
-                excludeClipIds: new Set([clip.id]),
-              });
-              const splitTime = Math.max(
-                clip.startTime,
-                Math.min(snappedSplitTime, clip.startTime + clip.duration)
-              );
-              const splitOffset = splitTime - clip.startTime;
-
-              // Ignore split at very edges
-              if (splitOffset <= TIMELINE.CLIP_MIN_DURATION || clip.duration - splitOffset <= TIMELINE.CLIP_MIN_DURATION) {
-                return;
-              }
-
-              saveToHistory();
-
-              const firstDuration = splitOffset;
-              const secondDuration = clip.duration - splitOffset;
-              const firstTransformKeyframes = sliceClipPositionKeyframes(
-                clip,
-                0,
-                firstDuration,
-                { includeStart: true, includeEnd: true }
-              );
-              const secondTransformKeyframes = sliceClipPositionKeyframes(
-                clip,
-                splitOffset,
-                secondDuration,
-                { includeStart: true, includeEnd: false }
-              );
-              const firstPosition = firstTransformKeyframes?.position?.[0]?.value || clip.position;
-              const secondPosition = secondTransformKeyframes?.position?.[0]?.value || clip.position;
-
-              const firstClip: Clip = {
-                ...clip,
-                id: crypto.randomUUID(),
-                duration: firstDuration,
-                trimOut: clip.trimIn + firstDuration,
-                sourceSize: { ...clip.sourceSize },
-                position: { ...firstPosition },
-                transformKeyframes: firstTransformKeyframes,
-              };
-
-              const secondClip: Clip = {
-                ...clip,
-                id: crypto.randomUUID(),
-                name: `${clip.name} (2)`,
-                startTime: splitTime,
-                duration: secondDuration,
-                trimIn: clip.trimIn + splitOffset,
-                sourceSize: { ...clip.sourceSize },
-                position: { ...secondPosition },
-                transformKeyframes: secondTransformKeyframes,
-              };
-
-              void Promise.all([
-                copyMediaBlob(clip.id, firstClip.id),
-                copyMediaBlob(clip.id, secondClip.id),
-              ]).catch((error) => {
-                console.error("Failed to copy media blob on razor split:", error);
-              });
-
-              removeClip(clip.id);
-              addClips([firstClip, secondClip]);
-              selectClip(secondClip.id, false);
-            } else {
-              saveToHistory();
-
-              const isAlreadySelected = selectedClipIds.includes(clip.id);
-
-              // Determine effective selection after this click
-              let activeClipIds: string[];
-              let activeMaskIds: string[];
-
-              if (isAlreadySelected) {
-                activeClipIds = selectedClipIds;
-                activeMaskIds = selectedMaskIds;
-              } else if (e.shiftKey) {
-                activeClipIds = [...selectedClipIds, clip.id];
-                activeMaskIds = selectedMaskIds;
-                selectClip(clip.id, true);
-              } else {
-                activeClipIds = [clip.id];
-                activeMaskIds = [];
-                selectClip(clip.id, false);
-                // Clear mask active/editing state
-                if (isEditingMask) {
-                  endMaskEdit();
-                } else {
-                  deselectMask();
-                }
-              }
-
-              let primaryClipId = clip.id;
-
-              if (e.altKey && toolMode === "select") {
-                // Alt+Drag: duplicate ALL selected items and drag the copies
-                const newClipIds: string[] = [];
-                const newMaskIds: string[] = [];
-
-                for (const cid of activeClipIds) {
-                  const c = clips.find((cl) => cl.id === cid);
-                  const newId = duplicateClip(cid, c?.trackId);
-                  if (newId) newClipIds.push(newId);
-                }
-
-                for (const mid of activeMaskIds) {
-                  const newId = duplicateMask(mid);
-                  if (newId) newMaskIds.push(newId);
-                }
-
-                const primaryIndex = activeClipIds.indexOf(clip.id);
-                primaryClipId = primaryIndex >= 0 && primaryIndex < newClipIds.length
-                  ? newClipIds[primaryIndex]
-                  : newClipIds[0] || clip.id;
-
-                if (newClipIds.length > 0) selectClips(newClipIds);
-                if (newMaskIds.length > 0) selectMasksForTimeline(newMaskIds);
-
-                const items: DragItem[] = [];
-                for (let i = 0; i < newClipIds.length; i++) {
-                  const origClip = clips.find((c) => c.id === activeClipIds[i]);
-                  if (origClip) {
-                    items.push({ type: "clip", id: newClipIds[i], originalStartTime: origClip.startTime });
-                  }
-                }
-                for (let i = 0; i < newMaskIds.length; i++) {
-                  const origMask = masks.get(activeMaskIds[i]);
-                  if (origMask) {
-                    items.push({ type: "mask", id: newMaskIds[i], originalStartTime: origMask.startTime });
-                  }
-                }
-
-                isLiftedRef.current = true;
-                capturePointer(e.pointerId, e.clientX, e.clientY);
-
-                setDragState({
-                  type: "clip-move",
-                  clipId: primaryClipId,
-                  items,
-                  startX: x,
-                  startY: contentY,
-                  startTime: time,
-                  originalClipStart: clip.startTime,
-                  originalClipDuration: clip.duration,
-                  originalTrimIn: clip.trimIn,
-                });
-              } else {
-                // Normal drag: move all selected items
-                capturePointer(e.pointerId, e.clientX, e.clientY);
-                const items = buildDragItems(activeClipIds, activeMaskIds);
-                isLiftedRef.current = true;
-
-                setDragState({
-                  type: "clip-move",
-                  clipId: primaryClipId,
-                  items,
-                  startX: x,
-                  startY: contentY,
-                  startTime: time,
-                  originalClipStart: clip.startTime,
-                  originalClipDuration: clip.duration,
-                  originalTrimIn: clip.trimIn,
-                });
-              }
-            }
-          }
-        } else {
-          // Click on empty area - seek and deselect
-          const seekTime = Math.max(0, time);
-          seek(seekTime);
-          ensureTimeVisibleOnLeft(seekTime);
-          deselectAll();
-          // Clear mask active/editing state
-          if (isEditingMask) {
-            endMaskEdit();
-          } else {
-            deselectMask();
-          }
-          capturePointer(e.pointerId, e.clientX, e.clientY);
-          setDragState({
-            type: "playhead",
-            clipId: null,
-            items: [],
-            startX: x,
-            startY: contentY,
-            startTime: time,
-            originalClipStart: 0,
-            originalClipDuration: 0,
-            originalTrimIn: 0,
-          });
-        }
+        handlePrimaryPointerDown(e, x, contentY, time);
       }
     },
-    [
-      tracksContainerRef,
-      pixelToTime,
-      getContentY,
-      getTrackAtY,
-      findClipAtPosition,
-      toolMode,
-      selectClip,
-      selectClips,
-      selectMasksForTimeline,
-      selectedClipIds,
-      selectedMaskIds,
-      seek,
-      deselectAll,
-      duplicateClip,
-      duplicateMask,
-      removeClip,
-      addClips,
-      saveToHistory,
-      clips,
-      masks,
-      buildDragItems,
-      cancelLongPress,
-      capturePointer,
-      deselectMask,
-      endMaskEdit,
-      isEditingMask,
-      ensureTimeVisibleOnLeft,
-      timelineViewportRef,
-      snapToPoints,
-    ]
+    [tracksContainerRef, getContentY, pixelToTime, handleTouchPointerDown, handlePrimaryPointerDown]
   );
 
-  // Ref to hold the latest drag-move handler (avoids stale closures in document listener)
-  const moveHandlerRef = useRef<(e: PointerEvent) => void>(() => {});
-  moveHandlerRef.current = (e: PointerEvent) => {
+  const handlePlayheadDragMove = useCallback((time: number) => {
+    const seekTime = Math.max(0, time);
+    seek(seekTime);
+    // Auto-scroll to keep playhead visible when seeking before visible area
+    ensureTimeVisibleOnLeft(seekTime);
+  }, [seek, ensureTimeVisibleOnLeft]);
+
+  const maybeCancelLongPressForDragMove = useCallback((drag: DragState, x: number, contentY: number) => {
+    if (!longPressTimerRef.current) return;
+    const dx = Math.abs(x - drag.startX);
+    const dy = Math.abs(contentY - drag.startY);
+    if (dx > 5 || dy > 5) {
+      cancelLongPress();
+    }
+  }, [cancelLongPress]);
+
+  const getSnappedClipMoveTimeDelta = useCallback((drag: DragState, deltaTime: number, movingClipIds: Set<string>) => {
+    const rawStart = Math.max(0, drag.originalClipStart + deltaTime);
+    const snappedStart = snapToPoints(rawStart, {
+      excludeClipIds: movingClipIds,
+    });
+    // Also snap end edge: if end snaps, adjust start accordingly.
+    const rawEnd = rawStart + drag.originalClipDuration;
+    const snappedEnd = snapToPoints(rawEnd, {
+      excludeClipIds: movingClipIds,
+    });
+    const endAdjusted = Math.max(0, snappedEnd - drag.originalClipDuration);
+    // Use whichever snap is closer.
+    const startDelta = Math.abs(snappedStart - rawStart);
+    const endDelta = Math.abs(snappedEnd - rawEnd);
+    const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
+
+    // Time delta from primary clip's original position.
+    return finalStart - drag.originalClipStart;
+  }, [snapToPoints]);
+
+  const handleClipMoveDrag = useCallback((options: {
+    drag: DragState;
+    x: number;
+    contentY: number;
+    deltaTime: number;
+  }) => {
+    const { drag, x, contentY, deltaTime } = options;
+    if (!drag.clipId || drag.items.length === 0) return;
+
+    // Cancel long-press timer if user starts moving (horizontal or vertical).
+    maybeCancelLongPressForDragMove(drag, x, contentY);
+
+    const primaryClip = clipsById.get(drag.clipId) || null;
+    if (!primaryClip) return;
+
+    const movingClipIds = new Set(
+      drag.items
+        .filter((item) => item.type === "clip")
+        .map((item) => item.id)
+    );
+    const pointerTrackId = getTrackAtY(contentY).trackId || null;
+    const timeDelta = getSnappedClipMoveTimeDelta(drag, deltaTime, movingClipIds);
+
+    // Move all items by the same time delta.
+    for (const item of drag.items) {
+      const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
+      if (item.type === "clip") {
+        const clip = clipsById.get(item.id) || null;
+        if (clip) {
+          // Cross-track: only if lifted (mouse always, touch after long-press).
+          const targetTrackId = item.id === drag.clipId && isLiftedRef.current
+            ? (pointerTrackId || clip.trackId)
+            : clip.trackId;
+          moveClip(item.id, targetTrackId, newStartTime, [...movingClipIds]);
+        }
+      } else {
+        const mask = masks.get(item.id);
+        if (mask) {
+          updateMaskTime(item.id, newStartTime, mask.duration);
+        }
+      }
+    }
+  }, [
+    maybeCancelLongPressForDragMove,
+    clipsById,
+    getTrackAtY,
+    getSnappedClipMoveTimeDelta,
+    masks,
+    moveClip,
+    updateMaskTime,
+  ]);
+
+  const handleClipTrimStartDrag = useCallback((drag: DragState, deltaTime: number) => {
+    if (!drag.clipId) return;
+    if (!clipsById.has(drag.clipId)) return;
+    const rawTrimStart = Math.max(0, drag.originalClipStart + deltaTime);
+    const maxStart = drag.originalClipStart + drag.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
+    const clampedStart = Math.min(rawTrimStart, maxStart);
+    trimClipStart(drag.clipId, snapToPoints(clampedStart, {
+      excludeClipIds: new Set([drag.clipId]),
+    }));
+  }, [clipsById, trimClipStart, snapToPoints]);
+
+  const handleClipTrimEndDrag = useCallback((drag: DragState, deltaTime: number) => {
+    if (!drag.clipId) return;
+    if (!clipsById.has(drag.clipId)) return;
+    const rawTrimEnd = drag.originalClipStart + drag.originalClipDuration + deltaTime;
+    const minEnd = drag.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
+    const clampedEnd = Math.max(rawTrimEnd, minEnd);
+    trimClipEnd(drag.clipId, snapToPoints(clampedEnd, {
+      excludeClipIds: new Set([drag.clipId]),
+    }));
+  }, [clipsById, trimClipEnd, snapToPoints]);
+
+  const handleDragPointerMove = useCallback((e: PointerEvent) => {
     if (dragState.type === "none") return;
     const containerRect = tracksContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -739,108 +900,46 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     const deltaTime = time - dragState.startTime;
 
     switch (dragState.type) {
-      case "playhead": {
-        const seekTime = Math.max(0, time);
-        seek(seekTime);
-        // Auto-scroll to keep playhead visible when seeking before visible area
-        ensureTimeVisibleOnLeft(seekTime);
+      case "playhead":
+        handlePlayheadDragMove(time);
         break;
-      }
-
-      case "clip-move": {
-        if (!dragState.clipId || dragState.items.length === 0) break;
-
-        // Cancel long-press timer if user starts moving (horizontal or vertical)
-        if (longPressTimerRef.current) {
-          const dx = Math.abs(x - dragState.startX);
-          const dy = Math.abs(contentY - dragState.startY);
-          if (dx > 5 || dy > 5) {
-            cancelLongPress();
-          }
-        }
-
-        // Calculate snap based on primary clip
-        const primaryClip = clips.find((cl) => cl.id === dragState.clipId);
-        if (!primaryClip) break;
-
-        const movingClipIds = new Set(
-          dragState.items
-            .filter((item) => item.type === "clip")
-            .map((item) => item.id)
-        );
-
-        const rawStart = Math.max(0, dragState.originalClipStart + deltaTime);
-        const snappedStart = snapToPoints(rawStart, {
-          excludeClipIds: movingClipIds,
+      case "clip-move":
+        handleClipMoveDrag({
+          drag: dragState,
+          x,
+          contentY,
+          deltaTime,
         });
-        // Also snap end edge: if end snaps, adjust start accordingly
-        const rawEnd = rawStart + dragState.originalClipDuration;
-        const snappedEnd = snapToPoints(rawEnd, {
-          excludeClipIds: movingClipIds,
-        });
-        const endAdjusted = Math.max(0, snappedEnd - dragState.originalClipDuration);
-        // Use whichever snap is closer
-        const startDelta = Math.abs(snappedStart - rawStart);
-        const endDelta = Math.abs(snappedEnd - rawEnd);
-        const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
-
-        // Time delta from primary clip's original position
-        const timeDelta = finalStart - dragState.originalClipStart;
-
-        // Move all items by the same time delta
-        for (const item of dragState.items) {
-          const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
-          if (item.type === "clip") {
-            const c = clips.find((cl) => cl.id === item.id);
-            if (c) {
-              // Cross-track: only if lifted (mouse always, touch after long-press)
-              const targetTrackId = item.id === dragState.clipId && isLiftedRef.current
-                ? (getTrackAtY(contentY).trackId || c.trackId)
-                : c.trackId;
-              moveClip(item.id, targetTrackId, newStartTime, [...movingClipIds]);
-            }
-          } else if (item.type === "mask") {
-            const m = masks.get(item.id);
-            if (m) {
-              updateMaskTime(item.id, newStartTime, m.duration);
-            }
-          }
-        }
         break;
-      }
 
       case "clip-trim-start":
-        if (dragState.clipId) {
-          if (!clips.some((candidate) => candidate.id === dragState.clipId)) break;
-          const rawTrimStart = Math.max(0, dragState.originalClipStart + deltaTime);
-          const maxStart = dragState.originalClipStart + dragState.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
-          const clampedStart = Math.min(rawTrimStart, maxStart);
-          trimClipStart(dragState.clipId, snapToPoints(clampedStart, {
-            excludeClipIds: new Set([dragState.clipId]),
-          }));
-        }
+        handleClipTrimStartDrag(dragState, deltaTime);
         break;
 
       case "clip-trim-end":
-        if (dragState.clipId) {
-          if (!clips.some((candidate) => candidate.id === dragState.clipId)) break;
-          const rawTrimEnd = dragState.originalClipStart + dragState.originalClipDuration + deltaTime;
-          const minEnd = dragState.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
-          const clampedEnd = Math.max(rawTrimEnd, minEnd);
-          trimClipEnd(dragState.clipId, snapToPoints(clampedEnd, {
-            excludeClipIds: new Set([dragState.clipId]),
-          }));
-        }
+        handleClipTrimEndDrag(dragState, deltaTime);
+        break;
+
+      default:
         break;
     }
-  };
+  }, [
+    dragState,
+    tracksContainerRef,
+    getContentY,
+    pixelToTime,
+    handlePlayheadDragMove,
+    handleClipMoveDrag,
+    handleClipTrimStartDrag,
+    handleClipTrimEndDrag,
+  ]);
 
   useDeferredPointerGesture<DragPointerPendingState>({
     pending: dragState.type === "none" ? null : dragPointerPending,
     thresholdPx: 0,
     onMoveResolved: ({ event }) => {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
-      moveHandlerRef.current(event);
+      handleDragPointerMove(event);
     },
     onEnd: (_pending, event) => {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
@@ -851,7 +950,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (!liftedClipId) {
         isLiftedRef.current = false;
       }
-      setDragState(INITIAL_DRAG_STATE);
+      setDragState(INITIAL_TIMELINE_DRAG_STATE);
     },
   });
 
@@ -861,39 +960,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     };
   }, [releasePointer]);
 
-  // Get cursor style based on position
-  const getCursor = useCallback(
-    (x: number): string => {
-      if (dragState.type !== "none") {
-        switch (dragState.type) {
-          case "clip-trim-start":
-          case "clip-trim-end":
-            return "ew-resize";
-          case "clip-move":
-            return "grabbing";
-          default:
-            return "default";
-        }
-      }
-
-      const result = findClipAtPosition(x, 0);
-      if (result) {
-        if (result.handle === "start" || result.handle === "end") {
-          return "ew-resize";
-        }
-        return "grab";
-      }
-
-      return "default";
-    },
-    [dragState.type, findClipAtPosition]
-  );
-
   /** Move the lifted clip to a different track (called from track-selector UI) */
   const dropClipToTrack = useCallback(
     (targetTrackId: string) => {
       if (!liftedClipId) return;
-      const clip = clips.find((c) => c.id === liftedClipId);
+      const clip = clipsById.get(liftedClipId) || null;
       if (!clip || clip.trackId === targetTrackId) {
         resetLift();
         return;
@@ -902,14 +973,13 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       moveClip(liftedClipId, targetTrackId, clip.startTime);
       resetLift();
     },
-    [liftedClipId, clips, saveToHistory, moveClip, resetLift]
+    [liftedClipId, clipsById, saveToHistory, moveClip, resetLift]
   );
 
   return {
     dragState,
     handlePointerDown,
     handleContainerPointerDown,
-    getCursor,
     liftedClipId,
     dropClipToTrack,
     cancelLift: resetLift,

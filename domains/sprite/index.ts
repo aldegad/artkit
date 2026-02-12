@@ -41,7 +41,22 @@ export {
 } from "./components";
 
 // Hooks
-export { useFrameBackgroundRemoval, useFrameInterpolation, useSpriteKeyboardShortcuts, useSpriteExport } from "./hooks";
+export {
+  useFrameBackgroundRemoval,
+  useFrameInterpolation,
+  useSpriteKeyboardShortcuts,
+  useSpriteExport,
+  useSpriteProjectFileActions,
+  useSpriteProjectSync,
+  useSpriteExportActions,
+  useSpriteCropActions,
+  useFrameStripSkipActions,
+  useSpriteResampleActions,
+  useFrameStripTransformActions,
+  useSpritePreviewBackgroundState,
+  useFrameStripImportHandlers,
+  useSpriteEditableFrameCanvasSync,
+} from "./hooks";
 
 // Types
 export type {

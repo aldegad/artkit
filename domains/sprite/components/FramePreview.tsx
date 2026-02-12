@@ -7,31 +7,24 @@ import { StepBackwardIcon, StepForwardIcon, PlusIcon, MinusIcon } from "../../..
 import { useCanvasViewport } from "../../../shared/hooks/useCanvasViewport";
 import { useCanvasViewportPersistence } from "../../../shared/hooks/useCanvasViewportPersistence";
 import { useRenderScheduler } from "../../../shared/hooks/useRenderScheduler";
-import { useSpriteViewportStore, useSpriteUIStore, useSpriteToolStore } from "../stores";
+import { useSpriteViewportStore, useSpriteUIStore } from "../stores";
 import { useSpacePanAndSelectionKeys } from "../hooks/useSpacePanAndSelectionKeys";
 import { useDabBufferCanvas } from "../hooks/useDabBufferCanvas";
-import { drawInterpolatedStroke, drawSpriteBrushPixel } from "../utils/brushDrawing";
+import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelection";
+import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
+import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimation";
+import { useSpritePanPointerSession } from "../hooks/useSpritePanPointerSession";
+import { drawSpriteBrushPixel } from "../utils/brushDrawing";
+import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
+import { drawMagicWandOverlay } from "../utils/magicWandOverlay";
 import {
   drawScaledImage,
-  getPointerPressure,
   safeReleasePointerCapture,
   safeSetPointerCapture,
   type CanvasScaleScratch,
 } from "@/shared/utils";
-import {
-  computeMagicWandSelection,
-  computeMagicWandSelectionFromAlphaMask,
-  createMagicWandMaskCanvas,
-  drawMagicWandSelectionOutline,
-  type MagicWandSelection,
-} from "@/shared/utils/magicWand";
-import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 import { SPRITE_PREVIEW_VIEWPORT } from "../constants";
-
-const MAGIC_WAND_OVERLAY_ALPHA = 0.24;
-const MAGIC_WAND_OUTLINE_DASH = [4, 4];
-const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
 
 export default function FramePreviewContent() {
   const { frames, setFrames, selectedFrameId } = useEditorFramesMeta();
@@ -52,29 +45,17 @@ export default function FramePreviewContent() {
   const isEyedropperTool = toolMode === "eyedropper";
 
   const [isPanning, setIsPanning] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [isOverCanvas, setIsOverCanvas] = useState(false);
   const [editFrameId, setEditFrameId] = useState<number | null>(null);
-  const [isAiSelecting, setIsAiSelecting] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastMousePosRef = useRef({ x: 0, y: 0 });
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const scaleScratchRef = useRef<CanvasScaleScratch>({ primary: null, secondary: null });
   const currentFrameIdRef = useRef<number | null>(null);
   const isFrameDirtyRef = useRef(false);
-  const drawingPointerIdRef = useRef<number | null>(null);
-  const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
-  const magicWandSelectionRef = useRef<MagicWandSelection | null>(null);
-  const magicWandMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
-  const aiSelectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const aiSelectionFrameIdRef = useRef<number | null>(null);
-  const aiSelectionTaskIdRef = useRef(0);
   const { ensureDabBufferCanvas, resetDabBufferCanvas } = useDabBufferCanvas();
 
   const validFrames = frames.filter((f) => f.imageData);
@@ -112,7 +93,6 @@ export default function FramePreviewContent() {
   } = viewport;
 
   const isAutosaveLoading = useSpriteUIStore((s) => s.isAutosaveLoading);
-  const setMagicWandSelectionActive = useSpriteToolStore((s) => s.setMagicWandSelectionActive);
   useCanvasViewportPersistence({
     onViewportChange: onFrameViewportChange,
     setZoom: setFrameVpZoom,
@@ -131,19 +111,24 @@ export default function FramePreviewContent() {
   });
 
   const { requestRender, setRenderFn } = useRenderScheduler(containerRef);
-
-  const clearMagicWandSelection = useCallback(() => {
-    magicWandSelectionRef.current = null;
-    magicWandMaskCanvasRef.current = null;
-    magicWandSeedRef.current = null;
-    setMagicWandSelectionActive("frame-preview", false);
-    requestRender();
-  }, [requestRender, setMagicWandSelectionActive]);
-
-  const invalidateAiSelectionCache = useCallback(() => {
-    aiSelectionCanvasRef.current = null;
-    aiSelectionFrameIdRef.current = null;
-  }, []);
+  const {
+    magicWandSelectionRef,
+    magicWandMaskCanvasRef,
+    isAiSelecting,
+    clearMagicWandSelection,
+    invalidateAiSelectionCache,
+    applyMagicWandSelection,
+    clearSelectedPixels,
+    hasMagicWandSelection,
+  } = useSpriteMagicWandSelection({
+    frameCanvasRef,
+    frameCtxRef,
+    mode: magicWandSelectionMode,
+    tolerance: magicWandTolerance,
+    feather: magicWandFeather,
+    requestRender,
+    getAiCacheKey: () => currentFrameIdRef.current,
+  });
 
   useEffect(() => {
     setRenderFn(() => {
@@ -177,29 +162,13 @@ export default function FramePreviewContent() {
         && selection.width === sourceCanvas.width
         && selection.height === sourceCanvas.height
       ) {
-        const dashCycle = MAGIC_WAND_OUTLINE_DASH.reduce((sum, value) => sum + value, 0);
-        const antsOffset = dashCycle > 0
-          ? -((performance.now() / MAGIC_WAND_OUTLINE_SPEED_MS) % dashCycle)
-          : 0;
-
-        ctx.save();
-        ctx.globalAlpha = MAGIC_WAND_OVERLAY_ALPHA;
-        ctx.drawImage(selectionMaskCanvas, 0, 0, w, h);
-        ctx.restore();
-
-        drawMagicWandSelectionOutline(ctx, selection, {
+        drawMagicWandOverlay({
+          ctx,
+          selection,
+          selectionMaskCanvas,
           zoom,
-          color: "rgba(0, 0, 0, 0.9)",
-          lineWidth: 2,
-          dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: antsOffset,
-        });
-        drawMagicWandSelectionOutline(ctx, selection, {
-          zoom,
-          color: "rgba(255, 255, 255, 0.95)",
-          lineWidth: 1,
-          dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: antsOffset + (dashCycle / 2),
+          width: w,
+          height: h,
         });
       }
     });
@@ -211,24 +180,10 @@ export default function FramePreviewContent() {
     });
   }, [onFrameViewportChange, requestRender]);
 
-  useEffect(() => {
-    let rafId = 0;
-    const animateSelectionOutline = () => {
-      if (magicWandSelectionRef.current) {
-        requestRender();
-      }
-      rafId = window.requestAnimationFrame(animateSelectionOutline);
-    };
-    rafId = window.requestAnimationFrame(animateSelectionOutline);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [requestRender]);
-
-  useEffect(() => {
-    setFrameVpPan({ x: 0, y: 0 });
-    setHasDrawn(false);
-  }, [editFrameId, setFrameVpPan]);
+  useMagicWandOutlineAnimation({
+    hasSelection: hasMagicWandSelection,
+    requestRender,
+  });
 
   const commitFrameEdits = useCallback(() => {
     const frameId = currentFrameIdRef.current;
@@ -248,8 +203,6 @@ export default function FramePreviewContent() {
   }, [selectedFrameId, commitFrameEdits]);
 
   useEffect(() => {
-    aiSelectionTaskIdRef.current += 1;
-    setIsAiSelecting(false);
     invalidateAiSelectionCache();
 
     if (!currentFrame?.imageData) {
@@ -304,206 +257,10 @@ export default function FramePreviewContent() {
     (clientX: number, clientY: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return null;
-
-      const rect = canvas.getBoundingClientRect();
-      const style = getComputedStyle(canvas);
-      const borderLeft = parseFloat(style.borderLeftWidth) || 0;
-      const borderTop = parseFloat(style.borderTopWidth) || 0;
-      const borderRight = parseFloat(style.borderRightWidth) || 0;
-      const borderBottom = parseFloat(style.borderBottomWidth) || 0;
-
-      const contentWidth = rect.width - borderLeft - borderRight;
-      const contentHeight = rect.height - borderTop - borderBottom;
-
-      if (contentWidth <= 0 || contentHeight <= 0) return null;
-
-      const scaleX = canvas.width / contentWidth;
-      const scaleY = canvas.height / contentHeight;
-
-      const zoom = getFrameVpZoom();
-      const x = Math.floor(((clientX - rect.left - borderLeft) * scaleX) / zoom);
-      const y = Math.floor(((clientY - rect.top - borderTop) * scaleY) / zoom);
-
-      return { x, y };
+      return getCanvasPixelCoordinates(canvas, clientX, clientY, getFrameVpZoom());
     },
     [getFrameVpZoom]
   );
-
-  const applyMagicWandSelection = useCallback(async (x: number, y: number) => {
-    const frameCtx = frameCtxRef.current;
-    const frameCanvas = frameCanvasRef.current;
-    if (!frameCtx || !frameCanvas) return;
-
-    if (x < 0 || y < 0 || x >= frameCanvas.width || y >= frameCanvas.height) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    if (magicWandSelectionMode === "ai") {
-      const taskId = aiSelectionTaskIdRef.current + 1;
-      aiSelectionTaskIdRef.current = taskId;
-      setIsAiSelecting(true);
-
-      try {
-        const frameId = currentFrameIdRef.current;
-        let aiCanvas = aiSelectionCanvasRef.current;
-        if (
-          !aiCanvas
-          || aiSelectionFrameIdRef.current !== frameId
-          || aiCanvas.width !== frameCanvas.width
-          || aiCanvas.height !== frameCanvas.height
-        ) {
-          aiCanvas = await removeBackgroundFromCanvas(frameCanvas);
-          if (aiSelectionTaskIdRef.current !== taskId) {
-            return;
-          }
-          aiSelectionCanvasRef.current = aiCanvas;
-          aiSelectionFrameIdRef.current = frameId;
-        }
-
-        const aiCtx = aiCanvas.getContext("2d");
-        if (!aiCtx) {
-          clearMagicWandSelection();
-          return;
-        }
-
-        const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
-        const selection = computeMagicWandSelectionFromAlphaMask(alphaImage, x, y, {
-          connectedOnly: true,
-        });
-
-        if (!selection) {
-          clearMagicWandSelection();
-          return;
-        }
-
-        magicWandSeedRef.current = { x, y };
-        magicWandSelectionRef.current = selection;
-        magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
-          feather: magicWandFeather,
-        });
-        requestRender();
-      } catch (error) {
-        console.error("AI selection failed:", error);
-        clearMagicWandSelection();
-      } finally {
-        if (aiSelectionTaskIdRef.current === taskId) {
-          setIsAiSelecting(false);
-        }
-      }
-      return;
-    }
-
-    const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-    const selection = computeMagicWandSelection(imageData, x, y, {
-      tolerance: magicWandTolerance,
-      connectedOnly: true,
-      ignoreAlpha: true,
-      colorMetric: "hsv",
-    });
-
-    if (!selection) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    magicWandSeedRef.current = { x, y };
-    magicWandSelectionRef.current = selection;
-    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
-      feather: magicWandFeather,
-    });
-    setMagicWandSelectionActive("frame-preview", true);
-    requestRender();
-  }, [
-    clearMagicWandSelection,
-    magicWandFeather,
-    magicWandSelectionMode,
-    magicWandTolerance,
-    requestRender,
-    setMagicWandSelectionActive,
-  ]);
-
-  useEffect(() => {
-    const seed = magicWandSeedRef.current;
-    const frameCtx = frameCtxRef.current;
-    const frameCanvas = frameCanvasRef.current;
-    if (!seed || !frameCtx || !frameCanvas) {
-      return;
-    }
-
-    if (seed.x < 0 || seed.y < 0 || seed.x >= frameCanvas.width || seed.y >= frameCanvas.height) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    const selection = magicWandSelectionMode === "ai"
-      ? (() => {
-          const aiCanvas = aiSelectionCanvasRef.current;
-          if (
-            !aiCanvas
-            || aiCanvas.width !== frameCanvas.width
-            || aiCanvas.height !== frameCanvas.height
-          ) {
-            return null;
-          }
-          const aiCtx = aiCanvas.getContext("2d");
-          if (!aiCtx) {
-            return null;
-          }
-          const alphaImage = aiCtx.getImageData(0, 0, aiCanvas.width, aiCanvas.height);
-          return computeMagicWandSelectionFromAlphaMask(alphaImage, seed.x, seed.y, {
-            connectedOnly: true,
-          });
-        })()
-      : (() => {
-          const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-          return computeMagicWandSelection(imageData, seed.x, seed.y, {
-            tolerance: magicWandTolerance,
-            connectedOnly: true,
-            ignoreAlpha: true,
-            colorMetric: "hsv",
-          });
-        })();
-
-    if (!selection) {
-      clearMagicWandSelection();
-      return;
-    }
-
-    magicWandSelectionRef.current = selection;
-    magicWandMaskCanvasRef.current = createMagicWandMaskCanvas(selection, {
-      feather: magicWandFeather,
-    });
-    setMagicWandSelectionActive("frame-preview", true);
-    requestRender();
-  }, [
-    clearMagicWandSelection,
-    magicWandFeather,
-    magicWandSelectionMode,
-    magicWandTolerance,
-    requestRender,
-    setMagicWandSelectionActive,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      setMagicWandSelectionActive("frame-preview", false);
-    };
-  }, [setMagicWandSelectionActive]);
-
-  const clearSelectedPixels = useCallback(() => {
-    const frameCtx = frameCtxRef.current;
-    const maskCanvas = magicWandMaskCanvasRef.current;
-    if (!frameCtx || !maskCanvas) return false;
-
-    frameCtx.save();
-    frameCtx.globalCompositeOperation = "destination-out";
-    frameCtx.drawImage(maskCanvas, 0, 0);
-    frameCtx.restore();
-    isFrameDirtyRef.current = true;
-    invalidateAiSelectionCache();
-    return true;
-  }, [invalidateAiSelectionCache]);
 
   const drawPixel = useCallback(
     (x: number, y: number, color: string, isEraser = false, pressure: number = 1) => {
@@ -532,6 +289,25 @@ export default function FramePreviewContent() {
     [activePreset, brushHardness, brushSize, ensureDabBufferCanvas, invalidateAiSelectionCache, pressureEnabled],
   );
 
+  const {
+    isDrawing,
+    resetHasDrawn,
+    startBrushStroke,
+    continueBrushStroke,
+    endBrushStroke,
+    cancelBrushStroke,
+  } = useSpriteBrushStrokeSession({
+    pushHistory,
+    drawAt: (x, y, pressure) => drawPixel(x, y, brushColor, isEraserTool, pressure),
+    requestRender,
+    commitStroke: commitFrameEdits,
+  });
+
+  useEffect(() => {
+    setFrameVpPan({ x: 0, y: 0 });
+    resetHasDrawn();
+  }, [editFrameId, setFrameVpPan, resetHasDrawn]);
+
   const pickColor = useCallback(
     (x: number, y: number) => {
       const frameCtx = frameCtxRef.current;
@@ -550,14 +326,10 @@ export default function FramePreviewContent() {
     [setBrushColor]
   );
 
-  const hasMagicWandSelection = useCallback(
-    () => Boolean(magicWandSelectionRef.current && magicWandMaskCanvasRef.current),
-    [],
-  );
-
   const deleteMagicWandSelection = useCallback(() => {
     pushHistory();
     if (clearSelectedPixels()) {
+      isFrameDirtyRef.current = true;
       requestRender();
       commitFrameEdits();
     }
@@ -571,60 +343,23 @@ export default function FramePreviewContent() {
     onClearSelection: clearMagicWandSelection,
   });
 
-  const handleContainerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.add(e.pointerId);
-      }
-
-      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
-      if (isTouchPanOnlyInput && !e.isPrimary) {
-        return;
-      }
-
-      if (activeTouchPointerIdsRef.current.size > 1) {
-        frameEndPanDrag();
-        return;
-      }
-
-      if (isPanning || toolMode === "hand" || isTouchPanOnlyInput) {
-        e.preventDefault();
-        frameStartPanDrag({ x: e.clientX, y: e.clientY });
-      }
+  const {
+    activeTouchPointerIdsRef,
+    handleContainerPointerDown,
+    handleContainerPointerMove,
+    handleContainerPointerUp,
+  } = useSpritePanPointerSession({
+    isPanLocked,
+    isPanning,
+    isHandTool: toolMode === "hand",
+    startPanDrag: frameStartPanDrag,
+    updatePanDrag: frameUpdatePanDrag,
+    endPanDrag: frameEndPanDrag,
+    isPanDragging: frameIsPanDragging,
+    onContainerPointerUp: (e) => {
+      endBrushStroke(e.pointerId);
     },
-    [isPanning, toolMode, isPanLocked, frameStartPanDrag, frameEndPanDrag]
-  );
-
-  const handleContainerPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
-        frameEndPanDrag();
-        return;
-      }
-
-      if (frameIsPanDragging()) {
-        frameUpdatePanDrag({ x: e.clientX, y: e.clientY });
-      }
-    },
-    [frameIsPanDragging, frameUpdatePanDrag, frameEndPanDrag]
-  );
-
-  const handleContainerPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.delete(e.pointerId);
-      }
-      if (activeTouchPointerIdsRef.current.size <= 1) {
-        frameEndPanDrag();
-      }
-      if (drawingPointerIdRef.current === e.pointerId) {
-        drawingPointerIdRef.current = null;
-        setIsDrawing(false);
-        commitFrameEdits();
-      }
-    },
-    [frameEndPanDrag, commitFrameEdits]
-  );
+  });
 
   const handleCanvasPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -635,7 +370,7 @@ export default function FramePreviewContent() {
       }
 
       if (activeTouchPointerIdsRef.current.size > 1) {
-        setIsDrawing(false);
+        cancelBrushStroke();
         return;
       }
 
@@ -661,19 +396,7 @@ export default function FramePreviewContent() {
       }
 
       if (isBrushTool) {
-        if (!hasDrawn) {
-          pushHistory();
-          setHasDrawn(true);
-        }
-
-        drawingPointerIdRef.current = e.pointerId;
-        setIsDrawing(true);
-        const pressure = getPointerPressure(e);
-        if (drawPixel(coords.x, coords.y, brushColor, isEraserTool, pressure)) {
-          requestRender();
-        }
-        lastMousePosRef.current = { x: coords.x, y: coords.y };
-
+        startBrushStroke(e, coords);
         safeSetPointerCapture(e.currentTarget, e.pointerId);
       }
     },
@@ -686,15 +409,11 @@ export default function FramePreviewContent() {
       isMagicWandTool,
       isAiSelecting,
       isBrushTool,
-      hasDrawn,
       getPixelCoordinates,
       applyMagicWandSelection,
       pickColor,
-      pushHistory,
-      drawPixel,
-      brushColor,
-      isEraserTool,
-      requestRender,
+      startBrushStroke,
+      cancelBrushStroke,
     ]
   );
 
@@ -710,27 +429,14 @@ export default function FramePreviewContent() {
         return;
       }
 
-      if (!isDrawing || drawingPointerIdRef.current !== e.pointerId || !currentFrame) return;
+      if (!isDrawing || !currentFrame) return;
       if (!isBrushTool) return;
 
       const coords = getPixelCoordinates(e.clientX, e.clientY);
       if (!coords) return;
-
-      const pressure = getPointerPressure(e);
-      const didInterpolate = drawInterpolatedStroke({
-        from: lastMousePosRef.current,
-        to: coords,
-        drawAt: (x, y) => {
-          drawPixel(x, y, brushColor, isEraserTool, pressure);
-        },
-      });
-      if (didInterpolate) {
-        requestRender();
-      }
-
-      lastMousePosRef.current = { x: coords.x, y: coords.y };
+      continueBrushStroke(e, coords);
     },
-    [isDrawing, currentFrame, isBrushTool, getPixelCoordinates, drawPixel, brushColor, isEraserTool, requestRender]
+    [isDrawing, currentFrame, isBrushTool, getPixelCoordinates, continueBrushStroke]
   );
 
   const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -740,12 +446,8 @@ export default function FramePreviewContent() {
 
     safeReleasePointerCapture(e.currentTarget, e.pointerId);
 
-    if (drawingPointerIdRef.current === e.pointerId) {
-      drawingPointerIdRef.current = null;
-      setIsDrawing(false);
-      commitFrameEdits();
-    }
-  }, [commitFrameEdits]);
+    endBrushStroke(e.pointerId);
+  }, [endBrushStroke]);
 
   const handleCanvasPointerEnter = useCallback(() => {
     setIsOverCanvas(true);
@@ -757,12 +459,8 @@ export default function FramePreviewContent() {
     }
     setIsOverCanvas(false);
     setCursorPos(null);
-    if (drawingPointerIdRef.current === e.pointerId) {
-      drawingPointerIdRef.current = null;
-      setIsDrawing(false);
-      commitFrameEdits();
-    }
-  }, [commitFrameEdits]);
+    endBrushStroke(e.pointerId);
+  }, [endBrushStroke]);
 
   const isHandMode = toolMode === "hand" || isPanning;
 
