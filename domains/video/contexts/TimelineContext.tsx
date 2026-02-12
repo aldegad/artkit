@@ -46,6 +46,7 @@ import {
   findClipAtTime,
   restoreAutosavedClips,
 } from "../utils/timelineModel";
+import { buildRazorSplitClips } from "../utils/razorSplit";
 import { useTimelineHistory } from "./useTimelineHistory";
 
 interface TimelineContextValue {
@@ -96,6 +97,7 @@ interface TimelineContextValue {
   moveClip: (clipId: string, trackId: string, startTime: number, ignoreClipIds?: string[]) => void;
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
+  splitClipAtTime: (clipId: string, splitCursorTime: number) => string | null;
   duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
   addClips: (newClips: Clip[]) => void;
   restoreClips: (clips: Clip[]) => void;
@@ -676,6 +678,56 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return newClip.id;
   }, [clips, tracks, appendTrack, copyMediaBlobSafely, updateClipsWithDuration]);
 
+  const splitClipAtTime = useCallback((clipId: string, splitCursorTime: number): string | null => {
+    const clip = clips.find((candidate) => candidate.id === clipId);
+    if (!clip) return null;
+
+    const snapToPoints = (time: number): number => {
+      if (!viewState.snapEnabled) return time;
+      const safeZoom = Number.isFinite(viewState.zoom) && viewState.zoom > 0
+        ? viewState.zoom
+        : TIMELINE.DEFAULT_ZOOM;
+      const threshold = TIMELINE.SNAP_THRESHOLD / safeZoom;
+      const points: number[] = [0];
+
+      for (const candidate of clips) {
+        if (candidate.id === clip.id) continue;
+        points.push(candidate.startTime);
+        points.push(candidate.startTime + candidate.duration);
+      }
+
+      for (const point of points) {
+        if (Math.abs(time - point) < threshold) {
+          return point;
+        }
+      }
+      return time;
+    };
+
+    const splitResult = buildRazorSplitClips({
+      clip,
+      splitCursorTime,
+      snapToPoints,
+    });
+    if (!splitResult) return null;
+
+    const { firstClip, secondClip } = splitResult;
+    saveToHistory();
+
+    void Promise.all([
+      copyMediaBlobSafely(clip.id, firstClip.id, "timeline split"),
+      copyMediaBlobSafely(clip.id, secondClip.id, "timeline split"),
+    ]);
+
+    updateClipsWithDuration((prev) => [
+      ...prev.filter((candidate) => candidate.id !== clip.id),
+      firstClip,
+      secondClip,
+    ]);
+
+    return secondClip.id;
+  }, [clips, viewState.snapEnabled, viewState.zoom, saveToHistory, copyMediaBlobSafely, updateClipsWithDuration]);
+
   // Add pre-formed clips (for paste)
   const addClips = useCallback((newClips: Clip[]) => {
     updateClipsWithDuration((prev) => {
@@ -745,6 +797,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     moveClip,
     trimClipStart,
     trimClipEnd,
+    splitClipAtTime,
     duplicateClip,
     addClips,
     restoreClips,

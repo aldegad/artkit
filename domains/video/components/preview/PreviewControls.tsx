@@ -3,7 +3,7 @@
 import { useVideoState } from "../../contexts";
 import { usePlaybackTime } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon, LoopIcon, LoopOffIcon } from "@/shared/components/icons";
+import { StopIcon, StepBackwardIcon, PlayIcon, PauseIcon, StepForwardIcon } from "@/shared/components/icons";
 import { PLAYBACK } from "../../constants";
 
 interface PreviewControlsProps {
@@ -15,12 +15,8 @@ export function PreviewControls({ className }: PreviewControlsProps) {
     playback,
     stop,
     togglePlay,
-    toggleLoop,
-    setLoopRange,
-    clearLoopRange,
     stepForward,
     stepBackward,
-    currentTimeRef,
     project,
   } = useVideoState();
 
@@ -35,39 +31,18 @@ export function PreviewControls({ className }: PreviewControlsProps) {
   };
 
   const projectDuration = Math.max(project.duration || 0, 0);
-  const rangeStart = Math.max(0, Math.min(playback.loopStart, projectDuration));
-  const hasRange = playback.loopEnd > rangeStart + 0.001;
-  const rangeEnd = hasRange
-    ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, projectDuration))
-    : projectDuration;
-  const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < projectDuration - 0.001);
-  const rangeDuration = hasCustomRange ? Math.max(0, rangeEnd - rangeStart) : projectDuration;
-  const displayWithinRange = hasCustomRange
-    ? Math.max(0, Math.min(displayTime, rangeEnd) - rangeStart)
-    : displayTime;
-
-  const setInPoint = () => {
-    const current = currentTimeRef.current;
-    const nextEnd = hasCustomRange ? rangeEnd : projectDuration;
-    setLoopRange(current, nextEnd, true);
-  };
-
-  const setOutPoint = () => {
-    const current = currentTimeRef.current;
-    const nextStart = hasCustomRange ? rangeStart : 0;
-    setLoopRange(nextStart, current, true);
-  };
+  const clampedDisplayTime = Math.max(0, Math.min(displayTime, projectDuration));
 
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-1.5 px-2 py-1.5 bg-surface-secondary border-t border-border-default",
+        "flex flex-nowrap items-center justify-center gap-1.5 px-2 py-1.5 bg-surface-secondary border-t border-border-default",
         className
       )}
     >
       {/* Time display */}
       <div className="font-mono text-xs text-text-secondary min-w-[68px]">
-        {formatTime(displayWithinRange)}
+        {formatTime(clampedDisplayTime)}
       </div>
 
       {/* Transport controls */}
@@ -107,57 +82,8 @@ export function PreviewControls({ className }: PreviewControlsProps) {
 
       {/* Duration display */}
       <div className="font-mono text-xs text-text-tertiary min-w-[68px] text-right">
-        / {formatTime(rangeDuration)}
+        / {formatTime(projectDuration)}
       </div>
-
-      {/* Range controls */}
-      <div className="flex items-center gap-1 ml-1">
-        <button
-          onClick={setInPoint}
-          className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
-          title="Set IN point at current time"
-        >
-          IN
-        </button>
-        <button
-          onClick={setOutPoint}
-          className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
-          title="Set OUT point at current time"
-        >
-          OUT
-        </button>
-        <button
-          onClick={() => clearLoopRange()}
-          className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
-          title="Clear playback range"
-        >
-          CLR
-        </button>
-      </div>
-
-      {hasCustomRange && (
-        <div className="font-mono text-[10px] text-accent min-w-[140px] text-right">
-          {formatTime(rangeStart)} - {formatTime(rangeEnd)}
-        </div>
-      )}
-
-      {/* Loop toggle */}
-      <button
-        onClick={toggleLoop}
-        className={cn(
-          "p-1.5 rounded transition-colors ml-1",
-          playback.loop
-            ? "text-accent hover:bg-accent/20"
-            : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
-        )}
-        title={playback.loop ? "Loop: On" : "Loop: Off"}
-      >
-        {playback.loop ? (
-          <LoopIcon className="w-4 h-4" />
-        ) : (
-          <LoopOffIcon className="w-4 h-4" />
-        )}
-      </button>
     </div>
   );
 }

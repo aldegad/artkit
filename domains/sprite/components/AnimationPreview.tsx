@@ -200,8 +200,8 @@ export default function AnimationPreviewContent() {
       if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
       const p = padding ?? SPRITE_PREVIEW_VIEWPORT.FIT_PADDING;
-      const maxWidth = container.clientWidth - p;
-      const maxHeight = container.clientHeight - p;
+      const maxWidth = container.clientWidth - p * 2;
+      const maxHeight = container.clientHeight - p * 2;
       if (maxWidth <= 0 || maxHeight <= 0) return;
 
       const fitZoom = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale ?? 1);

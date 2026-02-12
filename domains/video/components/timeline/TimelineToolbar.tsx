@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { useTimeline } from "../../contexts";
+import { useTimeline, useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
-import { AddVideoTrackIcon, AddAudioTrackIcon, SnapIcon, SnapOffIcon, FilmStripIcon } from "@/shared/components/icons";
+import { PlusIcon, SnapIcon, SnapOffIcon, FilmStripIcon, LoopIcon, LoopOffIcon, RazorToolIcon } from "@/shared/components/icons";
 import Tooltip from "@/shared/components/Tooltip";
 import { Popover } from "@/shared/components";
 import { NumberScrubber } from "@/shared/components";
@@ -14,10 +14,58 @@ interface TimelineToolbarProps {
 }
 
 export function TimelineToolbar({ className }: TimelineToolbarProps) {
-  const { viewState, setZoom, toggleSnap, addTrack } = useTimeline();
+  const { viewState, setZoom, toggleSnap, addTrack, clips, splitClipAtTime } = useTimeline();
+  const {
+    playback,
+    currentTimeRef,
+    project,
+    selectedClipIds,
+    selectClip,
+    setLoopRange,
+    clearLoopRange,
+    toggleLoop,
+  } = useVideoState();
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [isCompact, setIsCompact] = useState(false);
+  const projectDuration = Math.max(project.duration || 0, 0);
+  const rangeStart = Math.max(0, Math.min(playback.loopStart, projectDuration));
+  const hasRange = playback.loopEnd > rangeStart + 0.001;
+  const rangeEnd = hasRange
+    ? Math.max(rangeStart + 0.001, Math.min(playback.loopEnd, projectDuration))
+    : projectDuration;
+  const hasCustomRange = hasRange && (rangeStart > 0.001 || rangeEnd < projectDuration - 0.001);
+  const selectedClipId = selectedClipIds[selectedClipIds.length - 1] || null;
+  const selectedClip = selectedClipId
+    ? clips.find((clip) => clip.id === selectedClipId) ?? null
+    : null;
+  const canSplitSelectedClip = Boolean(
+    selectedClip
+    && currentTimeRef.current > selectedClip.startTime + TIMELINE.CLIP_MIN_DURATION
+    && currentTimeRef.current < selectedClip.startTime + selectedClip.duration - TIMELINE.CLIP_MIN_DURATION
+  );
+
+  const setInPoint = () => {
+    if (projectDuration <= 0) return;
+    const current = Math.max(0, Math.min(currentTimeRef.current, projectDuration));
+    const nextEnd = hasCustomRange ? rangeEnd : projectDuration;
+    setLoopRange(current, nextEnd, true);
+  };
+
+  const setOutPoint = () => {
+    if (projectDuration <= 0) return;
+    const current = Math.max(0, Math.min(currentTimeRef.current, projectDuration));
+    const nextStart = hasCustomRange ? rangeStart : 0;
+    setLoopRange(nextStart, current, true);
+  };
+
+  const splitSelectedClipAtPlayhead = () => {
+    if (!selectedClipId) return;
+    const splitClipId = splitClipAtTime(selectedClipId, currentTimeRef.current);
+    if (splitClipId) {
+      selectClip(splitClipId, false);
+    }
+  };
 
   useEffect(() => {
     const el = toolbarRef.current;
@@ -54,20 +102,13 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
             side="bottom"
             closeOnScroll={false}
           >
-            <div className="flex flex-col gap-0.5 p-1.5 min-w-[180px]">
+            <div className="flex flex-col gap-0.5 p-1.5 min-w-[220px]">
               <button
-                onClick={() => addTrack(undefined, "video")}
+                onClick={() => addTrack()}
                 className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-text-secondary text-xs transition-colors"
               >
-                <AddVideoTrackIcon className="w-4 h-4" />
-                <span>Add Video Track</span>
-              </button>
-              <button
-                onClick={() => addTrack(undefined, "audio")}
-                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-tertiary text-text-secondary text-xs transition-colors"
-              >
-                <AddAudioTrackIcon className="w-4 h-4" />
-                <span>Add Audio Track</span>
+                <PlusIcon className="w-4 h-4" />
+                <span>Add Layer</span>
               </button>
               <div className="h-px bg-border-default my-1" />
               <button
@@ -82,6 +123,61 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
                 {viewState.snapEnabled ? <SnapIcon className="w-4 h-4" /> : <SnapOffIcon className="w-4 h-4" />}
                 <span>{viewState.snapEnabled ? "Snap: ON" : "Snap: OFF"}</span>
               </button>
+              <button
+                onClick={splitSelectedClipAtPlayhead}
+                disabled={!canSplitSelectedClip}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
+                  canSplitSelectedClip
+                    ? "hover:bg-surface-tertiary text-text-secondary"
+                    : "text-text-quaternary cursor-not-allowed"
+                )}
+                title="Split selected clip at playhead"
+              >
+                <RazorToolIcon className="w-4 h-4 rotate-90" />
+                <span>Cut at Playhead</span>
+              </button>
+              <div className="flex items-center gap-1 px-2 pt-1">
+                <button
+                  onClick={setInPoint}
+                  className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
+                  title="Set IN point at current time"
+                >
+                  IN
+                </button>
+                <button
+                  onClick={setOutPoint}
+                  className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
+                  title="Set OUT point at current time"
+                >
+                  OUT
+                </button>
+                <button
+                  onClick={() => clearLoopRange()}
+                  disabled={!hasCustomRange}
+                  className={cn(
+                    "px-1.5 py-1 rounded text-[10px] transition-colors",
+                    hasCustomRange
+                      ? "bg-surface-tertiary hover:bg-interactive-hover text-text-secondary"
+                      : "bg-surface-tertiary/50 text-text-quaternary cursor-not-allowed"
+                  )}
+                  title="Clear playback range"
+                >
+                  CLR
+                </button>
+                <button
+                  onClick={toggleLoop}
+                  className={cn(
+                    "p-1 rounded transition-colors ml-auto",
+                    playback.loop
+                      ? "text-accent hover:bg-accent/20"
+                      : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
+                  )}
+                  title={playback.loop ? "Loop: On" : "Loop: Off"}
+                >
+                  {playback.loop ? <LoopIcon className="w-3.5 h-3.5" /> : <LoopOffIcon className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
           </Popover>
         </>
@@ -91,32 +187,16 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
-                <span className="font-medium">Add Video/Image Track</span>
-                <span className="text-text-tertiary text-[11px]">Add a new video or image track to the timeline</span>
+                <span className="font-medium">Add Layer</span>
+                <span className="text-text-tertiary text-[11px]">Add a new timeline layer</span>
               </div>
             }
           >
             <button
-              onClick={() => addTrack(undefined, "video")}
+              onClick={() => addTrack()}
               className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
             >
-              <AddVideoTrackIcon />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">Add Audio Track</span>
-                <span className="text-text-tertiary text-[11px]">Add a new audio track to the timeline</span>
-              </div>
-            }
-          >
-            <button
-              onClick={() => addTrack(undefined, "audio")}
-              className="p-1.5 rounded hover:bg-surface-tertiary text-text-secondary transition-colors"
-            >
-              <AddAudioTrackIcon />
+              <PlusIcon />
             </button>
           </Tooltip>
 
@@ -145,6 +225,71 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               {viewState.snapEnabled ? <SnapIcon /> : <SnapOffIcon />}
             </button>
           </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">Cut at Playhead</span>
+                <span className="text-text-tertiary text-[11px]">Split selected clip at current time</span>
+              </div>
+            }
+          >
+            <button
+              onClick={splitSelectedClipAtPlayhead}
+              disabled={!canSplitSelectedClip}
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                canSplitSelectedClip
+                  ? "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
+                  : "text-text-quaternary cursor-not-allowed"
+              )}
+              title="Split selected clip at playhead"
+            >
+              <RazorToolIcon className="w-4 h-4 rotate-90" />
+            </button>
+          </Tooltip>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={setInPoint}
+              className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
+              title="Set IN point at current time"
+            >
+              IN
+            </button>
+            <button
+              onClick={setOutPoint}
+              className="px-1.5 py-1 rounded text-[10px] bg-surface-tertiary hover:bg-interactive-hover text-text-secondary transition-colors"
+              title="Set OUT point at current time"
+            >
+              OUT
+            </button>
+            <button
+              onClick={() => clearLoopRange()}
+              disabled={!hasCustomRange}
+              className={cn(
+                "px-1.5 py-1 rounded text-[10px] transition-colors",
+                hasCustomRange
+                  ? "bg-surface-tertiary hover:bg-interactive-hover text-text-secondary"
+                  : "bg-surface-tertiary/50 text-text-quaternary cursor-not-allowed"
+              )}
+              title="Clear playback range"
+            >
+              CLR
+            </button>
+            <button
+              onClick={toggleLoop}
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                playback.loop
+                  ? "text-accent hover:bg-accent/20"
+                  : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
+              )}
+              title={playback.loop ? "Loop: On" : "Loop: Off"}
+            >
+              {playback.loop ? <LoopIcon className="w-4 h-4" /> : <LoopOffIcon className="w-4 h-4" />}
+            </button>
+          </div>
         </>
       )}
 
