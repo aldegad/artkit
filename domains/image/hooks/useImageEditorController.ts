@@ -49,6 +49,7 @@ import { useEditorHeaderModel } from "./useEditorHeaderModel";
 import { useEditorOverlayModel } from "./useEditorOverlayModel";
 import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
+import { clearRectWithFeather } from "../utils/selectionFeather";
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -467,6 +468,34 @@ export function useImageEditorController() {
     getDisplayDimensions,
   });
 
+  const clearSelectionPixels = useCallback(() => {
+    if (!selection) return;
+
+    const editCanvas = editCanvasRef.current;
+    const ctx = editCanvas?.getContext("2d");
+    if (!editCanvas || !ctx) return;
+
+    const layerPosX = activeLayerPosition?.x || 0;
+    const layerPosY = activeLayerPosition?.y || 0;
+    const localX = Math.round(selection.x - layerPosX);
+    const localY = Math.round(selection.y - layerPosY);
+    const width = Math.max(1, Math.round(selection.width));
+    const height = Math.max(1, Math.round(selection.height));
+
+    saveToHistory();
+    clearRectWithFeather(ctx, localX, localY, width, height, selectionFeather);
+    floatingLayerRef.current = null;
+    requestRender();
+  }, [
+    selection,
+    editCanvasRef,
+    activeLayerPosition,
+    saveToHistory,
+    selectionFeather,
+    floatingLayerRef,
+    requestRender,
+  ]);
+
   const handleUndo = useCallback(() => {
     undo();
     requestRender();
@@ -487,6 +516,7 @@ export function useImageEditorController() {
     selection,
     selectionFeather,
     setSelection,
+    clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
     isTransformActive: transformState.isActive,
@@ -792,8 +822,10 @@ export function useImageEditorController() {
       brushColor,
       setBrushColor,
       stampSource,
+      selection,
       selectionFeather,
       setSelectionFeather,
+      onClearSelectionPixels: clearSelectionPixels,
       activePreset,
       presets,
       onSelectPreset: setActivePreset,

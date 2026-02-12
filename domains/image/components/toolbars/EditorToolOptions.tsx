@@ -5,6 +5,7 @@ import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
 import { Select, Scrollbar, NumberScrubber } from "../../../../shared/components";
 import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, CanvasExpandIcon } from "@/shared/components/icons";
+import { DeleteIcon } from "@/shared/components/icons";
 
 // ============================================
 // Types
@@ -22,8 +23,10 @@ export interface EditorToolOptionsProps {
   brushColor: string;
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   stampSource: Point | null;
+  selection: CropArea | null;
   selectionFeather: number;
   setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
+  onClearSelectionPixels: () => void;
   // Preset props
   activePreset: BrushPreset;
   presets: BrushPreset[];
@@ -63,6 +66,7 @@ export interface EditorToolOptionsProps {
     source: string;
     altClickToSetSource: string;
     feather: string;
+    delete: string;
     presets: string;
     pressure: string;
     builtIn: string;
@@ -84,8 +88,10 @@ export function EditorToolOptions({
   brushColor,
   setBrushColor,
   stampSource,
+  selection,
   selectionFeather,
   setSelectionFeather,
+  onClearSelectionPixels,
   activePreset,
   presets,
   onSelectPreset,
@@ -232,6 +238,15 @@ export function EditorToolOptions({
             format={(v) => `${Math.round(v)}px`}
             size="sm"
           />
+          <button
+            onClick={onClearSelectionPixels}
+            disabled={!selection}
+            className="px-2 py-0.5 text-xs rounded transition-colors flex items-center gap-1 hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
+            title={t.delete}
+          >
+            <DeleteIcon className="w-3.5 h-3.5" />
+            <span>{t.delete}</span>
+          </button>
         </div>
       )}
 
