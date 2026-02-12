@@ -101,6 +101,8 @@ function SpriteEditorMain() {
     setBrushSize,
     brushHardness,
     setBrushHardness,
+    brushOpacity,
+    setBrushOpacity,
     activePreset,
     setActivePreset,
     presets,
@@ -591,6 +593,8 @@ function SpriteEditorMain() {
         setBrushSize={setBrushSize}
         brushHardness={brushHardness}
         setBrushHardness={setBrushHardness}
+        brushOpacity={brushOpacity}
+        setBrushOpacity={setBrushOpacity}
         magicWandTolerance={magicWandTolerance}
         setMagicWandTolerance={setMagicWandTolerance}
         magicWandFeather={magicWandFeather}
@@ -621,6 +625,7 @@ function SpriteEditorMain() {
         labels={{
           size: t.size,
           hardness: t.hardness,
+          opacity: t.opacity,
           tolerance: t.tolerance,
           feather: t.feather,
           colorPickerTip: t.colorPickerTip,

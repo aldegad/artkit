@@ -20,6 +20,7 @@ interface DrawSpriteBrushPixelOptions {
   activePreset: BrushPreset;
   brushSize: number;
   brushHardness: number;
+  brushOpacity: number;
   pressureEnabled: boolean;
   selection: MagicWandSelection | null;
   selectionMaskCanvas: HTMLCanvasElement | null;
@@ -43,6 +44,7 @@ export function drawSpriteBrushPixel({
   activePreset,
   brushSize,
   brushHardness,
+  brushOpacity,
   pressureEnabled,
   selection,
   selectionMaskCanvas,
@@ -76,7 +78,7 @@ export function drawSpriteBrushPixel({
       radius: params.size / 2,
       hardness: brushHardness / 100,
       color,
-      alpha: params.opacity * params.flow,
+      alpha: (brushOpacity / 100) * params.opacity * params.flow,
       isEraser,
     });
 
@@ -105,7 +107,7 @@ export function drawSpriteBrushPixel({
     radius: params.size / 2,
     hardness: brushHardness / 100,
     color,
-    alpha: params.opacity * params.flow,
+    alpha: (brushOpacity / 100) * params.opacity * params.flow,
     isEraser,
   });
 
