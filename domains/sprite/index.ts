@@ -54,6 +54,7 @@ export {
   useFrameStripTransformActions,
   useSpritePreviewBackgroundState,
   useFrameStripImportHandlers,
+  useSpriteEditableFrameCanvasSync,
 } from "./hooks";
 
 // Types
