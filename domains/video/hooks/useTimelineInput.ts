@@ -4,43 +4,21 @@ import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { useTimelineViewport } from "./useTimelineViewport";
-import { TimelineDragType, Clip } from "../types";
+import { Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
 import { resolveTimelineClipSelection } from "../utils/timelineSelection";
 import { buildRazorSplitClips } from "../utils/razorSplit";
+import {
+  type DragItem,
+  type DragState,
+  INITIAL_TIMELINE_DRAG_STATE,
+  createClipMoveDragState,
+  createPlayheadDragState,
+  createTrimDragState,
+} from "../utils/timelineDragState";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
-
-interface DragItem {
-  type: "clip" | "mask";
-  id: string;
-  originalStartTime: number;
-}
-
-interface DragState {
-  type: TimelineDragType;
-  clipId: string | null;
-  items: DragItem[];
-  startX: number;
-  startY: number;
-  startTime: number;
-  originalClipStart: number;
-  originalClipDuration: number;
-  originalTrimIn: number;
-}
-
-const INITIAL_DRAG_STATE: DragState = {
-  type: "none",
-  clipId: null,
-  items: [],
-  startX: 0,
-  startY: 0,
-  startTime: 0,
-  originalClipStart: 0,
-  originalClipDuration: 0,
-  originalTrimIn: 0,
-};
 
 // ── Touch pending state ───────────────────────────────────────────────
 interface TouchPendingState {
@@ -140,7 +118,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [viewState.snapEnabled, zoom, clips]
   );
 
-  const [dragState, setDragState] = useState<DragState>(INITIAL_DRAG_STATE);
+  const [dragState, setDragState] = useState<DragState>(INITIAL_TIMELINE_DRAG_STATE);
   const activePointerIdRef = useRef<number | null>(null);
   const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
   const [middlePanPending, setMiddlePanPending] = useState<MiddlePanPendingState | null>(null);
@@ -316,17 +294,16 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }) => {
     capturePointer(options.pointerId, options.clientX, options.clientY);
     isLiftedRef.current = true;
-    setDragState({
-      type: "clip-move",
+    setDragState(createClipMoveDragState({
       clipId: options.clipId,
       items: options.items,
-      startX: options.x,
-      startY: options.contentY,
-      startTime: options.time,
-      originalClipStart: options.clipStart,
-      originalClipDuration: options.clipDuration,
-      originalTrimIn: options.clipTrimIn,
-    });
+      x: options.x,
+      contentY: options.contentY,
+      time: options.time,
+      clipStart: options.clipStart,
+      clipDuration: options.clipDuration,
+      clipTrimIn: options.clipTrimIn,
+    }));
   }, [capturePointer]);
 
   const splitClipWithRazor = useCallback((clip: Clip, splitCursorTime: number): Clip | null => {
@@ -601,17 +578,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     deselectAll();
     clearMaskSelectionState();
     capturePointer(options.pointerId, options.clientX, options.clientY);
-    setDragState({
-      type: "playhead",
-      clipId: null,
-      items: [],
-      startX: options.x,
-      startY: options.contentY,
-      startTime: options.time,
-      originalClipStart: 0,
-      originalClipDuration: 0,
-      originalTrimIn: 0,
-    });
+    setDragState(createPlayheadDragState({
+      x: options.x,
+      contentY: options.contentY,
+      time: options.time,
+    }));
   }, [seekAndKeepVisible, deselectAll, clearMaskSelectionState, capturePointer]);
 
   const startTrimDrag = useCallback((options: {
@@ -627,17 +598,16 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }) => {
     capturePointer(options.pointerId, options.clientX, options.clientY);
     saveToHistory();
-    setDragState({
-      type: options.handle === "start" ? "clip-trim-start" : "clip-trim-end",
+    setDragState(createTrimDragState({
+      handle: options.handle,
       clipId: options.clip.id,
-      items: [],
-      startX: options.x,
-      startY: options.contentY,
-      startTime: options.time,
-      originalClipStart: options.clip.startTime,
-      originalClipDuration: options.clip.duration,
-      originalTrimIn: options.clip.trimIn,
-    });
+      x: options.x,
+      contentY: options.contentY,
+      time: options.time,
+      clipStart: options.clip.startTime,
+      clipDuration: options.clip.duration,
+      clipTrimIn: options.clip.trimIn,
+    }));
     selectClip(options.clip.id, options.shiftKey);
   }, [capturePointer, saveToHistory, selectClip]);
 
@@ -980,7 +950,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (!liftedClipId) {
         isLiftedRef.current = false;
       }
-      setDragState(INITIAL_DRAG_STATE);
+      setDragState(INITIAL_TIMELINE_DRAG_STATE);
     },
   });
 
