@@ -36,7 +36,7 @@ export const ROTATE_HANDLE = {
   /** Hit area radius for rotate handle detection */
   HIT_AREA: 16,
   /** Distance from transform box top to rotate handle center */
-  OFFSET: 45,
+  OFFSET: 100,
 } as const;
 
 // ============================================
