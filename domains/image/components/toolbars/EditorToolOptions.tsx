@@ -26,6 +26,8 @@ export interface EditorToolOptionsProps {
   selection: CropArea | null;
   selectionFeather: number;
   setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
+  magicWandTolerance: number;
+  setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   onClearSelectionPixels: () => void;
   // Preset props
   activePreset: BrushPreset;
@@ -66,6 +68,7 @@ export interface EditorToolOptionsProps {
     source: string;
     altClickToSetSource: string;
     feather: string;
+    tolerance: string;
     delete: string;
     presets: string;
     pressure: string;
@@ -91,6 +94,8 @@ export function EditorToolOptions({
   selection,
   selectionFeather,
   setSelectionFeather,
+  magicWandTolerance,
+  setMagicWandTolerance,
   onClearSelectionPixels,
   activePreset,
   presets,
@@ -247,6 +252,21 @@ export function EditorToolOptions({
             <DeleteIcon className="w-3.5 h-3.5" />
             <span>{t.delete}</span>
           </button>
+        </div>
+      )}
+
+      {toolMode === "magicWand" && (
+        <div className="flex items-center gap-2">
+          <NumberScrubber
+            value={magicWandTolerance}
+            onChange={(v) => setMagicWandTolerance(Math.max(0, Math.min(255, Math.round(v))))}
+            min={0}
+            max={255}
+            step={1}
+            label={`${t.tolerance}:`}
+            size="sm"
+          />
+          <span className="text-xs text-text-tertiary">Click to auto-select similar connected color</span>
         </div>
       )}
 
@@ -417,7 +437,7 @@ export function EditorToolOptions({
       )}
 
       {/* Default message when no tool-specific controls */}
-      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && toolMode !== "transform" && toolMode !== "marquee" && (
+      {toolMode !== "brush" && toolMode !== "eraser" && toolMode !== "stamp" && toolMode !== "crop" && toolMode !== "fill" && toolMode !== "transform" && toolMode !== "marquee" && toolMode !== "magicWand" && (
         <span className="text-xs text-text-tertiary">{currentToolName}</span>
       )}
       </div>

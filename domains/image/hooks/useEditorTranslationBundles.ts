@@ -31,6 +31,7 @@ interface EditorTranslationSource {
   size: string;
   hardness: string;
   feather: string;
+  tolerance: string;
   opacity: string;
   presets: string;
   pressure: string;
@@ -91,6 +92,7 @@ interface EditorTranslationBundles {
     source: string;
     altClickToSetSource: string;
     feather: string;
+    tolerance: string;
     delete: string;
     presets: string;
     pressure: string;
@@ -169,6 +171,7 @@ export function useEditorTranslationBundles(
         source: source.source,
         altClickToSetSource: source.altClickToSetSource,
         feather: source.feather,
+        tolerance: source.tolerance,
         delete: source.delete,
         presets: source.presets,
         pressure: source.pressure,

@@ -71,6 +71,7 @@ interface UseMouseHandlersOptions {
 
   // Fill function
   fillWithColor: () => void;
+  applyMagicWandSelection: (x: number, y: number) => void;
 
   // Transform functions (from useTransformTool)
   isTransformActive?: () => boolean;
@@ -161,6 +162,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     updateCropExpand,
     saveToHistory,
     fillWithColor,
+    applyMagicWandSelection,
     isTransformActive,
     handleTransformMouseDown,
     handleTransformMouseMove,
@@ -228,6 +230,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     ...baseOptions,
     pickColor,
     fillWithColor,
+    applyMagicWandSelection,
   });
 
   const selectionHandler = useSelectionHandler({

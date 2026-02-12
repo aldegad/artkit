@@ -50,6 +50,7 @@ import { useEditorOverlayModel } from "./useEditorOverlayModel";
 import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { clearRectWithFeather } from "../utils/selectionFeather";
+import { computeMagicWandSelection } from "@/shared/utils/magicWand";
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -304,6 +305,8 @@ export function useImageEditorController() {
     setSelection,
     selectionFeather,
     setSelectionFeather,
+    magicWandTolerance,
+    setMagicWandTolerance,
     isMovingSelection,
     setIsMovingSelection,
     isDuplicating,
@@ -383,6 +386,59 @@ export function useImageEditorController() {
     saveToHistory,
   });
 
+  const applyMagicWandSelection = useCallback((imageX: number, imageY: number) => {
+    const editCanvas = editCanvasRef.current;
+    const ctx = editCanvas?.getContext("2d", { willReadFrequently: true });
+    if (!editCanvas || !ctx) {
+      setSelection(null);
+      floatingLayerRef.current = null;
+      return;
+    }
+
+    const layerPosX = activeLayerPosition?.x || 0;
+    const layerPosY = activeLayerPosition?.y || 0;
+    const localX = Math.floor(imageX - layerPosX);
+    const localY = Math.floor(imageY - layerPosY);
+
+    if (localX < 0 || localY < 0 || localX >= editCanvas.width || localY >= editCanvas.height) {
+      setSelection(null);
+      floatingLayerRef.current = null;
+      return;
+    }
+
+    const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
+    const wandSelection = computeMagicWandSelection(imageData, localX, localY, {
+      tolerance: magicWandTolerance,
+      connectedOnly: true,
+      ignoreAlpha: true,
+      colorMetric: "hsv",
+    });
+
+    if (!wandSelection) {
+      setSelection(null);
+      floatingLayerRef.current = null;
+      return;
+    }
+
+    setSelection({
+      x: wandSelection.bounds.x + layerPosX,
+      y: wandSelection.bounds.y + layerPosY,
+      width: wandSelection.bounds.width,
+      height: wandSelection.bounds.height,
+    });
+    setIsMovingSelection(false);
+    setIsDuplicating(false);
+    floatingLayerRef.current = null;
+  }, [
+    editCanvasRef,
+    activeLayerPosition,
+    magicWandTolerance,
+    setSelection,
+    setIsMovingSelection,
+    setIsDuplicating,
+    floatingLayerRef,
+  ]);
+
   const {
     isDragging,
     mousePos,
@@ -420,6 +476,7 @@ export function useImageEditorController() {
     updateCropExpand,
     saveToHistory,
     fillWithColor,
+    applyMagicWandSelection,
     isTransformActive,
     handleTransformMouseDown,
     handleTransformMouseMove,
@@ -825,6 +882,8 @@ export function useImageEditorController() {
       selection,
       selectionFeather,
       setSelectionFeather,
+      magicWandTolerance,
+      setMagicWandTolerance,
       onClearSelectionPixels: clearSelectionPixels,
       activePreset,
       presets,
