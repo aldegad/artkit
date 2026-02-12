@@ -49,8 +49,6 @@ import { AnimationFrameIndicator } from "./AnimationFrameIndicator";
 import { drawSpriteCropOverlay } from "./spriteCropOverlayDrawing";
 import { resolveAnimationPreviewCursor } from "./animationPreviewCursor";
 
-const FIT_TO_SCREEN_PADDING = 40;
-
 // ============================================
 // Component
 // ============================================
@@ -200,7 +198,7 @@ export default function AnimationPreviewContent() {
       const sourceHeight = sourceCanvas?.height ?? canvasSize?.height ?? 0;
       if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
-      const p = padding ?? FIT_TO_SCREEN_PADDING;
+      const p = padding ?? SPRITE_PREVIEW_VIEWPORT.FIT_PADDING;
       const maxWidth = container.clientWidth - p;
       const maxHeight = container.clientHeight - p;
       if (maxWidth <= 0 || maxHeight <= 0) return;

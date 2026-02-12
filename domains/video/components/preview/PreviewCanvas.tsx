@@ -122,7 +122,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     contentSize: project.canvasSize,
     config: { origin: "center", minZoom: PREVIEW.MIN_ZOOM, maxZoom: PREVIEW.MAX_ZOOM },
     fitOnMount: true,
-    fitPadding: 40,
+    fitPadding: PREVIEW.FIT_PADDING,
     enableWheel: true,
     enablePinch: true,
     coordinateSpace: "container",
@@ -696,7 +696,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     liveMaskCanvasRef: maskContextCanvasRef,
   });
   const fitViewportToContainer = useCallback(() => {
-    vpFitToContainer(40);
+    vpFitToContainer(PREVIEW.FIT_PADDING);
   }, [vpFitToContainer]);
   usePreviewViewportBridge({
     previewViewportRef,

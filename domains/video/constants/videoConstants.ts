@@ -25,6 +25,7 @@ export const PREVIEW = {
   DEFAULT_ZOOM: 1,
   ZOOM_STEP_IN: 1.25,
   ZOOM_STEP_OUT: 0.8,
+  FIT_PADDING: 27,
   CHECKERBOARD_SIZE: 10,
 } as const;
 

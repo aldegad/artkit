@@ -2,6 +2,7 @@
 
 import { useCallback, RefObject } from "react";
 import { UnifiedLayer, CropArea } from "../types";
+import { VIEWPORT } from "../constants";
 
 interface UseEditorCanvasActionsOptions {
   layers: UnifiedLayer[];
@@ -66,7 +67,7 @@ export function useEditorCanvasActions(
 
     const container = containerRef.current;
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const padding = 40;
+    const padding = VIEWPORT.FIT_PADDING;
     const maxWidth = container.clientWidth - padding;
     const maxHeight = container.clientHeight - padding;
     const newZoom = Math.min(maxWidth / displayWidth, maxHeight / displayHeight, 1);
@@ -149,7 +150,7 @@ export function useEditorCanvasActions(
       const container = containerRef.current;
       if (!container) return;
 
-      const padding = 40;
+      const padding = VIEWPORT.FIT_PADDING;
       const maxWidth = container.clientWidth - padding;
       const maxHeight = container.clientHeight - padding;
       const fitZoom = Math.min(maxWidth / newWidth, maxHeight / newHeight, 1);
