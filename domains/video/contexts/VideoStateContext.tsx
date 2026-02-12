@@ -459,7 +459,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
 
   // Tool actions
   const setToolMode = useCallback((mode: VideoToolMode) => {
-    setState((prev) => ({ ...prev, toolMode: mode }));
+    const normalizedMode: VideoToolMode = mode === "trim" ? "select" : mode;
+    setState((prev) => ({ ...prev, toolMode: normalizedMode }));
   }, []);
 
   // Selection actions

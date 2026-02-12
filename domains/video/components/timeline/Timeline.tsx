@@ -14,10 +14,12 @@ import { Popover } from "@/shared/components/Popover";
 import { DEFAULT_TRACK_HEIGHT } from "../../types";
 import { MASK_LANE_HEIGHT, TIMELINE, TRANSFORM_LANE_HEIGHT } from "../../constants";
 import {
+  getClipPositionKeyframes,
   hasClipPositionKeyframeAtTimelineTime,
   removeClipPositionKeyframeAtTimelineTime,
   removeClipPositionKeyframeById,
   resolveClipPositionAtTimelineTime,
+  updateClipPositionKeyframeValueById,
   upsertClipPositionKeyframeAtTimelineTime,
 } from "../../utils/clipTransformKeyframes";
 
@@ -262,10 +264,30 @@ export function Timeline({ className }: TimelineProps) {
               const selectedKeyframeInTrack = selectedPositionKeyframe?.trackId === track.id
                 ? selectedPositionKeyframe
                 : null;
+              const selectedKeyframeClipInTrack = selectedKeyframeInTrack
+                ? visualTrackClips.find((clip) => clip.id === selectedKeyframeInTrack.clipId) ?? null
+                : null;
+              const selectedKeyframeValueInTrack = selectedKeyframeInTrack && selectedKeyframeClipInTrack
+                ? getClipPositionKeyframes(selectedKeyframeClipInTrack)
+                  .find((keyframe) => keyframe.id === selectedKeyframeInTrack.keyframeId)?.value ?? null
+                : null;
+              const selectedPositionForInputs = selectedKeyframeValueInTrack ?? selectedPositionAtPlayhead;
               const isLiftDropTarget = !!liftedClipId && liftedClipTrackId !== track.id;
               const isLiftSource = !!liftedClipId && liftedClipTrackId === track.id;
 
               const handleSetSelectedOffsetAtPlayhead = (nextPosition: { x: number; y: number }) => {
+                if (selectedKeyframeInTrack && selectedKeyframeClipInTrack) {
+                  saveToHistory();
+                  const result = updateClipPositionKeyframeValueById(
+                    selectedKeyframeClipInTrack,
+                    selectedKeyframeInTrack.keyframeId,
+                    nextPosition
+                  );
+                  if (result.updated) {
+                    updateClip(selectedKeyframeClipInTrack.id, result.updates);
+                  }
+                  return;
+                }
                 if (!selectedVisualClipInTrack) return;
                 saveToHistory();
                 updateClip(
@@ -502,24 +524,24 @@ export function Timeline({ className }: TimelineProps) {
                           <span className="text-[10px] uppercase tracking-wide text-text-secondary font-medium leading-none">
                             Transform
                           </span>
-                          {selectedPositionAtPlayhead ? (
+                          {selectedPositionForInputs ? (
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1">
                                 <span className="text-[10px] text-cyan-300 shrink-0">X</span>
                                 <OffsetNumberInput
-                                  value={selectedPositionAtPlayhead.x}
+                                  value={selectedPositionForInputs.x}
                                   onCommit={(x) => handleSetSelectedOffsetAtPlayhead({
                                     x,
-                                    y: selectedPositionAtPlayhead.y,
+                                    y: selectedPositionForInputs.y,
                                   })}
                                 />
                               </div>
                               <div className="flex items-center gap-1">
                                 <span className="text-[10px] text-orange-300 shrink-0">Y</span>
                                 <OffsetNumberInput
-                                  value={selectedPositionAtPlayhead.y}
+                                  value={selectedPositionForInputs.y}
                                   onCommit={(y) => handleSetSelectedOffsetAtPlayhead({
-                                    x: selectedPositionAtPlayhead.x,
+                                    x: selectedPositionForInputs.x,
                                     y,
                                   })}
                                 />
@@ -569,7 +591,7 @@ export function Timeline({ className }: TimelineProps) {
             title="Resize track headers"
           >
             {/* Invisible extended hit area for easier touch/click */}
-            <div className="absolute -left-2.5 -right-2.5 top-0 bottom-0 z-10" />
+            <div className="absolute -left-2.5 right-0 top-0 bottom-0 z-10" />
           </div>
 
           {/* Tracks content */}
