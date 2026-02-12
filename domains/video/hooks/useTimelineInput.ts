@@ -7,8 +7,8 @@ import { useTimelineViewport } from "./useTimelineViewport";
 import { TimelineDragType, Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { copyMediaBlob } from "../utils/mediaStorage";
-import { sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
 import { resolveTimelineClipSelection } from "../utils/timelineSelection";
+import { buildRazorSplitClips } from "../utils/razorSplit";
 import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
@@ -330,61 +330,17 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }, [capturePointer]);
 
   const splitClipWithRazor = useCallback((clip: Clip, splitCursorTime: number): Clip | null => {
-    const rawSplitTime = Math.max(clip.startTime, Math.min(splitCursorTime, clip.startTime + clip.duration));
-    const snappedSplitTime = snapToPoints(rawSplitTime, {
-      excludeClipIds: new Set([clip.id]),
+    const splitResult = buildRazorSplitClips({
+      clip,
+      splitCursorTime,
+      snapToPoints,
     });
-    const splitTime = Math.max(
-      clip.startTime,
-      Math.min(snappedSplitTime, clip.startTime + clip.duration)
-    );
-    const splitOffset = splitTime - clip.startTime;
-
-    // Ignore split at very edges
-    if (splitOffset <= TIMELINE.CLIP_MIN_DURATION || clip.duration - splitOffset <= TIMELINE.CLIP_MIN_DURATION) {
+    if (!splitResult) {
       return null;
     }
+    const { firstClip, secondClip } = splitResult;
 
     saveToHistory();
-
-    const firstDuration = splitOffset;
-    const secondDuration = clip.duration - splitOffset;
-    const firstTransformKeyframes = sliceClipPositionKeyframes(
-      clip,
-      0,
-      firstDuration,
-      { includeStart: true, includeEnd: true }
-    );
-    const secondTransformKeyframes = sliceClipPositionKeyframes(
-      clip,
-      splitOffset,
-      secondDuration,
-      { includeStart: true, includeEnd: false }
-    );
-    const firstPosition = firstTransformKeyframes?.position?.[0]?.value || clip.position;
-    const secondPosition = secondTransformKeyframes?.position?.[0]?.value || clip.position;
-
-    const firstClip: Clip = {
-      ...clip,
-      id: crypto.randomUUID(),
-      duration: firstDuration,
-      trimOut: clip.trimIn + firstDuration,
-      sourceSize: { ...clip.sourceSize },
-      position: { ...firstPosition },
-      transformKeyframes: firstTransformKeyframes,
-    };
-
-    const secondClip: Clip = {
-      ...clip,
-      id: crypto.randomUUID(),
-      name: `${clip.name} (2)`,
-      startTime: splitTime,
-      duration: secondDuration,
-      trimIn: clip.trimIn + splitOffset,
-      sourceSize: { ...clip.sourceSize },
-      position: { ...secondPosition },
-      transformKeyframes: secondTransformKeyframes,
-    };
 
     void Promise.all([
       copyMediaBlob(clip.id, firstClip.id),
