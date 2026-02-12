@@ -1,10 +1,11 @@
 "use client";
 
-import { Scrollbar, NumberScrubber, CanvasCropControls } from "@/shared/components";
+import { Scrollbar, NumberScrubber, CanvasCropControls, Tooltip } from "@/shared/components";
 import { BrushPresetSelector } from "@/domains/image/components/toolbars/BrushPresetSelector";
 import type { BrushPreset } from "@/domains/image/types/brush";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 import type { SpriteToolMode, SpriteFrame, SpriteCropArea } from "../types";
+import { FillBucketIcon } from "@/shared/components/icons";
 
 interface SpriteToolOptionsBarProps {
   toolMode: SpriteToolMode;
@@ -23,6 +24,7 @@ interface SpriteToolOptionsBarProps {
   presets: BrushPreset[];
   pressureEnabled: boolean;
   setPressureEnabled: (enabled: boolean) => void;
+  onFillFrames: () => void;
   cropAspectRatio: AspectRatio;
   setCropAspectRatio: (ratio: AspectRatio) => void;
   cropArea: SpriteCropArea | null;
@@ -57,6 +59,8 @@ interface SpriteToolOptionsBarProps {
     presets: string;
     pressure: string;
     builtIn: string;
+    fill: string;
+    fillToolTip: string;
     zoomToolTip: string;
     cropToolTip: string;
     magicWandToolTip: string;
@@ -84,6 +88,7 @@ export default function SpriteToolOptionsBar({
   presets,
   pressureEnabled,
   setPressureEnabled,
+  onFillFrames,
   cropAspectRatio,
   setCropAspectRatio,
   cropArea,
@@ -174,6 +179,15 @@ export default function SpriteToolOptionsBar({
                   title={labels.colorPickerTip}
                 />
                 <span className="text-[10px] text-text-tertiary font-mono">{brushColor}</span>
+                <Tooltip content={labels.fillToolTip}>
+                  <button
+                    onClick={onFillFrames}
+                    className="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded border border-border-default bg-surface-primary text-text-secondary hover:text-text-primary hover:bg-surface-tertiary transition-colors"
+                  >
+                    <FillBucketIcon className="w-3.5 h-3.5" />
+                    <span className="text-[11px]">{labels.fill}</span>
+                  </button>
+                </Tooltip>
               </div>
             )}
 

@@ -22,6 +22,7 @@ import {
   SpriteTopToolbar,
   SpriteToolOptionsBar,
   useFrameBackgroundRemoval,
+  useFrameFill,
   useFrameInterpolation,
   useSpriteKeyboardShortcuts,
   FrameBackgroundRemovalModals,
@@ -169,6 +170,19 @@ function SpriteEditorMain() {
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
       frameImageNotFound: t.frameImageNotFound,
       processingFrameProgress: t.processingFrameProgress,
+    },
+  });
+
+  const { handleFillFrames } = useFrameFill({
+    frames,
+    selectedFrameIds,
+    getCurrentFrameIndex: () => useSpriteTrackStore.getState().currentFrameIndex,
+    setFrames,
+    pushHistory,
+    fillColor: brushColor,
+    frameSize: canvasSize ?? imageSize ?? null,
+    translations: {
+      noFrameToFill: t.noFrames || "No frame available to fill.",
     },
   });
 
@@ -590,6 +604,7 @@ function SpriteEditorMain() {
         presets={presets}
         pressureEnabled={pressureEnabled}
         setPressureEnabled={setPressureEnabled}
+        onFillFrames={handleFillFrames}
         cropAspectRatio={cropAspectRatio}
         setCropAspectRatio={setCropAspectRatio}
         cropArea={cropArea}
@@ -624,6 +639,8 @@ function SpriteEditorMain() {
           presets: t.presets,
           pressure: t.pressure,
           builtIn: t.builtIn,
+          fill: t.fill,
+          fillToolTip: t.fillToolTip,
           zoomToolTip: t.zoomToolTip,
           cropToolTip: t.cropToolTip,
           magicWandToolTip: t.magicWandToolTip,
