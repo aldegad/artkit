@@ -8,7 +8,6 @@ import {
   HandIcon,
   ZoomSearchIcon,
   CropIcon,
-  TrimToolIcon,
   RazorToolIcon,
   MaskToolIcon,
   MagicWandIcon,
@@ -79,7 +78,7 @@ export default function VideoToolbar({
       name: t.select,
       description: t.selectDesc,
       shortcut: "V",
-      keys: ["Drag: Move clip", "Alt+Drag: Duplicate"],
+      keys: ["Drag: Move clip", "Drag edge: Trim in/out", "Alt+Drag: Duplicate"],
       icon: <MoveIcon />,
     },
     {
@@ -97,14 +96,6 @@ export default function VideoToolbar({
       shortcut: "R",
       keys: ["Drag: Select crop area", "Handles: Resize", "Enter: Apply", "Esc: Cancel"],
       icon: <CropIcon />,
-    },
-    {
-      mode: "trim",
-      name: t.trim,
-      description: t.trimDesc,
-      shortcut: "Y",
-      keys: ["Drag edges: Adjust in/out points"],
-      icon: <TrimToolIcon />,
     },
     {
       mode: "razor",

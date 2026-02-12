@@ -302,6 +302,32 @@ export function moveClipPositionKeyframeToTimelineTime(
   };
 }
 
+export function updateClipPositionKeyframeValueById(
+  clip: Clip,
+  keyframeId: string,
+  value: Point
+): { updated: boolean; updates: Partial<Clip> } {
+  const current = getClipPositionKeyframes(clip);
+  const idx = current.findIndex((keyframe) => keyframe.id === keyframeId);
+  if (idx < 0) {
+    return { updated: false, updates: {} };
+  }
+
+  const next = current.map((keyframe) =>
+    createPositionKeyframe(keyframe.time, keyframe.value, keyframe.id)
+  );
+  next[idx] = createPositionKeyframe(next[idx].time, value, next[idx].id);
+  const normalized = normalizePositionKeyframes(next, clip.duration);
+
+  return {
+    updated: true,
+    updates: {
+      position: normalized[0] ? clonePoint(normalized[0].value) : clonePoint(clip.position),
+      transformKeyframes: buildTransformKeyframes(clip, normalized.length > 0 ? normalized : undefined),
+    },
+  };
+}
+
 export function offsetClipPositionValues(
   clip: Clip,
   dx: number,
