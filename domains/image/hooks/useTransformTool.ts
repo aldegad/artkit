@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo } from "react";
 import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG, CropArea } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
 import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
-import { HANDLE_SIZE as HANDLE_SIZE_CONST } from "../constants";
+import { HANDLE_SIZE as HANDLE_SIZE_CONST, ROTATE_HANDLE } from "../constants";
 
 // ============================================
 // Types
@@ -106,7 +106,8 @@ interface UseTransformToolReturn {
 
 // Handle size for interaction detection (from shared constants)
 const HANDLE_HIT_AREA = HANDLE_SIZE_CONST.HIT_AREA;
-const ROTATE_HANDLE_OFFSET = 24;
+const ROTATE_HANDLE_OFFSET = ROTATE_HANDLE.OFFSET;
+const ROTATE_HANDLE_HIT_AREA = ROTATE_HANDLE.HIT_AREA;
 const ROTATION_SNAP_STEP = 15;
 
 function toRadians(degrees: number): number {
@@ -246,7 +247,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       };
       const rotateHandleY = localRect.y - ROTATE_HANDLE_OFFSET;
       const distanceToRotateHandle = Math.hypot(localPoint.x, localPoint.y - rotateHandleY);
-      if (distanceToRotateHandle <= HANDLE_HIT_AREA) {
+      if (distanceToRotateHandle <= ROTATE_HANDLE_HIT_AREA) {
         return "rotate";
       }
 
