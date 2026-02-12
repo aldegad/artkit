@@ -125,7 +125,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
     });
 
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
-    const [panelHeadersVisible, setPanelHeadersVisible] = useState(true);
+    const [panelHeadersVisible, setPanelHeadersVisible] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const panelRefsRef = useRef<Map<string, RefObject<HTMLDivElement | null>>>(new Map());
 
@@ -636,8 +636,8 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
         floatingWindows: [],
         dockedPanelCollapseStates: {},
       }));
-      setPanelHeadersVisible(true);
-      localStorage.setItem(`${storageKey}-panel-headers`, "true");
+      setPanelHeadersVisible(false);
+      localStorage.setItem(`${storageKey}-panel-headers`, "false");
     }, []);
 
     const togglePanelHeaders = useCallback(() => {
