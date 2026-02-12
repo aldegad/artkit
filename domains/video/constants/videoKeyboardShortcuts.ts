@@ -27,7 +27,6 @@ export const VIDEO_TOOL_SHORTCUTS: ToolShortcutMap<VideoToolMode> = {
   KeyH: "hand",
   KeyZ: "zoom",
   KeyR: "crop",
-  KeyY: "trim",
   KeyC: "razor",
   KeyM: "mask",
 };
