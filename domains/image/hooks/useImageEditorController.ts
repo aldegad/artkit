@@ -452,6 +452,7 @@ export function useImageEditorController() {
     transformLayerId: transformState.layerId,
     transformOriginalImageData: transformState.originalImageData,
     transformRotation: transformState.rotation,
+    transformFlipX: transformState.flipX,
     isSelectionBasedTransform: transformState.isSelectionBased,
     guides,
     showGuides,
