@@ -17,7 +17,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { viewState } = useTimeline();
-  const { seek, currentTimeRef, playback, project, setLoopRange } = useVideoState();
+  const { seek, currentTimeRef, playback, project, setLoopRange, deselectAll } = useVideoState();
   const { timeToPixel, pixelToTime } = useVideoCoordinates();
   const { ensureTimeVisibleOnLeft } = useTimelineViewport();
   const safeScrollX = Math.max(0, Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0);
@@ -205,6 +205,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
     (e: React.PointerEvent<HTMLCanvasElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
+      deselectAll();
       safeSetPointerCapture(e.currentTarget, e.pointerId);
       isDraggingRef.current = true;
 
@@ -240,7 +241,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
 
       seekAtX(e.clientX);
     },
-    [seekAtX, timeToPixel, hasRange, rangeStart, rangeEnd, pixelToTime, setLoopRange]
+    [seekAtX, timeToPixel, hasRange, rangeStart, rangeEnd, pixelToTime, setLoopRange, deselectAll]
   );
 
   const handlePointerMove = useCallback(
