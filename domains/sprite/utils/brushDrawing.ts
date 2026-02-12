@@ -4,6 +4,7 @@ import {
   drawDab as sharedDrawDab,
   eraseByMaskLinear,
   eraseDabLinear,
+  resetEraseAlphaCarry,
 } from "@/shared/utils/brushEngine";
 import { isMagicWandPixelSelected, type MagicWandSelection } from "@/shared/utils/magicWand";
 import { normalizePressureValue } from "@/shared/utils/pointerPressure";
@@ -18,6 +19,7 @@ interface DrawSpriteBrushPixelOptions {
   y: number;
   color: string;
   isEraser?: boolean;
+  isStrokeStart?: boolean;
   pressure?: number;
   frameCtx: CanvasRenderingContext2D | null;
   frameCanvas: HTMLCanvasElement | null;
@@ -42,6 +44,7 @@ export function drawSpriteBrushPixel({
   y,
   color,
   isEraser = false,
+  isStrokeStart = false,
   pressure = 1,
   frameCtx,
   frameCanvas,
@@ -55,6 +58,9 @@ export function drawSpriteBrushPixel({
   ensureDabBufferCanvas,
 }: DrawSpriteBrushPixelOptions): boolean {
   if (!frameCtx || !frameCanvas) return false;
+  if (isEraser && isStrokeStart) {
+    resetEraseAlphaCarry(frameCtx);
+  }
 
   const params = calculateDrawingParameters(
     normalizePressureValue(pressure),

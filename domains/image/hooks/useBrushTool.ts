@@ -13,7 +13,13 @@ import {
   saveActivePresetId,
 } from "../constants/brushPresets";
 import { imageToCanvas, ViewContext } from "../utils/coordinateSystem";
-import { drawDab, drawLine, eraseDabLinear, eraseLineLinear } from "@/shared/utils/brushEngine";
+import {
+  drawDab,
+  drawLine,
+  eraseDabLinear,
+  eraseLineLinear,
+  resetEraseAlphaCarry,
+} from "@/shared/utils/brushEngine";
 
 // ============================================
 // Types
@@ -98,6 +104,7 @@ export function useBrushTool(): UseBrushToolReturn {
   const [stampSource, setStampSource] = useState<Point | null>(null);
 
   const lastDrawPoint = useRef<Point | null>(null);
+  const stampOffset = useRef<Point | null>(null);
 
   // ============================================
   // Preset Management
@@ -149,6 +156,7 @@ export function useBrushTool(): UseBrushToolReturn {
 
   const resetLastDrawPoint = useCallback(() => {
     lastDrawPoint.current = null;
+    stampOffset.current = null;
   }, []);
 
   const drawOnEditCanvas = useCallback(
@@ -194,6 +202,7 @@ export function useBrushTool(): UseBrushToolReturn {
         }
       } else if (toolMode === "eraser") {
         if (isStart || !lastDrawPoint.current) {
+          resetEraseAlphaCarry(ctx);
           eraseDabLinear(ctx, {
             x,
             y,
@@ -218,8 +227,13 @@ export function useBrushTool(): UseBrushToolReturn {
         const img = imageRef.current;
         if (!img) return;
 
-        const offsetX = x - stampSource.x;
-        const offsetY = y - stampSource.y;
+        if (isStart || !lastDrawPoint.current || !stampOffset.current) {
+          stampOffset.current = {
+            x: x - stampSource.x,
+            y: y - stampSource.y,
+          };
+        }
+        const currentOffset = stampOffset.current ?? { x: 0, y: 0 };
 
         // Create a temporary canvas to get the original image data at source
         const tempCanvas = document.createElement("canvas");
@@ -234,8 +248,8 @@ export function useBrushTool(): UseBrushToolReturn {
         tempCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
 
         // Get source pixel data
-        const sourceX = x - offsetX;
-        const sourceY = y - offsetY;
+        const sourceX = x - currentOffset.x;
+        const sourceY = y - currentOffset.y;
         const halfBrush = params.size / 2;
 
         // Draw circular stamp

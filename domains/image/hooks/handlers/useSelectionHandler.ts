@@ -19,6 +19,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
     imageRef,
     rotation,
     canvasSize,
+    activeLayerPosition,
     selection,
     setSelection,
     setIsMovingSelection,
@@ -48,7 +49,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
             const editCanvas = editCanvasRef.current;
             const ctx2d = editCanvas?.getContext("2d");
             const img = imageRef.current;
-            if (!editCanvas || !ctx2d || !img) return { handled: false };
+            if (!editCanvas || !ctx2d) return { handled: false };
 
             // Create composite canvas to get the selected area
             const compositeCanvas = document.createElement("canvas");
@@ -57,11 +58,15 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
             const compositeCtx = compositeCanvas.getContext("2d");
             if (!compositeCtx) return { handled: false };
 
-            compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-            compositeCtx.rotate((rotation * Math.PI) / 180);
-            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-            compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-            compositeCtx.drawImage(editCanvas, 0, 0);
+            if (img) {
+              compositeCtx.translate(displayWidth / 2, displayHeight / 2);
+              compositeCtx.rotate((rotation * Math.PI) / 180);
+              compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
+              compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+            const layerPosX = activeLayerPosition?.x || 0;
+            const layerPosY = activeLayerPosition?.y || 0;
+            compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
 
             // Copy selection to floating layer
             const imageData = compositeCtx.getImageData(
@@ -129,6 +134,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       imageRef,
       rotation,
       canvasSize,
+      activeLayerPosition,
       floatingLayerRef,
       dragStartOriginRef,
       saveToHistory,

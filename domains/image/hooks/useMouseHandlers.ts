@@ -230,6 +230,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
   const selectionHandler = useSelectionHandler({
     ...baseOptions,
+    activeLayerPosition,
     selection,
     setSelection,
     isMovingSelection,
@@ -559,6 +560,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       const ctx = editCanvas?.getContext("2d");
       if (editCanvas && ctx) {
         const { imageData, x, y } = floatingLayerRef.current;
+        const layerPosX = activeLayerPosition?.x || 0;
+        const layerPosY = activeLayerPosition?.y || 0;
+        const localX = x - layerPosX;
+        const localY = y - layerPosY;
 
         // Create temp canvas to draw image data
         const tempCanvas = document.createElement("canvas");
@@ -567,7 +572,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         const tempCtx = tempCanvas.getContext("2d");
         if (tempCtx) {
           tempCtx.putImageData(imageData, 0, 0);
-          ctx.drawImage(tempCanvas, x, y);
+          ctx.drawImage(tempCanvas, localX, localY);
         }
 
         // Update selection to floating layer's final position
@@ -617,6 +622,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setIsDuplicating,
     resetLastDrawPoint,
     dragStartOriginRef,
+    activeLayerPosition,
   ]);
 
   // Handle mouse leave

@@ -444,6 +444,7 @@ export function useImageEditorController() {
     brushHardness,
     brushColor,
     stampSource,
+    activeLayerPosition,
     selection,
     isDuplicating,
     isMovingSelection,

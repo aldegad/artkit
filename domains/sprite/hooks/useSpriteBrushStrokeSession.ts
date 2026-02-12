@@ -11,7 +11,7 @@ interface StrokePoint {
 
 interface UseSpriteBrushStrokeSessionParams {
   pushHistory: () => void;
-  drawAt: (x: number, y: number, pressure: number) => boolean;
+  drawAt: (x: number, y: number, pressure: number, isStrokeStart: boolean) => boolean;
   requestRender: () => void;
   commitStroke: () => void;
 }
@@ -50,7 +50,7 @@ export function useSpriteBrushStrokeSession({
     drawingPointerIdRef.current = e.pointerId;
     setIsDrawing(true);
     const pressure = getPointerPressure(e);
-    if (drawAt(coords.x, coords.y, pressure)) {
+    if (drawAt(coords.x, coords.y, pressure, true)) {
       requestRender();
     }
     lastPointRef.current = { x: coords.x, y: coords.y };
@@ -63,7 +63,7 @@ export function useSpriteBrushStrokeSession({
       from: lastPointRef.current,
       to: coords,
       drawAt: (x, y) => {
-        drawAt(x, y, pressure);
+        drawAt(x, y, pressure, false);
       },
     });
     if (didInterpolate) {

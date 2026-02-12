@@ -42,6 +42,7 @@ interface UseCanvasRenderingOptions {
   brushHardness: number;
   brushColor: string;
   stampSource: Point | null;
+  activeLayerPosition?: Point | null;
   selection: { x: number; y: number; width: number; height: number } | null;
   isDuplicating: boolean;
   isMovingSelection: boolean;
@@ -99,6 +100,7 @@ export function useCanvasRendering(
     brushHardness,
     brushColor,
     stampSource,
+    activeLayerPosition,
     selection,
     isDuplicating,
     isMovingSelection,
@@ -496,8 +498,10 @@ export function useCanvasRendering(
 
     // Draw stamp source indicator
     if (stampSource && toolMode === "stamp") {
-      const sourceX = offsetX + stampSource.x * zoom;
-      const sourceY = offsetY + stampSource.y * zoom;
+      const layerPosX = activeLayerPosition?.x || 0;
+      const layerPosY = activeLayerPosition?.y || 0;
+      const sourceX = offsetX + (stampSource.x + layerPosX) * zoom;
+      const sourceY = offsetY + (stampSource.y + layerPosY) * zoom;
 
       ctx.save();
       ctx.strokeStyle = colors.toolDraw;
@@ -781,6 +785,7 @@ export function useCanvasRendering(
     brushHardness,
     brushColor,
     stampSource,
+    activeLayerPosition,
     selection,
     isDuplicating,
     isMovingSelection,

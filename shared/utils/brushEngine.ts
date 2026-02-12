@@ -183,6 +183,16 @@ function ensureEraseAlphaCarryState(
   return existing;
 }
 
+/**
+ * Clear accumulated fractional erase state for a canvas context.
+ * Call this at the start of a new erase stroke to avoid cross-stroke carry artifacts.
+ */
+export function resetEraseAlphaCarry(ctx: CanvasRenderingContext2D): void {
+  const canvasKey = ctx.canvas as object | null;
+  if (!canvasKey) return;
+  eraseAlphaCarryScratch.delete(canvasKey);
+}
+
 function applyLinearAlphaErase(
   target: Uint8ClampedArray,
   mask: Uint8ClampedArray,
