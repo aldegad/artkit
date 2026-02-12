@@ -1,6 +1,10 @@
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import type { BrushPreset } from "@/domains/image/types/brush";
-import { drawDab as sharedDrawDab } from "@/shared/utils/brushEngine";
+import {
+  drawDab as sharedDrawDab,
+  eraseByMaskLinear,
+  eraseDabLinear,
+} from "@/shared/utils/brushEngine";
 import { isMagicWandPixelSelected, type MagicWandSelection } from "@/shared/utils/magicWand";
 import { normalizePressureValue } from "@/shared/utils/pointerPressure";
 
@@ -77,9 +81,10 @@ export function drawSpriteBrushPixel({
       y,
       radius: params.size / 2,
       hardness: brushHardness / 100,
-      color,
+      // Eraser path uses this as alpha mask only, so draw white.
+      color: isEraser ? "#ffffff" : color,
       alpha: (brushOpacity / 100) * params.opacity * params.flow,
-      isEraser,
+      isEraser: false,
     });
 
     dabBuffer.ctx.save();
@@ -87,31 +92,43 @@ export function drawSpriteBrushPixel({
     dabBuffer.ctx.drawImage(selectionMaskCanvas, 0, 0);
     dabBuffer.ctx.restore();
 
-    frameCtx.save();
     if (isEraser) {
-      frameCtx.globalCompositeOperation = "destination-out";
+      const radius = params.size / 2;
+      eraseByMaskLinear(frameCtx, {
+        maskCanvas: dabBuffer.canvas,
+        alphaScale: 1,
+        bounds: {
+          x: Math.floor(x - radius - 2),
+          y: Math.floor(y - radius - 2),
+          width: Math.ceil(radius * 2 + 4),
+          height: Math.ceil(radius * 2 + 4),
+        },
+      });
+    } else {
+      frameCtx.drawImage(dabBuffer.canvas, 0, 0);
     }
-    frameCtx.drawImage(dabBuffer.canvas, 0, 0);
-    frameCtx.restore();
     return true;
   }
 
-  frameCtx.save();
   if (isEraser) {
-    frameCtx.globalCompositeOperation = "destination-out";
+    eraseDabLinear(frameCtx, {
+      x,
+      y,
+      radius: params.size / 2,
+      hardness: brushHardness / 100,
+      alpha: (brushOpacity / 100) * params.opacity * params.flow,
+    });
+  } else {
+    sharedDrawDab(frameCtx, {
+      x,
+      y,
+      radius: params.size / 2,
+      hardness: brushHardness / 100,
+      color,
+      alpha: (brushOpacity / 100) * params.opacity * params.flow,
+      isEraser: false,
+    });
   }
-
-  sharedDrawDab(frameCtx, {
-    x,
-    y,
-    radius: params.size / 2,
-    hardness: brushHardness / 100,
-    color,
-    alpha: (brushOpacity / 100) * params.opacity * params.flow,
-    isEraser,
-  });
-
-  frameCtx.restore();
   return true;
 }
 
