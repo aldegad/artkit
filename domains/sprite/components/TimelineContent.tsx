@@ -19,9 +19,19 @@ const CELL_WIDTH = 40;
 const HEADER_MIN = 40;
 const HEADER_MAX = 300;
 const HEADER_DEFAULT = 144;
+const HEADER_DEFAULT_MOBILE = 40;
 const HEADER_COMPACT_BREAKPOINT = 120;
 const CONTROL_BAR_COMPACT_BREAKPOINT = 240;
 const LS_KEY = "sprite-timeline-header-width";
+
+function detectMobileLikeDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const narrowViewport = window.innerWidth > 0 && window.innerWidth <= 1024;
+  return mobileUA || (coarsePointer && narrowViewport);
+}
 
 interface ScrubPendingState {
   pointerId: number;
@@ -68,6 +78,9 @@ export default function TimelineContent() {
   // Header resize state
   const [headerWidth, setHeaderWidth] = useState(HEADER_DEFAULT);
   const [headerResizePending, setHeaderResizePending] = useState<HeaderResizePendingState | null>(null);
+  const [isMobileLike, setIsMobileLike] = useState(false);
+  const headerStorageKey = isMobileLike ? `${LS_KEY}-mobile` : LS_KEY;
+  const defaultHeaderWidth = isMobileLike ? HEADER_DEFAULT_MOBILE : HEADER_DEFAULT;
 
   // Scroll sync refs
   const trackHeadersRef = useRef<HTMLDivElement>(null);
@@ -166,13 +179,23 @@ export default function TimelineContent() {
 
   // Load header width from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem(LS_KEY);
+    setIsMobileLike(detectMobileLikeDevice());
+  }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(headerStorageKey);
     if (!stored) return;
     const parsed = Number(stored);
     if (Number.isFinite(parsed)) {
       setHeaderWidth(Math.max(HEADER_MIN, Math.min(HEADER_MAX, parsed)));
     }
-  }, []);
+  }, [headerStorageKey]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(headerStorageKey);
+    if (stored !== null) return;
+    setHeaderWidth(defaultHeaderWidth);
+  }, [headerStorageKey, defaultHeaderWidth]);
 
   // Header resize drag
   const handleStartHeaderResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -193,7 +216,7 @@ export default function TimelineContent() {
       const delta = event.clientX - pending.clientX;
       const nextWidth = Math.max(HEADER_MIN, Math.min(HEADER_MAX, pending.startWidth + delta));
       setHeaderWidth(nextWidth);
-      localStorage.setItem(LS_KEY, String(nextWidth));
+      localStorage.setItem(headerStorageKey, String(nextWidth));
     },
     onEnd: () => {
       setHeaderResizePending(null);

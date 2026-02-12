@@ -14,6 +14,7 @@ interface HeaderResizePendingState {
 interface UseTimelineLayoutInputOptions {
   tracksContainerRef: React.RefObject<HTMLDivElement | null>;
   defaultHeaderWidth?: number;
+  mobileDefaultHeaderWidth?: number;
   minHeaderWidth?: number;
   maxHeaderWidth?: number;
   storageKey?: string;
@@ -27,12 +28,22 @@ interface UseTimelineLayoutInputReturn {
   handleStartHeaderResize: (e: React.PointerEvent<HTMLDivElement>) => void;
 }
 
+function detectMobileLikeDevice(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const narrowViewport = window.innerWidth > 0 && window.innerWidth <= 1024;
+  return mobileUA || (coarsePointer && narrowViewport);
+}
+
 export function useTimelineLayoutInput(
   options: UseTimelineLayoutInputOptions
 ): UseTimelineLayoutInputReturn {
   const {
     tracksContainerRef,
     defaultHeaderWidth = 180,
+    mobileDefaultHeaderWidth = 40,
     minHeaderWidth = 40,
     maxHeaderWidth = 360,
     storageKey = "video-timeline-track-header-width",
@@ -41,6 +52,14 @@ export function useTimelineLayoutInput(
   const trackHeadersRef = useRef<HTMLDivElement | null>(null);
   const [trackHeaderWidth, setTrackHeaderWidth] = useState(defaultHeaderWidth);
   const [headerResizePending, setHeaderResizePending] = useState<HeaderResizePendingState | null>(null);
+  const [isMobileLike, setIsMobileLike] = useState(false);
+
+  const resolvedStorageKey = isMobileLike
+    ? `${storageKey}-mobile`
+    : storageKey;
+  const resolvedDefaultHeaderWidth = isMobileLike
+    ? mobileDefaultHeaderWidth
+    : defaultHeaderWidth;
 
   const clampHeaderWidth = useCallback(
     (width: number) => Math.max(minHeaderWidth, Math.min(maxHeaderWidth, width)),
@@ -63,14 +82,24 @@ export function useTimelineLayoutInput(
   );
 
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey);
+    setIsMobileLike(detectMobileLikeDevice());
+  }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(resolvedStorageKey);
     if (!stored) return;
 
     const parsed = Number(stored);
     if (Number.isFinite(parsed)) {
       setTrackHeaderWidth(clampHeaderWidth(parsed));
     }
-  }, [storageKey, clampHeaderWidth]);
+  }, [resolvedStorageKey, clampHeaderWidth]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(resolvedStorageKey);
+    if (stored !== null) return;
+    setTrackHeaderWidth(clampHeaderWidth(resolvedDefaultHeaderWidth));
+  }, [resolvedStorageKey, resolvedDefaultHeaderWidth, clampHeaderWidth]);
 
   useDeferredPointerGesture<HeaderResizePendingState>({
     pending: headerResizePending,
@@ -79,7 +108,7 @@ export function useTimelineLayoutInput(
       const delta = event.clientX - pending.clientX;
       const nextWidth = clampHeaderWidth(pending.startWidth + delta);
       setTrackHeaderWidth(nextWidth);
-      localStorage.setItem(storageKey, String(nextWidth));
+      localStorage.setItem(resolvedStorageKey, String(nextWidth));
     },
     onEnd: () => {
       setHeaderResizePending(null);
@@ -108,4 +137,3 @@ export function useTimelineLayoutInput(
     handleStartHeaderResize,
   };
 }
-
