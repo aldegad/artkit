@@ -34,6 +34,7 @@ import {
   useVideoExport,
   VideoMenuBar,
   VideoToolbar,
+  VideoCanvasSizeEditor,
   VideoExportModal,
   VideoInterpolationModal,
   MaskControls,
@@ -563,18 +564,9 @@ function VideoEditorContent() {
     selectClips,
     clearSelectedMasks,
   });
-  // Canvas size adjustment
-  const [canvasSizeInput, setCanvasSizeInput] = useState({ w: "", h: "" });
-  const [isEditingCanvasSize, setIsEditingCanvasSize] = useState(false);
-
-  const handleCanvasSizeSubmit = useCallback(() => {
-    const w = parseInt(canvasSizeInput.w, 10);
-    const h = parseInt(canvasSizeInput.h, 10);
-    if (w > 0 && h > 0 && w <= 7680 && h <= 7680) {
-      setProject({ ...project, canvasSize: { width: w, height: h } });
-    }
-    setIsEditingCanvasSize(false);
-  }, [canvasSizeInput, setProject, project]);
+  const handleApplyCanvasSize = useCallback((width: number, height: number) => {
+    setProject({ ...project, canvasSize: { width, height } });
+  }, [project, setProject]);
 
   const handleToggleTimeline = useCallback(() => {
     const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
@@ -928,50 +920,11 @@ function VideoEditorContent() {
 
         {/* Canvas size */}
         <div className="flex items-center gap-1 shrink-0">
-          {isEditingCanvasSize ? (
-            <form
-              className="flex items-center gap-0.5"
-              onSubmit={(e) => { e.preventDefault(); handleCanvasSizeSubmit(); }}
-            >
-              <input
-                type="number"
-                defaultValue={project.canvasSize.width}
-                onChange={(e) => setCanvasSizeInput((p) => ({ ...p, w: e.target.value }))}
-                onFocus={(e) => e.target.select()}
-                autoFocus
-                className="w-14 px-1 py-0.5 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary text-center focus:outline-none focus:border-accent-primary"
-                min={1}
-                max={7680}
-              />
-              <span className="text-xs text-text-quaternary">x</span>
-              <input
-                type="number"
-                defaultValue={project.canvasSize.height}
-                onChange={(e) => setCanvasSizeInput((p) => ({ ...p, h: e.target.value }))}
-                onFocus={(e) => e.target.select()}
-                className="w-14 px-1 py-0.5 rounded bg-surface-tertiary border border-border-default text-xs text-text-primary text-center focus:outline-none focus:border-accent-primary"
-                min={1}
-                max={7680}
-              />
-              <button type="submit" className="px-1.5 py-0.5 text-[10px] rounded bg-accent-primary text-white hover:bg-accent-hover transition-colors">
-                OK
-              </button>
-              <button type="button" onClick={() => setIsEditingCanvasSize(false)} className="px-1.5 py-0.5 text-[10px] rounded bg-surface-tertiary text-text-secondary hover:bg-interactive-hover transition-colors">
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => {
-                setCanvasSizeInput({ w: String(project.canvasSize.width), h: String(project.canvasSize.height) });
-                setIsEditingCanvasSize(true);
-              }}
-              className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
-              title="Change canvas size"
-            >
-              {project.canvasSize.width}x{project.canvasSize.height}
-            </button>
-          )}
+          <VideoCanvasSizeEditor
+            canvasWidth={project.canvasSize.width}
+            canvasHeight={project.canvasSize.height}
+            onApplyCanvasSize={handleApplyCanvasSize}
+          />
         </div>
 
       </div>
