@@ -18,3 +18,4 @@ export { useSpriteExportActions } from "./useSpriteExportActions";
 export { useSpriteCropActions } from "./useSpriteCropActions";
 export { useFrameStripSkipActions } from "./useFrameStripSkipActions";
 export { useSpriteResampleActions } from "./useSpriteResampleActions";
+export { useFrameStripTransformActions } from "./useFrameStripTransformActions";

@@ -7,8 +7,8 @@ import { Scrollbar, Tooltip, Popover } from "../../../shared/components";
 import { DeleteIcon, EyeOpenIcon, EyeClosedIcon, ReorderIcon, OffsetIcon, FrameSkipToggleIcon, NthFrameSkipIcon, PlusIcon, FlipIcon, RotateIcon } from "../../../shared/components/icons";
 import { SpriteFrame } from "../types";
 import { useSpriteTrackStore } from "../stores";
-import { flipFrameImageData, FrameFlipDirection } from "../utils/frameUtils";
 import { useFrameStripSkipActions } from "../hooks/useFrameStripSkipActions";
+import { useFrameStripTransformActions } from "../hooks/useFrameStripTransformActions";
 
 interface FrameCardProps {
   frame: SpriteFrame;
@@ -130,7 +130,6 @@ export default function FrameStrip() {
   const [isSkipToggleMode, setIsSkipToggleMode] = useState(false);
   const [nthValue, setNthValue] = useState(2);
   const [keepCount, setKeepCount] = useState(1);
-  const [isFlippingFrames, setIsFlippingFrames] = useState(false);
   const [displayCurrentFrameIndex, setDisplayCurrentFrameIndex] = useState(() => useSpriteTrackStore.getState().currentFrameIndex);
   const isOffsetKeyboardNudgeActiveRef = useRef(false);
   const { t } = useLanguage();
@@ -561,90 +560,19 @@ export default function FrameStrip() {
     setSelectedFrameId,
     setIsPlaying,
   });
-
-  const flipSelectedFrames = useCallback(
-    async (direction: FrameFlipDirection) => {
-      if (isFlippingFrames || selectedFrameIds.length === 0) return;
-
-      const selectedSet = new Set(selectedFrameIds);
-      const framesToFlip = frames.filter(
-        (frame: SpriteFrame) => selectedSet.has(frame.id) && Boolean(frame.imageData),
-      );
-
-      if (framesToFlip.length === 0) return;
-
-      setIsFlippingFrames(true);
-      try {
-        const flippedResults = await Promise.all(
-          framesToFlip.map(async (frame: SpriteFrame) => {
-            try {
-              const flippedImageData = await flipFrameImageData(frame.imageData!, direction);
-              return { id: frame.id, imageData: flippedImageData };
-            } catch (error) {
-              console.error(`Failed to flip frame ${frame.id}`, error);
-              return null;
-            }
-          }),
-        );
-
-        const flippedById = new Map<number, string>();
-        for (const result of flippedResults) {
-          if (result) {
-            flippedById.set(result.id, result.imageData);
-          }
-        }
-
-        if (flippedById.size === 0) return;
-
-        pushHistory();
-        setIsPlaying(false);
-        setFrames((prev: SpriteFrame[]) =>
-          prev.map((frame: SpriteFrame) => {
-            const flippedImageData = flippedById.get(frame.id);
-            return flippedImageData ? { ...frame, imageData: flippedImageData } : frame;
-          }),
-        );
-      } finally {
-        setIsFlippingFrames(false);
-      }
-    },
-    [frames, isFlippingFrames, pushHistory, selectedFrameIds, setFrames, setIsPlaying],
-  );
-
-  const reverseSelectedFrames = useCallback(() => {
-    if (selectedFrameIds.length < 2) return;
-
-    const selectedSet = new Set(selectedFrameIds);
-    const selectedFrames = frames.filter((frame: SpriteFrame) => selectedSet.has(frame.id));
-    if (selectedFrames.length < 2) return;
-
-    const currentFrameIndex = getCurrentFrameIndex();
-    const currentFrameId = frames[currentFrameIndex]?.id ?? null;
-    const reversedSelectedFrames = [...selectedFrames].reverse();
-    let reverseIdx = 0;
-
-    pushHistory();
-    setIsPlaying(false);
-    const newFrames = frames.map((frame: SpriteFrame) =>
-      selectedSet.has(frame.id) ? reversedSelectedFrames[reverseIdx++] : frame,
-    );
-    setFrames(newFrames);
-
-    if (currentFrameId !== null) {
-      const nextCurrentFrameIndex = newFrames.findIndex((frame: SpriteFrame) => frame.id === currentFrameId);
-      if (nextCurrentFrameIndex >= 0) {
-        setCurrentFrameIndex(nextCurrentFrameIndex);
-      }
-    }
-  }, [
-    selectedFrameIds,
+  const {
+    isFlippingFrames,
+    flipSelectedFrames,
+    reverseSelectedFrames,
+  } = useFrameStripTransformActions({
     frames,
+    selectedFrameIds,
     getCurrentFrameIndex,
     pushHistory,
-    setIsPlaying,
     setFrames,
+    setIsPlaying,
     setCurrentFrameIndex,
-  ]);
+  });
 
   // File drag & drop
   const handleFileDragOver = useCallback((e: React.DragEvent) => {
