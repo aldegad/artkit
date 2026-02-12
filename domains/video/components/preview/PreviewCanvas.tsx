@@ -59,6 +59,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     selectedClipIds,
     toolMode,
     selectClip,
+    deselectAll,
     cropArea,
     setCropArea,
     canvasExpandMode,
@@ -767,6 +768,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     hitTestClipAtPoint,
     saveToHistory,
     selectClip,
+    deselectAll,
     updateClip,
     scheduleRender,
   });
@@ -975,8 +977,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onPointerLeave={(e) => {
-          handlePointerUp(e);
+        onPointerLeave={() => {
           setBrushCursor(null);
         }}
       />
