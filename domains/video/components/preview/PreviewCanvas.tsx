@@ -28,6 +28,11 @@ import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 import { usePreviewPlaybackRenderTick } from "./usePreviewPlaybackRenderTick";
 import { usePreviewResizeObserver } from "./usePreviewResizeObserver";
 import { resolvePreviewCanvasCursor } from "./previewCanvasCursor";
+import {
+  drawCropOverlay,
+  drawMaskRegionOverlay,
+  drawTransformBoundsOverlay,
+} from "./previewCanvasOverlayDrawing";
 import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
 import { usePreviewClipDragSession } from "./usePreviewClipDragSession";
 import { usePreviewCoordinateHelpers } from "./usePreviewCoordinateHelpers";
@@ -43,19 +48,6 @@ interface PreviewCanvasProps {
 }
 
 const SAMPLE_FRAME_EPSILON = 1e-6;
-
-function getEightResizeHandles(x: number, y: number, width: number, height: number): Array<{ x: number; y: number }> {
-  return [
-    { x, y },
-    { x: x + width / 2, y },
-    { x: x + width, y },
-    { x: x + width, y: y + height / 2 },
-    { x: x + width, y: y + height },
-    { x: x + width / 2, y: y + height },
-    { x, y: y + height },
-    { x, y: y + height / 2 },
-  ];
-}
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
@@ -706,100 +698,46 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         width: project.canvasSize.width,
         height: project.canvasSize.height,
       };
-      const cropPoint = vpContentToScreen({ x: activeCrop.x, y: activeCrop.y });
-      const cropX = cropPoint.x;
-      const cropY = cropPoint.y;
-      const cropW = activeCrop.width * scale;
-      const cropH = activeCrop.height * scale;
-
-      // Dark overlay outside crop area
-      ctx.save();
-      ctx.fillStyle = colors.overlay;
-      // Top
-      ctx.fillRect(offsetX, offsetY, previewWidth, cropY - offsetY);
-      // Bottom
-      ctx.fillRect(offsetX, cropY + cropH, previewWidth, (offsetY + previewHeight) - (cropY + cropH));
-      // Left
-      ctx.fillRect(offsetX, cropY, cropX - offsetX, cropH);
-      // Right
-      ctx.fillRect(cropX + cropW, cropY, (offsetX + previewWidth) - (cropX + cropW), cropH);
-      ctx.restore();
-
-      // Solid border (matching editor style)
-      ctx.save();
-      ctx.strokeStyle = colors.selection;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(cropX, cropY, cropW, cropH);
-
-      // Rule of thirds grid
-      ctx.strokeStyle = colors.grid || "rgba(255,255,255,0.25)";
-      ctx.lineWidth = 1;
-      for (let i = 1; i < 3; i++) {
-        ctx.beginPath();
-        ctx.moveTo(cropX + (cropW * i) / 3, cropY);
-        ctx.lineTo(cropX + (cropW * i) / 3, cropY + cropH);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cropX, cropY + (cropH * i) / 3);
-        ctx.lineTo(cropX + cropW, cropY + (cropH * i) / 3);
-        ctx.stroke();
-      }
-
-      // 8 resize handles (corners + midpoints)
-      const handleSize = 10;
-      const handles = getEightResizeHandles(cropX, cropY, cropW, cropH);
-      ctx.fillStyle = colors.selection;
-      for (const handle of handles) {
-        ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
-      }
-      ctx.restore();
+      drawCropOverlay({
+        ctx,
+        activeCrop,
+        scale,
+        offsetX,
+        offsetY,
+        previewWidth,
+        previewHeight,
+        colors: {
+          selection: colors.selection,
+          overlay: colors.overlay,
+          grid: colors.grid,
+        },
+        contentToScreen: vpContentToScreen,
+      });
     }
 
     if (toolMode === "transform" && transformTool.state.isActive && transformTool.state.bounds) {
-      const bounds = transformTool.state.bounds;
-      const topLeft = vpContentToScreen({ x: bounds.x, y: bounds.y });
-      const transformX = topLeft.x;
-      const transformY = topLeft.y;
-      const transformW = bounds.width * scale;
-      const transformH = bounds.height * scale;
-
-      ctx.save();
-      ctx.strokeStyle = colors.selection;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([]);
-      ctx.strokeRect(transformX, transformY, transformW, transformH);
-
-      const handleSize = 10;
-      const handles = getEightResizeHandles(transformX, transformY, transformW, transformH);
-
-      ctx.fillStyle = colors.selection;
-      ctx.strokeStyle = colors.textOnColor;
-      ctx.lineWidth = 1;
-      for (const handle of handles) {
-        ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
-        ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
-      }
-      ctx.restore();
+      drawTransformBoundsOverlay({
+        ctx,
+        bounds: transformTool.state.bounds,
+        scale,
+        colors: {
+          selection: colors.selection,
+          textOnColor: colors.textOnColor,
+        },
+        contentToScreen: vpContentToScreen,
+      });
     }
 
     if (isEditingMask) {
       const visibleMaskRegion = getVisibleMaskRegion();
       if (visibleMaskRegion) {
-        const { region, isDragging } = visibleMaskRegion;
-        const regionTopLeft = vpContentToScreen({ x: region.x, y: region.y });
-        const rectX = regionTopLeft.x;
-        const rectY = regionTopLeft.y;
-        const rectW = region.width * scale;
-        const rectH = region.height * scale;
-
-        ctx.save();
-        ctx.fillStyle = isDragging ? "rgba(59, 130, 246, 0.16)" : "rgba(59, 130, 246, 0.08)";
-        ctx.strokeStyle = "rgba(147, 197, 253, 0.95)";
-        ctx.lineWidth = isDragging ? 1.75 : 1.25;
-        ctx.setLineDash(isDragging ? [8, 4] : [6, 6]);
-        ctx.fillRect(rectX, rectY, rectW, rectH);
-        ctx.strokeRect(rectX, rectY, rectW, rectH);
-        ctx.restore();
+        drawMaskRegionOverlay({
+          ctx,
+          region: visibleMaskRegion.region,
+          isDragging: visibleMaskRegion.isDragging,
+          scale,
+          contentToScreen: vpContentToScreen,
+        });
       }
     }
 
