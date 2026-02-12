@@ -111,6 +111,7 @@ function SpriteEditorMain() {
   } = useEditorBrush();
   const { setScale, setZoom, setPan } = useEditorViewport();
   const { fps } = useEditorAnimation();
+  const currentFrameIndex = useSpriteTrackStore((s) => s.currentFrameIndex);
   const animPreviewZoom = useSpriteViewportStore((s) => s.animPreviewZoom);
   const animPreviewVpApi = useSpriteViewportStore((s) => s._animPreviewVpApi);
   const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
@@ -427,16 +428,19 @@ function SpriteEditorMain() {
     noFramesToSaveLabel: t.noFramesToSave,
   });
 
-  const { handleExport } = useSpriteExportActions({
+  const { handleExport, handleExportCurrentFrame } = useSpriteExportActions({
     hasRenderableFrames,
     tracks,
+    currentFrameIndex,
     projectName,
+    exportFrameSize: canvasSize,
     fps,
     exportMp4,
     startProgress,
     endProgress,
     closeExportModal: () => setIsExportModalOpen(false),
     exportFailedLabel: t.exportFailed,
+    noFrameToExportLabel: t.noFramesToSave,
   });
 
   useSpriteKeyboardShortcuts({
@@ -513,6 +517,7 @@ function SpriteEditorMain() {
             onSave={saveProject}
             onSaveAs={saveProjectAs}
             onExport={() => setIsExportModalOpen(true)}
+            onExportCurrentFrame={() => void handleExportCurrentFrame()}
             onResampleAllResolution={() => void handleResampleAllResolution()}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
@@ -524,6 +529,7 @@ function SpriteEditorMain() {
             onTogglePanelHeaders={togglePanelHeaders}
             canSave={hasRenderableFrames && !isSaving && !isResampling}
             canExport={hasRenderableFrames && !isResampling}
+            canExportCurrentFrame={hasRenderableFrames && !isResampling}
             canResample={hasRenderableFrames && !isResampling}
             isLoading={isSaving || isResampling}
             onUndo={undo}
@@ -540,6 +546,7 @@ function SpriteEditorMain() {
               save: t.save,
               saveAs: t.saveAs,
               export: t.export,
+              exportCurrentFrame: `${t.export} ${t.frame} PNG`,
               resampleAllResolution: t.resampleAllResolution,
               importImage: t.importImage,
               importSheet: t.importSheet,

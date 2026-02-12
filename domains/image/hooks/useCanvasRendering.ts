@@ -51,6 +51,7 @@ interface UseCanvasRenderingOptions {
   isTransformActive?: boolean;
   transformLayerId?: string | null;
   transformOriginalImageData?: ImageData | null;
+  transformRotation?: number;
   isSelectionBasedTransform?: boolean;
 
   // Guides (optional)
@@ -104,6 +105,7 @@ export function useCanvasRendering(
     isTransformActive,
     transformLayerId,
     transformOriginalImageData,
+    transformRotation = 0,
     isSelectionBasedTransform,
     guides,
     showGuides,
@@ -603,6 +605,11 @@ export function useCanvasRendering(
       const transformY = offsetY + bounds.y * zoom;
       const transformW = bounds.width * zoom;
       const transformH = bounds.height * zoom;
+      const rotationRadians = (transformRotation * Math.PI) / 180;
+      const centerX = transformX + transformW / 2;
+      const centerY = transformY + transformH / 2;
+      const rotateHandleOffset = 24 * zoom;
+      const rotateHandleY = -transformH / 2 - rotateHandleOffset;
 
       ctx.save();
 
@@ -622,17 +629,30 @@ export function useCanvasRendering(
         transformCtx.putImageData(transformOriginalImageData, 0, 0);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(transformCanvas, transformX, transformY, transformW, transformH);
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(rotationRadians);
+        ctx.drawImage(
+          transformCanvas,
+          -transformW / 2,
+          -transformH / 2,
+          transformW,
+          transformH
+        );
+        ctx.restore();
       }
 
       // Reset alpha for handles and border
       ctx.globalAlpha = 1;
 
+      ctx.translate(centerX, centerY);
+      ctx.rotate(rotationRadians);
+
       // Draw border
       ctx.strokeStyle = colors.selection;
       ctx.lineWidth = 2;
       ctx.setLineDash([]);
-      ctx.strokeRect(transformX, transformY, transformW, transformH);
+      ctx.strokeRect(-transformW / 2, -transformH / 2, transformW, transformH);
 
       // Draw resize handles
       const handleSize = HANDLE_SIZE.DEFAULT;
@@ -641,20 +661,44 @@ export function useCanvasRendering(
       ctx.lineWidth = 1;
 
       const handles = [
-        { x: transformX, y: transformY }, // nw
-        { x: transformX + transformW / 2, y: transformY }, // n
-        { x: transformX + transformW, y: transformY }, // ne
-        { x: transformX + transformW, y: transformY + transformH / 2 }, // e
-        { x: transformX + transformW, y: transformY + transformH }, // se
-        { x: transformX + transformW / 2, y: transformY + transformH }, // s
-        { x: transformX, y: transformY + transformH }, // sw
-        { x: transformX, y: transformY + transformH / 2 }, // w
+        { x: -transformW / 2, y: -transformH / 2 }, // nw
+        { x: 0, y: -transformH / 2 }, // n
+        { x: transformW / 2, y: -transformH / 2 }, // ne
+        { x: transformW / 2, y: 0 }, // e
+        { x: transformW / 2, y: transformH / 2 }, // se
+        { x: 0, y: transformH / 2 }, // s
+        { x: -transformW / 2, y: transformH / 2 }, // sw
+        { x: -transformW / 2, y: 0 }, // w
       ];
 
       handles.forEach((h) => {
         ctx.fillRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
         ctx.strokeRect(h.x - handleSize / 2, h.y - handleSize / 2, handleSize, handleSize);
       });
+
+      // Draw rotate handle (top-center)
+      ctx.beginPath();
+      ctx.moveTo(0, -transformH / 2);
+      ctx.lineTo(0, rotateHandleY + 10);
+      ctx.stroke();
+
+      ctx.fillStyle = colors.selection;
+      ctx.beginPath();
+      ctx.arc(0, rotateHandleY, handleSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Direction marker for rotation handle
+      ctx.strokeStyle = colors.textOnColor;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, rotateHandleY, handleSize / 3, Math.PI * 0.2, Math.PI * 1.35);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(2, rotateHandleY - handleSize / 3);
+      ctx.lineTo(6, rotateHandleY - handleSize / 3 + 2);
+      ctx.lineTo(2, rotateHandleY - handleSize / 3 + 5);
+      ctx.stroke();
 
       ctx.restore();
     }
@@ -685,6 +729,7 @@ export function useCanvasRendering(
     isTransformActive,
     transformLayerId,
     transformOriginalImageData,
+    transformRotation,
     isSelectionBasedTransform,
     // Guide-related dependencies
     guides,

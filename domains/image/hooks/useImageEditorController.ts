@@ -450,6 +450,7 @@ export function useImageEditorController() {
     isTransformActive: transformState.isActive,
     transformLayerId: transformState.layerId,
     transformOriginalImageData: transformState.originalImageData,
+    transformRotation: transformState.rotation,
     isSelectionBasedTransform: transformState.isSelectionBased,
     guides,
     showGuides,

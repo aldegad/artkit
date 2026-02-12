@@ -1,20 +1,23 @@
 "use client";
 
 import { useCallback } from "react";
-import { showErrorToast } from "@/shared/components";
+import { showErrorToast, showInfoToast } from "@/shared/components";
 import type { SpriteTrack } from "../types";
 import {
   downloadCompositedFramesAsZip,
   downloadCompositedSpriteSheet,
   downloadOptimizedSpriteZip,
 } from "../utils/export";
+import { compositeFrame } from "../utils/compositor";
 import type { SpriteExportSettings } from "../components/SpriteExportModal";
 import type { SpriteMp4ExportOptions } from "./useSpriteExport";
 
 interface UseSpriteExportActionsOptions {
   hasRenderableFrames: boolean;
   tracks: SpriteTrack[];
+  currentFrameIndex: number;
   projectName: string;
+  exportFrameSize?: { width: number; height: number } | null;
   fps: number;
   exportMp4: (
     tracks: SpriteTrack[],
@@ -25,10 +28,12 @@ interface UseSpriteExportActionsOptions {
   endProgress: () => void;
   closeExportModal: () => void;
   exportFailedLabel: string;
+  noFrameToExportLabel?: string;
 }
 
 interface UseSpriteExportActionsResult {
   handleExport: (settings: SpriteExportSettings) => Promise<void>;
+  handleExportCurrentFrame: () => Promise<void>;
 }
 
 export function useSpriteExportActions(
@@ -37,13 +42,16 @@ export function useSpriteExportActions(
   const {
     hasRenderableFrames,
     tracks,
+    currentFrameIndex,
     projectName,
+    exportFrameSize,
     fps,
     exportMp4,
     startProgress,
     endProgress,
     closeExportModal,
     exportFailedLabel,
+    noFrameToExportLabel,
   } = options;
 
   const handleExport = useCallback(async (settings: SpriteExportSettings) => {
@@ -119,7 +127,49 @@ export function useSpriteExportActions(
     tracks,
   ]);
 
+  const handleExportCurrentFrame = useCallback(async () => {
+    if (!hasRenderableFrames) {
+      showInfoToast(noFrameToExportLabel || "No frame available to export.");
+      return;
+    }
+
+    try {
+      const composited = await compositeFrame(
+        tracks,
+        currentFrameIndex,
+        exportFrameSize ?? undefined,
+        { includeDataUrl: false },
+      );
+
+      if (!composited) {
+        showInfoToast(noFrameToExportLabel || "No frame available to export.");
+        return;
+      }
+
+      const resolvedProjectName = projectName.trim() || "sprite-project";
+      const frameNumber = currentFrameIndex + 1;
+      const fileName = `${resolvedProjectName}-frame-${String(frameNumber).padStart(3, "0")}.png`;
+
+      const link = document.createElement("a");
+      link.download = fileName;
+      link.href = composited.canvas.toDataURL("image/png");
+      link.click();
+    } catch (error) {
+      console.error("Current frame export failed:", error);
+      showErrorToast(`${exportFailedLabel}: ${(error as Error).message}`);
+    }
+  }, [
+    currentFrameIndex,
+    exportFailedLabel,
+    exportFrameSize,
+    hasRenderableFrames,
+    noFrameToExportLabel,
+    projectName,
+    tracks,
+  ]);
+
   return {
     handleExport,
+    handleExportCurrentFrame,
   };
 }
