@@ -189,8 +189,18 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   );
 
   const getTrackAtY = useCallback(
-    (y: number): { trackId: string | null; inMaskLane: boolean; inTransformLane: boolean } => {
-      if (tracks.length === 0 || y < 0) {
+    (
+      y: number,
+      options?: { fallbackToEdgeTrack?: boolean }
+    ): { trackId: string | null; inMaskLane: boolean; inTransformLane: boolean } => {
+      const fallbackToEdgeTrack = options?.fallbackToEdgeTrack ?? false;
+      if (tracks.length === 0) {
+        return { trackId: null, inMaskLane: false, inTransformLane: false };
+      }
+      if (y < 0) {
+        if (fallbackToEdgeTrack) {
+          return { trackId: tracks[0].id, inMaskLane: false, inTransformLane: false };
+        }
         return { trackId: null, inMaskLane: false, inTransformLane: false };
       }
 
@@ -219,7 +229,10 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         offset = trackEnd;
       }
 
-      return { trackId: tracks[tracks.length - 1].id, inMaskLane: false, inTransformLane: false };
+      if (fallbackToEdgeTrack) {
+        return { trackId: tracks[tracks.length - 1].id, inMaskLane: false, inTransformLane: false };
+      }
+      return { trackId: null, inMaskLane: false, inTransformLane: false };
     },
     [tracks, getMasksForTrack, getTransformLaneHeight]
   );
@@ -836,7 +849,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         .filter((item) => item.type === "clip")
         .map((item) => item.id)
     );
-    const pointerTrackId = getTrackAtY(contentY).trackId || null;
+    const pointerTrackId = getTrackAtY(contentY, { fallbackToEdgeTrack: true }).trackId || null;
     const timeDelta = getSnappedClipMoveTimeDelta(drag, deltaTime, movingClipIds);
 
     // Move all items by the same time delta.
