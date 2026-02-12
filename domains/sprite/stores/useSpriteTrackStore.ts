@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { Point, Size, SpriteFrame, SpriteTrack } from "../types";
 import { deepCopyFrames } from "../utils/frameUtils";
+import { useSpriteUIStore } from "./useSpriteUIStore";
 
 // ============================================
 // Types
@@ -119,6 +120,37 @@ function generateTrackId(): string {
   return `track-${Date.now()}-${nextTrackCounter++}`;
 }
 
+function resolveFrameSize(imageSize: Size): Size {
+  const canvasSize = useSpriteUIStore.getState().canvasSize;
+  const widthCandidate = canvasSize?.width ?? imageSize.width;
+  const heightCandidate = canvasSize?.height ?? imageSize.height;
+  const width = Number.isFinite(widthCandidate) ? Math.max(1, Math.round(widthCandidate)) : 1;
+  const height = Number.isFinite(heightCandidate) ? Math.max(1, Math.round(heightCandidate)) : 1;
+  return { width, height };
+}
+
+function createTransparentFrameDataUrl(size: Size): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return undefined;
+  ctx.clearRect(0, 0, size.width, size.height);
+  return canvas.toDataURL("image/png");
+}
+
+function createEmptyFrame(frameId: number, frameSize: Size): SpriteFrame {
+  const imageData = createTransparentFrameDataUrl(frameSize);
+  return {
+    id: frameId,
+    points: [],
+    name: `Frame ${frameId}`,
+    imageData,
+    offset: { x: 0, y: 0 },
+  };
+}
+
 // ============================================
 // Store
 // ============================================
@@ -147,13 +179,18 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
   // Track Actions
   addTrack: (name, frames) => {
     const id = generateTrackId();
-    const { tracks } = get();
+    const { tracks, nextFrameId, imageSize } = get();
     const trackName = name || `Track ${tracks.length + 1}`;
+    const hasProvidedFrames = Array.isArray(frames);
+    const newTrackFrames = hasProvidedFrames
+      ? deepCopyFrames(frames)
+      : [createEmptyFrame(nextFrameId, resolveFrameSize(imageSize))];
+    const defaultFrameId = hasProvidedFrames ? null : newTrackFrames[0]?.id ?? null;
 
     const newTrack: SpriteTrack = {
       id,
       name: trackName,
-      frames: frames ? deepCopyFrames(frames) : [],
+      frames: newTrackFrames,
       visible: true,
       locked: false,
       opacity: 100,
@@ -166,6 +203,10 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
     set({
       tracks: newTracks,
       activeTrackId: id,
+      nextFrameId: hasProvidedFrames ? nextFrameId : nextFrameId + 1,
+      selectedFrameId: defaultFrameId,
+      selectedFrameIds: defaultFrameId !== null ? [defaultFrameId] : [],
+      currentFrameIndex: 0,
       isPlaying: false,
     });
 
@@ -264,7 +305,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
   },
 
   insertEmptyFrameToTrack: (trackId, insertIndex) => {
-    const { tracks, nextFrameId } = get();
+    const { tracks, nextFrameId, imageSize } = get();
     const targetTrack = tracks.find((track) => track.id === trackId);
     if (!targetTrack) return null;
 
@@ -274,12 +315,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
         : targetTrack.frames.length;
 
     const newFrameId = nextFrameId;
-    const emptyFrame: SpriteFrame = {
-      id: newFrameId,
-      points: [],
-      name: `Frame ${newFrameId}`,
-      offset: { x: 0, y: 0 },
-    };
+    const emptyFrame = createEmptyFrame(newFrameId, resolveFrameSize(imageSize));
 
     set((state) => ({
       tracks: state.tracks.map((track) => {
