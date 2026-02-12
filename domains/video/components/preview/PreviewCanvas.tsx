@@ -33,6 +33,7 @@ import {
   drawMaskRegionOverlay,
   drawTransformBoundsOverlay,
 } from "./previewCanvasOverlayDrawing";
+import { drawMaskedClipLayer } from "./previewMaskedClipDrawing";
 import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
 import { usePreviewClipDragSession } from "./usePreviewClipDragSession";
 import { usePreviewCoordinateHelpers } from "./usePreviewCoordinateHelpers";
@@ -561,94 +562,29 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           }
 
           if (clipMaskSource) {
-            // Draw with mask using offscreen compositing
-            if (!maskTempCanvasRef.current) {
-              maskTempCanvasRef.current = document.createElement("canvas");
-            }
-            const tmpCanvas = maskTempCanvasRef.current;
-            // Mask is project-canvas sized
-            const maskW = project.canvasSize.width;
-            const maskH = project.canvasSize.height;
-            if (tmpCanvas.width !== maskW || tmpCanvas.height !== maskH) {
-              tmpCanvas.width = maskW;
-              tmpCanvas.height = maskH;
-            }
-            const tmpCtx = tmpCanvas.getContext("2d");
-            if (tmpCtx) {
-              tmpCtx.imageSmoothingEnabled = true;
-              tmpCtx.imageSmoothingQuality = "high";
-              tmpCtx.clearRect(0, 0, maskW, maskH);
-              tmpCtx.globalCompositeOperation = "source-over";
-              tmpCtx.globalAlpha = 1;
-              // Draw clip at its position within the project canvas
-              drawScaledImage(
-                tmpCtx,
-                sourceEl,
-                {
-                  x: clipPosition.x,
-                  y: clipPosition.y,
-                  width: clip.sourceSize.width * getClipScaleX(clip),
-                  height: clip.sourceSize.height * getClipScaleY(clip),
-                },
-                { mode: "continuous", progressiveMinify: !playback.isPlaying },
-              );
-              tmpCtx.globalCompositeOperation = "destination-in";
-              drawScaledImage(
-                tmpCtx,
-                clipMaskSource,
-                { x: 0, y: 0, width: maskW, height: maskH },
-                { mode: "continuous" },
-              );
-              tmpCtx.globalCompositeOperation = "source-over";
-
-              ctx.globalAlpha = clip.opacity / 100;
-              drawScaledImage(
-                ctx,
-                tmpCanvas,
-                { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-                { mode: "continuous", progressiveMinify: !playback.isPlaying },
-              );
-              ctx.globalAlpha = 1;
-            }
-
-            // Draw mask overlay when selected or editing
-            const showOverlay = activeTrackId === clip.trackId && activeMaskId && clipMaskSource;
-            if (showOverlay) {
-              if (!maskOverlayCanvasRef.current) {
-                maskOverlayCanvasRef.current = document.createElement("canvas");
-              }
-              const overlayCanvas = maskOverlayCanvasRef.current;
-              if (overlayCanvas.width !== maskW || overlayCanvas.height !== maskH) {
-                overlayCanvas.width = maskW;
-                overlayCanvas.height = maskH;
-              }
-              const overlayCtx = overlayCanvas.getContext("2d");
-              if (overlayCtx) {
-                overlayCtx.imageSmoothingEnabled = true;
-                overlayCtx.imageSmoothingQuality = "high";
-                overlayCtx.clearRect(0, 0, maskW, maskH);
-                overlayCtx.globalCompositeOperation = "source-over";
-                drawScaledImage(
-                  overlayCtx,
-                  clipMaskSource,
-                  { x: 0, y: 0, width: maskW, height: maskH },
-                  { mode: "continuous" },
-                );
-                // Tint: red when editing, purple when selected
-                overlayCtx.globalCompositeOperation = "source-in";
-                overlayCtx.fillStyle = isEditingMask
-                  ? "rgba(255, 60, 60, 0.35)"
-                  : "rgba(168, 85, 247, 0.3)";
-                overlayCtx.fillRect(0, 0, maskW, maskH);
-
-                drawScaledImage(
-                  ctx,
-                  overlayCanvas,
-                  { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-                  { mode: "continuous", progressiveMinify: !playback.isPlaying },
-                );
-              }
-            }
+            const overlayTint = activeTrackId === clip.trackId && activeMaskId
+              ? isEditingMask
+                ? "rgba(255, 60, 60, 0.35)"
+                : "rgba(168, 85, 247, 0.3)"
+              : null;
+            drawMaskedClipLayer({
+              ctx,
+              sourceEl,
+              clipMaskSource,
+              clipProjectRect: {
+                x: clipPosition.x,
+                y: clipPosition.y,
+                width: clip.sourceSize.width * getClipScaleX(clip),
+                height: clip.sourceSize.height * getClipScaleY(clip),
+              },
+              projectSize: project.canvasSize,
+              previewRect: { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+              clipOpacity: clip.opacity / 100,
+              progressiveMinify: !playback.isPlaying,
+              maskTempCanvasRef,
+              maskOverlayCanvasRef,
+              overlayTint,
+            });
           } else {
             ctx.globalAlpha = clip.opacity / 100;
             drawScaledImage(
