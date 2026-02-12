@@ -29,6 +29,8 @@ interface UseSelectionToolReturn {
   setSelection: React.Dispatch<React.SetStateAction<CropArea | null>>;
   selectionFeather: number;
   setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
+  magicWandTolerance: number;
+  setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   isMovingSelection: boolean;
   setIsMovingSelection: React.Dispatch<React.SetStateAction<boolean>>;
   isDuplicating: boolean;
@@ -81,6 +83,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [selectionFeather, setSelectionFeather] = useState(0);
+  const [magicWandTolerance, setMagicWandTolerance] = useState(24);
 
   // Refs
   const floatingLayerRef = useRef<FloatingLayer | null>(null);
@@ -303,6 +306,8 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setSelection,
     selectionFeather,
     setSelectionFeather,
+    magicWandTolerance,
+    setMagicWandTolerance,
     isMovingSelection,
     setIsMovingSelection,
     isDuplicating,

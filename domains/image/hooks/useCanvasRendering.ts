@@ -522,8 +522,8 @@ export function useCanvasRendering(
     }
 
     // Draw marquee selection (dotted line)
-    // Show selection for tools that use it: marquee, move, fill, brush, eraser
-    if (selection && (toolMode === "marquee" || toolMode === "move" || toolMode === "fill" || toolMode === "brush" || toolMode === "eraser" || floatingLayerRef.current)) {
+    // Show selection for tools that use it: marquee, move, fill, brush, eraser, magic wand
+    if (selection && (toolMode === "marquee" || toolMode === "move" || toolMode === "fill" || toolMode === "brush" || toolMode === "eraser" || toolMode === "magicWand" || floatingLayerRef.current)) {
       const selX = offsetX + selection.x * zoom;
       const selY = offsetY + selection.y * zoom;
       const selW = selection.width * zoom;

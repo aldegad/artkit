@@ -15,6 +15,7 @@ export interface EyedropperFillHandlerOptions extends BaseHandlerOptions {
     pan: Point
   ) => void;
   fillWithColor: () => void;
+  applyMagicWandSelection: (x: number, y: number) => void;
 }
 
 export interface UseEyedropperFillHandlerReturn {
@@ -22,7 +23,7 @@ export interface UseEyedropperFillHandlerReturn {
 }
 
 export function useEyedropperFillHandler(options: EyedropperFillHandlerOptions): UseEyedropperFillHandlerReturn {
-  const { canvasRef, zoom, pan, pickColor, fillWithColor } = options;
+  const { canvasRef, zoom, pan, pickColor, fillWithColor, applyMagicWandSelection } = options;
 
   const handleMouseDown = useCallback(
     (ctx: MouseEventContext): HandlerResult => {
@@ -40,9 +41,15 @@ export function useEyedropperFillHandler(options: EyedropperFillHandlerOptions):
         return { handled: true };
       }
 
+      // Magic wand tool
+      if (activeMode === "magicWand" && inBounds) {
+        applyMagicWandSelection(imagePos.x, imagePos.y);
+        return { handled: true };
+      }
+
       return { handled: false };
     },
-    [canvasRef, zoom, pan, pickColor, fillWithColor]
+    [canvasRef, zoom, pan, pickColor, fillWithColor, applyMagicWandSelection]
   );
 
   return {

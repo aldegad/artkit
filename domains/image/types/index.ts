@@ -55,6 +55,7 @@ export type EditorToolMode =
   | "zoom"
   | "brush"
   | "eraser"
+  | "magicWand"
   | "eyedropper"
   | "stamp"
   | "marquee"
