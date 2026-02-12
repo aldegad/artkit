@@ -3,6 +3,7 @@
 // ============================================
 
 export { useFrameBackgroundRemoval } from "./useFrameBackgroundRemoval";
+export { useFrameFill } from "./useFrameFill";
 export { useFrameInterpolation } from "./useFrameInterpolation";
 export { useSpriteKeyboardShortcuts } from "./useSpriteKeyboardShortcuts";
 export { useSpriteExport } from "./useSpriteExport";
