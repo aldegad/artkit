@@ -11,6 +11,8 @@ export interface ImageFile {
   originalSize: number;
   width: number;
   height: number;
+  convertedWidth?: number;
+  convertedHeight?: number;
   convertedUrl?: string;
   convertedSize?: number;
   convertedBlob?: Blob;
