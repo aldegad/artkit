@@ -3,7 +3,12 @@
 import { useCallback, useRef } from "react";
 import { useMask } from "../contexts/MaskContext";
 import { Point } from "@/shared/types";
-import { drawDab as sharedDrawDab, drawLine as sharedDrawLine } from "@/shared/utils/brushEngine";
+import {
+  drawDab as sharedDrawDab,
+  drawLine as sharedDrawLine,
+  eraseDabLinear,
+  eraseLineLinear,
+} from "@/shared/utils/brushEngine";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { normalizePressureValue } from "@/shared/utils/pointerPressure";
 
@@ -106,10 +111,15 @@ export function useMaskTool(): UseMaskToolReturn {
   const drawMaskDab = useCallback(
     (ctx: CanvasRenderingContext2D, x: number, y: number, pressure: number = 1) => {
       const sample = resolveBrushSample(pressure);
-
-      ctx.save();
       if (sample.isEraser) {
-        ctx.globalCompositeOperation = "destination-out";
+        eraseDabLinear(ctx, {
+          x,
+          y,
+          radius: sample.radius,
+          hardness: sample.hardness01,
+          alpha: sample.alpha,
+        });
+        return;
       }
 
       sharedDrawDab(ctx, {
@@ -119,10 +129,8 @@ export function useMaskTool(): UseMaskToolReturn {
         hardness: sample.hardness01,
         color: "#ffffff",
         alpha: sample.alpha,
-        isEraser: sample.isEraser,
+        isEraser: false,
       });
-
-      ctx.restore();
     },
     [resolveBrushSample],
   );
@@ -131,10 +139,18 @@ export function useMaskTool(): UseMaskToolReturn {
   const drawMaskLine = useCallback(
     (ctx: CanvasRenderingContext2D, from: Point, to: Point, pressure: number = 1) => {
       const sample = resolveBrushSample(pressure);
-
-      ctx.save();
       if (sample.isEraser) {
-        ctx.globalCompositeOperation = "destination-out";
+        eraseLineLinear(ctx, {
+          from,
+          to,
+          spacing: sample.spacing,
+          dab: {
+            radius: sample.radius,
+            hardness: sample.hardness01,
+            alpha: sample.alpha,
+          },
+        });
+        return;
       }
 
       sharedDrawLine(ctx, {
@@ -146,11 +162,9 @@ export function useMaskTool(): UseMaskToolReturn {
           hardness: sample.hardness01,
           color: "#ffffff",
           alpha: sample.alpha,
-          isEraser: sample.isEraser,
+          isEraser: false,
         },
       });
-
-      ctx.restore();
     },
     [resolveBrushSample],
   );
