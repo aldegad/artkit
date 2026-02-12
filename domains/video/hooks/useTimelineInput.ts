@@ -259,26 +259,35 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   // Find clip at position (returns null for mask lane clicks)
   const findClipAtPosition = useCallback(
-    (x: number, contentY: number): { clip: Clip; handle: "start" | "end" | "body" } | null => {
+    (
+      x: number,
+      contentY: number,
+      options?: { trimHandleHitWidth?: number }
+    ): { clip: Clip; handle: "start" | "end" | "body" } | null => {
       const { trackId, inMaskLane, inTransformLane } = getTrackAtY(contentY);
       if (!trackId || inMaskLane || inTransformLane) return null;
 
       const time = pixelToTime(x);
       const trackClips = clipsByTrackDesc.get(trackId) || [];
+      const trimHandleHitWidth = options?.trimHandleHitWidth ?? UI.TRIM_HANDLE_WIDTH;
 
       for (const clip of trackClips) {
         const clipStartX = timeToPixel(clip.startTime);
         const clipEndX = timeToPixel(clip.startTime + clip.duration);
+        const isWithinClipOrTrimHotzone =
+          x >= clipStartX - trimHandleHitWidth && x <= clipEndX + trimHandleHitWidth;
+        if (!isWithinClipOrTrimHotzone) continue;
 
-        // Check if within clip bounds
+        // Check for trim handles first (allows grabbing slightly outside clip bounds)
+        if (Math.abs(x - clipStartX) <= trimHandleHitWidth) {
+          return { clip, handle: "start" };
+        }
+        if (Math.abs(x - clipEndX) <= trimHandleHitWidth) {
+          return { clip, handle: "end" };
+        }
+
+        // Check clip body
         if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
-          // Check for trim handles
-          if (Math.abs(x - clipStartX) < UI.TRIM_HANDLE_WIDTH) {
-            return { clip, handle: "start" };
-          }
-          if (Math.abs(x - clipEndX) < UI.TRIM_HANDLE_WIDTH) {
-            return { clip, handle: "end" };
-          }
           return { clip, handle: "body" };
         }
       }
@@ -622,10 +631,35 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       return;
     }
 
-    capturePointer(e.pointerId, e.clientX, e.clientY);
     const timelineViewport = timelineViewportRef.current;
-    const clipResult = findClipAtPosition(x, contentY);
+    const clipResult = findClipAtPosition(x, contentY, {
+      trimHandleHitWidth: UI.TRIM_HANDLE_TOUCH_WIDTH,
+    });
 
+    // Touch trim should start immediately (no long-press/pan arbitration)
+    if (
+      clipResult
+      && (clipResult.handle === "start" || clipResult.handle === "end")
+      && (toolMode === "select" || toolMode === "trim")
+    ) {
+      e.preventDefault();
+      capturePointer(e.pointerId, e.clientX, e.clientY);
+      saveToHistory();
+      setDragState(createTrimDragState({
+        handle: clipResult.handle,
+        clipId: clipResult.clip.id,
+        x,
+        contentY,
+        time,
+        clipStart: clipResult.clip.startTime,
+        clipDuration: clipResult.clip.duration,
+        clipTrimIn: clipResult.clip.trimIn,
+      }));
+      selectClip(clipResult.clip.id, false);
+      return;
+    }
+
+    capturePointer(e.pointerId, e.clientX, e.clientY);
     setTouchPending({
       pointerId: e.pointerId,
       clientX: e.clientX,
@@ -638,7 +672,17 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       time,
       clipResult,
     });
-  }, [capturePointer, findClipAtPosition, getTrackAtY, seekAndKeepVisible, timelineViewportRef, tracksContainerRef]);
+  }, [
+    capturePointer,
+    findClipAtPosition,
+    getTrackAtY,
+    seekAndKeepVisible,
+    timelineViewportRef,
+    tracksContainerRef,
+    toolMode,
+    saveToHistory,
+    selectClip,
+  ]);
 
   const startPlayheadDrag = useCallback((options: {
     pointerId: number;
@@ -785,7 +829,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       return;
     }
 
-    const result = findClipAtPosition(x, contentY);
+    const result = findClipAtPosition(x, contentY, {
+      trimHandleHitWidth: UI.TRIM_HANDLE_WIDTH,
+    });
     if (!result) {
       startPlayheadDrag({
         pointerId: e.pointerId,
@@ -1116,6 +1162,23 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       setDragState(INITIAL_TIMELINE_DRAG_STATE);
     },
   });
+
+  // Keep resize cursor stable while trim dragging, even if pointer leaves the handle.
+  useEffect(() => {
+    if (dragState.type !== "clip-trim-start" && dragState.type !== "clip-trim-end") {
+      return;
+    }
+
+    const previousBodyCursor = document.body.style.cursor;
+    const previousRootCursor = document.documentElement.style.cursor;
+    document.body.style.cursor = "ew-resize";
+    document.documentElement.style.cursor = "ew-resize";
+
+    return () => {
+      document.body.style.cursor = previousBodyCursor;
+      document.documentElement.style.cursor = previousRootCursor;
+    };
+  }, [dragState.type]);
 
   useEffect(() => {
     return () => {
