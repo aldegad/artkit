@@ -69,6 +69,7 @@ interface UseTransformToolOptions {
   editCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   layers: UnifiedLayer[];
   activeLayerId: string | null;
+  zoom?: number;
   saveToHistory: () => void;
   // Selection for selection-based transform
   selection?: CropArea | null;
@@ -181,6 +182,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     editCanvasRef,
     layers,
     activeLayerId,
+    zoom = 1,
     saveToHistory,
     // Snap options
     selection,
@@ -245,18 +247,22 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         width: transformState.bounds.width,
         height: transformState.bounds.height,
       };
+      // Keep interaction hit area stable in screen pixels regardless of zoom.
+      const interactionZoom = Math.max(0.0001, zoom);
+      const rotateHandleHitArea = ROTATE_HANDLE_HIT_AREA / interactionZoom;
+      const handleHitArea = HANDLE_HIT_AREA / interactionZoom;
       const rotateHandleY = localRect.y - ROTATE_HANDLE_OFFSET;
       const distanceToRotateHandle = Math.hypot(localPoint.x, localPoint.y - rotateHandleY);
-      if (distanceToRotateHandle <= ROTATE_HANDLE_HIT_AREA) {
+      if (distanceToRotateHandle <= rotateHandleHitArea) {
         return "rotate";
       }
 
       return getRectHandleAtPosition(localPoint, localRect, {
-        handleSize: HANDLE_HIT_AREA,
+        handleSize: handleHitArea,
         includeMove: true,
       }) as TransformHandle;
     },
-    [transformState.bounds, transformState.rotation]
+    [transformState.bounds, transformState.rotation, zoom]
   );
 
   // Helper function to find content bounds in a canvas
