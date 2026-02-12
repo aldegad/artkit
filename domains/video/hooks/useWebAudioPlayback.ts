@@ -112,6 +112,9 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   // Stop all active audio source nodes
   const stopAllNodes = useCallback(() => {
     for (const [, node] of activeNodesRef.current) {
+      // Prevent stale onended callbacks from touching the active map
+      // after we have already force-stopped and re-scheduled nodes.
+      node.sourceNode.onended = null;
       try {
         node.sourceNode.stop();
       } catch {
@@ -199,6 +202,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     // 2. Remove nodes for clips that are no longer active
     for (const [clipId, node] of activeNodesRef.current) {
       if (!shouldBeActive.has(clipId)) {
+        node.sourceNode.onended = null;
         try {
           node.sourceNode.stop();
         } catch {
@@ -263,7 +267,13 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
 
       // Auto-cleanup when source node finishes
       sourceNode.onended = () => {
-        activeNodesRef.current.delete(clipId);
+        // Guard against stop/reschedule races:
+        // only remove the node if this callback belongs to
+        // the currently registered active node for this clip.
+        const activeNode = activeNodesRef.current.get(clipId);
+        if (activeNode && activeNode.sourceNode === sourceNode) {
+          activeNodesRef.current.delete(clipId);
+        }
         debugStatsRef.current.endedNodes += 1;
         sourceNode.disconnect();
         gainNode.disconnect();
