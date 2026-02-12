@@ -5,6 +5,7 @@
 import { useCallback } from "react";
 import type { MouseEventContext, HandlerResult, BrushHandlerOptions } from "./types";
 import { showInfoToast } from "@/shared/components";
+import { getPointerPressure } from "@/shared/utils";
 
 export interface UseBrushHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
@@ -14,6 +15,12 @@ export interface UseBrushHandlerReturn {
 export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerReturn {
   const { activeLayerPosition, drawOnEditCanvas, resetLastDrawPoint, stampSource, setStampSource, saveToHistory } =
     options;
+  const resolvePressure = useCallback((e: MouseEventContext["e"]) => {
+    if ("pointerType" in e) {
+      return getPointerPressure(e);
+    }
+    return 1;
+  }, []);
 
   const handleMouseDown = useCallback(
     (ctx: MouseEventContext): HandlerResult => {
@@ -22,7 +29,11 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
       // Stamp tool
       if (activeMode === "stamp") {
         if (e.altKey && inBounds) {
-          setStampSource({ x: imagePos.x, y: imagePos.y });
+          // Keep stamp source in active-layer local coordinates for consistent sampling.
+          const sourceX = imagePos.x - (activeLayerPosition?.x || 0);
+          const sourceY = imagePos.y - (activeLayerPosition?.y || 0);
+          setStampSource({ x: sourceX, y: sourceY });
+          resetLastDrawPoint();
           return { handled: true };
         }
 
@@ -34,7 +45,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
         if (inBounds) {
           saveToHistory();
           resetLastDrawPoint();
-          const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
+          const pressure = resolvePressure(e);
           // Convert from image coordinates to layer-local coordinates
           const layerX = imagePos.x - (activeLayerPosition?.x || 0);
           const layerY = imagePos.y - (activeLayerPosition?.y || 0);
@@ -51,7 +62,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
       if ((activeMode === "brush" || activeMode === "eraser") && inBounds) {
         saveToHistory();
         resetLastDrawPoint();
-        const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
+        const pressure = resolvePressure(e);
         // Convert from image coordinates to layer-local coordinates
         const layerX = imagePos.x - (activeLayerPosition?.x || 0);
         const layerY = imagePos.y - (activeLayerPosition?.y || 0);
@@ -64,7 +75,15 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
 
       return { handled: false };
     },
-    [activeLayerPosition, drawOnEditCanvas, resetLastDrawPoint, stampSource, setStampSource, saveToHistory]
+    [
+      activeLayerPosition,
+      drawOnEditCanvas,
+      resetLastDrawPoint,
+      stampSource,
+      setStampSource,
+      saveToHistory,
+      resolvePressure,
+    ]
   );
 
   const handleMouseMove = useCallback(
@@ -74,13 +93,13 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
 
       const clampedX = Math.max(0, Math.min(imagePos.x, displayWidth));
       const clampedY = Math.max(0, Math.min(imagePos.y, displayHeight));
-      const pressure = "pressure" in e ? (e.pressure as number) || 1 : 1;
+      const pressure = resolvePressure(e);
       // Convert from image coordinates to layer-local coordinates
       const layerX = clampedX - (activeLayerPosition?.x || 0);
       const layerY = clampedY - (activeLayerPosition?.y || 0);
       drawOnEditCanvas(layerX, layerY, false, pressure);
     },
-    [activeLayerPosition, drawOnEditCanvas]
+    [activeLayerPosition, drawOnEditCanvas, resolvePressure]
   );
 
   return {

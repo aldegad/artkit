@@ -25,6 +25,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
     setIsMovingSelection,
     setIsDuplicating,
     activeLayerId,
+    activeLayerPosition,
     updateLayerPosition,
     updateMultipleLayerPositions,
     saveToHistory,
@@ -57,7 +58,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
             const editCanvas = editCanvasRef.current;
             const ctx2d = editCanvas?.getContext("2d");
             const img = imageRef.current;
-            if (!editCanvas || !ctx2d || !img) return { handled: false };
+            if (!editCanvas || !ctx2d) return { handled: false };
 
             // Create composite canvas to get the selected area
             const compositeCanvas = document.createElement("canvas");
@@ -66,11 +67,15 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
             const compositeCtx = compositeCanvas.getContext("2d");
             if (!compositeCtx) return { handled: false };
 
-            compositeCtx.translate(displayWidth / 2, displayHeight / 2);
-            compositeCtx.rotate((rotation * Math.PI) / 180);
-            compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
-            compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-            compositeCtx.drawImage(editCanvas, 0, 0);
+            if (img) {
+              compositeCtx.translate(displayWidth / 2, displayHeight / 2);
+              compositeCtx.rotate((rotation * Math.PI) / 180);
+              compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
+              compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+            const layerPosX = activeLayerPosition?.x || 0;
+            const layerPosY = activeLayerPosition?.y || 0;
+            compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
 
             // Copy selection to floating layer
             const imageData = compositeCtx.getImageData(
@@ -90,9 +95,11 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
             saveToHistory();
 
             // Clear the original selection area (cut operation)
+            const clearX = Math.round(selection.x - layerPosX);
+            const clearY = Math.round(selection.y - layerPosY);
             ctx2d.clearRect(
-              Math.round(selection.x),
-              Math.round(selection.y),
+              clearX,
+              clearY,
               Math.round(selection.width),
               Math.round(selection.height)
             );
@@ -160,6 +167,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
       setIsMovingSelection,
       setIsDuplicating,
       activeLayerId,
+      activeLayerPosition,
       updateLayerPosition,
       updateMultipleLayerPositions,
       selectedLayerIds,

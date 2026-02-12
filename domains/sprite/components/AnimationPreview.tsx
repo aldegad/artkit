@@ -555,12 +555,13 @@ export default function AnimationPreviewContent() {
   });
 
   const drawPixel = useCallback(
-    (x: number, y: number, color: string, isEraser = false, pressure = 1) => {
+    (x: number, y: number, color: string, isEraser = false, pressure = 1, isStrokeStart = false) => {
       const didDraw = drawSpriteBrushPixel({
         x,
         y,
         color,
         isEraser,
+        isStrokeStart,
         pressure,
         frameCtx: editFrameCtxRef.current,
         frameCanvas: editFrameCanvasRef.current,
@@ -599,7 +600,8 @@ export default function AnimationPreviewContent() {
     cancelBrushStroke,
   } = useSpriteBrushStrokeSession({
     pushHistory,
-    drawAt: (x, y, pressure) => drawPixel(x, y, brushColor, isEraserTool, pressure),
+    drawAt: (x, y, pressure, isStrokeStart) =>
+      drawPixel(x, y, brushColor, isEraserTool, pressure, isStrokeStart),
     requestRender,
     commitStroke: commitFrameEdits,
   });

@@ -110,6 +110,7 @@ export interface BrushHandlerOptions extends BaseHandlerOptions {
 // ============================================
 
 export interface SelectionHandlerOptions extends BaseHandlerOptions {
+  activeLayerPosition?: { x: number; y: number } | null;
   selection: CropArea | null;
   setSelection: (selection: CropArea | null) => void;
   isMovingSelection: boolean;
