@@ -25,6 +25,7 @@ export function useCropHandler(options: CropHandlerOptions): UseCropHandlerRetur
 
   // Store original crop area at drag start for center-based resize
   const originalCropAreaRef = useRef<CropArea | null>(null);
+  const cropMoveAxisLockRef = useRef<"x" | "y" | null>(null);
 
   const handleMouseDown = useCallback(
     (ctx: MouseEventContext): HandlerResult => {
@@ -48,6 +49,7 @@ export function useCropHandler(options: CropHandlerOptions): UseCropHandlerRetur
         }
 
         if (hit === "move") {
+          cropMoveAxisLockRef.current = null;
           return {
             handled: true,
             dragType: "move",
@@ -91,8 +93,8 @@ export function useCropHandler(options: CropHandlerOptions): UseCropHandlerRetur
             y: Math.max(0, Math.min(Math.round(imagePos.y), displayHeight)),
           };
           const nextCrop = createRectFromDrag(dragStart, clampedPos, {
-            keepAspect: Boolean(ratioValue),
-            targetAspect: ratioValue ?? undefined,
+            keepAspect: Boolean(ratioValue) || e.shiftKey,
+            targetAspect: ratioValue ?? (e.shiftKey ? 1 : undefined),
             round: true,
             bounds: {
               minX: 0,
@@ -105,8 +107,22 @@ export function useCropHandler(options: CropHandlerOptions): UseCropHandlerRetur
         }
       } else if (dragType === "move") {
         // Crop move
-        const dx = Math.round(imagePos.x) - dragStart.x;
-        const dy = Math.round(imagePos.y) - dragStart.y;
+        let dx = Math.round(imagePos.x) - dragStart.x;
+        let dy = Math.round(imagePos.y) - dragStart.y;
+
+        // Shift key constrains movement to horizontal or vertical axis.
+        if (e.shiftKey) {
+          if (!cropMoveAxisLockRef.current) {
+            cropMoveAxisLockRef.current = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+          }
+          if (cropMoveAxisLockRef.current === "x") {
+            dy = 0;
+          } else {
+            dx = 0;
+          }
+        } else {
+          cropMoveAxisLockRef.current = null;
+        }
 
         let newX, newY;
         if (canvasExpandMode) {
@@ -163,6 +179,7 @@ export function useCropHandler(options: CropHandlerOptions): UseCropHandlerRetur
 
   const handleMouseUp = useCallback(() => {
     originalCropAreaRef.current = null;
+    cropMoveAxisLockRef.current = null;
 
     if (cropArea && (cropArea.width < 10 || cropArea.height < 10)) {
       setCropArea(null);
