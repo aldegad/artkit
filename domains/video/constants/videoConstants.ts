@@ -62,6 +62,7 @@ export const PLAYBACK = {
 export const UI = {
   HANDLE_SIZE: 8,
   TRIM_HANDLE_WIDTH: 12,
+  TRIM_HANDLE_TOUCH_WIDTH: 22,
   MIN_CLIP_WIDTH: 20, // pixels
   THUMBNAIL_HEIGHT: 40,
 } as const;

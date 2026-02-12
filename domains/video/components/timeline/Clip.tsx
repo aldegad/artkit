@@ -97,6 +97,7 @@ export function Clip({ clip, isLifted }: ClipProps) {
 
   // Don't render if clip would be invisible
   const minWidth = Math.max(width, UI.MIN_CLIP_WIDTH);
+  const trimVisualZoneWidth = Math.max(UI.TRIM_HANDLE_WIDTH, 12);
 
   const clipColor = useMemo(() => {
     if (clip.type === "video") {
@@ -168,12 +169,20 @@ export function Clip({ clip, isLifted }: ClipProps) {
         <>
           {/* Left trim handle */}
           <div
-            className="absolute left-0 top-0 bottom-0 w-1.5 bg-clip-trim-handle hover:bg-clip-trim-handle-hover cursor-ew-resize rounded-l"
-          />
+            className="absolute left-0 top-0 bottom-0 pointer-events-none"
+            style={{ width: trimVisualZoneWidth }}
+          >
+            <div className="absolute inset-0 rounded-l bg-accent-primary/25" />
+            <div className="absolute left-0 top-0 bottom-0 w-2 bg-clip-trim-handle rounded-l shadow-[1px_0_0_rgba(255,255,255,0.2)]" />
+          </div>
           {/* Right trim handle */}
           <div
-            className="absolute right-0 top-0 bottom-0 w-1.5 bg-clip-trim-handle hover:bg-clip-trim-handle-hover cursor-ew-resize rounded-r"
-          />
+            className="absolute right-0 top-0 bottom-0 pointer-events-none"
+            style={{ width: trimVisualZoneWidth }}
+          >
+            <div className="absolute inset-0 rounded-r bg-accent-primary/25" />
+            <div className="absolute right-0 top-0 bottom-0 w-2 bg-clip-trim-handle rounded-r shadow-[-1px_0_0_rgba(255,255,255,0.2)]" />
+          </div>
         </>
       )}
 
