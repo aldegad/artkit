@@ -127,6 +127,8 @@ interface Translations {
   files: string;
   addMore: string;
   download: string;
+  resize: string;
+  maxSidePx: string;
 
   // Editor
   crop: string;
@@ -499,6 +501,8 @@ const translations: Record<Language, Translations> = {
     files: "파일",
     addMore: "추가하기",
     download: "다운로드",
+    resize: "리사이즈",
+    maxSidePx: "최대 변(px)",
 
     // Editor
     crop: "자르기",
@@ -869,6 +873,8 @@ const translations: Record<Language, Translations> = {
     files: "files",
     addMore: "Add more",
     download: "Download",
+    resize: "Resize",
+    maxSidePx: "Max side (px)",
 
     // Editor
     crop: "Crop",
