@@ -133,6 +133,7 @@ interface Translations {
   files: string;
   addMore: string;
   download: string;
+  flipHorizontal: string;
   resize: string;
   maxSidePx: string;
 
@@ -513,6 +514,7 @@ const translations: Record<Language, Translations> = {
     files: "파일",
     addMore: "추가하기",
     download: "다운로드",
+    flipHorizontal: "좌우 반전",
     resize: "리사이즈",
     maxSidePx: "최대 변(px)",
 
@@ -891,6 +893,7 @@ const translations: Record<Language, Translations> = {
     files: "files",
     addMore: "Add more",
     download: "Download",
+    flipHorizontal: "Flip Horizontal",
     resize: "Resize",
     maxSidePx: "Max side (px)",
 

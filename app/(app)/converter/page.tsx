@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "@/shared/contexts";
 import { ImageDropZone, Select, HeaderContent } from "@/shared/components";
-import { PlusIcon } from "@/shared/components/icons";
+import { PlusIcon, FlipIcon, RotateIcon } from "@/shared/components/icons";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
 
 export default function ImageConverter() {
@@ -15,6 +15,13 @@ export default function ImageConverter() {
   const [maxSidePx, setMaxSidePx] = useState(1024);
   const [isConverting, setIsConverting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openFilePicker = useCallback(() => {
+    if (!fileInputRef.current) return;
+    // Ensure selecting the same file again still triggers onChange.
+    fileInputRef.current.value = "";
+    fileInputRef.current.click();
+  }, []);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -38,6 +45,8 @@ export default function ImageConverter() {
             originalSize: file.size,
             width: img.width,
             height: img.height,
+            rotation: 0,
+            flipX: false,
           };
           setImages((prev) => [...prev, newImage]);
         };
@@ -46,6 +55,57 @@ export default function ImageConverter() {
       reader.readAsDataURL(file);
     });
   }, []);
+
+  const normalizeRotation = useCallback((rotation: number) => {
+    return ((Math.round(rotation) % 360) + 360) % 360;
+  }, []);
+
+  const clearConvertedData = useCallback((image: ImageFile): ImageFile => {
+    if (image.convertedUrl) {
+      URL.revokeObjectURL(image.convertedUrl);
+    }
+    return {
+      ...image,
+      convertedUrl: undefined,
+      convertedSize: undefined,
+      convertedBlob: undefined,
+      convertedWidth: undefined,
+      convertedHeight: undefined,
+    };
+  }, []);
+
+  const updateImageTransform = useCallback(
+    (id: string, updater: (image: ImageFile) => ImageFile) => {
+      setImages((prev) =>
+        prev.map((image) => {
+          if (image.id !== id) return image;
+          const next = updater(image);
+          return clearConvertedData(next);
+        }),
+      );
+    },
+    [clearConvertedData],
+  );
+
+  const handleFlipImage = useCallback(
+    (id: string) => {
+      updateImageTransform(id, (image) => ({
+        ...image,
+        flipX: !image.flipX,
+      }));
+    },
+    [updateImageTransform],
+  );
+
+  const handleRotateImage = useCallback(
+    (id: string) => {
+      updateImageTransform(id, (image) => ({
+        ...image,
+        rotation: normalizeRotation(image.rotation + 90),
+      }));
+    },
+    [normalizeRotation, updateImageTransform],
+  );
 
   const getTargetSize = useCallback(
     (width: number, height: number) => {
@@ -73,7 +133,11 @@ export default function ImageConverter() {
       return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
-          const targetSize = getTargetSize(img.width, img.height);
+          const rotation = normalizeRotation(image.rotation);
+          const isQuarterTurn = rotation % 180 !== 0;
+          const transformedWidth = isQuarterTurn ? img.height : img.width;
+          const transformedHeight = isQuarterTurn ? img.width : img.height;
+          const targetSize = getTargetSize(transformedWidth, transformedHeight);
           const canvas = document.createElement("canvas");
           canvas.width = targetSize.width;
           canvas.height = targetSize.height;
@@ -83,9 +147,17 @@ export default function ImageConverter() {
             return;
           }
 
+          const drawWidth = isQuarterTurn ? targetSize.height : targetSize.width;
+          const drawHeight = isQuarterTurn ? targetSize.width : targetSize.height;
+
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
-          ctx.drawImage(img, 0, 0, targetSize.width, targetSize.height);
+          ctx.save();
+          ctx.translate(targetSize.width / 2, targetSize.height / 2);
+          ctx.rotate((rotation * Math.PI) / 180);
+          ctx.scale(image.flipX ? -1 : 1, 1);
+          ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+          ctx.restore();
 
           const mimeType =
             outputFormat === "webp"
@@ -117,7 +189,7 @@ export default function ImageConverter() {
         img.src = image.originalUrl;
       });
     },
-    [getTargetSize, quality, outputFormat],
+    [getTargetSize, normalizeRotation, quality, outputFormat],
   );
 
   const convertAll = useCallback(async () => {
@@ -169,6 +241,24 @@ export default function ImageConverter() {
     });
     setImages([]);
   }, [images]);
+
+  const handleContentDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleContentDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const droppedFiles = Array.from(e.dataTransfer.files || []).filter((file) =>
+        file.type.startsWith("image/"),
+      );
+      if (droppedFiles.length > 0) {
+        addFiles(droppedFiles);
+      }
+    },
+    [addFiles],
+  );
 
   // formatBytes is imported from domain
 
@@ -252,6 +342,13 @@ export default function ImageConverter() {
         <div className="h-6 w-px bg-border-default" />
 
         <button
+          onClick={openFilePicker}
+          className="px-3 py-1.5 bg-surface-secondary hover:bg-surface-tertiary text-text-primary rounded-lg text-sm transition-colors"
+        >
+          {t.addMore}
+        </button>
+
+        <button
           onClick={convertAll}
           disabled={images.length === 0 || isConverting}
           className="px-4 py-1.5 bg-accent-primary hover:bg-accent-primary-hover disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
@@ -310,24 +407,44 @@ export default function ImageConverter() {
         </div>
 
       {/* Main Content */}
-      <div className={`flex-1 overflow-auto bg-surface-secondary relative ${images.length > 0 ? "p-4" : ""}`}>
+      <div
+        className={`flex-1 overflow-auto bg-surface-secondary relative ${images.length > 0 ? "p-4" : ""}`}
+        onDragOver={handleContentDragOver}
+        onDrop={handleContentDrop}
+      >
         {images.length === 0 ? (
           <ImageDropZone variant="converter" onFileSelect={addFiles} />
         ) : (
           /* Image grid */
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {images.map((image) => (
-              <div
-                key={image.id}
-                className="bg-surface-secondary rounded-xl overflow-hidden border border-border-default"
-              >
+              <div key={image.id} className="bg-surface-secondary rounded-xl overflow-hidden border border-border-default">
                 {/* Preview */}
                 <div className="aspect-square bg-surface-tertiary relative">
                   <img
                     src={image.convertedUrl || image.originalUrl}
                     alt=""
                     className="w-full h-full object-contain"
+                    style={{
+                      transform: `rotate(${normalizeRotation(image.rotation)}deg) scaleX(${image.flipX ? -1 : 1})`,
+                    }}
                   />
+                  <div className="absolute top-2 left-2 flex items-center gap-1">
+                    <button
+                      onClick={() => handleFlipImage(image.id)}
+                      className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-md flex items-center justify-center transition-colors"
+                      title={t.flipHorizontal}
+                    >
+                      <FlipIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleRotateImage(image.id)}
+                      className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-md flex items-center justify-center transition-colors"
+                      title={`${t.rotate} 90°`}
+                    >
+                      <RotateIcon className="w-4 h-4" />
+                    </button>
+                  </div>
                   {/* Remove button */}
                   <button
                     onClick={() => removeImage(image.id)}
@@ -343,7 +460,9 @@ export default function ImageConverter() {
                     {image.file.name}
                   </p>
                   <p className="text-xs text-text-tertiary mt-1">
-                    {image.width} × {image.height}
+                    {(normalizeRotation(image.rotation) % 180 === 0 ? image.width : image.height)} ×
+                    {" "}
+                    {(normalizeRotation(image.rotation) % 180 === 0 ? image.height : image.width)}
                     {typeof image.convertedWidth === "number" && typeof image.convertedHeight === "number"
                       ? ` → ${image.convertedWidth} × ${image.convertedHeight}`
                       : ""}
@@ -384,13 +503,14 @@ export default function ImageConverter() {
             ))}
 
             {/* Add more button */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
+            <button
+              type="button"
+              onClick={openFilePicker}
               className="aspect-square border-2 border-dashed border-border-default rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-accent-primary hover:bg-surface-secondary/50 transition-colors"
             >
               <PlusIcon className="w-8 h-8 text-text-tertiary" />
               <span className="text-sm text-text-tertiary">{t.addMore}</span>
-            </div>
+            </button>
           </div>
         )}
       </div>

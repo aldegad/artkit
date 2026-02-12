@@ -11,6 +11,8 @@ export interface ImageFile {
   originalSize: number;
   width: number;
   height: number;
+  rotation: number;
+  flipX: boolean;
   convertedWidth?: number;
   convertedHeight?: number;
   convertedUrl?: string;
