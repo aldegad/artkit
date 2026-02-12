@@ -33,6 +33,7 @@ import {
   drawMaskRegionOverlay,
   drawTransformBoundsOverlay,
 } from "./previewCanvasOverlayDrawing";
+import { drawPreviewCheckerboard } from "./previewCheckerboard";
 import { drawMaskedClipLayer } from "./previewMaskedClipDrawing";
 import { PreviewCanvasOverlays } from "./PreviewCanvasOverlays";
 import { usePreviewClipDragSession } from "./usePreviewClipDragSession";
@@ -342,39 +343,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     renderRequestRef,
   });
 
-  // Draw checkerboard with cached CanvasPattern to avoid per-frame tile loops.
-  const drawCheckerboard = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const size = previewPerfRef.current.draftMode
-      ? PREVIEW.CHECKERBOARD_SIZE * 2
-      : PREVIEW.CHECKERBOARD_SIZE;
-    const colors = getCanvasColorsSync();
-    const patternKey = `${size}:${colors.checkerboardLight}:${colors.checkerboardDark}`;
-
-    if (checkerPatternKeyRef.current !== patternKey || !checkerPatternRef.current) {
-      const tileCanvas = checkerPatternCanvasRef.current ?? document.createElement("canvas");
-      checkerPatternCanvasRef.current = tileCanvas;
-      tileCanvas.width = size * 2;
-      tileCanvas.height = size * 2;
-
-      const tileCtx = tileCanvas.getContext("2d");
-      if (!tileCtx) return;
-
-      tileCtx.clearRect(0, 0, tileCanvas.width, tileCanvas.height);
-      tileCtx.fillStyle = colors.checkerboardLight;
-      tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
-      tileCtx.fillStyle = colors.checkerboardDark;
-      tileCtx.fillRect(0, 0, size, size);
-      tileCtx.fillRect(size, size, size, size);
-
-      checkerPatternRef.current = ctx.createPattern(tileCanvas, "repeat");
-      checkerPatternKeyRef.current = patternKey;
-    }
-
-    if (!checkerPatternRef.current) return;
-    ctx.fillStyle = checkerPatternRef.current;
-    ctx.fillRect(0, 0, width, height);
-  }, []);
-
   const getPlaybackSampleTime = useCallback((
     time: number,
     bounds: { minFrame: number; maxFrame: number } | null = null
@@ -458,7 +426,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     ctx.beginPath();
     ctx.rect(offsetX, offsetY, previewWidth, previewHeight);
     ctx.clip();
-    drawCheckerboard(ctx, width, height);
+    drawPreviewCheckerboard({
+      ctx,
+      width,
+      height,
+      isDraftMode: previewPerfRef.current.draftMode,
+      cache: {
+        patternRef: checkerPatternRef,
+        patternKeyRef: checkerPatternKeyRef,
+        patternCanvasRef: checkerPatternCanvasRef,
+      },
+    });
     ctx.restore();
 
     // Try cached frame first (any state — instant display on seek/scrub)
