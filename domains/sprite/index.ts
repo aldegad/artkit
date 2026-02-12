@@ -43,6 +43,7 @@ export {
 // Hooks
 export {
   useFrameBackgroundRemoval,
+  useFrameFill,
   useFrameInterpolation,
   useSpriteKeyboardShortcuts,
   useSpriteExport,
