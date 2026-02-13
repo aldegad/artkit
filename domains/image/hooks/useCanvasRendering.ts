@@ -274,7 +274,9 @@ export function useCanvasRendering(
       // All layers are paint layers now - render from canvas
       const layerCanvas = layerCanvasesRef.current?.get(layer.id);
       if (layerCanvas) {
-        ctx.imageSmoothingEnabled = false;
+        const shouldSmoothPreview = zoom < 1 || Math.abs(zoom - Math.round(zoom)) > 0.001;
+        ctx.imageSmoothingEnabled = shouldSmoothPreview;
+        ctx.imageSmoothingQuality = shouldSmoothPreview ? "high" : "low";
         ctx.translate(offsetX, offsetY);
         ctx.scale(zoom, zoom);
         // Use layer position for alignment/positioning
@@ -289,7 +291,9 @@ export function useCanvasRendering(
     // Fallback: Draw legacy edit canvas if no layers but edit canvas exists
     if (layers.length === 0 && editCanvas) {
       ctx.save();
-      ctx.imageSmoothingEnabled = false;
+      const shouldSmoothPreview = zoom < 1 || Math.abs(zoom - Math.round(zoom)) > 0.001;
+      ctx.imageSmoothingEnabled = shouldSmoothPreview;
+      ctx.imageSmoothingQuality = shouldSmoothPreview ? "high" : "low";
       ctx.translate(offsetX, offsetY);
       ctx.scale(zoom, zoom);
       drawLayerWithOptionalAlphaMask(ctx, editCanvas, 0, 0);

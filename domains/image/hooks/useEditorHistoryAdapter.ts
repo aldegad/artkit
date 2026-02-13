@@ -21,6 +21,7 @@ export interface EditorHistorySnapshot {
   layers: UnifiedLayer[];
   activeLayerId: string | null;
   selectedLayerIds: string[];
+  canvasSize: { width: number; height: number };
   canvases: LayerCanvasHistoryState[];
 }
 
@@ -32,6 +33,7 @@ interface UseEditorHistoryAdapterOptions {
   canvasSize: { width: number; height: number };
   editCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   setLayers: React.Dispatch<React.SetStateAction<UnifiedLayer[]>>;
+  setCanvasSize: (size: { width: number; height: number }) => void;
   setActiveLayerId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
 }
@@ -59,6 +61,7 @@ export function useEditorHistoryAdapter(
     canvasSize,
     editCanvasRef,
     setLayers,
+    setCanvasSize,
     setActiveLayerId,
     setSelectedLayerIds,
   } = options;
@@ -84,9 +87,13 @@ export function useEditorHistoryAdapter(
       layers: layers.map(cloneLayerForHistory),
       activeLayerId,
       selectedLayerIds: [...selectedLayerIds],
+      canvasSize: {
+        width: canvasSize.width,
+        height: canvasSize.height,
+      },
       canvases,
     };
-  }, [layers, activeLayerId, selectedLayerIds, layerCanvasesRef]);
+  }, [layers, activeLayerId, selectedLayerIds, layerCanvasesRef, canvasSize.width, canvasSize.height]);
 
   const applyState = useCallback(
     (snapshot: EditorHistorySnapshot) => {
@@ -122,6 +129,7 @@ export function useEditorHistoryAdapter(
           ? snapshot.activeLayerId
           : restoredLayers[0]?.id || null;
 
+      setCanvasSize(snapshot.canvasSize);
       setLayers(restoredLayers);
       setActiveLayerId(nextActiveLayerId);
       setSelectedLayerIds(
@@ -134,6 +142,7 @@ export function useEditorHistoryAdapter(
       canvasSize.width,
       canvasSize.height,
       setLayers,
+      setCanvasSize,
       setActiveLayerId,
       setSelectedLayerIds,
       editCanvasRef,

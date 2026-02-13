@@ -91,6 +91,8 @@ interface UseTransformToolReturn {
   aspectRatio: AspectRatio;
   setAspectRatio: React.Dispatch<React.SetStateAction<AspectRatio>>;
   activeSnapSources: SnapSource[];
+  setTransformSizeByWidth: (width: number) => void;
+  setTransformSizeByHeight: (height: number) => void;
   // Actions
   startTransform: () => void;
   cancelTransform: () => void;
@@ -216,6 +218,20 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
   const [activeHandle, setActiveHandle] = useState<TransformHandle>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
   const [activeSnapSources, setActiveSnapSources] = useState<SnapSource[]>([]);
+
+  const resolveTargetAspect = useCallback((
+    ratioMode: AspectRatio,
+    originalBounds: NonNullable<TransformState["originalBounds"]>,
+    fallbackBounds: NonNullable<TransformState["bounds"]>,
+  ): number | null => {
+    if (ratioMode === "free") return null;
+    if (ratioMode === "fixed") {
+      return originalBounds.width / Math.max(1, originalBounds.height);
+    }
+    const ratioValue = ASPECT_RATIO_VALUES[ratioMode];
+    if (ratioValue !== null) return ratioValue;
+    return fallbackBounds.width / Math.max(1, fallbackBounds.height);
+  }, []);
 
   // Drag state refs for real-time updates (using refs avoids stale closure issues during fast drag)
   const isDraggingRef = useRef(false);
@@ -743,6 +759,56 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     });
   }, [transformState, layerCanvasesRef, applyTransformToLayer]);
 
+  const setTransformSizeByWidth = useCallback((width: number) => {
+    setTransformState((prev) => {
+      if (!prev.isActive || !prev.bounds || !prev.originalBounds) return prev;
+
+      const nextWidth = Math.max(10, Math.round(width));
+      const targetAspect = resolveTargetAspect(aspectRatio, prev.originalBounds, prev.bounds);
+      const nextHeight = targetAspect
+        ? Math.max(10, Math.round(nextWidth / targetAspect))
+        : Math.max(10, Math.round(prev.bounds.height));
+      const centerX = prev.bounds.x + prev.bounds.width / 2;
+      const centerY = prev.bounds.y + prev.bounds.height / 2;
+
+      return {
+        ...prev,
+        bounds: {
+          x: centerX - nextWidth / 2,
+          y: centerY - nextHeight / 2,
+          width: nextWidth,
+          height: nextHeight,
+        },
+      };
+    });
+    setActiveSnapSources([]);
+  }, [aspectRatio, resolveTargetAspect]);
+
+  const setTransformSizeByHeight = useCallback((height: number) => {
+    setTransformState((prev) => {
+      if (!prev.isActive || !prev.bounds || !prev.originalBounds) return prev;
+
+      const nextHeight = Math.max(10, Math.round(height));
+      const targetAspect = resolveTargetAspect(aspectRatio, prev.originalBounds, prev.bounds);
+      const nextWidth = targetAspect
+        ? Math.max(10, Math.round(nextHeight * targetAspect))
+        : Math.max(10, Math.round(prev.bounds.width));
+      const centerX = prev.bounds.x + prev.bounds.width / 2;
+      const centerY = prev.bounds.y + prev.bounds.height / 2;
+
+      return {
+        ...prev,
+        bounds: {
+          x: centerX - nextWidth / 2,
+          y: centerY - nextHeight / 2,
+          width: nextWidth,
+          height: nextHeight,
+        },
+      };
+    });
+    setActiveSnapSources([]);
+  }, [aspectRatio, resolveTargetAspect]);
+
   // Handle mouse down for transform
   const handleTransformMouseDown = useCallback(
     (imagePos: Point, _modifiers: { shift: boolean; alt: boolean }): TransformHandle => {
@@ -917,6 +983,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     aspectRatio,
     setAspectRatio,
     activeSnapSources,
+    setTransformSizeByWidth,
+    setTransformSizeByHeight,
     startTransform,
     cancelTransform,
     applyTransform,

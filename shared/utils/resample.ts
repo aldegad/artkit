@@ -65,19 +65,79 @@ export function loadImageFromSource(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function getCanvasContext2D(
+  canvas: HTMLCanvasElement,
+  errorMessage: string
+): CanvasRenderingContext2D {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error(errorMessage);
+  }
+  return ctx;
+}
+
 function drawResampled(
   targetCtx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  targetWidth: number,
+  targetHeight: number,
+): void {
+  targetCtx.imageSmoothingEnabled = true;
+  targetCtx.imageSmoothingQuality = "high";
+  targetCtx.clearRect(0, 0, targetWidth, targetHeight);
+  targetCtx.drawImage(source, 0, 0, targetWidth, targetHeight);
+}
+
+function resampleSourceToSize(
   source: CanvasImageSource,
   sourceWidth: number,
   sourceHeight: number,
   targetWidth: number,
   targetHeight: number,
-): void {
-  const isDownscale = targetWidth < sourceWidth || targetHeight < sourceHeight;
-  targetCtx.imageSmoothingEnabled = isDownscale;
-  targetCtx.imageSmoothingQuality = isDownscale ? "high" : "low";
-  targetCtx.clearRect(0, 0, targetWidth, targetHeight);
-  targetCtx.drawImage(source, 0, 0, targetWidth, targetHeight);
+): HTMLCanvasElement {
+  const finalWidth = clampResampleDimension(targetWidth);
+  const finalHeight = clampResampleDimension(targetHeight);
+
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = sourceWidth;
+  baseCanvas.height = sourceHeight;
+  const baseCtx = getCanvasContext2D(baseCanvas, "Failed to get base context for resampling.");
+  drawResampled(baseCtx, source, sourceWidth, sourceHeight);
+
+  let currentCanvas = baseCanvas;
+  const isDownscale = finalWidth < sourceWidth || finalHeight < sourceHeight;
+
+  // Multi-step downscale produces much cleaner results than one-shot scaling.
+  if (isDownscale) {
+    while (
+      currentCanvas.width * 0.5 >= finalWidth
+      || currentCanvas.height * 0.5 >= finalHeight
+    ) {
+      const stepWidth = Math.max(finalWidth, Math.floor(currentCanvas.width * 0.5));
+      const stepHeight = Math.max(finalHeight, Math.floor(currentCanvas.height * 0.5));
+      if (stepWidth === currentCanvas.width && stepHeight === currentCanvas.height) {
+        break;
+      }
+
+      const stepCanvas = document.createElement("canvas");
+      stepCanvas.width = stepWidth;
+      stepCanvas.height = stepHeight;
+      const stepCtx = getCanvasContext2D(stepCanvas, "Failed to get step context for resampling.");
+      drawResampled(stepCtx, currentCanvas, stepWidth, stepHeight);
+      currentCanvas = stepCanvas;
+    }
+  }
+
+  if (currentCanvas.width === finalWidth && currentCanvas.height === finalHeight) {
+    return currentCanvas;
+  }
+
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = finalWidth;
+  outputCanvas.height = finalHeight;
+  const outputCtx = getCanvasContext2D(outputCanvas, "Failed to get output context for resampling.");
+  drawResampled(outputCtx, currentCanvas, finalWidth, finalHeight);
+  return outputCanvas;
 }
 
 export async function resampleImageDataByScale(
@@ -93,16 +153,7 @@ export async function resampleImageDataByScale(
     return { dataUrl: imageData, width, height };
   }
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Failed to get 2d context for resampling.");
-  }
-
-  drawResampled(ctx, image, image.width, image.height, width, height);
+  const canvas = resampleSourceToSize(image, image.width, image.height, width, height);
 
   return {
     dataUrl: canvas.toDataURL("image/png"),
@@ -118,16 +169,5 @@ export function resampleCanvasByScale(
 ): HTMLCanvasElement {
   const width = clampResampleDimension(sourceCanvas.width * scaleX);
   const height = clampResampleDimension(sourceCanvas.height * scaleY);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Failed to get 2d context for canvas resampling.");
-  }
-
-  drawResampled(ctx, sourceCanvas, sourceCanvas.width, sourceCanvas.height, width, height);
-  return canvas;
+  return resampleSourceToSize(sourceCanvas, sourceCanvas.width, sourceCanvas.height, width, height);
 }

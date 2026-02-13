@@ -57,6 +57,9 @@ export interface EditorToolOptionsProps {
   isTransformActive?: boolean;
   transformAspectRatio?: AspectRatio;
   setTransformAspectRatio?: React.Dispatch<React.SetStateAction<AspectRatio>>;
+  transformBounds?: CropArea | null;
+  setTransformSizeByWidth?: (width: number) => void;
+  setTransformSizeByHeight?: (height: number) => void;
   onApplyTransform?: () => void;
   onCancelTransform?: () => void;
   // Translations
@@ -120,6 +123,9 @@ export function EditorToolOptions({
   isTransformActive,
   transformAspectRatio,
   setTransformAspectRatio,
+  transformBounds,
+  setTransformSizeByWidth,
+  setTransformSizeByHeight,
   onApplyTransform,
   onCancelTransform,
   translations: t,
@@ -142,6 +148,8 @@ export function EditorToolOptions({
       setCropSize(cropArea?.width || newHeight, newHeight);
     }
   };
+
+  const isTransformRatioLocked = (transformAspectRatio || "free") !== "free";
   return (
     <Scrollbar
       className="bg-surface-secondary border-b border-border-default shrink-0 min-h-[32px]"
@@ -407,6 +415,46 @@ export function EditorToolOptions({
                   options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
                   size="sm"
                 />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-secondary">W:</span>
+                <input
+                  type="number"
+                  value={transformBounds?.width ? Math.round(transformBounds.width) : ""}
+                  onChange={(e) => {
+                    const value = Math.max(10, parseInt(e.target.value, 10) || 10);
+                    setTransformSizeByWidth?.(value);
+                  }}
+                  placeholder="---"
+                  className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
+                  min={10}
+                />
+                <span className="text-xs text-text-tertiary">×</span>
+                <span className="text-xs text-text-secondary">H:</span>
+                <input
+                  type="number"
+                  value={transformBounds?.height ? Math.round(transformBounds.height) : ""}
+                  onChange={(e) => {
+                    const value = Math.max(10, parseInt(e.target.value, 10) || 10);
+                    setTransformSizeByHeight?.(value);
+                  }}
+                  placeholder="---"
+                  className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
+                  min={10}
+                />
+                <button
+                  onClick={() =>
+                    setTransformAspectRatio?.(isTransformRatioLocked ? "free" : "fixed")
+                  }
+                  className={`w-6 h-6 flex items-center justify-center rounded text-xs transition-colors ${
+                    isTransformRatioLocked
+                      ? "bg-accent-primary text-white"
+                      : "hover:bg-interactive-hover text-text-secondary"
+                  }`}
+                  title={isTransformRatioLocked ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                >
+                  {isTransformRatioLocked ? <LockAspectIcon /> : <UnlockAspectIcon />}
+                </button>
               </div>
               <div className="w-px h-4 bg-border-default" />
             </>
