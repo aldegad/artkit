@@ -308,6 +308,8 @@ export function useEditorTools() {
   const setCropArea = useSpriteToolStore((s) => s.setCropArea);
   const cropAspectRatio = useSpriteToolStore((s) => s.cropAspectRatio);
   const setCropAspectRatio = useSpriteToolStore((s) => s.setCropAspectRatio);
+  const cropScope = useSpriteToolStore((s) => s.cropScope);
+  const setCropScope = useSpriteToolStore((s) => s.setCropScope);
   const lockCropAspect = useSpriteToolStore((s) => s.lockCropAspect);
   const setLockCropAspect = useSpriteToolStore((s) => s.setLockCropAspect);
   const canvasExpandMode = useSpriteToolStore((s) => s.canvasExpandMode);
@@ -335,6 +337,8 @@ export function useEditorTools() {
     setCropArea,
     cropAspectRatio,
     setCropAspectRatio,
+    cropScope,
+    setCropScope,
     lockCropAspect,
     setLockCropAspect,
     canvasExpandMode,

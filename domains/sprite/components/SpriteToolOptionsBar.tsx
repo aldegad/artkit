@@ -1,10 +1,10 @@
 "use client";
 
-import { Scrollbar, NumberScrubber, CanvasCropControls, Tooltip } from "@/shared/components";
+import { Scrollbar, NumberScrubber, CanvasCropControls, Tooltip, Select } from "@/shared/components";
 import { BrushPresetSelector } from "@/domains/image/components/toolbars/BrushPresetSelector";
 import type { BrushPreset } from "@/domains/image/types/brush";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
-import type { SpriteToolMode, SpriteFrame, SpriteCropArea } from "../types";
+import type { SpriteToolMode, SpriteFrame, SpriteCropArea, SpriteCropScope } from "../types";
 import { FillBucketIcon } from "@/shared/components/icons";
 
 interface SpriteToolOptionsBarProps {
@@ -29,6 +29,8 @@ interface SpriteToolOptionsBarProps {
   onFillFrames: () => void;
   cropAspectRatio: AspectRatio;
   setCropAspectRatio: (ratio: AspectRatio) => void;
+  cropScope: SpriteCropScope;
+  setCropScope: (scope: SpriteCropScope) => void;
   cropArea: SpriteCropArea | null;
   lockCropAspect: boolean;
   setLockCropAspect: (locked: boolean) => void;
@@ -67,6 +69,9 @@ interface SpriteToolOptionsBarProps {
     zoomToolTip: string;
     cropToolTip: string;
     magicWandToolTip: string;
+    cropScope: string;
+    cropScopeCanvas: string;
+    cropScopeLayer: string;
   };
 }
 
@@ -96,6 +101,8 @@ export default function SpriteToolOptionsBar({
   onFillFrames,
   cropAspectRatio,
   setCropAspectRatio,
+  cropScope,
+  setCropScope,
   cropArea,
   lockCropAspect,
   setLockCropAspect,
@@ -255,22 +262,37 @@ export default function SpriteToolOptionsBar({
             />
           </>
         ) : isCropTool ? (
-          <CanvasCropControls
-            cropAspectRatio={cropAspectRatio}
-            onCropAspectRatioChange={setCropAspectRatio}
-            cropArea={cropArea}
-            onCropWidthChange={onCropWidthChange}
-            onCropHeightChange={onCropHeightChange}
-            lockCropAspect={lockCropAspect}
-            onToggleLockCropAspect={() => setLockCropAspect(!lockCropAspect)}
-            onExpandToSquare={onExpandToSquare}
-            onFitToSquare={onFitToSquare}
-            canvasExpandMode={canvasExpandMode}
-            onToggleCanvasExpandMode={() => setCanvasExpandMode(!canvasExpandMode)}
-            onSelectAllCrop={onSelectAllCrop}
-            onApplyCrop={onApplyCrop}
-            onClearCrop={onClearCrop}
-          />
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-text-secondary">{labels.cropScope}</span>
+              <Select
+                value={cropScope}
+                onChange={(value) => setCropScope(value as SpriteCropScope)}
+                options={[
+                  { value: "canvas", label: labels.cropScopeCanvas },
+                  { value: "layer", label: labels.cropScopeLayer },
+                ]}
+                size="sm"
+              />
+            </div>
+
+            <CanvasCropControls
+              cropAspectRatio={cropAspectRatio}
+              onCropAspectRatioChange={setCropAspectRatio}
+              cropArea={cropArea}
+              onCropWidthChange={onCropWidthChange}
+              onCropHeightChange={onCropHeightChange}
+              lockCropAspect={lockCropAspect}
+              onToggleLockCropAspect={() => setLockCropAspect(!lockCropAspect)}
+              onExpandToSquare={onExpandToSquare}
+              onFitToSquare={onFitToSquare}
+              canvasExpandMode={canvasExpandMode}
+              onToggleCanvasExpandMode={() => setCanvasExpandMode(!canvasExpandMode)}
+              onSelectAllCrop={onSelectAllCrop}
+              onApplyCrop={onApplyCrop}
+              onClearCrop={onClearCrop}
+            />
+          </div>
         ) : nonBrushToolDescription ? (
           <span className="text-xs text-text-tertiary">{nonBrushToolDescription}</span>
         ) : null}
