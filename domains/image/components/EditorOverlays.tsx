@@ -3,6 +3,10 @@
 import { ChangeEventHandler, RefObject } from "react";
 import { SyncDialog } from "@/shared/components/app/auth";
 import { CropArea, OutputFormat, SavedImageProject } from "../types";
+import type {
+  BackgroundRemovalModel,
+  BackgroundRemovalQuality,
+} from "@/shared/ai/backgroundRemoval";
 import { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 import { EditorStatusBar } from "./toolbars/EditorStatusBar";
 import { ExportModal } from "./ExportModal";
@@ -37,6 +41,10 @@ export interface EditorOverlaysProps {
   setShowBgRemovalConfirm: (show: boolean) => void;
   handleRemoveBackground: () => void;
   hasSelection: boolean;
+  bgRemovalQuality: BackgroundRemovalQuality;
+  setBgRemovalQuality: (quality: BackgroundRemovalQuality) => void;
+  bgRemovalModel: BackgroundRemovalModel;
+  setBgRemovalModel: (model: BackgroundRemovalModel) => void;
   isRemovingBackground: boolean;
   bgRemovalProgress: number;
   bgRemovalStatus: string;
@@ -107,6 +115,10 @@ export function EditorOverlays({
   setShowBgRemovalConfirm,
   handleRemoveBackground,
   hasSelection,
+  bgRemovalQuality,
+  setBgRemovalQuality,
+  bgRemovalModel,
+  setBgRemovalModel,
   isRemovingBackground,
   bgRemovalProgress,
   bgRemovalStatus,
@@ -161,6 +173,10 @@ export function EditorOverlays({
           handleRemoveBackground();
         }}
         hasSelection={hasSelection}
+        quality={bgRemovalQuality}
+        onQualityChange={setBgRemovalQuality}
+        model={bgRemovalModel}
+        onModelChange={setBgRemovalModel}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
         status={bgRemovalStatus}

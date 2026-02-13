@@ -65,10 +65,12 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       if (!layerCanvas) return;
 
       compositeCtx.globalAlpha = layer.opacity / 100;
+      compositeCtx.globalCompositeOperation = layer.blendMode || "source-over";
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
       drawLayerWithOptionalAlphaMask(compositeCtx, layerCanvas, posX, posY);
       compositeCtx.globalAlpha = 1;
+      compositeCtx.globalCompositeOperation = "source-over";
     });
 
     if (cropArea) {
@@ -191,8 +193,10 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
       ctx.globalAlpha = layer.opacity / 100;
+      ctx.globalCompositeOperation = layer.blendMode || "source-over";
       drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
       ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
 
       return new Promise<void>((resolve) => {
         exportCanvas.toBlob(

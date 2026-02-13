@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { getStorageProvider } from "../services/projectStorage";
@@ -51,6 +51,11 @@ import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { clearRectWithFeather } from "../utils/selectionFeather";
 import { computeMagicWandSelection } from "@/shared/utils/magicWand";
+import type {
+  BackgroundRemovalModel,
+  BackgroundRemovalQuality,
+} from "@/shared/ai/backgroundRemoval";
+import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -119,6 +124,22 @@ export function useImageEditorController() {
 
   const { canvasRef, containerRef, imageRef, fileInputRef, editCanvasRef } = useEditorRefs();
   const historyAdapterRef = useRef<HistoryAdapter<EditorHistorySnapshot> | null>(null);
+  const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>(
+    () => readAISettings().backgroundRemovalQuality
+  );
+  const [bgRemovalModel, setBgRemovalModel] = useState<BackgroundRemovalModel>(
+    () => readAISettings().backgroundRemovalModel
+  );
+
+  const handleBgRemovalQualityChange = useCallback((quality: BackgroundRemovalQuality) => {
+    setBgRemovalQuality(quality);
+    updateAISettings({ backgroundRemovalQuality: quality });
+  }, []);
+
+  const handleBgRemovalModelChange = useCallback((model: BackgroundRemovalModel) => {
+    setBgRemovalModel(model);
+    updateAISettings({ backgroundRemovalModel: model });
+  }, []);
 
   const { saveToHistory, undo, redo, clearHistory, canUndo, canRedo } = useHistory({
     editCanvasRef,
@@ -191,6 +212,7 @@ export function useImageEditorController() {
     dragOverLayerId,
     setDragOverLayerId,
     addPaintLayer,
+    addFilterLayer,
     addImageLayer,
     deleteLayer,
     selectLayer,
@@ -248,6 +270,7 @@ export function useImageEditorController() {
     layerCanvasesRef,
     editCanvasRef,
     addPaintLayer,
+    addFilterLayer,
     addImageLayer,
     deleteLayer,
     selectLayer,
@@ -600,6 +623,8 @@ export function useImageEditorController() {
     selection,
     layerCanvasesRef,
     saveToHistory,
+    quality: bgRemovalQuality,
+    model: bgRemovalModel,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
     },
@@ -745,6 +770,7 @@ export function useImageEditorController() {
     setShowGuides,
     setLockGuides,
     setSnapToGuides,
+    setIsPanLocked,
     initLayers,
     layerCanvasesRef,
     editCanvasRef,
@@ -777,6 +803,7 @@ export function useImageEditorController() {
     showGuides,
     lockGuides,
     snapToGuides,
+    isPanLocked,
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
@@ -925,6 +952,10 @@ export function useImageEditorController() {
     setShowBgRemovalConfirm,
     handleRemoveBackground,
     hasSelection: !!selection,
+    bgRemovalQuality,
+    setBgRemovalQuality: handleBgRemovalQualityChange,
+    bgRemovalModel,
+    setBgRemovalModel: handleBgRemovalModelChange,
     isRemovingBackground,
     bgRemovalProgress,
     bgRemovalStatus,

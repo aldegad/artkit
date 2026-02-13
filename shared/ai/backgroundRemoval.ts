@@ -1,20 +1,24 @@
 import {
+  BACKGROUND_REMOVAL_MODELS,
+  DEFAULT_BACKGROUND_REMOVAL_MODEL,
   removeBackground as removeBackgroundWithModel,
   removeBackgroundFromCanvas as removeBackgroundFromCanvasWithModel,
+  type BackgroundRemovalModel,
   type BackgroundRemovalOptions,
   type BackgroundRemovalQuality,
 } from "@/shared/utils/backgroundRemoval";
 import { readAISettings } from "./settings";
 
 function resolveOptions(options?: BackgroundRemovalOptions): BackgroundRemovalOptions {
-  if (options?.quality) {
+  if (options?.quality && options?.model) {
     return options;
   }
 
   const settings = readAISettings();
   return {
     ...options,
-    quality: settings.backgroundRemovalQuality,
+    quality: options?.quality ?? settings.backgroundRemovalQuality,
+    model: options?.model ?? settings.backgroundRemovalModel,
   };
 }
 
@@ -34,4 +38,8 @@ export async function removeBackgroundFromCanvas(
   return removeBackgroundFromCanvasWithModel(sourceCanvas, onProgress, resolveOptions(options));
 }
 
-export type { BackgroundRemovalOptions, BackgroundRemovalQuality };
+export {
+  BACKGROUND_REMOVAL_MODELS,
+  DEFAULT_BACKGROUND_REMOVAL_MODEL,
+};
+export type { BackgroundRemovalModel, BackgroundRemovalOptions, BackgroundRemovalQuality };

@@ -46,6 +46,7 @@ interface UseLayerManagementReturn {
 
   // Actions
   addPaintLayer: () => void;
+  addFilterLayer: () => void;
   addImageLayer: (imageSrc: string, name?: string) => void;
   deleteLayer: (layerId: string) => void;
   selectLayer: (layerId: string) => void;
@@ -199,6 +200,36 @@ export function useLayerManagement(
     setActiveLayerId(newLayer.id);
     editCanvasRef.current = canvas;
   }, [layers, getDisplayDimensions, saveToHistory, t.layer]);
+
+  // Add warm tone filter layer (non-destructive color grading layer)
+  const addFilterLayer = useCallback(() => {
+    const { width, height } = getDisplayDimensions();
+    if (width === 0 || height === 0) return;
+
+    saveToHistory?.();
+
+    const maxZIndex = layers.length > 0 ? Math.max(...layers.map((l) => l.zIndex)) + 1 : 0;
+    const newLayer = createPaintLayer(`Warm Filter ${layers.length + 1}`, maxZIndex);
+    newLayer.opacity = 32;
+    newLayer.blendMode = "soft-light";
+    newLayer.locked = true;
+    newLayer.originalSize = { width, height };
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      // Slight yellow-brown tint by default.
+      ctx.fillStyle = "#d7b461";
+      ctx.fillRect(0, 0, width, height);
+    }
+    layerCanvasesRef.current.set(newLayer.id, canvas);
+
+    setLayers((prev) => [newLayer, ...prev]);
+    setActiveLayerId(newLayer.id);
+    editCanvasRef.current = canvas;
+  }, [layers, getDisplayDimensions, saveToHistory]);
 
   // Add new layer with image drawn to canvas
   const addImageLayer = useCallback((imageSrc: string, name?: string) => {
@@ -408,15 +439,18 @@ export function useLayerManagement(
 
       if (lowerLayer.visible) {
         mergedCtx.globalAlpha = lowerLayer.opacity / 100;
+        mergedCtx.globalCompositeOperation = lowerLayer.blendMode || "source-over";
         drawLayerWithOptionalAlphaMask(mergedCtx, lowerCanvas, lowerPos.x - minX, lowerPos.y - minY);
       }
 
       if (upperLayer.visible) {
         mergedCtx.globalAlpha = upperLayer.opacity / 100;
+        mergedCtx.globalCompositeOperation = upperLayer.blendMode || "source-over";
         drawLayerWithOptionalAlphaMask(mergedCtx, upperCanvas, upperPos.x - minX, upperPos.y - minY);
       }
 
       mergedCtx.globalAlpha = 1;
+      mergedCtx.globalCompositeOperation = "source-over";
       clearLayerAlphaMask(lowerCanvas);
       clearLayerAlphaMask(upperCanvas);
       layerCanvasesRef.current.set(lowerLayer.id, mergedCanvas);
@@ -431,6 +465,7 @@ export function useLayerManagement(
                   ...layer,
                   position: { x: minX, y: minY },
                   opacity: 100,
+                  blendMode: "source-over",
                   visible: lowerLayer.visible || upperLayer.visible,
                   alphaMaskData: undefined,
                   originalSize: { width: mergedWidth, height: mergedHeight },
@@ -806,6 +841,7 @@ export function useLayerManagement(
 
     // Actions
     addPaintLayer,
+    addFilterLayer,
     addImageLayer,
     deleteLayer,
     selectLayer,

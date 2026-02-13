@@ -4,6 +4,7 @@ import { useState, useCallback, RefObject } from "react";
 import { UnifiedLayer } from "../types";
 import {
   removeBackground,
+  type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { showErrorToast, showInfoToast } from "@/shared/components";
@@ -19,6 +20,7 @@ interface UseBackgroundRemovalOptions {
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
   saveToHistory: () => void;
   quality?: BackgroundRemovalQuality;
+  model?: BackgroundRemovalModel;
   translations: {
     backgroundRemovalFailed?: string;
     selectLayerForBgRemoval?: string;
@@ -49,6 +51,7 @@ export function useBackgroundRemoval(
     layerCanvasesRef,
     saveToHistory,
     quality,
+    model,
     translations: t,
   } = options;
 
@@ -85,6 +88,13 @@ export function useBackgroundRemoval(
 
       let resultCanvas: HTMLCanvasElement;
 
+      const backgroundRemovalOptions = (quality || model)
+        ? {
+            ...(quality ? { quality } : {}),
+            ...(model ? { model } : {}),
+          }
+        : undefined;
+
       if (selection) {
         // Process only the selected area
         setBgRemovalStatus("Extracting selection...");
@@ -117,7 +127,7 @@ export function useBackgroundRemoval(
             setBgRemovalProgress(progress);
             setBgRemovalStatus(status);
           },
-          quality ? { quality } : undefined,
+          backgroundRemovalOptions,
         );
 
         // Composite the result back onto the layer canvas
@@ -141,7 +151,7 @@ export function useBackgroundRemoval(
             setBgRemovalProgress(progress);
             setBgRemovalStatus(status);
           },
-          quality ? { quality } : undefined,
+          backgroundRemovalOptions,
         );
 
         // Replace layer canvas content with result
@@ -163,7 +173,7 @@ export function useBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, layers, activeLayerId, selection, layerCanvasesRef, saveToHistory, quality, t]);
+  }, [isRemovingBackground, layers, activeLayerId, selection, layerCanvasesRef, saveToHistory, quality, model, t]);
 
   return {
     isRemovingBackground,

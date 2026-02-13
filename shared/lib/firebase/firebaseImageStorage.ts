@@ -41,7 +41,9 @@ interface FirestoreLayerMeta {
   scale?: number;
   rotation?: number;
   originalSize?: { width: number; height: number };
+  blendMode?: UnifiedLayer["blendMode"];
   storageRef: string; // Path to Storage file
+  alphaMaskStorageRef?: string; // Optional path to layer alpha mask PNG
 }
 
 interface FirestoreImageProject {
@@ -49,6 +51,7 @@ interface FirestoreImageProject {
   name: string;
   canvasSize: { width: number; height: number };
   rotation: number;
+  isPanLocked?: boolean;
   layers: FirestoreLayerMeta[];
   activeLayerId: string | null;
   thumbnailUrl?: string;
@@ -98,6 +101,29 @@ async function uploadLayerImage(
   const storageRef = ref(storage, path);
 
   // Remove data URL prefix if present
+  const base64Content = base64Data.includes(",")
+    ? base64Data.split(",")[1]
+    : base64Data;
+
+  await uploadString(storageRef, base64Content, "base64", {
+    contentType: "image/png",
+  });
+
+  return path;
+}
+
+/**
+ * Upload a layer alpha mask image (base64) to Firebase Storage
+ */
+async function uploadLayerAlphaMask(
+  userId: string,
+  projectId: string,
+  layerId: string,
+  base64Data: string
+): Promise<string> {
+  const path = `users/${userId}/image-media/${projectId}/${layerId}.mask.png`;
+  const storageRef = ref(storage, path);
+
   const base64Content = base64Data.includes(",")
     ? base64Data.split(",")[1]
     : base64Data;
@@ -199,6 +225,7 @@ export async function saveImageProjectToFirebase(
   if (project.unifiedLayers) {
     for (const layer of project.unifiedLayers) {
       let storageRef = "";
+      let alphaMaskStorageRef: string | undefined;
 
       if (layer.paintData) {
         storageRef = await uploadLayerImage(
@@ -210,6 +237,18 @@ export async function saveImageProjectToFirebase(
       } else {
         // Keep previous storage reference when layer bitmap is temporarily unavailable.
         storageRef = existingLayerMap.get(layer.id)?.storageRef || "";
+      }
+
+      if (layer.alphaMaskData) {
+        alphaMaskStorageRef = await uploadLayerAlphaMask(
+          userId,
+          project.id,
+          layer.id,
+          layer.alphaMaskData
+        );
+      } else if (!layer.paintData) {
+        // Preserve mask path only for metadata-only fallbacks.
+        alphaMaskStorageRef = existingLayerMap.get(layer.id)?.alphaMaskStorageRef;
       }
 
       // Filter out undefined values (Firestore doesn't accept undefined)
@@ -229,6 +268,8 @@ export async function saveImageProjectToFirebase(
       if (layer.scale !== undefined) layerMeta.scale = layer.scale;
       if (layer.rotation !== undefined) layerMeta.rotation = layer.rotation;
       if (layer.originalSize) layerMeta.originalSize = layer.originalSize;
+      if (layer.blendMode) layerMeta.blendMode = layer.blendMode;
+      if (alphaMaskStorageRef) layerMeta.alphaMaskStorageRef = alphaMaskStorageRef;
 
       layerMetas.push(layerMeta);
     }
@@ -254,6 +295,7 @@ export async function saveImageProjectToFirebase(
     name: project.name || "Untitled",
     canvasSize: project.canvasSize || { width: 0, height: 0 },
     rotation: project.rotation ?? 0,
+    isPanLocked: project.isPanLocked,
     layers: layerMetas,
     activeLayerId: project.activeLayerId ?? null,
     thumbnailUrl,
@@ -295,6 +337,15 @@ export async function getImageProjectFromFirebase(
         }
       }
 
+      let alphaMaskData: string | undefined;
+      if (layerMeta.alphaMaskStorageRef) {
+        try {
+          alphaMaskData = await downloadLayerImage(layerMeta.alphaMaskStorageRef);
+        } catch (error) {
+          console.error(`Failed to download layer mask ${layerMeta.id}:`, error);
+        }
+      }
+
       return {
         id: layerMeta.id,
         name: layerMeta.name,
@@ -307,7 +358,9 @@ export async function getImageProjectFromFirebase(
         scale: layerMeta.scale,
         rotation: layerMeta.rotation,
         originalSize: layerMeta.originalSize,
+        blendMode: layerMeta.blendMode,
         paintData,
+        alphaMaskData,
       };
     }
   );
@@ -317,6 +370,7 @@ export async function getImageProjectFromFirebase(
     name: data.name,
     canvasSize: data.canvasSize,
     rotation: data.rotation,
+    isPanLocked: data.isPanLocked,
     unifiedLayers,
     activeLayerId: data.activeLayerId || undefined,
     savedAt: readTimestampMillis(data.updatedAt),
@@ -345,6 +399,7 @@ export async function getAllImageProjectsFromFirebase(
       name: data.name,
       canvasSize: data.canvasSize,
       rotation: data.rotation,
+      isPanLocked: data.isPanLocked,
       thumbnailUrl: data.thumbnailUrl,
       unifiedLayers: data.layers.map((l) => ({
         id: l.id,
@@ -358,7 +413,9 @@ export async function getAllImageProjectsFromFirebase(
         scale: l.scale,
         rotation: l.rotation,
         originalSize: l.originalSize,
+        blendMode: l.blendMode,
         paintData: "", // Don't load images for list
+        alphaMaskData: undefined,
       })),
       activeLayerId: data.activeLayerId || undefined,
       savedAt: readTimestampMillis(data.updatedAt),

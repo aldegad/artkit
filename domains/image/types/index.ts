@@ -104,4 +104,5 @@ export interface SavedImageProject {
   showGuides?: boolean;
   lockGuides?: boolean;
   snapToGuides?: boolean;
+  isPanLocked?: boolean;
 }

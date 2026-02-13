@@ -9,6 +9,7 @@ import {
   eraseDabLinear,
   eraseLineLinear,
   resetEraseAlphaCarry,
+  resetPaintAlphaCarry,
 } from "@/shared/utils/brushEngine";
 import { calculateDrawingParameters } from "@/domains/image/constants/brushPresets";
 import { normalizePressureValue } from "@/shared/utils/pointerPressure";
@@ -182,6 +183,8 @@ export function useMaskTool(): UseMaskToolReturn {
       lastPointRef.current = { x, y };
       if (brushSettings.mode === "erase") {
         resetEraseAlphaCarry(ctx);
+      } else {
+        resetPaintAlphaCarry(ctx);
       }
       drawMaskDab(ctx, x, y, pressure);
     },

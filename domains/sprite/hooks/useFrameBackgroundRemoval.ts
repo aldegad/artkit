@@ -4,6 +4,7 @@ import { useState, useCallback, Dispatch, SetStateAction } from "react";
 import { SpriteFrame } from "../types";
 import {
   removeBackground,
+  type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { showErrorToast, showInfoToast } from "@/shared/components";
@@ -20,6 +21,7 @@ interface UseFrameBackgroundRemovalOptions {
   setFrames: Dispatch<SetStateAction<SpriteFrame[]>>;
   pushHistory: () => void;
   quality?: BackgroundRemovalQuality;
+  model?: BackgroundRemovalModel;
   translations: {
     backgroundRemovalFailed?: string;
     selectFrameForBgRemoval?: string;
@@ -50,6 +52,7 @@ export function useFrameBackgroundRemoval(
     setFrames,
     pushHistory,
     quality,
+    model,
     translations: t,
   } = options;
 
@@ -101,6 +104,13 @@ export function useFrameBackgroundRemoval(
     try {
       pushHistory();
 
+      const backgroundRemovalOptions = (quality || model)
+        ? {
+            ...(quality ? { quality } : {}),
+            ...(model ? { model } : {}),
+          }
+        : undefined;
+
       const totalFrames = framesToProcess.length;
       const updatedFrameData = new Map<number, string>();
 
@@ -117,7 +127,7 @@ export function useFrameBackgroundRemoval(
             setBgRemovalProgress(overallProgress);
             setBgRemovalStatus(frameLabel ? `${frameLabel}: ${status}` : status);
           },
-          quality ? { quality } : undefined,
+          backgroundRemovalOptions,
         );
 
         updatedFrameData.set(frame.id, resultCanvas.toDataURL("image/png"));
@@ -142,7 +152,7 @@ export function useFrameBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, t]);
+  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, model, t]);
 
   return {
     isRemovingBackground,

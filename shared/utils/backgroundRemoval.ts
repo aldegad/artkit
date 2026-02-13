@@ -40,8 +40,38 @@ let model: Awaited<ReturnType<typeof AutoModel.from_pretrained>> | null = null;
 let processor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>> | null = null;
 let isLoading = false;
 let loadingPromise: Promise<void> | null = null;
+let loadedModelKey: BackgroundRemovalModel | null = null;
+let loadingModelKey: BackgroundRemovalModel | null = null;
+let loadedModelDevice: ModelLoadAttempt["device"] | null = null;
 
-const MODEL_ID = "briaai/RMBG-1.4";
+export type BackgroundRemovalModel = "rmbg-1.4" | "birefnet-lite" | "birefnet";
+export const DEFAULT_BACKGROUND_REMOVAL_MODEL: BackgroundRemovalModel = "rmbg-1.4";
+export const BACKGROUND_REMOVAL_MODELS: Record<BackgroundRemovalModel, {
+  id: string;
+  label: string;
+  downloadHint: string;
+  description: string;
+}> = {
+  "rmbg-1.4": {
+    id: "briaai/RMBG-1.4",
+    label: "RMBG-1.4",
+    downloadHint: "~42MB-168MB",
+    description: "Current default model",
+  },
+  "birefnet-lite": {
+    id: "onnx-community/BiRefNet_lite-ONNX",
+    label: "BiRefNet Lite",
+    downloadHint: "~109MB-214MB",
+    description: "Balanced quality and speed",
+  },
+  birefnet: {
+    id: "onnx-community/BiRefNet-ONNX",
+    label: "BiRefNet",
+    downloadHint: "~467MB-928MB",
+    description: "Highest quality, largest download",
+  },
+};
+
 const EPSILON = 1e-6;
 const MAX_MORPH_RADIUS = 4;
 const MAX_FEATHER_RADIUS = 8;
@@ -64,7 +94,7 @@ interface TensorLike {
 
 interface ModelLoadAttempt {
   device: "webgpu" | "wasm";
-  dtype?: "fp32";
+  dtype?: "fp32" | "fp16";
   label: string;
 }
 
@@ -72,6 +102,7 @@ export type BackgroundRemovalQuality = "fast" | "balanced" | "high";
 
 export interface BackgroundRemovalOptions {
   quality?: BackgroundRemovalQuality;
+  model?: BackgroundRemovalModel;
   threshold?: number;
   softness?: number;
   featherRadius?: number;
@@ -92,6 +123,8 @@ interface RefinementConfig {
   closeRadius: number;
   openRadius: number;
 }
+
+type ModelInputFeeds = Record<string, unknown>;
 
 const QUALITY_PRESETS: Record<BackgroundRemovalQuality, RefinementConfig> = {
   fast: {
@@ -146,29 +179,55 @@ function resolveRefinementConfig(options: BackgroundRemovalOptions | undefined):
   };
 }
 
-function getModelLoadAttempts(canUseWebGPU: boolean): ModelLoadAttempt[] {
-  if (canUseWebGPU) {
+function getModelLoadAttempts(
+  canUseWebGPU: boolean,
+  modelKey: BackgroundRemovalModel,
+  forcedDevice?: ModelLoadAttempt["device"],
+): ModelLoadAttempt[] {
+  const wasmAttempts: ModelLoadAttempt[] = (() => {
+    // BiRefNet variants can stall browsers on wasm/fp32 due model size/compute pressure.
+    // Prefer default wasm dtype (auto, typically q8) for stability.
+    if (modelKey === "birefnet" || modelKey === "birefnet-lite") {
+      return [{ device: "wasm", label: "wasm/default" }];
+    }
+
     return [
-      { device: "webgpu", dtype: "fp32", label: "webgpu/fp32" },
-      { device: "webgpu", label: "webgpu/default" },
       { device: "wasm", dtype: "fp32", label: "wasm/fp32" },
       { device: "wasm", label: "wasm/default" },
     ];
+  })();
+
+  const webgpuAttempts: ModelLoadAttempt[] = [
+    { device: "webgpu", dtype: "fp16", label: "webgpu/fp16" },
+    { device: "webgpu", dtype: "fp32", label: "webgpu/fp32" },
+    { device: "webgpu", label: "webgpu/default" },
+  ];
+
+  if (forcedDevice === "wasm") {
+    return wasmAttempts;
   }
 
-  return [
-    { device: "wasm", dtype: "fp32", label: "wasm/fp32" },
-    { device: "wasm", label: "wasm/default" },
-  ];
+  if (forcedDevice === "webgpu") {
+    return canUseWebGPU ? [...webgpuAttempts, ...wasmAttempts] : wasmAttempts;
+  }
+
+  // BiRefNet variants frequently exceed WebGPU binding limits on consumer GPUs.
+  const wasmOnlyByDefault = modelKey === "birefnet" || modelKey === "birefnet-lite";
+  if (!canUseWebGPU || wasmOnlyByDefault) {
+    return wasmAttempts;
+  }
+
+  return [...webgpuAttempts, ...wasmAttempts];
 }
 
 async function tryLoadModel(
   attempt: ModelLoadAttempt,
+  modelId: string,
   onProgress?: (progress: number, status: string) => void
 ): Promise<Awaited<ReturnType<typeof AutoModel.from_pretrained>>> {
   const options: {
     device: "webgpu" | "wasm";
-    dtype?: "fp32";
+    dtype?: "fp32" | "fp16";
     progress_callback?: (progress: { status: string; progress?: number }) => void;
   } = {
     device: attempt.device,
@@ -183,23 +242,43 @@ async function tryLoadModel(
     options.dtype = attempt.dtype;
   }
 
-  return AutoModel.from_pretrained(MODEL_ID, options);
+  return AutoModel.from_pretrained(modelId, options);
 }
 
 /**
  * Load the background removal model (cached after first load)
  */
 async function loadModel(
+  modelKey: BackgroundRemovalModel,
+  forcedDevice?: ModelLoadAttempt["device"],
   onProgress?: (progress: number, status: string) => void
 ): Promise<void> {
-  if (model && processor) return;
+  const canReuseLoadedModel = model
+    && processor
+    && loadedModelKey === modelKey
+    && (!forcedDevice || loadedModelDevice === forcedDevice);
+  if (canReuseLoadedModel) return;
 
-  if (isLoading && loadingPromise) {
+  if (loadingPromise && loadingModelKey === modelKey) {
     await loadingPromise;
-    return;
+    const canReuseAfterWait = model
+      && processor
+      && loadedModelKey === modelKey
+      && (!forcedDevice || loadedModelDevice === forcedDevice);
+    if (canReuseAfterWait) return;
+  } else if (loadingPromise && loadingModelKey !== modelKey) {
+    await loadingPromise;
+    const canReuseAfterOtherWait = model
+      && processor
+      && loadedModelKey === modelKey
+      && (!forcedDevice || loadedModelDevice === forcedDevice);
+    if (canReuseAfterOtherWait) return;
   }
 
+  const modelConfig = BACKGROUND_REMOVAL_MODELS[modelKey];
+  const modelId = modelConfig.id;
   isLoading = true;
+  loadingModelKey = modelKey;
   loadingPromise = (async () => {
     try {
       onProgress?.(0, "Loading model...");
@@ -217,17 +296,19 @@ async function loadModel(
         }
       }
 
-      const attempts = getModelLoadAttempts(canUseWebGPU);
+      const attempts = getModelLoadAttempts(canUseWebGPU, modelKey, forcedDevice);
       let lastError: unknown = null;
       let loadedModel: Awaited<ReturnType<typeof AutoModel.from_pretrained>> | null = null;
+      let successfulAttempt: ModelLoadAttempt | null = null;
 
       for (const attempt of attempts) {
         try {
-          loadedModel = await tryLoadModel(attempt, onProgress);
+          loadedModel = await tryLoadModel(attempt, modelId, onProgress);
+          successfulAttempt = attempt;
           break;
         } catch (error) {
           lastError = error;
-          console.warn(`[Background Removal] Model load attempt failed: ${attempt.label}`, error);
+          console.warn(`[Background Removal] Model load attempt failed: ${modelConfig.label} (${attempt.label})`, error);
         }
       }
 
@@ -235,7 +316,7 @@ async function loadModel(
         throw lastError || new Error("Failed to load background removal model.");
       }
 
-      const loadedProcessor = await AutoProcessor.from_pretrained(MODEL_ID, {
+      const loadedProcessor = await AutoProcessor.from_pretrained(modelId, {
         progress_callback: (progress: { status: string; progress?: number }) => {
           if (progress.progress !== undefined) {
             onProgress?.(50 + progress.progress * 0.5, progress.status);
@@ -245,11 +326,14 @@ async function loadModel(
 
       model = loadedModel;
       processor = loadedProcessor;
+      loadedModelKey = modelKey;
+      loadedModelDevice = successfulAttempt?.device ?? null;
       onProgress?.(100, "Model ready");
     } finally {
       restoreConsole();
       isLoading = false;
       loadingPromise = null;
+      loadingModelKey = null;
     }
   })();
 
@@ -664,6 +748,142 @@ function buildMaskCanvas(mask: Float32Array, width: number, height: number): HTM
   return canvas;
 }
 
+function getErrorMessage(error: unknown): string {
+  if (!error) return "";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function isModelInputMismatchError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("missing the following inputs")
+    || message.includes("is not present in the model")
+    || message.includes("is not present in the graph")
+    || message.includes("invalid feed input")
+  );
+}
+
+function isWebGpuRuntimeLimitError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("webgpu validation error")
+    || (message.includes("storage buffers") && message.includes("compute stage"))
+    || message.includes("invalid computepipeline")
+    || message.includes("invalid bindgrouplayout")
+    || message.includes("createcomputepipeline")
+    || message.includes("createbindgroup")
+  );
+}
+
+function resolvePrimaryInputTensor(processed: ModelInputFeeds): unknown {
+  const preferredKeys = ["pixel_values", "input", "input_image", "image"];
+  for (const key of preferredKeys) {
+    if (key in processed) {
+      return processed[key];
+    }
+  }
+
+  const keys = Object.keys(processed);
+  if (keys.length === 0) return undefined;
+  return processed[keys[0]];
+}
+
+function resolveExpectedInputNames(loadedModel: unknown): string[] {
+  const names = new Set<string>();
+  const modelObject = loadedModel as {
+    sessions?: Record<string, { inputNames?: unknown }>;
+    session?: { inputNames?: unknown };
+    model?: { inputNames?: unknown };
+  };
+
+  const readInputNames = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const entry of value) {
+      if (typeof entry === "string" && entry.length > 0) {
+        names.add(entry);
+      }
+    }
+  };
+
+  readInputNames(modelObject.session?.inputNames);
+  readInputNames(modelObject.model?.inputNames);
+
+  const sessions = modelObject.sessions;
+  if (sessions && typeof sessions === "object") {
+    for (const session of Object.values(sessions)) {
+      readInputNames(session?.inputNames);
+    }
+  }
+
+  return Array.from(names);
+}
+
+function buildModelFeedCandidates(
+  processed: ModelInputFeeds,
+  expectedInputNames: string[],
+): ModelInputFeeds[] {
+  const candidates: ModelInputFeeds[] = [];
+  const seen = new Set<string>();
+
+  const addCandidate = (feeds: ModelInputFeeds | null | undefined) => {
+    if (!feeds) return;
+    const keys = Object.keys(feeds).sort();
+    if (keys.length === 0) return;
+    const keySig = keys.join("|");
+    if (seen.has(keySig)) return;
+    seen.add(keySig);
+    candidates.push(feeds);
+  };
+
+  const primaryInput = resolvePrimaryInputTensor(processed);
+
+  if (primaryInput !== undefined) {
+    for (const inputName of expectedInputNames) {
+      addCandidate({ [inputName]: primaryInput });
+    }
+  }
+
+  addCandidate(processed);
+
+  if (primaryInput !== undefined) {
+    const fallbackNames = ["input", "input_image", "pixel_values", "image"];
+    for (const name of fallbackNames) {
+      addCandidate({ [name]: primaryInput });
+    }
+  }
+
+  return candidates;
+}
+
+async function runModelWithCompatibleInputs(
+  loadedModel: Awaited<ReturnType<typeof AutoModel.from_pretrained>>,
+  processed: ModelInputFeeds,
+): Promise<Record<string, unknown>> {
+  const expectedInputNames = resolveExpectedInputNames(loadedModel);
+  const feedCandidates = buildModelFeedCandidates(processed, expectedInputNames);
+  let lastInputError: unknown = null;
+
+  for (const feeds of feedCandidates) {
+    try {
+      return await loadedModel(feeds) as Record<string, unknown>;
+    } catch (error) {
+      if (isModelInputMismatchError(error)) {
+        lastInputError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (lastInputError) {
+    throw lastInputError;
+  }
+
+  throw new Error("Failed to run background removal model.");
+}
+
 async function loadOriginalImage(imageSource: string | Blob | HTMLImageElement): Promise<{ image: HTMLImageElement; revoke?: () => void }> {
   const image = new Image();
   let blobUrl: string | null = null;
@@ -707,13 +927,16 @@ export async function removeBackground(
   onProgress?: (progress: number, status: string) => void,
   options?: BackgroundRemovalOptions,
 ): Promise<HTMLCanvasElement> {
-  await loadModel((progress, status) => {
+  const modelKey = options?.model ?? DEFAULT_BACKGROUND_REMOVAL_MODEL;
+  await loadModel(modelKey, undefined, (progress, status) => {
     onProgress?.(progress * 0.5, status);
   });
 
   if (!model || !processor) {
     throw new Error("Failed to load model");
   }
+  let activeModel = model as NonNullable<typeof model>;
+  let activeProcessor = processor as NonNullable<typeof processor>;
 
   onProgress?.(50, "Processing image...");
 
@@ -733,8 +956,38 @@ export async function removeBackground(
 
   onProgress?.(60, "Running AI model...");
 
-  const processed = await processor(image) as { pixel_values: unknown };
-  const modelOutput = await model({ input: processed.pixel_values }) as Record<string, unknown>;
+  const processed = await activeProcessor(image) as ModelInputFeeds;
+  let modelOutput: Record<string, unknown>;
+
+  try {
+    modelOutput = await runModelWithCompatibleInputs(activeModel, processed);
+  } catch (error) {
+    if (loadedModelDevice !== "webgpu" || !isWebGpuRuntimeLimitError(error)) {
+      throw error;
+    }
+
+    console.warn("[Background Removal] WebGPU execution failed. Retrying with WASM.", error);
+    onProgress?.(62, "WebGPU failed, retrying with WASM...");
+
+    model = null;
+    processor = null;
+    loadedModelKey = null;
+    loadedModelDevice = null;
+
+    await loadModel(modelKey, "wasm", (progress, status) => {
+      onProgress?.(62 + progress * 0.1, `${status} (WASM)`);
+    });
+
+    if (!model || !processor) {
+      throw error;
+    }
+    activeModel = model as NonNullable<typeof model>;
+    activeProcessor = processor as NonNullable<typeof processor>;
+
+    const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
+    modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+  }
+
   const selectedMask = pickMaskTensor(modelOutput);
 
   onProgress?.(72, "Normalizing mask...");
@@ -823,7 +1076,8 @@ export function isModelLoaded(): boolean {
  * Preload the model (optional, for faster first use)
  */
 export async function preloadModel(
+  modelKey: BackgroundRemovalModel = DEFAULT_BACKGROUND_REMOVAL_MODEL,
   onProgress?: (progress: number, status: string) => void
 ): Promise<void> {
-  await loadModel(onProgress);
+  await loadModel(modelKey, undefined, onProgress);
 }

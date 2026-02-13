@@ -37,7 +37,11 @@ import {
 } from "@/domains/sprite";
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
-import type { BackgroundRemovalQuality } from "@/shared/ai/backgroundRemoval";
+import {
+  type BackgroundRemovalModel,
+  type BackgroundRemovalQuality,
+} from "@/shared/ai/backgroundRemoval";
+import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 import SpriteMenuBar from "@/domains/sprite/components/SpriteMenuBar";
 import VideoImportModal from "@/domains/sprite/components/VideoImportModal";
 import SpriteProjectListModal from "@/domains/sprite/components/SpriteProjectListModal";
@@ -144,7 +148,12 @@ function SpriteEditorMain() {
 
   // Background removal state
   const [showBgRemovalConfirm, setShowBgRemovalConfirm] = useState(false);
-  const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>("balanced");
+  const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>(
+    () => readAISettings().backgroundRemovalQuality
+  );
+  const [bgRemovalModel, setBgRemovalModel] = useState<BackgroundRemovalModel>(
+    () => readAISettings().backgroundRemovalModel
+  );
   const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
   const [interpolationSteps, setInterpolationSteps] = useState(1);
   const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>("fast");
@@ -154,6 +163,16 @@ function SpriteEditorMain() {
 
   const { t } = useLanguage();
   const storageProvider = useMemo(() => getSpriteStorageProvider(user), [user]);
+
+  const handleBgRemovalQualityChange = useCallback((quality: BackgroundRemovalQuality) => {
+    setBgRemovalQuality(quality);
+    updateAISettings({ backgroundRemovalQuality: quality });
+  }, []);
+
+  const handleBgRemovalModelChange = useCallback((model: BackgroundRemovalModel) => {
+    setBgRemovalModel(model);
+    updateAISettings({ backgroundRemovalModel: model });
+  }, []);
 
   // Background removal hook
   const {
@@ -168,6 +187,7 @@ function SpriteEditorMain() {
     setFrames,
     pushHistory,
     quality: bgRemovalQuality,
+    model: bgRemovalModel,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
@@ -799,7 +819,9 @@ function SpriteEditorMain() {
           handleRemoveBackground("all");
         }}
         quality={bgRemovalQuality}
-        onQualityChange={setBgRemovalQuality}
+        onQualityChange={handleBgRemovalQualityChange}
+        model={bgRemovalModel}
+        onModelChange={handleBgRemovalModelChange}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
         status={bgRemovalStatus}

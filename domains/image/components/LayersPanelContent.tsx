@@ -5,6 +5,7 @@ import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
 import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
+import type { LayerBlendMode } from "@/shared/types";
 
 // ============================================
 // Layer Thumbnail Component (memoized)
@@ -19,6 +20,15 @@ interface LayerThumbnailProps {
 
 const THUMB_SIZE = 40;
 const THUMBNAIL_REFRESH_THROTTLE_MS = 120;
+const BLEND_MODE_OPTIONS: Array<{ value: LayerBlendMode; label: string }> = [
+  { value: "source-over", label: "Normal" },
+  { value: "soft-light", label: "Soft Light" },
+  { value: "overlay", label: "Overlay" },
+  { value: "multiply", label: "Multiply" },
+  { value: "screen", label: "Screen" },
+  { value: "color", label: "Color" },
+  { value: "luminosity", label: "Luminosity" },
+];
 
 const LayerThumbnail = React.memo(function LayerThumbnail({
   layerId,
@@ -170,6 +180,7 @@ export default function LayersPanelContent() {
     dragOverLayerId,
     setDragOverLayerId,
     addPaintLayer,
+    addFilterLayer,
     addImageLayer,
     selectLayerWithModifier,
     toggleLayerVisibility,
@@ -178,6 +189,7 @@ export default function LayersPanelContent() {
     mergeLayerDown,
     deleteLayer,
     renameLayer,
+    updateLayer,
     updateLayerOpacity,
     reorderLayers,
     alignLayers,
@@ -240,6 +252,7 @@ export default function LayersPanelContent() {
   // Get effective selected count
   const effectiveSelectedCount = selectedLayerIds.length > 0 ? selectedLayerIds.length : (activeLayerId ? 1 : 0);
   const sortedLayers = [...layers].sort((a, b) => b.zIndex - a.zIndex);
+  const activeLayer = activeLayerId ? layers.find((l) => l.id === activeLayerId) || null : null;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -253,6 +266,14 @@ export default function LayersPanelContent() {
             title={t.addLayer}
           >
             <PlusIcon />
+          </button>
+          {/* Add Warm Filter Layer */}
+          <button
+            onClick={addFilterLayer}
+            className="px-1.5 h-6 flex items-center justify-center rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors text-[11px] font-semibold"
+            title="Add Warm Filter Layer"
+          >
+            Fx
           </button>
           {/* Add Image Layer */}
           <input
@@ -401,7 +422,7 @@ export default function LayersPanelContent() {
                       </div>
                     )}
                     <span className="text-[10px] text-text-quaternary px-1">
-                      Layer
+                      {layer.blendMode && layer.blendMode !== "source-over" ? "Filter" : "Layer"}
                     </span>
                   </div>
 
@@ -463,7 +484,7 @@ export default function LayersPanelContent() {
       </div>
 
       {/* Panel Footer - Opacity control */}
-      {activeLayerId && layers.find(l => l.id === activeLayerId) && (
+      {activeLayerId && activeLayer && (
         <div className="px-3 py-2 border-t border-border-default bg-surface-secondary shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-xs text-text-secondary">{t.opacity}:</span>
@@ -471,13 +492,29 @@ export default function LayersPanelContent() {
               type="range"
               min="0"
               max="100"
-              value={layers.find(l => l.id === activeLayerId)?.opacity || 100}
+              value={activeLayer.opacity}
               onChange={(e) => updateLayerOpacity(activeLayerId, Number(e.target.value))}
               className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
             />
             <span className="text-xs text-text-secondary w-8 text-right">
-              {layers.find(l => l.id === activeLayerId)?.opacity || 100}%
+              {activeLayer.opacity}%
             </span>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-text-secondary w-12">Blend:</span>
+            <select
+              value={activeLayer.blendMode || "source-over"}
+              onChange={(e) =>
+                updateLayer(activeLayerId, { blendMode: e.target.value as LayerBlendMode })
+              }
+              className="flex-1 h-7 px-2 text-xs rounded border border-border-default bg-surface-primary text-text-primary"
+            >
+              {BLEND_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       )}

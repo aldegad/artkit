@@ -5,6 +5,7 @@ import {
   eraseByMaskLinear,
   eraseDabLinear,
   resetEraseAlphaCarry,
+  resetPaintAlphaCarry,
 } from "@/shared/utils/brushEngine";
 import { isMagicWandPixelSelected, type MagicWandSelection } from "@/shared/utils/magicWand";
 import { normalizePressureValue } from "@/shared/utils/pointerPressure";
@@ -60,6 +61,8 @@ export function drawSpriteBrushPixel({
   if (!frameCtx || !frameCanvas) return false;
   if (isEraser && isStrokeStart) {
     resetEraseAlphaCarry(frameCtx);
+  } else if (!isEraser && isStrokeStart) {
+    resetPaintAlphaCarry(frameCtx);
   }
 
   const params = calculateDrawingParameters(
