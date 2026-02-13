@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
 import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
+import { Select } from "@/shared/components";
 import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
 import type { LayerBlendMode } from "@/shared/types";
 
@@ -502,19 +503,13 @@ export default function LayersPanelContent() {
           </div>
           <div className="flex items-center gap-2 mt-2">
             <span className="text-xs text-text-secondary w-12">Blend:</span>
-            <select
+            <Select<LayerBlendMode>
               value={activeLayer.blendMode || "source-over"}
-              onChange={(e) =>
-                updateLayer(activeLayerId, { blendMode: e.target.value as LayerBlendMode })
-              }
-              className="flex-1 h-7 px-2 text-xs rounded border border-border-default bg-surface-primary text-text-primary"
-            >
-              {BLEND_MODE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => updateLayer(activeLayerId, { blendMode: value })}
+              options={BLEND_MODE_OPTIONS}
+              size="sm"
+              className="flex-1"
+            />
           </div>
         </div>
       )}

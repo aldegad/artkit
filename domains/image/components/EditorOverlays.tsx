@@ -10,6 +10,7 @@ import type {
 import { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 import { EditorStatusBar } from "./toolbars/EditorStatusBar";
 import { ExportModal } from "./ExportModal";
+import { ImageResampleModal } from "./ImageResampleModal";
 import ProjectListModal from "./ProjectListModal";
 import { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
 
@@ -52,6 +53,27 @@ export interface EditorOverlaysProps {
     removeBackground: string;
     cancel: string;
     confirm: string;
+  };
+
+  // Resample
+  showResampleModal: boolean;
+  closeResampleModal: () => void;
+  applyResample: () => void;
+  resampleWidth: number;
+  resampleHeight: number;
+  setResampleWidth: (width: number) => void;
+  setResampleHeight: (height: number) => void;
+  resampleKeepAspect: boolean;
+  toggleResampleKeepAspect: () => void;
+  isResampling: boolean;
+  resampleTranslations: {
+    title: string;
+    width: string;
+    height: string;
+    keepAspect: string;
+    cancel: string;
+    apply: string;
+    applying: string;
   };
 
   // Transform discard
@@ -123,6 +145,17 @@ export function EditorOverlays({
   bgRemovalProgress,
   bgRemovalStatus,
   backgroundRemovalTranslations,
+  showResampleModal,
+  closeResampleModal,
+  applyResample,
+  resampleWidth,
+  resampleHeight,
+  setResampleWidth,
+  setResampleHeight,
+  resampleKeepAspect,
+  toggleResampleKeepAspect,
+  isResampling,
+  resampleTranslations,
   showTransformDiscardConfirm,
   handleTransformDiscardCancel,
   handleTransformDiscardConfirm,
@@ -181,6 +214,20 @@ export function EditorOverlays({
         progress={bgRemovalProgress}
         status={bgRemovalStatus}
         translations={backgroundRemovalTranslations}
+      />
+
+      <ImageResampleModal
+        isOpen={showResampleModal}
+        isResampling={isResampling}
+        width={resampleWidth}
+        height={resampleHeight}
+        keepAspect={resampleKeepAspect}
+        onWidthChange={setResampleWidth}
+        onHeightChange={setResampleHeight}
+        onToggleKeepAspect={toggleResampleKeepAspect}
+        onClose={closeResampleModal}
+        onApply={applyResample}
+        translations={resampleTranslations}
       />
 
       <TransformDiscardConfirmModal

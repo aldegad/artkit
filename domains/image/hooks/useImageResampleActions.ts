@@ -5,7 +5,6 @@ import { confirmDialog, showErrorToast, showInfoToast } from "@/shared/component
 import type { CropArea, UnifiedLayer } from "../types";
 import {
   clampResampleDimension,
-  parseResampleInput,
   resampleCanvasByScale,
 } from "@/shared/utils/resample";
 import {
@@ -18,6 +17,7 @@ interface UseImageResampleActionsOptions {
   layers: UnifiedLayer[];
   activeLayerId: string | null;
   canvasSize: { width: number; height: number };
+  rotation: number;
   layerCanvasesRef: React.MutableRefObject<Map<string, HTMLCanvasElement>>;
   editCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   saveToHistory: () => void;
@@ -30,7 +30,16 @@ interface UseImageResampleActionsOptions {
 
 interface UseImageResampleActionsReturn {
   isResampling: boolean;
-  handleResampleAllResolution: () => Promise<void>;
+  isResampleModalOpen: boolean;
+  resampleWidth: number;
+  resampleHeight: number;
+  resampleKeepAspect: boolean;
+  openResampleModal: () => void;
+  closeResampleModal: () => void;
+  setResampleWidth: (width: number) => void;
+  setResampleHeight: (height: number) => void;
+  toggleResampleKeepAspect: () => void;
+  applyResample: () => Promise<void>;
 }
 
 export function useImageResampleActions(
@@ -40,6 +49,7 @@ export function useImageResampleActions(
     layers,
     activeLayerId,
     canvasSize,
+    rotation,
     layerCanvasesRef,
     editCanvasRef,
     saveToHistory,
@@ -51,51 +61,104 @@ export function useImageResampleActions(
   } = options;
 
   const [isResampling, setIsResampling] = useState(false);
+  const [isResampleModalOpen, setIsResampleModalOpen] = useState(false);
+  const [resampleWidth, setResampleWidthState] = useState(0);
+  const [resampleHeight, setResampleHeightState] = useState(0);
+  const [resampleKeepAspect, setResampleKeepAspect] = useState(true);
+  const [resampleAspectRatio, setResampleAspectRatio] = useState(1);
 
-  const handleResampleAllResolution = useCallback(async () => {
-    if (isResampling) return;
+  const getDisplayCanvasSize = useCallback(() => {
+    const normalizedRotation = ((rotation % 360) + 360) % 360;
+    const isSwapped = normalizedRotation === 90 || normalizedRotation === 270;
+    const width = isSwapped ? canvasSize.height : canvasSize.width;
+    const height = isSwapped ? canvasSize.width : canvasSize.height;
+    return {
+      width: clampResampleDimension(width),
+      height: clampResampleDimension(height),
+      isSwapped,
+    };
+  }, [canvasSize.width, canvasSize.height, rotation]);
 
+  const openResampleModal = useCallback(() => {
     if (layers.length === 0 || canvasSize.width <= 0 || canvasSize.height <= 0) {
       showInfoToast("리샘플할 레이어가 없습니다.");
       return;
     }
 
-    const currentCanvasSize = {
-      width: clampResampleDimension(canvasSize.width),
-      height: clampResampleDimension(canvasSize.height),
+    const current = getDisplayCanvasSize();
+    setResampleWidthState(current.width);
+    setResampleHeightState(current.height);
+    setResampleKeepAspect(true);
+    setResampleAspectRatio(current.width / Math.max(1, current.height));
+    setIsResampleModalOpen(true);
+  }, [layers.length, canvasSize.width, canvasSize.height, getDisplayCanvasSize]);
+
+  const closeResampleModal = useCallback(() => {
+    if (isResampling) return;
+    setIsResampleModalOpen(false);
+  }, [isResampling]);
+
+  const setResampleWidth = useCallback((width: number) => {
+    const nextWidth = clampResampleDimension(width);
+    setResampleWidthState(nextWidth);
+
+    if (!resampleKeepAspect) return;
+    const syncedHeight = clampResampleDimension(nextWidth / Math.max(0.0001, resampleAspectRatio));
+    setResampleHeightState(syncedHeight);
+  }, [resampleKeepAspect, resampleAspectRatio]);
+
+  const setResampleHeight = useCallback((height: number) => {
+    const nextHeight = clampResampleDimension(height);
+    setResampleHeightState(nextHeight);
+
+    if (!resampleKeepAspect) return;
+    const syncedWidth = clampResampleDimension(nextHeight * resampleAspectRatio);
+    setResampleWidthState(syncedWidth);
+  }, [resampleKeepAspect, resampleAspectRatio]);
+
+  const toggleResampleKeepAspect = useCallback(() => {
+    setResampleKeepAspect((prev) => {
+      if (prev) return false;
+
+      const nextRatio = resampleWidth / Math.max(1, resampleHeight);
+      setResampleAspectRatio(nextRatio);
+      return true;
+    });
+  }, [resampleWidth, resampleHeight]);
+
+  const applyResample = useCallback(async () => {
+    if (isResampling) return;
+
+    const currentCanvasSize = getDisplayCanvasSize();
+    const nextDisplaySize = {
+      width: clampResampleDimension(resampleWidth),
+      height: clampResampleDimension(resampleHeight),
     };
 
-    const defaultInput = `${currentCanvasSize.width}x${currentCanvasSize.height}`;
-    const input = window.prompt(
-      "전체 해상도 리샘플: 새 크기를 입력하세요 (예: 512x512 또는 50%)",
-      defaultInput,
-    );
-    if (input === null) return;
+    if (
+      nextDisplaySize.width === currentCanvasSize.width
+      && nextDisplaySize.height === currentCanvasSize.height
+    ) {
+      setIsResampleModalOpen(false);
+      return;
+    }
+
+    const currentAspect = currentCanvasSize.width / currentCanvasSize.height;
+    const nextAspect = nextDisplaySize.width / nextDisplaySize.height;
+    if (!resampleKeepAspect && Math.abs(currentAspect - nextAspect) > 0.0001) {
+      const keepGoing = await confirmDialog({
+        title: "비율 확인",
+        message: "비율이 달라 레이어가 왜곡될 수 있습니다. 계속 진행할까요?",
+        confirmLabel: "계속",
+        cancelLabel: "취소",
+      });
+      if (!keepGoing) return;
+    }
 
     setIsResampling(true);
     try {
-      const nextCanvasSize = parseResampleInput(input, currentCanvasSize);
-      if (
-        nextCanvasSize.width === currentCanvasSize.width
-        && nextCanvasSize.height === currentCanvasSize.height
-      ) {
-        return;
-      }
-
-      const currentAspect = currentCanvasSize.width / currentCanvasSize.height;
-      const nextAspect = nextCanvasSize.width / nextCanvasSize.height;
-      if (Math.abs(currentAspect - nextAspect) > 0.0001) {
-        const keepGoing = await confirmDialog({
-          title: "비율 확인",
-          message: "비율이 달라 레이어가 왜곡될 수 있습니다. 계속 진행할까요?",
-          confirmLabel: "계속",
-          cancelLabel: "취소",
-        });
-        if (!keepGoing) return;
-      }
-
-      const scaleX = nextCanvasSize.width / currentCanvasSize.width;
-      const scaleY = nextCanvasSize.height / currentCanvasSize.height;
+      const scaleX = nextDisplaySize.width / currentCanvasSize.width;
+      const scaleY = nextDisplaySize.height / currentCanvasSize.height;
 
       saveToHistory();
 
@@ -155,13 +218,19 @@ export function useImageResampleActions(
         }),
       );
 
-      setCanvasSize(nextCanvasSize);
+      const nextStoredCanvasSize = currentCanvasSize.isSwapped
+        ? { width: nextDisplaySize.height, height: nextDisplaySize.width }
+        : nextDisplaySize;
+
+      setCanvasSize(nextStoredCanvasSize);
       setSelection(null);
       setCropArea(null);
       setCanvasExpandMode(false);
 
       const nextActiveLayerId = activeLayerId || layers[0]?.id || null;
       editCanvasRef.current = nextActiveLayerId ? sourceCanvases.get(nextActiveLayerId) || null : null;
+
+      setIsResampleModalOpen(false);
     } catch (error) {
       console.error("Failed to resample image project:", error);
       showErrorToast((error as Error).message || "전체 해상도 리샘플에 실패했습니다.");
@@ -170,21 +239,33 @@ export function useImageResampleActions(
     }
   }, [
     isResampling,
-    layers,
-    canvasSize,
-    activeLayerId,
-    layerCanvasesRef,
-    editCanvasRef,
+    getDisplayCanvasSize,
+    resampleWidth,
+    resampleHeight,
+    resampleKeepAspect,
     saveToHistory,
+    layerCanvasesRef,
+    layers,
     setLayers,
     setCanvasSize,
+    setSelection,
     setCropArea,
     setCanvasExpandMode,
-    setSelection,
+    activeLayerId,
+    editCanvasRef,
   ]);
 
   return {
     isResampling,
-    handleResampleAllResolution,
+    isResampleModalOpen,
+    resampleWidth,
+    resampleHeight,
+    resampleKeepAspect,
+    openResampleModal,
+    closeResampleModal,
+    setResampleWidth,
+    setResampleHeight,
+    toggleResampleKeepAspect,
+    applyResample,
   };
 }
