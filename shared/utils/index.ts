@@ -20,9 +20,27 @@ export {
   eraseLineLinear,
   eraseByMaskLinear,
   resetEraseAlphaCarry,
+  resetPaintAlphaCarry,
   parseHexColor,
 } from "./brushEngine";
 export type { DabParams, LineParams, EraseDabParams, EraseLineParams, EraseByMaskParams } from "./brushEngine";
+
+// Layer alpha mask
+export {
+  getLayerAlphaMask,
+  getLayerAlphaMaskContext,
+  ensureLayerAlphaMask,
+  clearLayerAlphaMask,
+  copyLayerAlphaMask,
+  rotateLayerAlphaMask,
+  drawLayerWithOptionalAlphaMask,
+  fillLayerAlphaMaskRect,
+  drawIntoLayerAlphaMask,
+  getLayerAlphaMaskImageData,
+  setLayerAlphaMaskImageData,
+  getLayerAlphaMaskDataURL,
+  loadLayerAlphaMaskFromDataURL,
+} from "./layerAlphaMask";
 
 // Canvas viewport
 export { ViewportEmitter } from "./viewportEmitter";

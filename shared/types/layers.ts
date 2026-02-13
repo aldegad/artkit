@@ -21,6 +21,7 @@ export interface UnifiedLayer {
 
   // Canvas data (base64 encoded)
   paintData?: string;
+  alphaMaskData?: string;
 
   // Optional transform (for layer positioning within canvas)
   position?: Point; // x, y offset from canvas origin
@@ -68,4 +69,3 @@ export function createPaintLayer(name: string, zIndex: number): UnifiedLayer {
     paintData: "",
   };
 }
-

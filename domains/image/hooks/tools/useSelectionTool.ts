@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, SetStateAction } from "react";
 import { CropArea, Point } from "../../types";
 import { useEditorState, useEditorRefs } from "../../contexts";
+import { drawIntoLayerAlphaMask, drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
 // ============================================
 // Types
@@ -145,7 +146,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       compositeCtx.rotate((rotation * Math.PI) / 180);
       compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
       compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-      compositeCtx.drawImage(editCanvas, 0, 0);
+      drawLayerWithOptionalAlphaMask(compositeCtx, editCanvas, 0, 0);
 
       // Copy selection to floating layer
       const imageData = compositeCtx.getImageData(
@@ -212,6 +213,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       saveToHistory();
     }
     ctx.drawImage(tempCanvas, Math.round(x), Math.round(y));
+    drawIntoLayerAlphaMask(editCanvas, tempCanvas, Math.round(x), Math.round(y));
 
     // Update selection to new position
     setSelection({
@@ -249,7 +251,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     compositeCtx.rotate((rotation * Math.PI) / 180);
     compositeCtx.drawImage(img, -canvasSize.width / 2, -canvasSize.height / 2);
     compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-    compositeCtx.drawImage(editCanvas, 0, 0);
+    drawLayerWithOptionalAlphaMask(compositeCtx, editCanvas, 0, 0);
 
     // Copy to clipboard
     const imageData = compositeCtx.getImageData(

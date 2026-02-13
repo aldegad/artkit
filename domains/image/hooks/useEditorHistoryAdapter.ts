@@ -3,12 +3,18 @@
 import { useCallback, useMemo } from "react";
 import { UnifiedLayer } from "../types";
 import { HistoryAdapter } from "./useHistory";
+import {
+  clearLayerAlphaMask,
+  getLayerAlphaMaskImageData,
+  setLayerAlphaMaskImageData,
+} from "@/shared/utils/layerAlphaMask";
 
 interface LayerCanvasHistoryState {
   layerId: string;
   width: number;
   height: number;
   imageData: ImageData;
+  maskImageData: ImageData | null;
 }
 
 export interface EditorHistorySnapshot {
@@ -70,6 +76,7 @@ export function useEditorHistoryAdapter(
         width: canvas.width,
         height: canvas.height,
         imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+        maskImageData: getLayerAlphaMaskImageData(canvas),
       });
     }
 
@@ -94,6 +101,7 @@ export function useEditorHistoryAdapter(
         if (ctx) {
           ctx.putImageData(canvasState.imageData, 0, 0);
         }
+        setLayerAlphaMaskImageData(canvas, canvasState.maskImageData);
         canvasMap.set(canvasState.layerId, canvas);
       });
 
@@ -103,6 +111,7 @@ export function useEditorHistoryAdapter(
         const fallbackCanvas = document.createElement("canvas");
         fallbackCanvas.width = Math.max(1, layer.originalSize?.width || canvasSize.width || 1);
         fallbackCanvas.height = Math.max(1, layer.originalSize?.height || canvasSize.height || 1);
+        clearLayerAlphaMask(fallbackCanvas);
         canvasMap.set(layer.id, fallbackCanvas);
       });
 

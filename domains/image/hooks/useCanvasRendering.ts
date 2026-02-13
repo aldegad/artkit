@@ -8,6 +8,7 @@ import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, FLIP_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
 // ============================================
 // Types
@@ -278,7 +279,7 @@ export function useCanvasRendering(
         // Use layer position for alignment/positioning
         const posX = layer.position?.x || 0;
         const posY = layer.position?.y || 0;
-        ctx.drawImage(layerCanvas, posX, posY);
+        drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
       }
 
       ctx.restore();
@@ -290,7 +291,7 @@ export function useCanvasRendering(
       ctx.imageSmoothingEnabled = false;
       ctx.translate(offsetX, offsetY);
       ctx.scale(zoom, zoom);
-      ctx.drawImage(editCanvas, 0, 0);
+      drawLayerWithOptionalAlphaMask(ctx, editCanvas, 0, 0);
       ctx.restore();
     }
     ctx.restore();

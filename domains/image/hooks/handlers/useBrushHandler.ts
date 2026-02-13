@@ -59,7 +59,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
       }
 
       // Brush/Eraser tool
-      if ((activeMode === "brush" || activeMode === "eraser") && inBounds) {
+      if (activeMode === "brush" || activeMode === "eraser") {
         saveToHistory();
         resetLastDrawPoint();
         const pressure = resolvePressure(e);
@@ -88,15 +88,11 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
 
   const handleMouseMove = useCallback(
     (ctx: MouseEventContext) => {
-      const { imagePos, e, displayDimensions } = ctx;
-      const { width: displayWidth, height: displayHeight } = displayDimensions;
-
-      const clampedX = Math.max(0, Math.min(imagePos.x, displayWidth));
-      const clampedY = Math.max(0, Math.min(imagePos.y, displayHeight));
+      const { imagePos, e } = ctx;
       const pressure = resolvePressure(e);
       // Convert from image coordinates to layer-local coordinates
-      const layerX = clampedX - (activeLayerPosition?.x || 0);
-      const layerY = clampedY - (activeLayerPosition?.y || 0);
+      const layerX = imagePos.x - (activeLayerPosition?.x || 0);
+      const layerY = imagePos.y - (activeLayerPosition?.y || 0);
       drawOnEditCanvas(layerX, layerY, false, pressure);
     },
     [activeLayerPosition, drawOnEditCanvas, resolvePressure]
