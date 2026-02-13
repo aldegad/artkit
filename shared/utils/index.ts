@@ -11,6 +11,13 @@ export {
   isRifeModelLoaded,
   DEFAULT_RIFE_MODEL_URL,
 } from "./rifeInterpolation";
+export {
+  clampResampleDimension,
+  parseResampleInput,
+  loadImageFromSource,
+  resampleImageDataByScale,
+  resampleCanvasByScale,
+} from "./resample";
 
 // Brush engine
 export {
