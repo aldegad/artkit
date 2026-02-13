@@ -269,6 +269,7 @@ export function useCanvasRendering(
 
       ctx.save();
       ctx.globalAlpha = layer.opacity / 100;
+      ctx.globalCompositeOperation = layer.blendMode || "source-over";
 
       // All layers are paint layers now - render from canvas
       const layerCanvas = layerCanvasesRef.current?.get(layer.id);

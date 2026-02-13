@@ -48,8 +48,12 @@ export async function generateThumbnailFromLayers(
     try {
       const img = await loadImage(layer.paintData);
       mergedCtx.globalAlpha = layer.opacity / 100;
-      mergedCtx.drawImage(img, 0, 0);
+      mergedCtx.globalCompositeOperation = layer.blendMode || "source-over";
+      const posX = layer.position?.x || 0;
+      const posY = layer.position?.y || 0;
+      mergedCtx.drawImage(img, posX, posY);
       mergedCtx.globalAlpha = 1;
+      mergedCtx.globalCompositeOperation = "source-over";
     } catch (error) {
       console.warn(`Failed to load layer ${layer.id}:`, error);
     }

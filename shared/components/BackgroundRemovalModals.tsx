@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Modal } from "./Modal";
 import { PersonIcon, SpinnerIcon } from "./icons";
 
@@ -30,6 +31,7 @@ interface BackgroundRemovalModalsProps {
 
   // Optional: for selection-aware descriptions
   hasSelection?: boolean;
+  confirmExtras?: ReactNode;
 }
 
 // ============================================
@@ -45,6 +47,7 @@ export function BackgroundRemovalModals({
   status,
   translations: t,
   hasSelection,
+  confirmExtras,
 }: BackgroundRemovalModalsProps) {
   const confirmTitle = (
     <div className="flex items-center gap-3">
@@ -89,6 +92,7 @@ export function BackgroundRemovalModals({
             <p className="text-text-tertiary text-xs">{t.selectionNote}</p>
           )}
           <p className="text-text-tertiary text-xs">{t.downloadNote}</p>
+          {confirmExtras}
         </Modal>
       )}
 

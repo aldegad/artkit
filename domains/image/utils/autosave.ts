@@ -28,6 +28,7 @@ export interface EditorAutosaveData extends BaseAutosaveData {
   showGuides?: boolean;
   lockGuides?: boolean;
   snapToGuides?: boolean;
+  isPanLocked?: boolean;
 }
 
 // Create autosave storage using shared abstraction

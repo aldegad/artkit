@@ -33,6 +33,7 @@ export interface EditorLayersContextValue {
 
   // Actions
   addPaintLayer: () => void;
+  addFilterLayer: () => void;
   addImageLayer: (imageSrc: string, name?: string) => void;
   deleteLayer: (layerId: string) => void;
   selectLayer: (layerId: string) => void;

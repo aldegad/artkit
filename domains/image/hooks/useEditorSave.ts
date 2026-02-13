@@ -43,6 +43,7 @@ export interface UseEditorSaveOptions {
   showGuides: boolean;
   lockGuides: boolean;
   snapToGuides: boolean;
+  isPanLocked: boolean;
 
   // Callbacks
   setCurrentProjectId: (id: string | null) => void;
@@ -85,6 +86,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     showGuides,
     lockGuides,
     snapToGuides,
+    isPanLocked,
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
@@ -164,6 +166,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
         showGuides,
         lockGuides,
         snapToGuides,
+        isPanLocked,
       };
     },
     [
@@ -185,6 +188,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
       showGuides,
       lockGuides,
       snapToGuides,
+      isPanLocked,
     ]
   );
 
@@ -285,6 +289,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
         showGuides,
         lockGuides,
         snapToGuides,
+        isPanLocked,
       });
     }, EDITOR_AUTOSAVE_DEBOUNCE_MS);
 
@@ -314,6 +319,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     showGuides,
     lockGuides,
     snapToGuides,
+    isPanLocked,
   ]);
 
   return {

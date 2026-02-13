@@ -45,6 +45,7 @@ interface UseImageProjectIOOptions {
   setShowGuides: (show: boolean) => void;
   setLockGuides: (lock: boolean) => void;
   setSnapToGuides: (snap: boolean) => void;
+  setIsPanLocked: (locked: boolean) => void;
 
   initLayers: (width: number, height: number, existingLayers?: UnifiedLayer[]) => Promise<void>;
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
@@ -104,6 +105,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     setShowGuides,
     setLockGuides,
     setSnapToGuides,
+    setIsPanLocked,
     initLayers,
     layerCanvasesRef,
     editCanvasRef,
@@ -197,6 +199,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
           if (data.showGuides !== undefined) setShowGuides(data.showGuides);
           if (data.lockGuides !== undefined) setLockGuides(data.lockGuides);
           if (data.snapToGuides !== undefined) setSnapToGuides(data.snapToGuides);
+          if (data.isPanLocked !== undefined) setIsPanLocked(data.isPanLocked);
 
           if (data.currentProjectId !== undefined) {
             setCurrentProjectId(data.currentProjectId);
@@ -253,6 +256,11 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
       if (typeof project.brushColor === "string") setBrushColor(project.brushColor);
       if (typeof project.brushHardness === "number") setBrushHardness(project.brushHardness);
       if (typeof project.brushOpacity === "number") setBrushOpacity(project.brushOpacity);
+      if (typeof project.isPanLocked === "boolean") {
+        setIsPanLocked(project.isPanLocked);
+      } else {
+        setIsPanLocked(false);
+      }
       setIsProjectListOpen(false);
     } finally {
       setIsLoading(false);
@@ -278,6 +286,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     setBrushColor,
     setBrushHardness,
     setBrushOpacity,
+    setIsPanLocked,
     setIsProjectListOpen,
   ]);
 
@@ -317,6 +326,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     setSelection(null);
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setIsPanLocked(false);
     setStampSource(null);
 
     setLayers([]);
@@ -337,6 +347,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     setSelection,
     setZoom,
     setPan,
+    setIsPanLocked,
     setStampSource,
     setLayers,
     setActiveLayerId,

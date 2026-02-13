@@ -442,6 +442,19 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       // Update guide hover state when not dragging
       if (!isDragging && !isTouchPanOnlyInput) {
+        const canAutoStartDraw = (
+          (activeMode === "brush" || activeMode === "eraser")
+          && hasPrimaryActionButtonPressed(e)
+        );
+        if (canAutoStartDraw) {
+          const brushResult = brushHandler.handleMouseDown(ctx);
+          if (brushResult.handled && brushResult.dragType === "draw") {
+            setDragType("draw");
+            setIsDragging(true);
+            return;
+          }
+        }
+
         guideHandler.updateHoveredGuide(ctx);
       }
 
@@ -660,6 +673,10 @@ function getInputDevice(e: React.MouseEvent | React.PointerEvent): "mouse" | "to
     if (pointerType === "touch" || pointerType === "pen") return pointerType;
   }
   return "mouse";
+}
+
+function hasPrimaryActionButtonPressed(e: React.MouseEvent | React.PointerEvent): boolean {
+  return (e.buttons & 1) === 1;
 }
 
 // Helper function to get resize handle name for crop

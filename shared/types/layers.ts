@@ -4,6 +4,15 @@
 
 import { Point, Size } from "./common";
 
+export type LayerBlendMode =
+  | "source-over"
+  | "multiply"
+  | "screen"
+  | "overlay"
+  | "soft-light"
+  | "color"
+  | "luminosity";
+
 /**
  * UnifiedLayer: All layers are pixel-based (paint layers)
  * Images imported are drawn onto the layer canvas
@@ -17,6 +26,7 @@ export interface UnifiedLayer {
   visible: boolean;
   locked: boolean;
   opacity: number; // 0-100
+  blendMode?: LayerBlendMode;
   zIndex: number; // layer order (higher = on top)
 
   // Canvas data (base64 encoded)
@@ -46,6 +56,7 @@ export function createLayerWithSize(
     visible: true,
     locked: false,
     opacity: 100,
+    blendMode: "source-over",
     zIndex,
     position: { x: 0, y: 0 },
     scale: 1,
@@ -65,6 +76,7 @@ export function createPaintLayer(name: string, zIndex: number): UnifiedLayer {
     visible: true,
     locked: false,
     opacity: 100,
+    blendMode: "source-over",
     zIndex,
     paintData: "",
   };
