@@ -28,6 +28,7 @@ import {
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
   SpriteExportModal,
+  SpriteFrameExportModal,
   useSpriteExport,
   useSpriteProjectFileActions,
   useSpriteProjectSync,
@@ -138,6 +139,7 @@ function SpriteEditorMain() {
 
   // Export
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isFrameExportModalOpen, setIsFrameExportModalOpen] = useState(false);
   const [detectedSourceFrameSize, setDetectedSourceFrameSize] = useState<SpriteExportFrameSize | null>(null);
   const { isExporting, exportProgress, exportMp4, startProgress, endProgress } = useSpriteExport();
 
@@ -448,6 +450,12 @@ function SpriteEditorMain() {
     noFramesToSaveLabel: t.noFramesToSave,
   });
 
+  const frameExportDefaultFileName = useMemo(() => {
+    const resolvedProjectName = projectName.trim() || "sprite-project";
+    const frameNumber = currentFrameIndex + 1;
+    return `${resolvedProjectName}-frame-${String(frameNumber).padStart(3, "0")}`;
+  }, [currentFrameIndex, projectName]);
+
   const { handleExport, handleExportCurrentFrame } = useSpriteExportActions({
     hasRenderableFrames,
     tracks,
@@ -537,7 +545,7 @@ function SpriteEditorMain() {
             onSave={saveProject}
             onSaveAs={saveProjectAs}
             onExport={() => setIsExportModalOpen(true)}
-            onExportCurrentFrame={() => void handleExportCurrentFrame()}
+            onExportCurrentFrame={() => setIsFrameExportModalOpen(true)}
             onResampleAllResolution={() => void handleResampleAllResolution()}
             onImportImage={() => imageInputRef.current?.click()}
             onImportSheet={() => setIsSpriteSheetImportOpen(true)}
@@ -566,7 +574,7 @@ function SpriteEditorMain() {
               save: t.save,
               saveAs: t.saveAs,
               export: t.export,
-              exportCurrentFrame: `${t.export} ${t.frame} PNG`,
+              exportCurrentFrame: `${t.frame} ${t.export}`,
               resampleAllResolution: t.resampleAllResolution,
               importImage: t.importImage,
               importSheet: t.importSheet,
@@ -760,6 +768,23 @@ function SpriteEditorMain() {
           exportOptimizedFormatPng: t.exportOptimizedFormatPng,
           exportOptimizedFormatWebp: t.exportOptimizedFormatWebp,
           exportOptimizedTileSize: t.exportOptimizedTileSize,
+        }}
+      />
+
+      <SpriteFrameExportModal
+        isOpen={isFrameExportModalOpen}
+        onClose={() => setIsFrameExportModalOpen(false)}
+        onExport={handleExportCurrentFrame}
+        defaultFileName={frameExportDefaultFileName}
+        translations={{
+          title: `${t.frame} ${t.export}`,
+          export: t.export,
+          cancel: t.cancel,
+          fileName: t.exportFileName,
+          format: t.format,
+          quality: t.quality,
+          backgroundColor: t.backgroundColor,
+          transparent: t.transparent,
         }}
       />
 

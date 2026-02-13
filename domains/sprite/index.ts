@@ -36,6 +36,7 @@ export {
   FrameBackgroundRemovalModals,
   FrameInterpolationModals,
   SpriteExportModal,
+  SpriteFrameExportModal,
   SpriteResampleModal,
   SplitView,
 } from "./components";

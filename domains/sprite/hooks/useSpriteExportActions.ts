@@ -12,6 +12,15 @@ import { compositeFrame } from "../utils/compositor";
 import type { SpriteExportSettings } from "../components/SpriteExportModal";
 import type { SpriteMp4ExportOptions } from "./useSpriteExport";
 
+export type SpriteFrameExportFormat = "png" | "webp" | "jpeg";
+
+export interface SpriteCurrentFrameExportSettings {
+  fileName: string;
+  format: SpriteFrameExportFormat;
+  quality: number;
+  backgroundColor: string | null;
+}
+
 interface UseSpriteExportActionsOptions {
   hasRenderableFrames: boolean;
   tracks: SpriteTrack[];
@@ -33,7 +42,28 @@ interface UseSpriteExportActionsOptions {
 
 interface UseSpriteExportActionsResult {
   handleExport: (settings: SpriteExportSettings) => Promise<void>;
-  handleExportCurrentFrame: () => Promise<void>;
+  handleExportCurrentFrame: (settings: SpriteCurrentFrameExportSettings) => Promise<void>;
+}
+
+function getFrameExportMimeType(format: SpriteFrameExportFormat): string {
+  switch (format) {
+    case "webp":
+      return "image/webp";
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+    default:
+      return "image/png";
+  }
+}
+
+function getFrameExportExtension(format: SpriteFrameExportFormat): string {
+  return format === "jpeg" ? "jpg" : format;
+}
+
+function clampQuality(quality: number): number {
+  if (!Number.isFinite(quality)) return 0.9;
+  return Math.max(0.1, Math.min(1, quality));
 }
 
 export function useSpriteExportActions(
@@ -127,7 +157,7 @@ export function useSpriteExportActions(
     tracks,
   ]);
 
-  const handleExportCurrentFrame = useCallback(async () => {
+  const handleExportCurrentFrame = useCallback(async (settings: SpriteCurrentFrameExportSettings) => {
     if (!hasRenderableFrames) {
       showInfoToast(noFrameToExportLabel || "No frame available to export.");
       return;
@@ -148,11 +178,32 @@ export function useSpriteExportActions(
 
       const resolvedProjectName = projectName.trim() || "sprite-project";
       const frameNumber = currentFrameIndex + 1;
-      const fileName = `${resolvedProjectName}-frame-${String(frameNumber).padStart(3, "0")}.png`;
+      const fallbackFileName = `${resolvedProjectName}-frame-${String(frameNumber).padStart(3, "0")}`;
+      const format = settings.format ?? "png";
+      const mimeType = getFrameExportMimeType(format);
+      const extension = getFrameExportExtension(format);
+      const finalFileName = settings.fileName.trim() || fallbackFileName;
+
+      let exportCanvas = composited.canvas;
+      if (settings.backgroundColor) {
+        const flattened = document.createElement("canvas");
+        flattened.width = composited.canvas.width;
+        flattened.height = composited.canvas.height;
+        const ctx = flattened.getContext("2d");
+        if (!ctx) throw new Error("Failed to create export canvas context.");
+        ctx.fillStyle = settings.backgroundColor;
+        ctx.fillRect(0, 0, flattened.width, flattened.height);
+        ctx.drawImage(composited.canvas, 0, 0);
+        exportCanvas = flattened;
+      }
+
+      const dataUrl = format === "png"
+        ? exportCanvas.toDataURL(mimeType)
+        : exportCanvas.toDataURL(mimeType, clampQuality(settings.quality));
 
       const link = document.createElement("a");
-      link.download = fileName;
-      link.href = composited.canvas.toDataURL("image/png");
+      link.download = `${finalFileName}.${extension}`;
+      link.href = dataUrl;
       link.click();
     } catch (error) {
       console.error("Current frame export failed:", error);
