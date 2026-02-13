@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "@/shared/contexts";
 import { ImageDropZone, Select, HeaderContent } from "@/shared/components";
 import { PlusIcon, FlipIcon, RotateIcon } from "@/shared/components/icons";
+import { downloadBlob } from "@/shared/utils/download";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
 
 export default function ImageConverter() {
@@ -14,6 +15,7 @@ export default function ImageConverter() {
   const [resizeEnabled, setResizeEnabled] = useState(false);
   const [maxSidePx, setMaxSidePx] = useState(1024);
   const [isConverting, setIsConverting] = useState(false);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openFilePicker = useCallback(() => {
@@ -217,13 +219,44 @@ export default function ImageConverter() {
     [outputFormat],
   );
 
-  const downloadAll = useCallback(() => {
-    images.forEach((image) => {
-      if (image.convertedBlob) {
-        downloadImage(image);
-      }
-    });
-  }, [images, downloadImage]);
+  const downloadAll = useCallback(async () => {
+    if (isDownloadingAll) return;
+
+    const convertedImages = images.filter((image) => Boolean(image.convertedBlob));
+    if (convertedImages.length === 0) return;
+
+    setIsDownloadingAll(true);
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+      const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+      const duplicateNameCounter = new Map<string, number>();
+
+      convertedImages.forEach((image, index) => {
+        const blob = image.convertedBlob;
+        if (!blob) return;
+
+        const baseName = image.file.name.replace(/\.[^/.]+$/, "") || `image-${index + 1}`;
+        const key = baseName.toLowerCase();
+        const duplicateCount = duplicateNameCounter.get(key) ?? 0;
+        duplicateNameCounter.set(key, duplicateCount + 1);
+
+        const uniqueName = duplicateCount === 0
+          ? baseName
+          : `${baseName}-${duplicateCount + 1}`;
+
+        zip.file(`${uniqueName}.${ext}`, blob);
+      });
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadBlob(zipBlob, `converted-images-${timestamp}.zip`);
+    } catch (error) {
+      console.error("Failed to download all as zip:", error);
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  }, [images, isDownloadingAll, outputFormat]);
 
   const removeImage = useCallback((id: string) => {
     setImages((prev) => {
@@ -359,7 +392,8 @@ export default function ImageConverter() {
         {hasConverted && (
           <button
             onClick={downloadAll}
-            className="px-4 py-1.5 bg-accent-success hover:bg-accent-success/80 text-white rounded-lg text-sm transition-colors"
+            disabled={isDownloadingAll}
+            className="px-4 py-1.5 bg-accent-success hover:bg-accent-success/80 disabled:bg-surface-tertiary disabled:text-text-tertiary disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
           >
             {t.downloadAll}
           </button>
