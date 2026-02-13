@@ -14,6 +14,7 @@ interface EditorTranslationSource {
   importImage: string;
   export: string;
   exportLayers: string;
+  resampleAllResolution: string;
   undo: string;
   redo: string;
   layers: string;
@@ -65,6 +66,7 @@ interface EditorTranslationBundles {
     importImage: string;
     export: string;
     exportLayers: string;
+    resampleAllResolution: string;
     undo: string;
     redo: string;
     layers: string;
@@ -144,6 +146,7 @@ export function useEditorTranslationBundles(
         importImage: source.importImage,
         export: source.export,
         exportLayers: source.exportLayers,
+        resampleAllResolution: source.resampleAllResolution,
         undo: source.undo,
         redo: source.redo,
         layers: source.layers,

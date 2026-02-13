@@ -49,6 +49,7 @@ import { useEditorHeaderModel } from "./useEditorHeaderModel";
 import { useEditorOverlayModel } from "./useEditorOverlayModel";
 import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
+import { useImageResampleActions } from "./useImageResampleActions";
 import { clearRectWithFeather } from "../utils/selectionFeather";
 import { computeMagicWandSelection } from "@/shared/utils/magicWand";
 import type {
@@ -821,6 +822,21 @@ export function useImageEditorController() {
   const hasSelectedLayers = selectedLayerIds.length > 0 || activeLayerId !== null;
   const canUndoNow = canUndo();
   const canRedoNow = canRedo();
+  const canResample = hasLayers && canvasSize.width > 0 && canvasSize.height > 0;
+
+  const { isResampling, handleResampleAllResolution } = useImageResampleActions({
+    layers,
+    activeLayerId,
+    canvasSize,
+    layerCanvasesRef,
+    editCanvasRef,
+    saveToHistory,
+    setLayers,
+    setCanvasSize,
+    setCropArea,
+    setCanvasExpandMode,
+    setSelection,
+  });
 
   const {
     showExportModal,
@@ -853,11 +869,13 @@ export function useImageEditorController() {
     onImportImage: openImportImage,
     onExport: openExportSingle,
     onExportLayers: openExportLayers,
+    onResampleAllResolution: handleResampleAllResolution,
     onToggleLayers: handleToggleLayers,
     isLayersOpen,
     canSave: hasLayers,
     hasSelectedLayers,
-    isLoading: isLoading || isSaving,
+    canResample,
+    isLoading: isLoading || isSaving || isResampling,
     onUndo: handleUndo,
     onRedo: handleRedo,
     canUndo: canUndoNow,
