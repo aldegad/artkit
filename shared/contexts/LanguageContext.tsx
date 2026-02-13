@@ -139,6 +139,9 @@ interface Translations {
 
   // Editor
   crop: string;
+  cropScope: string;
+  cropScopeCanvas: string;
+  cropScopeLayer: string;
   zoom: string;
   brush: string;
   eraser: string;
@@ -520,6 +523,9 @@ const translations: Record<Language, Translations> = {
 
     // Editor
     crop: "자르기",
+    cropScope: "범위",
+    cropScopeCanvas: "전체",
+    cropScopeLayer: "레이어",
     zoom: "확대",
     brush: "브러시",
     eraser: "지우개",
@@ -899,6 +905,9 @@ const translations: Record<Language, Translations> = {
 
     // Editor
     crop: "Crop",
+    cropScope: "Scope",
+    cropScopeCanvas: "Canvas",
+    cropScopeLayer: "Layer",
     zoom: "Zoom",
     brush: "Brush",
     eraser: "Eraser",

@@ -86,6 +86,8 @@ function SpriteEditorMain() {
     setCropArea,
     cropAspectRatio,
     setCropAspectRatio,
+    cropScope,
+    setCropScope,
     lockCropAspect,
     setLockCropAspect,
     canvasExpandMode,
@@ -432,6 +434,7 @@ function SpriteEditorMain() {
     toolMode,
     cropArea,
     cropBaseSize,
+    cropScope,
     lockCropAspect,
     setCropArea,
     setCanvasExpandMode,
@@ -646,6 +649,8 @@ function SpriteEditorMain() {
         onFillFrames={handleFillFrames}
         cropAspectRatio={cropAspectRatio}
         setCropAspectRatio={setCropAspectRatio}
+        cropScope={cropScope}
+        setCropScope={setCropScope}
         cropArea={cropArea}
         lockCropAspect={lockCropAspect}
         setLockCropAspect={setLockCropAspect}
@@ -684,6 +689,9 @@ function SpriteEditorMain() {
           zoomToolTip: t.zoomToolTip,
           cropToolTip: t.cropToolTip,
           magicWandToolTip: t.magicWandToolTip,
+          cropScope: t.cropScope,
+          cropScopeCanvas: t.cropScopeCanvas,
+          cropScopeLayer: t.cropScopeLayer,
         }}
       />
 

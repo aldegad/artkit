@@ -5,6 +5,7 @@ import {
   FrameEditToolMode,
   SpriteCropArea,
   SpriteCropAspectRatio,
+  SpriteCropScope,
   MagicWandSelectionMode,
 } from "../types";
 import type { BrushPreset } from "@/domains/image/types/brush";
@@ -22,6 +23,7 @@ interface SpriteToolStore {
   isPanLocked: boolean;
   cropArea: SpriteCropArea | null;
   cropAspectRatio: SpriteCropAspectRatio;
+  cropScope: SpriteCropScope;
   lockCropAspect: boolean;
   canvasExpandMode: boolean;
 
@@ -49,6 +51,7 @@ interface SpriteToolStore {
   setIsPanLocked: (locked: boolean) => void;
   setCropArea: (area: SpriteCropArea | null) => void;
   setCropAspectRatio: (ratio: SpriteCropAspectRatio) => void;
+  setCropScope: (scope: SpriteCropScope) => void;
   setLockCropAspect: (locked: boolean) => void;
   setCanvasExpandMode: (enabled: boolean) => void;
 
@@ -88,6 +91,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   isPanLocked: false,
   cropArea: null,
   cropAspectRatio: "free",
+  cropScope: "canvas",
   lockCropAspect: false,
   canvasExpandMode: false,
   timelineMode: "reorder",
@@ -136,6 +140,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
   setIsPanLocked: (locked) => set({ isPanLocked: locked }),
   setCropArea: (area) => set({ cropArea: area }),
   setCropAspectRatio: (ratio) => set({ cropAspectRatio: ratio }),
+  setCropScope: (scope) => set({ cropScope: scope }),
   setLockCropAspect: (locked) => set({ lockCropAspect: locked }),
   setCanvasExpandMode: (enabled) => set({ canvasExpandMode: enabled }),
 
@@ -182,6 +187,7 @@ export const useSpriteToolStore = create<SpriteToolStore>((set) => ({
       isPanLocked: false,
       cropArea: null,
       cropAspectRatio: "free",
+      cropScope: "canvas",
       lockCropAspect: false,
       canvasExpandMode: false,
       timelineMode: "reorder",
