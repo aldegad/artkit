@@ -6,7 +6,7 @@ import type { SpriteTrack } from "../types";
 import {
   downloadCompositedFramesAsZip,
   downloadCompositedSpriteSheet,
-  downloadOptimizedSpriteZip,
+  downloadLayeredTrackFramesZip,
 } from "../utils/export";
 import { compositeFrame } from "../utils/compositor";
 import type { SpriteExportSettings } from "../components/SpriteExportModal";
@@ -122,16 +122,13 @@ export function useSpriteExportActions(
           break;
         case "optimized-zip":
           try {
-            startProgress("Preparing...", 0);
-            await downloadOptimizedSpriteZip(tracks, name, {
-              threshold: settings.optimizedThreshold,
-              target: settings.optimizedTarget,
-              includeGuide: settings.optimizedIncludeGuide,
-              imageFormat: settings.optimizedImageFormat,
-              imageQuality: settings.optimizedWebpQuality,
-              tileSize: settings.optimizedTileSize,
+            startProgress("Preparing layers...", 0);
+            await downloadLayeredTrackFramesZip(tracks, name, {
               fps,
               frameSize: resolvedFrameSize,
+              includeGuide: settings.optimizedIncludeGuide,
+              format: settings.optimizedImageFormat,
+              quality: settings.optimizedWebpQuality,
             }, (progress) => {
               startProgress(progress.stage, progress.percent, progress.detail);
             });

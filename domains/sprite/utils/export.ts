@@ -452,6 +452,326 @@ export async function downloadCompositedFramesAsZip(
 }
 
 // ============================================
+// Layered Track Frames Export (Composable ZIP)
+// ============================================
+
+export interface LayeredTrackFramesExportOptions {
+  fps: number;
+  frameSize?: SpriteExportFrameSize;
+  format?: SpriteSheetFormat;
+  quality?: number;
+  includeGuide?: boolean;
+}
+
+export interface LayeredTrackFramesExportProgress {
+  stage: string;
+  percent: number;
+  detail?: string;
+}
+
+interface LayeredTrackFramesMetadata {
+  meta: {
+    format: "artkit-layered-frames";
+    version: "1.0";
+    fps: number;
+    frameCount: number;
+    canvasSize: { w: number; h: number };
+    imageFormat: SpriteSheetFormat;
+    layerOrder: "bottom-to-top";
+  };
+  layers: Array<{
+    order: number;
+    id: string;
+    name: string;
+    folder: string;
+    opacity: number;
+    loop: boolean;
+    sourceFrameCount: number;
+    canvasSize: { w: number; h: number };
+  }>;
+  frames: Array<{
+    index: number;
+    timelineIndex: number;
+    file: string;
+  }>;
+}
+
+function clampLayeredQuality(quality: number | undefined): number {
+  if (!Number.isFinite(quality)) return 0.9;
+  return Math.max(0.1, Math.min(1, quality as number));
+}
+
+function sanitizeLayerEntryName(value: string, fallback: string): string {
+  const normalized = value
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function getTrackFrameIndexForTimeline(track: SpriteTrack, timelineIndex: number): number | null {
+  if (track.frames.length === 0) return null;
+  if (timelineIndex < track.frames.length) return timelineIndex;
+  if (track.loop) return timelineIndex % track.frames.length;
+  return null;
+}
+
+function getRenderableTimelineFrameIndices(tracks: SpriteTrack[]): number[] {
+  const maxFrames = Math.max(0, ...tracks.map((track) => track.frames.length));
+  if (maxFrames === 0) return [];
+
+  const indices: number[] = [];
+  for (let timelineIndex = 0; timelineIndex < maxFrames; timelineIndex++) {
+    const hasRenderableLayer = tracks.some((track) => {
+      const frameIndex = getTrackFrameIndexForTimeline(track, timelineIndex);
+      if (frameIndex === null) return false;
+      const frame = track.frames[frameIndex];
+      return Boolean(frame?.imageData) && !frame?.disabled;
+    });
+    if (hasRenderableLayer) {
+      indices.push(timelineIndex);
+    }
+  }
+
+  return indices;
+}
+
+function createImageLoader() {
+  const cache = new Map<string, Promise<HTMLImageElement>>();
+
+  return (source: string): Promise<HTMLImageElement> => {
+    const cached = cache.get(source);
+    if (cached) return cached;
+
+    const promise = new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => {
+        cache.delete(source);
+        reject(new Error("Failed to load image."));
+      };
+      image.src = source;
+    });
+
+    cache.set(source, promise);
+    return promise;
+  };
+}
+
+async function resolveLayeredOutputSize(
+  tracks: SpriteTrack[],
+  frameSize: SpriteExportFrameSize | undefined,
+): Promise<SpriteExportFrameSize | null> {
+  const normalized = normalizeFrameSize(frameSize);
+  if (normalized) return normalized;
+
+  const loadImage = createImageLoader();
+  let maxRight = 0;
+  let maxBottom = 0;
+
+  for (const track of tracks) {
+    for (const frame of track.frames) {
+      if (!frame.imageData) continue;
+      try {
+        const image = await loadImage(frame.imageData);
+        const right = (frame.offset?.x ?? 0) + image.width;
+        const bottom = (frame.offset?.y ?? 0) + image.height;
+        if (right > maxRight) maxRight = right;
+        if (bottom > maxBottom) maxBottom = bottom;
+      } catch {
+        // ignore invalid image and continue
+      }
+    }
+  }
+
+  if (maxRight <= 0 || maxBottom <= 0) return null;
+  return {
+    width: Math.max(1, Math.floor(maxRight)),
+    height: Math.max(1, Math.floor(maxBottom)),
+  };
+}
+
+function generateLayeredFramesGuide(metadata: LayeredTrackFramesMetadata): string {
+  const layers = metadata.layers
+    .map((layer) => `- ${String(layer.order + 1).padStart(2, "0")}: \`${layer.name}\` -> \`${layer.folder}/\``)
+    .join("\n");
+
+  return `# Layered Frames Export Guide
+
+This package exports each timeline frame per layer so you can composite at runtime.
+
+## Layer Order (Bottom -> Top)
+${layers}
+
+## Playback
+- FPS: ${metadata.meta.fps}
+- Frame count: ${metadata.meta.frameCount}
+- Canvas size: ${metadata.meta.canvasSize.w} x ${metadata.meta.canvasSize.h}
+- Image format: ${metadata.meta.imageFormat.toUpperCase()}
+
+## Render Rule
+For each frame index:
+1. Clear the render target.
+2. Draw layer images in the order listed above (bottom to top).
+3. Advance to the next frame at the configured FPS.
+
+## Metadata
+Use \`metadata.json\` to read exact layer ordering, frame mapping, and source timeline indices.
+
+---
+Generated by Artkit Sprite Editor
+`;
+}
+
+/**
+ * Export composable layered frames ZIP.
+ * Structure:
+ * - layers/01-<bottom-layer-name>/0001.(png|webp)
+ * - layers/02-<next-layer-name>/0001.(png|webp)
+ * - metadata.json
+ * - GUIDE.md (optional)
+ */
+export async function downloadLayeredTrackFramesZip(
+  tracks: SpriteTrack[],
+  projectName: string,
+  options: LayeredTrackFramesExportOptions,
+  onProgress?: (progress: LayeredTrackFramesExportProgress) => void,
+): Promise<void> {
+  const format: SpriteSheetFormat = options.format === "webp" ? "webp" : "png";
+  const ext = format === "webp" ? "webp" : "png";
+  const quality = clampLayeredQuality(options.quality);
+  const includeGuide = options.includeGuide ?? true;
+
+  const visibleTracks = tracks.filter((track) => track.visible && track.frames.length > 0);
+  if (visibleTracks.length === 0) return;
+
+  const frameIndices = getRenderableTimelineFrameIndices(visibleTracks);
+  if (frameIndices.length === 0) return;
+
+  const orderedLayers = visibleTracks.slice().reverse(); // bottom -> top
+  const outputSize = await resolveLayeredOutputSize(orderedLayers, options.frameSize);
+  if (!outputSize) return;
+
+  const report = (stage: string, percent: number, detail?: string) => {
+    onProgress?.({ stage, percent, detail });
+  };
+
+  report("Preparing layers", 5, `${orderedLayers.length} layers, ${frameIndices.length} frames`);
+
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+  const loadImage = createImageLoader();
+  const mimeType = format === "webp" ? "image/webp" : "image/png";
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize.width;
+  canvas.height = outputSize.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const totalRenderSteps = Math.max(1, orderedLayers.length * frameIndices.length);
+  let renderedSteps = 0;
+  const layerFolderNames: string[] = [];
+
+  for (let layerIndex = 0; layerIndex < orderedLayers.length; layerIndex++) {
+    const track = orderedLayers[layerIndex];
+    const fallbackName = `layer-${String(layerIndex + 1).padStart(2, "0")}`;
+    const sanitizedName = sanitizeLayerEntryName(track.name || fallbackName, fallbackName);
+    const layerFolder = `${String(layerIndex + 1).padStart(2, "0")}-${sanitizedName}`;
+    layerFolderNames.push(layerFolder);
+
+    for (let exportFrameIndex = 0; exportFrameIndex < frameIndices.length; exportFrameIndex++) {
+      const timelineIndex = frameIndices[exportFrameIndex];
+      ctx.clearRect(0, 0, outputSize.width, outputSize.height);
+
+      const frameIndex = getTrackFrameIndexForTimeline(track, timelineIndex);
+      if (frameIndex !== null) {
+        const frame = track.frames[frameIndex];
+        if (frame?.imageData && !frame.disabled) {
+          try {
+            const image = await loadImage(frame.imageData);
+            ctx.globalAlpha = Math.max(0, Math.min(1, track.opacity / 100));
+            ctx.drawImage(image, frame.offset?.x ?? 0, frame.offset?.y ?? 0);
+          } finally {
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+
+      const dataUrl = format === "webp"
+        ? canvas.toDataURL(mimeType, quality)
+        : canvas.toDataURL(mimeType);
+      const base64Data = dataUrl.split(",")[1];
+      const frameFile = `${String(exportFrameIndex + 1).padStart(4, "0")}.${ext}`;
+      zip.file(`layers/${layerFolder}/${frameFile}`, base64Data, { base64: true });
+
+      renderedSteps += 1;
+      if (
+        renderedSteps === 1
+        || renderedSteps === totalRenderSteps
+        || renderedSteps % Math.max(1, Math.floor(totalRenderSteps / 20)) === 0
+      ) {
+        const ratio = renderedSteps / totalRenderSteps;
+        report("Rendering layer frames", 10 + ratio * 70, `${renderedSteps}/${totalRenderSteps}`);
+      }
+    }
+  }
+
+  const metadata: LayeredTrackFramesMetadata = {
+    meta: {
+      format: "artkit-layered-frames",
+      version: "1.0",
+      fps: Math.max(1, Math.round(options.fps || 12)),
+      frameCount: frameIndices.length,
+      canvasSize: { w: outputSize.width, h: outputSize.height },
+      imageFormat: format,
+      layerOrder: "bottom-to-top",
+    },
+    layers: orderedLayers.map((track, index) => ({
+      order: index,
+      id: track.id,
+      name: track.name,
+      folder: `layers/${layerFolderNames[index]}`,
+      opacity: Math.max(0, Math.min(1, track.opacity / 100)),
+      loop: track.loop,
+      sourceFrameCount: track.frames.length,
+      canvasSize: {
+        w: Math.max(1, Math.round(track.canvasSize?.width ?? outputSize.width)),
+        h: Math.max(1, Math.round(track.canvasSize?.height ?? outputSize.height)),
+      },
+    })),
+    frames: frameIndices.map((timelineIndex, exportIndex) => ({
+      index: exportIndex,
+      timelineIndex,
+      file: `${String(exportIndex + 1).padStart(4, "0")}.${ext}`,
+    })),
+  };
+
+  report("Writing metadata", 84);
+  zip.file("metadata.json", JSON.stringify(metadata, null, 2));
+
+  if (includeGuide) {
+    zip.file("GUIDE.md", generateLayeredFramesGuide(metadata));
+  }
+
+  report("Packaging ZIP", 92, "Compressing...");
+  const blob = await zip.generateAsync({
+    type: "blob",
+    compression: "DEFLATE",
+    compressionOptions: { level: 9 },
+  });
+
+  const link = document.createElement("a");
+  link.download = `${projectName}-layered.zip`;
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+
+  report("Done", 100);
+}
+
+// ============================================
 // Optimized Sprite Export (Static/Dynamic Split)
 // ============================================
 

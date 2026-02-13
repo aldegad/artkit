@@ -668,62 +668,9 @@ export default function SpriteExportModal({
       {/* Optimized ZIP Options */}
       {exportType === "optimized-zip" && (
         <>
-          {/* Target Framework */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-secondary">
-              {t.exportOptimizedTarget}
-            </label>
-            <Select
-              value={optimizedTarget}
-              onChange={(value) =>
-                setOptimizedTarget(value as OptimizedTargetFramework)
-              }
-              options={[
-                { value: "canvas", label: "Canvas API" },
-                { value: "phaser", label: "Phaser 3" },
-                { value: "pixi", label: "PixiJS" },
-                { value: "custom", label: "Custom / Other" },
-              ]}
-              size="sm"
-              disabled={isExporting}
-            />
-          </div>
-
-          {/* Threshold */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-secondary">
-              {t.exportOptimizedThreshold} ({optimizedThreshold})
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={20}
-              value={optimizedThreshold}
-              onChange={(e) => setOptimizedThreshold(Number(e.target.value))}
-              disabled={isExporting}
-              className="w-full accent-accent-primary"
-            />
-            <p className="text-[11px] text-text-tertiary">
-              {t.exportOptimizedThresholdHint}
-            </p>
-          </div>
-
-          {/* Tile Size */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-secondary">
-              {t.exportOptimizedTileSize} ({optimizedTileSize}px)
-            </label>
-            <input
-              type="range"
-              min={8}
-              max={64}
-              step={1}
-              value={optimizedTileSize}
-              onChange={(e) => setOptimizedTileSize(Number(e.target.value))}
-              disabled={isExporting}
-              className="w-full accent-accent-primary"
-            />
-          </div>
+          <p className="text-[11px] text-text-tertiary">
+            Export each timeline frame per layer (bottom to top) so you can composite static and moving layers at runtime.
+          </p>
 
           {/* Include Guide */}
           <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">

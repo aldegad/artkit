@@ -191,6 +191,7 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
       id,
       name: trackName,
       frames: newTrackFrames,
+      canvasSize: resolveFrameSize(imageSize),
       visible: true,
       locked: false,
       opacity: 100,
@@ -506,7 +507,13 @@ export const useSpriteTrackStore = create<SpriteTrackStore>((set, get) => ({
 
   // Bulk restore
   restoreTracks: (tracks, nextFrameId) => {
-    const normalizedTracks = reindexZIndex(deepCopyTracks(tracks));
+    const fallbackCanvasSize = resolveFrameSize(get().imageSize);
+    const normalizedTracks = reindexZIndex(
+      deepCopyTracks(tracks).map((track) => ({
+        ...track,
+        canvasSize: track.canvasSize ?? fallbackCanvasSize,
+      })),
+    );
     set({
       tracks: normalizedTracks,
       nextFrameId,

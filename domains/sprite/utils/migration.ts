@@ -38,6 +38,7 @@ export function migrateFramesToTracks(frames: SpriteFrame[]): SpriteTrack[] {
       id: generateLayerId(),
       name: "Track 1",
       frames,
+      canvasSize: undefined,
       visible: true,
       locked: false,
       opacity: 100,

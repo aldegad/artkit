@@ -130,6 +130,7 @@ export function useSpriteCropActions(
     useSpriteTrackStore.setState((state) => ({
       tracks: state.tracks.map((track) => ({
         ...track,
+        canvasSize: { width, height },
         frames: track.frames.map((frame) => ({
           ...frame,
           offset: {
