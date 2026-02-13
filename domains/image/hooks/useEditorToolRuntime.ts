@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { CropArea, EditorToolMode, Point, UnifiedLayer } from "../types";
 import { applyFeatherToImageData } from "../utils/selectionFeather";
+import { drawIntoLayerAlphaMask, fillLayerAlphaMaskRect } from "@/shared/utils/layerAlphaMask";
 
 interface UseEditorToolRuntimeOptions {
   isSpacePressed: boolean;
@@ -60,6 +61,7 @@ export function useEditorToolRuntime(
 
       if (selectionFeather <= 0) {
         ctx.fillRect(localX, localY, width, height);
+        fillLayerAlphaMaskRect(editCanvas, localX, localY, width, height);
         return;
       }
 
@@ -75,10 +77,12 @@ export function useEditorToolRuntime(
       tempCtx.putImageData(feathered, 0, 0);
 
       ctx.drawImage(tempCanvas, localX, localY);
+      drawIntoLayerAlphaMask(editCanvas, tempCanvas, localX, localY);
       return;
     }
 
     ctx.fillRect(0, 0, editCanvas.width, editCanvas.height);
+    fillLayerAlphaMaskRect(editCanvas, 0, 0, editCanvas.width, editCanvas.height);
   }, [editCanvasRef, saveToHistory, brushColor, selection, selectionFeather, activeLayerPosition]);
 
   const getActiveToolMode = useCallback((): EditorToolMode => {

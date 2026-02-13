@@ -61,12 +61,40 @@ export interface EraseByMaskParams {
  * Parse "#rrggbb" into [r, g, b].
  */
 export function parseHexColor(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
+  const input = (hex || "").trim();
+  const raw = input.startsWith("#") ? input.slice(1) : input;
+
+  const clampByte = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const parseHexByte = (value: string): number => {
+    const parsed = Number.parseInt(value, 16);
+    return Number.isFinite(parsed) ? clampByte(parsed) : 0;
+  };
+
+  if (/^[\da-fA-F]{3}$/.test(raw)) {
+    return [
+      parseHexByte(raw[0] + raw[0]),
+      parseHexByte(raw[1] + raw[1]),
+      parseHexByte(raw[2] + raw[2]),
+    ];
+  }
+
+  if (/^[\da-fA-F]{6,8}$/.test(raw)) {
+    return [
+      parseHexByte(raw.substring(0, 2)),
+      parseHexByte(raw.substring(2, 4)),
+      parseHexByte(raw.substring(4, 6)),
+    ];
+  }
+
+  const rgbMatch = input.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgbMatch) {
+    const parts = rgbMatch[1].split(",").slice(0, 3).map((part) => clampByte(Number.parseFloat(part)));
+    if (parts.length === 3 && parts.every((value) => Number.isFinite(value))) {
+      return [parts[0], parts[1], parts[2]];
+    }
+  }
+
+  return [0, 0, 0];
 }
 
 interface RectBounds {
@@ -82,6 +110,13 @@ interface EraseAlphaCarryState {
   values: Uint8Array;
 }
 
+interface PaintColorCarryState {
+  width: number;
+  height: number;
+  alphaValues: Uint8Array;
+  channelDeltaValues: Int16Array;
+}
+
 const eraseMaskScratch: {
   canvas: HTMLCanvasElement | null;
   ctx: CanvasRenderingContext2D | null;
@@ -91,9 +126,15 @@ const eraseMaskScratch: {
 };
 
 const eraseAlphaCarryScratch = new WeakMap<object, EraseAlphaCarryState>();
+const paintAlphaCarryScratch = new WeakMap<object, PaintColorCarryState>();
+const LOW_ALPHA_LINEAR_PAINT_THRESHOLD = 0.12;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
+}
+
+function clampByte(v: number): number {
+  return Math.max(0, Math.min(255, Math.round(v)));
 }
 
 function getCanvasSize(ctx: CanvasRenderingContext2D): { width: number; height: number } {
@@ -183,6 +224,29 @@ function ensureEraseAlphaCarryState(
   return existing;
 }
 
+function ensurePaintAlphaCarryState(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): PaintColorCarryState | null {
+  const canvasKey = ctx.canvas as object | null;
+  if (!canvasKey) return null;
+
+  const existing = paintAlphaCarryScratch.get(canvasKey);
+  if (!existing || existing.width !== width || existing.height !== height) {
+    const created: PaintColorCarryState = {
+      width,
+      height,
+      alphaValues: new Uint8Array(width * height),
+      channelDeltaValues: new Int16Array(width * height * 3),
+    };
+    paintAlphaCarryScratch.set(canvasKey, created);
+    return created;
+  }
+
+  return existing;
+}
+
 /**
  * Clear accumulated fractional erase state for a canvas context.
  * Call this at the start of a new erase stroke to avoid cross-stroke carry artifacts.
@@ -191,6 +255,16 @@ export function resetEraseAlphaCarry(ctx: CanvasRenderingContext2D): void {
   const canvasKey = ctx.canvas as object | null;
   if (!canvasKey) return;
   eraseAlphaCarryScratch.delete(canvasKey);
+}
+
+/**
+ * Clear accumulated fractional paint state for a canvas context.
+ * Call this at the start of a new low-opacity paint stroke.
+ */
+export function resetPaintAlphaCarry(ctx: CanvasRenderingContext2D): void {
+  const canvasKey = ctx.canvas as object | null;
+  if (!canvasKey) return;
+  paintAlphaCarryScratch.delete(canvasKey);
 }
 
 function applyLinearAlphaErase(
@@ -212,10 +286,16 @@ function applyLinearAlphaErase(
 
     for (let col = 0; col < bounds.width; col += 1) {
       const alphaIndex = rowOffset + col * 4 + 3;
+      const redIndex = alphaIndex - 3;
+      const greenIndex = alphaIndex - 2;
+      const blueIndex = alphaIndex - 1;
       const maskAlpha = mask[alphaIndex];
       if (maskAlpha === 0) continue;
 
       const targetAlpha = target[alphaIndex];
+      const originalR = target[redIndex];
+      const originalG = target[greenIndex];
+      const originalB = target[blueIndex];
       if (targetAlpha === 0) {
         if (carry) carry[canvasRowOffset + col] = 0;
         continue;
@@ -238,11 +318,132 @@ function applyLinearAlphaErase(
 
       const nextAlpha = targetAlpha - eraseWhole;
       if (nextAlpha <= 0) {
+        target[redIndex] = 0;
+        target[greenIndex] = 0;
+        target[blueIndex] = 0;
         target[alphaIndex] = 0;
         if (carry) carry[canvasRowOffset + col] = 0;
       } else {
+        // Keep original color channels untouched while alpha is non-zero.
+        target[redIndex] = originalR;
+        target[greenIndex] = originalG;
+        target[blueIndex] = originalB;
         target[alphaIndex] = nextAlpha;
       }
+    }
+  }
+}
+
+function applyLinearColorPaint(
+  target: Uint8ClampedArray,
+  mask: Uint8ClampedArray,
+  bounds: RectBounds,
+  canvasWidth: number,
+  alphaScale: number,
+  color: [number, number, number],
+  carryState: PaintColorCarryState | null
+): void {
+  if (alphaScale <= 0) return;
+
+  const rowStride = bounds.width * 4;
+  const alphaCarry = carryState?.alphaValues ?? null;
+  const channelCarry = carryState?.channelDeltaValues ?? null;
+
+  for (let row = 0; row < bounds.height; row += 1) {
+    const rowOffset = row * rowStride;
+    const canvasRowOffset = (bounds.y + row) * canvasWidth + bounds.x;
+
+    for (let col = 0; col < bounds.width; col += 1) {
+      const alphaIndex = rowOffset + col * 4 + 3;
+      const maskAlpha = mask[alphaIndex];
+      if (maskAlpha === 0) continue;
+
+      const pixelIndex = canvasRowOffset + col;
+      const scaledAlpha = maskAlpha * alphaScale;
+
+      let srcAlpha: number;
+      if (alphaCarry) {
+        const totalAlphaFixed = scaledAlpha * 256 + alphaCarry[pixelIndex];
+        srcAlpha = Math.floor(totalAlphaFixed / 256);
+        alphaCarry[pixelIndex] = Math.floor(totalAlphaFixed - srcAlpha * 256);
+      } else {
+        srcAlpha = Math.round(scaledAlpha);
+      }
+
+      if (srcAlpha <= 0) continue;
+
+      const redIndex = alphaIndex - 3;
+      const greenIndex = alphaIndex - 2;
+      const blueIndex = alphaIndex - 1;
+      const channelCarryIndex = pixelIndex * 3;
+
+      if (srcAlpha >= 255) {
+        target[redIndex] = color[0];
+        target[greenIndex] = color[1];
+        target[blueIndex] = color[2];
+        target[alphaIndex] = 255;
+        if (alphaCarry) alphaCarry[pixelIndex] = 0;
+        if (channelCarry) {
+          channelCarry[channelCarryIndex] = 0;
+          channelCarry[channelCarryIndex + 1] = 0;
+          channelCarry[channelCarryIndex + 2] = 0;
+        }
+        continue;
+      }
+
+      const dstAlpha = target[alphaIndex];
+
+      // Fast path for opaque destination: apply signed channel carry to avoid
+      // low-opacity per-channel quantization artifacts (red/green speckles).
+      if (dstAlpha >= 255) {
+        const invSrcAlpha = 255 - srcAlpha;
+        if (channelCarry) {
+          const blendChannel = (dst: number, src: number, carryIndex: number): number => {
+            const total = (src - dst) * srcAlpha + channelCarry[carryIndex];
+            const step = total >= 0 ? Math.floor(total / 255) : Math.ceil(total / 255);
+            channelCarry[carryIndex] = total - step * 255;
+            return clampByte(dst + step);
+          };
+
+          target[redIndex] = blendChannel(target[redIndex], color[0], channelCarryIndex);
+          target[greenIndex] = blendChannel(target[greenIndex], color[1], channelCarryIndex + 1);
+          target[blueIndex] = blendChannel(target[blueIndex], color[2], channelCarryIndex + 2);
+        } else {
+          target[redIndex] = clampByte((color[0] * srcAlpha + target[redIndex] * invSrcAlpha) / 255);
+          target[greenIndex] = clampByte((color[1] * srcAlpha + target[greenIndex] * invSrcAlpha) / 255);
+          target[blueIndex] = clampByte((color[2] * srcAlpha + target[blueIndex] * invSrcAlpha) / 255);
+        }
+        target[alphaIndex] = 255;
+        continue;
+      }
+
+      if (channelCarry) {
+        channelCarry[channelCarryIndex] = 0;
+        channelCarry[channelCarryIndex + 1] = 0;
+        channelCarry[channelCarryIndex + 2] = 0;
+      }
+
+      const invSrcAlpha = 255 - srcAlpha;
+      const outAlpha = srcAlpha + Math.round((dstAlpha * invSrcAlpha) / 255);
+
+      if (outAlpha <= 0) {
+        target[redIndex] = 0;
+        target[greenIndex] = 0;
+        target[blueIndex] = 0;
+        target[alphaIndex] = 0;
+        if (alphaCarry) alphaCarry[pixelIndex] = 0;
+        continue;
+      }
+
+      const dstBlendFactor = dstAlpha * invSrcAlpha;
+      const outPremultR = color[0] * srcAlpha + Math.round((target[redIndex] * dstBlendFactor) / 255);
+      const outPremultG = color[1] * srcAlpha + Math.round((target[greenIndex] * dstBlendFactor) / 255);
+      const outPremultB = color[2] * srcAlpha + Math.round((target[blueIndex] * dstBlendFactor) / 255);
+
+      target[redIndex] = clampByte(outPremultR / outAlpha);
+      target[greenIndex] = clampByte(outPremultG / outAlpha);
+      target[blueIndex] = clampByte(outPremultB / outAlpha);
+      target[alphaIndex] = outAlpha;
     }
   }
 }
@@ -273,29 +474,34 @@ function drawEraserShape(
   ctx.fill();
 }
 
-function fallbackDestinationOutErase(
+function drawColorDabWithCanvas(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   radius: number,
   hardness: number,
+  color: string,
   alpha: number
 ): void {
   ctx.save();
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.globalAlpha = clamp01(alpha);
+  ctx.globalAlpha = alpha;
 
   if (hardness >= 0.99) {
-    ctx.fillStyle = "#000000";
+    // Hard brush: solid circle
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
   } else {
+    // Soft brush: radial gradient
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
     const innerStop = Math.max(0.01, hardness);
-    gradient.addColorStop(0, "rgba(0,0,0,1)");
-    gradient.addColorStop(innerStop, "rgba(0,0,0,1)");
-    gradient.addColorStop(1, "rgba(0,0,0,0)");
+    const [r, g, b] = parseHexColor(color);
+
+    gradient.addColorStop(0, `rgba(${r},${g},${b},1)`);
+    gradient.addColorStop(innerStop, `rgba(${r},${g},${b},1)`);
+    gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -303,6 +509,39 @@ function fallbackDestinationOutErase(
   }
 
   ctx.restore();
+}
+
+function paintDabLinear(ctx: CanvasRenderingContext2D, p: Omit<DabParams, "isEraser">): void {
+  const alpha = clamp01(p.alpha);
+  if (alpha <= 0 || p.radius <= 0) return;
+
+  const { width: canvasWidth, height: canvasHeight } = getCanvasSize(ctx);
+  const carryState = ensurePaintAlphaCarryState(ctx, canvasWidth, canvasHeight);
+  const bounds = getDabBounds(p.x, p.y, p.radius, canvasWidth, canvasHeight);
+  if (!bounds) return;
+
+  try {
+    const maskCtx = ensureEraseMaskScratch(bounds.width, bounds.height);
+    if (!maskCtx) {
+      drawColorDabWithCanvas(ctx, p.x, p.y, p.radius, p.hardness, p.color, alpha);
+      return;
+    }
+
+    maskCtx.clearRect(0, 0, bounds.width, bounds.height);
+    drawEraserShape(maskCtx, p.x - bounds.x, p.y - bounds.y, p.radius, p.hardness);
+
+    const targetImage = ctx.getImageData(bounds.x, bounds.y, bounds.width, bounds.height);
+    const maskImage = maskCtx.getImageData(0, 0, bounds.width, bounds.height);
+    const target = targetImage.data;
+    const mask = maskImage.data;
+    const color = parseHexColor(p.color);
+
+    applyLinearColorPaint(target, mask, bounds, canvasWidth, alpha, color, carryState);
+
+    ctx.putImageData(targetImage, bounds.x, bounds.y);
+  } catch {
+    drawColorDabWithCanvas(ctx, p.x, p.y, p.radius, p.hardness, p.color, alpha);
+  }
 }
 
 /**
@@ -319,10 +558,7 @@ export function eraseDabLinear(ctx: CanvasRenderingContext2D, p: EraseDabParams)
 
   try {
     const maskCtx = ensureEraseMaskScratch(bounds.width, bounds.height);
-    if (!maskCtx) {
-      fallbackDestinationOutErase(ctx, p.x, p.y, p.radius, p.hardness, alpha);
-      return;
-    }
+    if (!maskCtx) return;
 
     maskCtx.clearRect(0, 0, bounds.width, bounds.height);
     drawEraserShape(maskCtx, p.x - bounds.x, p.y - bounds.y, p.radius, p.hardness);
@@ -332,11 +568,14 @@ export function eraseDabLinear(ctx: CanvasRenderingContext2D, p: EraseDabParams)
     const target = targetImage.data;
     const mask = maskImage.data;
 
+    // Strict alpha-only erase: keep RGB unchanged while alpha > 0.
     applyLinearAlphaErase(target, mask, bounds, canvasWidth, alpha, carryState);
 
     ctx.putImageData(targetImage, bounds.x, bounds.y);
-  } catch {
-    fallbackDestinationOutErase(ctx, p.x, p.y, p.radius, p.hardness, alpha);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[brushEngine] eraseDabLinear alpha-only path failed", error);
+    }
   }
 }
 
@@ -382,15 +621,14 @@ export function eraseByMaskLinear(ctx: CanvasRenderingContext2D, p: EraseByMaskP
     const target = targetImage.data;
     const mask = maskImage.data;
 
+    // Strict alpha-only erase: keep RGB unchanged while alpha > 0.
     applyLinearAlphaErase(target, mask, bounds, canvasWidth, alphaScale, carryState);
 
     ctx.putImageData(targetImage, bounds.x, bounds.y);
-  } catch {
-    ctx.save();
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = alphaScale;
-    ctx.drawImage(p.maskCanvas, 0, 0);
-    ctx.restore();
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[brushEngine] eraseByMaskLinear alpha-only path failed", error);
+    }
   }
 }
 
@@ -406,32 +644,12 @@ export function drawDab(ctx: CanvasRenderingContext2D, p: DabParams): void {
     return;
   }
 
-  ctx.save();
-  ctx.globalAlpha = alpha;
-
-  if (hardness >= 0.99) {
-    // Hard brush: solid circle
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+  const clampedAlpha = clamp01(alpha);
+  if (clampedAlpha <= LOW_ALPHA_LINEAR_PAINT_THRESHOLD) {
+    paintDabLinear(ctx, { x, y, radius, hardness, color, alpha: clampedAlpha });
   } else {
-    // Soft brush: radial gradient
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    const innerStop = Math.max(0.01, hardness);
-
-    const [r, g, b] = parseHexColor(color);
-    gradient.addColorStop(0, `rgba(${r},${g},${b},1)`);
-    gradient.addColorStop(innerStop, `rgba(${r},${g},${b},1)`);
-    gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
-
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    drawColorDabWithCanvas(ctx, x, y, radius, hardness, color, clampedAlpha);
   }
-
-  ctx.restore();
 }
 
 /**

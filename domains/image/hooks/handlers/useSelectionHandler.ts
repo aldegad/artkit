@@ -7,6 +7,7 @@ import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, SelectionHandlerOptions, FloatingLayer } from "./types";
 import { createRectFromDrag } from "@/shared/utils/rectTransform";
 import { applyFeatherToImageData } from "../../utils/selectionFeather";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
 export interface UseSelectionHandlerReturn {
   handleMouseDown: (ctx: MouseEventContext) => HandlerResult;
@@ -58,7 +59,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
 
             const layerPosX = activeLayerPosition?.x || 0;
             const layerPosY = activeLayerPosition?.y || 0;
-            compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
+            drawLayerWithOptionalAlphaMask(compositeCtx, editCanvas, layerPosX, layerPosY);
 
             // Copy selection to floating layer
             let imageData = compositeCtx.getImageData(

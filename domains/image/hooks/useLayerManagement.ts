@@ -3,6 +3,13 @@
 import { useState, useCallback, useRef, MutableRefObject } from "react";
 import { UnifiedLayer, createPaintLayer } from "../types";
 import { showInfoToast } from "@/shared/components";
+import {
+  clearLayerAlphaMask,
+  copyLayerAlphaMask,
+  drawLayerWithOptionalAlphaMask,
+  loadLayerAlphaMaskFromDataURL,
+  rotateLayerAlphaMask,
+} from "@/shared/utils/layerAlphaMask";
 
 // ============================================
 // Types
@@ -102,6 +109,9 @@ export function useLayerManagement(
   // Initialize layers
   const initLayers = useCallback(
     async (width: number, height: number, existingLayers?: UnifiedLayer[]): Promise<void> => {
+      layerCanvasesRef.current.forEach((canvas) => {
+        clearLayerAlphaMask(canvas);
+      });
       layerCanvasesRef.current.clear();
 
       if (existingLayers && existingLayers.length > 0) {
@@ -124,7 +134,11 @@ export function useLayerManagement(
               img.onload = () => {
                 const ctx = canvas.getContext("2d");
                 if (ctx) ctx.drawImage(img, 0, 0);
-                resolve();
+                if (layer.alphaMaskData) {
+                  void loadLayerAlphaMaskFromDataURL(canvas, layer.alphaMaskData).then(() => resolve());
+                } else {
+                  resolve();
+                }
               };
               img.onerror = () => {
                 console.error(`Failed to load image for layer ${layer.id}`);
@@ -132,6 +146,10 @@ export function useLayerManagement(
               };
               img.src = layer.paintData;
             } else {
+              if (layer.alphaMaskData) {
+                void loadLayerAlphaMaskFromDataURL(canvas, layer.alphaMaskData).then(() => resolve());
+                return;
+              }
               resolve();
             }
           });
@@ -248,6 +266,10 @@ export function useLayerManagement(
       });
 
       if (layer?.type === "paint") {
+        const deletedCanvas = layerCanvasesRef.current.get(layerId);
+        if (deletedCanvas) {
+          clearLayerAlphaMask(deletedCanvas);
+        }
         layerCanvasesRef.current.delete(layerId);
       }
     },
@@ -386,15 +408,17 @@ export function useLayerManagement(
 
       if (lowerLayer.visible) {
         mergedCtx.globalAlpha = lowerLayer.opacity / 100;
-        mergedCtx.drawImage(lowerCanvas, lowerPos.x - minX, lowerPos.y - minY);
+        drawLayerWithOptionalAlphaMask(mergedCtx, lowerCanvas, lowerPos.x - minX, lowerPos.y - minY);
       }
 
       if (upperLayer.visible) {
         mergedCtx.globalAlpha = upperLayer.opacity / 100;
-        mergedCtx.drawImage(upperCanvas, upperPos.x - minX, upperPos.y - minY);
+        drawLayerWithOptionalAlphaMask(mergedCtx, upperCanvas, upperPos.x - minX, upperPos.y - minY);
       }
 
       mergedCtx.globalAlpha = 1;
+      clearLayerAlphaMask(lowerCanvas);
+      clearLayerAlphaMask(upperCanvas);
       layerCanvasesRef.current.set(lowerLayer.id, mergedCanvas);
       layerCanvasesRef.current.delete(upperLayer.id);
 
@@ -408,6 +432,7 @@ export function useLayerManagement(
                   position: { x: minX, y: minY },
                   opacity: 100,
                   visible: lowerLayer.visible || upperLayer.visible,
+                  alphaMaskData: undefined,
                   originalSize: { width: mergedWidth, height: mergedHeight },
                 }
               : layer
@@ -455,6 +480,8 @@ export function useLayerManagement(
         ctx.restore();
       }
 
+      rotateLayerAlphaMask(canvas, normalizedDeg);
+
       // Update layer originalSize if exists
       const layer = layers.find(l => l.id === layerId);
       if (layer?.originalSize && isSwapDimensions) {
@@ -480,6 +507,7 @@ export function useLayerManagement(
       id: crypto.randomUUID(),
       name: `${layer.name} (copy)`,
       zIndex: maxZIndex,
+      alphaMaskData: undefined,
     };
 
     // Copy the layer canvas
@@ -490,6 +518,7 @@ export function useLayerManagement(
       newCanvas.height = srcCanvas.height;
       const ctx = newCanvas.getContext("2d");
       if (ctx) ctx.drawImage(srcCanvas, 0, 0);
+      copyLayerAlphaMask(srcCanvas, newCanvas);
     } else {
       // Fallback: create empty canvas with display dimensions
       const { width, height } = getDisplayDimensions();
@@ -566,7 +595,13 @@ export function useLayerManagement(
     }
 
     // Scan for actual content bounds (non-transparent pixels)
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const maskAwareCanvas = document.createElement("canvas");
+    maskAwareCanvas.width = canvas.width;
+    maskAwareCanvas.height = canvas.height;
+    const maskAwareCtx = maskAwareCanvas.getContext("2d");
+    if (!maskAwareCtx) return null;
+    drawLayerWithOptionalAlphaMask(maskAwareCtx, canvas, 0, 0);
+    const imageData = maskAwareCtx.getImageData(0, 0, canvas.width, canvas.height);
     let minX = canvas.width;
     let minY = canvas.height;
     let maxX = 0;

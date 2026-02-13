@@ -19,7 +19,12 @@ import {
   eraseDabLinear,
   eraseLineLinear,
   resetEraseAlphaCarry,
+  resetPaintAlphaCarry,
 } from "@/shared/utils/brushEngine";
+import {
+  getLayerAlphaMaskContext,
+  drawLayerWithOptionalAlphaMask,
+} from "@/shared/utils/layerAlphaMask";
 
 // ============================================
 // Types
@@ -165,21 +170,23 @@ export function useBrushTool(): UseBrushToolReturn {
       const ctx = editCanvas?.getContext("2d");
       if (!editCanvas || !ctx) return;
 
-      // Clamp to active layer canvas bounds (layer-local coordinates)
-      x = Math.max(0, Math.min(x, editCanvas.width));
-      y = Math.max(0, Math.min(y, editCanvas.height));
-
       // Calculate pressure-adjusted parameters
       const params = calculateDrawingParameters(pressure, activePreset, brushSize, pressureEnabled);
 
+      // Allow off-canvas centers so soft edges can still affect near-border pixels.
+      const edgeMargin = Math.max(1, params.size / 2);
+      x = Math.max(-edgeMargin, Math.min(x, editCanvas.width + edgeMargin));
+      y = Math.max(-edgeMargin, Math.min(y, editCanvas.height + edgeMargin));
+
       // Shared dab params for brush/eraser
+      const strokeAlpha = (brushOpacity / 100) * params.opacity * params.flow;
       const dabParams = (cx: number, cy: number, isEraser: boolean) => ({
         x: cx,
         y: cy,
         radius: params.size / 2,
         hardness: brushHardness / 100,
         color: brushColor,
-        alpha: (brushOpacity / 100) * params.opacity * params.flow,
+        alpha: strokeAlpha,
         isEraser,
       });
 
@@ -187,9 +194,18 @@ export function useBrushTool(): UseBrushToolReturn {
 
       if (toolMode === "brush") {
         ctx.globalCompositeOperation = "source-over";
+        const maskCtx = getLayerAlphaMaskContext(editCanvas);
 
         if (isStart || !lastDrawPoint.current) {
+          resetPaintAlphaCarry(ctx);
           drawDab(ctx, dabParams(x, y, false));
+          if (maskCtx) {
+            resetPaintAlphaCarry(maskCtx);
+            drawDab(maskCtx, {
+              ...dabParams(x, y, false),
+              color: "#ffffff",
+            });
+          }
         } else {
           drawLine(ctx, {
             from: lastDrawPoint.current,
@@ -197,26 +213,40 @@ export function useBrushTool(): UseBrushToolReturn {
             spacing: lineSpacing,
             dab: dabParams(0, 0, false),
           });
+          if (maskCtx) {
+            drawLine(maskCtx, {
+              from: lastDrawPoint.current,
+              to: { x, y },
+              spacing: lineSpacing,
+              dab: {
+                ...dabParams(0, 0, false),
+                color: "#ffffff",
+              },
+            });
+          }
         }
       } else if (toolMode === "eraser") {
+        const maskCtx = getLayerAlphaMaskContext(editCanvas, true);
+        if (!maskCtx) return;
+
         if (isStart || !lastDrawPoint.current) {
-          resetEraseAlphaCarry(ctx);
-          eraseDabLinear(ctx, {
+          resetEraseAlphaCarry(maskCtx);
+          eraseDabLinear(maskCtx, {
             x,
             y,
             radius: params.size / 2,
             hardness: brushHardness / 100,
-            alpha: (brushOpacity / 100) * params.opacity * params.flow,
+            alpha: strokeAlpha,
           });
         } else {
-          eraseLineLinear(ctx, {
+          eraseLineLinear(maskCtx, {
             from: lastDrawPoint.current,
             to: { x, y },
             spacing: lineSpacing,
             dab: {
               radius: params.size / 2,
               hardness: brushHardness / 100,
-              alpha: (brushOpacity / 100) * params.opacity * params.flow,
+              alpha: strokeAlpha,
             },
           });
         }
@@ -229,6 +259,10 @@ export function useBrushTool(): UseBrushToolReturn {
           };
         }
         const currentOffset = stampOffset.current ?? { x: 0, y: 0 };
+        const maskCtx = getLayerAlphaMaskContext(editCanvas);
+        if (isStart && maskCtx) {
+          resetPaintAlphaCarry(maskCtx);
+        }
 
         // Snapshot once per call so sampling stays stable while we paint.
         const sourceCanvas = document.createElement("canvas");
@@ -236,7 +270,7 @@ export function useBrushTool(): UseBrushToolReturn {
         sourceCanvas.height = editCanvas.height;
         const sourceCtx = sourceCanvas.getContext("2d");
         if (!sourceCtx) return;
-        sourceCtx.drawImage(editCanvas, 0, 0);
+        drawLayerWithOptionalAlphaMask(sourceCtx, editCanvas, 0, 0);
 
         const drawStampDab = (destX: number, destY: number) => {
           const sourceX = destX - currentOffset.x;
@@ -245,7 +279,7 @@ export function useBrushTool(): UseBrushToolReturn {
 
           ctx.save();
           ctx.globalCompositeOperation = "source-over";
-          ctx.globalAlpha = (brushOpacity / 100) * params.opacity * params.flow;
+          ctx.globalAlpha = strokeAlpha;
           ctx.beginPath();
           ctx.arc(destX, destY, halfBrush, 0, Math.PI * 2);
           ctx.clip();
@@ -261,6 +295,18 @@ export function useBrushTool(): UseBrushToolReturn {
             params.size
           );
           ctx.restore();
+
+          if (maskCtx) {
+            drawDab(maskCtx, {
+              x: destX,
+              y: destY,
+              radius: params.size / 2,
+              hardness: brushHardness / 100,
+              color: "#ffffff",
+              alpha: strokeAlpha,
+              isEraser: false,
+            });
+          }
         };
 
         if (isStart || !lastDrawPoint.current) {

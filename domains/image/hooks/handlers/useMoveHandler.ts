@@ -6,6 +6,7 @@ import { useCallback, useRef, useState } from "react";
 import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, MoveHandlerOptions, FloatingLayer } from "./types";
 import { applyFeatherToImageData, clearRectWithFeather } from "../../utils/selectionFeather";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
 export interface UseMoveHandlerReturn {
   isMovingLayer: boolean;
@@ -67,7 +68,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
 
             const layerPosX = activeLayerPosition?.x || 0;
             const layerPosY = activeLayerPosition?.y || 0;
-            compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
+            drawLayerWithOptionalAlphaMask(compositeCtx, editCanvas, layerPosX, layerPosY);
 
             // Copy selection to floating layer
             let imageData = compositeCtx.getImageData(

@@ -7,6 +7,10 @@ import {
   EDITOR_AUTOSAVE_DEBOUNCE_MS,
 } from "../utils/autosave";
 import { StorageProvider, StorageInfo } from "@/domains/image/services/projectStorage";
+import {
+  drawLayerWithOptionalAlphaMask,
+  getLayerAlphaMaskDataURL,
+} from "@/shared/utils/layerAlphaMask";
 
 // ============================================
 // Types
@@ -102,9 +106,11 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     return layers.map((layer) => {
       if (layer.type === "paint") {
         const canvas = layerCanvasesRef.current?.get(layer.id);
+        const alphaMaskData = canvas ? getLayerAlphaMaskDataURL(canvas) : layer.alphaMaskData;
         return {
           ...layer,
           paintData: canvas ? canvas.toDataURL("image/png") : layer.paintData || "",
+          alphaMaskData,
         };
       }
       return { ...layer };
@@ -117,7 +123,15 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     const canvas = firstVisibleLayer
       ? layerCanvasesRef.current?.get(firstVisibleLayer.id)
       : null;
-    return canvas ? canvas.toDataURL("image/png") : undefined;
+    if (!canvas) return undefined;
+
+    const thumbCanvas = document.createElement("canvas");
+    thumbCanvas.width = canvas.width;
+    thumbCanvas.height = canvas.height;
+    const thumbCtx = thumbCanvas.getContext("2d");
+    if (!thumbCtx) return canvas.toDataURL("image/png");
+    drawLayerWithOptionalAlphaMask(thumbCtx, canvas, 0, 0);
+    return thumbCanvas.toDataURL("image/png");
   }, [layers, layerCanvasesRef]);
 
   // Prepare project data for saving

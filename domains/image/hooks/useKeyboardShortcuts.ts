@@ -5,6 +5,7 @@ import { CropArea, EditorToolMode } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { shouldIgnoreKeyEvent } from "@/shared/utils/keyboard";
 import { applyFeatherToImageData } from "../utils/selectionFeather";
+import { drawIntoLayerAlphaMask, drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 import {
   BRUSH_SIZE_SHORTCUTS,
   ZOOM_SHORTCUTS,
@@ -189,7 +190,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
 
         const layerPosX = activeLayerPosition?.x || 0;
         const layerPosY = activeLayerPosition?.y || 0;
-        compositeCtx.drawImage(editCanvas, layerPosX, layerPosY);
+        drawLayerWithOptionalAlphaMask(compositeCtx, editCanvas, layerPosX, layerPosY);
 
         // Copy selection to clipboard
         const selectionWidth = Math.max(1, Math.round(selection.width));
@@ -233,6 +234,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         const localPasteY = pasteY - layerPosY;
 
         ctx.drawImage(tempCanvas, localPasteX, localPasteY);
+        drawIntoLayerAlphaMask(editCanvas, tempCanvas, localPasteX, localPasteY);
         (floatingLayerRef as { current: FloatingLayer | null }).current = null;
 
         // Update selection to new position

@@ -2,6 +2,7 @@
 
 import { useCallback, RefObject } from "react";
 import { UnifiedLayer, OutputFormat, CropArea } from "../types";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
 interface UseImageExportOptions {
   layers: UnifiedLayer[];
@@ -54,7 +55,11 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     const compositeCtx = compositeCanvas.getContext("2d");
     if (!compositeCtx) return;
 
-    layers.forEach((layer) => {
+    const sortedVisibleLayers = [...layers]
+      .filter((layer) => layer.visible)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+    sortedVisibleLayers.forEach((layer) => {
       if (!layer.visible) return;
       const layerCanvas = layerCanvasesRef.current?.get(layer.id);
       if (!layerCanvas) return;
@@ -62,7 +67,7 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       compositeCtx.globalAlpha = layer.opacity / 100;
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
-      compositeCtx.drawImage(layerCanvas, posX, posY);
+      drawLayerWithOptionalAlphaMask(compositeCtx, layerCanvas, posX, posY);
       compositeCtx.globalAlpha = 1;
     });
 
@@ -186,7 +191,7 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
       ctx.globalAlpha = layer.opacity / 100;
-      ctx.drawImage(layerCanvas, posX, posY);
+      drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
       ctx.globalAlpha = 1;
 
       return new Promise<void>((resolve) => {
