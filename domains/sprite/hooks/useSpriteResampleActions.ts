@@ -163,6 +163,7 @@ export function useSpriteResampleActions(
           );
           return {
             ...track,
+            canvasSize: nextCanvasSize,
             frames,
           };
         }),

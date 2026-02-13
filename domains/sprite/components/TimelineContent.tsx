@@ -8,6 +8,7 @@ import { useDeferredPointerGesture } from "@/shared/hooks";
 import { safeSetPointerCapture } from "@/shared/utils";
 import { SpriteTrack } from "../types";
 import { useSpriteTrackStore } from "../stores/useSpriteTrackStore";
+import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { PlayIcon, StopIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, MenuIcon, DuplicateIcon, RotateIcon, DeleteIcon } from "@/shared/components/icons";
 
 // ============================================
@@ -63,6 +64,8 @@ export default function TimelineContent() {
   const setIsPlaying = useSpriteTrackStore((s) => s.setIsPlaying);
   const fps = useSpriteTrackStore((s) => s.fps);
   const setFps = useSpriteTrackStore((s) => s.setFps);
+  const imageSize = useSpriteTrackStore((s) => s.imageSize);
+  const globalCanvasSize = useSpriteUIStore((s) => s.canvasSize);
   const maxFrameCount = useSpriteTrackStore((s) =>
     s.tracks.length === 0 ? 0 : Math.max(...s.tracks.map((t) => t.frames.length))
   );
@@ -331,6 +334,18 @@ export default function TimelineContent() {
     setTimeout(() => nameInputRef.current?.select(), 0);
   }, []);
 
+  const getTrackCanvasLabel = useCallback((track: SpriteTrack) => {
+    const width = track.canvasSize?.width
+      ?? globalCanvasSize?.width
+      ?? (imageSize.width > 0 ? imageSize.width : null);
+    const height = track.canvasSize?.height
+      ?? globalCanvasSize?.height
+      ?? (imageSize.height > 0 ? imageSize.height : null);
+
+    if (!width || !height) return "LC -";
+    return `LC ${Math.max(1, Math.round(width))}x${Math.max(1, Math.round(height))}`;
+  }, [globalCanvasSize?.height, globalCanvasSize?.width, imageSize.height, imageSize.width]);
+
   // Finish editing track name
   const finishEditingName = useCallback(() => {
     if (editingTrackId && editingName.trim()) {
@@ -588,6 +603,7 @@ export default function TimelineContent() {
           {tracks.map((track: SpriteTrack) => {
             const isDropTarget = dragOverTrackId === track.id && draggedTrackId !== null && draggedTrackId !== track.id;
             const isDragSource = draggedTrackId === track.id;
+            const trackCanvasLabel = getTrackCanvasLabel(track);
 
             return (
                 <div
@@ -655,12 +671,17 @@ export default function TimelineContent() {
                         className="w-full bg-surface-secondary border border-border-default rounded px-1 text-[10px] outline-none focus:border-accent-primary"
                       />
                     ) : (
-                      <span
-                        className="text-[10px] truncate block cursor-text"
-                        onDoubleClick={() => startEditingName(track)}
-                      >
-                        {track.name}
-                      </span>
+                      <>
+                        <span
+                          className="text-[10px] truncate block cursor-text"
+                          onDoubleClick={() => startEditingName(track)}
+                        >
+                          {track.name}
+                        </span>
+                        <span className="text-[9px] text-text-tertiary truncate block leading-none mt-0.5">
+                          {trackCanvasLabel}
+                        </span>
+                      </>
                     )}
                   </div>
 
@@ -722,6 +743,9 @@ export default function TimelineContent() {
                           onDoubleClick={() => startEditingName(track)}
                         >
                           {track.name}
+                        </span>
+                        <span className="text-[10px] text-text-tertiary px-2 pb-1 truncate">
+                          {trackCanvasLabel}
                         </span>
                         <div className="h-px bg-border-default mx-1" />
                         <button

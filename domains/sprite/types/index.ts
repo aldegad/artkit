@@ -28,6 +28,7 @@ export interface SpriteTrack {
   id: string;
   name: string;
   frames: SpriteFrame[];
+  canvasSize?: Size;
   visible: boolean;
   locked: boolean;
   opacity: number; // 0-100
