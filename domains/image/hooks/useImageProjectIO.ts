@@ -14,6 +14,7 @@ import {
 } from "../services/projectStorage";
 import { loadEditorAutosaveData, clearEditorAutosaveData } from "../utils/autosave";
 import { confirmDialog, showErrorToast } from "@/shared/components";
+import { DEFAULT_PROJECT_GROUP, normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 interface UseImageProjectIOOptions {
   user: User | null;
@@ -22,6 +23,7 @@ interface UseImageProjectIOOptions {
   currentProjectId: string | null;
 
   setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setCurrentProjectId: (id: string | null) => void;
   setRotation: (rotation: number) => void;
   setCanvasSize: (size: { width: number; height: number }) => void;
@@ -83,6 +85,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     layers,
     currentProjectId,
     setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setRotation,
     setCanvasSize,
@@ -180,6 +183,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
           setZoom(data.zoom);
           setPan(data.pan);
           setProjectName(data.projectName);
+          setProjectGroup(normalizeProjectGroupName(data.projectGroup));
           setActiveLayerId(data.activeLayerId);
           setBrushSize(data.brushSize);
           setBrushColor(data.brushColor);
@@ -228,6 +232,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
       }
 
       setProjectName(project.name);
+      setProjectGroup(normalizeProjectGroupName(project.projectGroup));
       setCurrentProjectId(project.id);
       setRotation(project.rotation);
       setCanvasSize(project.canvasSize);
@@ -320,6 +325,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
 
     setCanvasSize({ width: 0, height: 0 });
     setProjectName("Untitled");
+    setProjectGroup(DEFAULT_PROJECT_GROUP);
     setCurrentProjectId(null);
     setRotation(0);
     setCropArea(null);
@@ -341,6 +347,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     t.unsavedChangesConfirm,
     setCanvasSize,
     setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setRotation,
     setCropArea,

@@ -18,6 +18,7 @@ interface SpriteUIStore {
 
   // Project
   projectName: string;
+  projectGroup: string;
   savedProjects: SavedSpriteProject[];
   currentProjectId: string | null;
   canvasSize: Size | null;
@@ -42,6 +43,7 @@ interface SpriteUIStore {
 
   // Actions - Project
   setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setSavedSpriteProjects: (projects: SavedSpriteProject[] | ((prev: SavedSpriteProject[]) => SavedSpriteProject[])) => void;
   setCurrentProjectId: (id: string | null) => void;
   setCanvasSize: (size: Size | null) => void;
@@ -76,6 +78,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
   isSpriteSheetImportOpen: false,
   isVideoImportOpen: false,
   projectName: "",
+  projectGroup: "default",
   savedProjects: [],
   currentProjectId: null,
   canvasSize: null,
@@ -94,6 +97,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
 
   // Project Actions
   setProjectName: (name) => set({ projectName: name }),
+  setProjectGroup: (group) => set({ projectGroup: group }),
   setSavedSpriteProjects: (projectsOrFn) =>
     set((state) => ({
       savedProjects: typeof projectsOrFn === "function" ? projectsOrFn(state.savedProjects) : projectsOrFn,
@@ -165,6 +169,7 @@ export const useSpriteUIStore = create<SpriteUIStore>((set, get) => ({
       isSpriteSheetImportOpen: false,
       isVideoImportOpen: false,
       projectName: "",
+      projectGroup: "default",
       currentProjectId: null,
       canvasSize: null,
       pendingVideoFile: null,

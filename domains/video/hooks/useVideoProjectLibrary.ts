@@ -18,11 +18,13 @@ import { loadMediaBlob } from "../utils/mediaStorage";
 import { saveVideoAutosave } from "../utils/videoAutosave";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 import { TIMELINE } from "../constants";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 interface UseVideoProjectLibraryOptions {
   storageProvider: VideoStorageProvider;
   deleteConfirmLabel?: string;
   setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setProject: (project: VideoProject) => void;
   restoreTracks: (tracks: VideoTrack[]) => void;
   restoreClips: (clips: Clip[]) => void;
@@ -223,6 +225,7 @@ export function useVideoProjectLibrary(
     storageProvider,
     deleteConfirmLabel,
     setProjectName,
+    setProjectGroup,
     setProject,
     restoreTracks,
     restoreClips,
@@ -281,6 +284,7 @@ export function useVideoProjectLibrary(
       };
 
       setProjectName(loaded.name);
+      setProjectGroup(normalizeProjectGroupName(loaded.projectGroup));
       setProject(restoredProject);
       restoreTracks(loadedProject.tracks);
       restoreClips(restoredClips);
@@ -298,6 +302,7 @@ export function useVideoProjectLibrary(
         await saveVideoAutosave({
           project: restoredProject,
           projectName: loaded.name,
+          projectGroup: normalizeProjectGroupName(loaded.projectGroup),
           tracks: loadedProject.tracks,
           clips: restoredClips,
           masks: restoredMasks,
@@ -337,6 +342,7 @@ export function useVideoProjectLibrary(
     setCurrentProjectId,
     setLoopRange,
     setProject,
+    setProjectGroup,
     setProjectName,
     setViewState,
     storageProvider,

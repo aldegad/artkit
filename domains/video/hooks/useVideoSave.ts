@@ -21,6 +21,7 @@ import {
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
 import { TIMELINE } from "../constants";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 // ============================================
 // Types
@@ -32,6 +33,7 @@ export interface UseVideoSaveOptions {
   // Video state
   project: VideoProject;
   projectName: string;
+  projectGroup: string;
   currentProjectId: string | null;
   tracks: VideoTrack[];
   clips: Clip[];
@@ -46,6 +48,8 @@ export interface UseVideoSaveOptions {
   previewCanvasRef: React.RefObject<HTMLCanvasElement | null>;
 
   // Callbacks
+  setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setCurrentProjectId: (id: string | null) => void;
   setSavedProjects: (projects: SavedVideoProject[]) => void;
   setStorageInfo: (info: VideoStorageInfo) => void;
@@ -56,8 +60,8 @@ export interface UseVideoSaveOptions {
 }
 
 export interface UseVideoSaveReturn {
-  saveProject: () => Promise<void>;
-  saveAsProject: (nameOverride?: string) => Promise<void>;
+  saveProject: (options?: { name?: string; projectGroup?: string }) => Promise<void>;
+  saveAsProject: (options?: { name?: string; projectGroup?: string }) => Promise<void>;
   isSaving: boolean;
   saveProgress: SaveLoadProgress | null;
 }
@@ -94,6 +98,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     storageProvider,
     project,
     projectName,
+    projectGroup,
     currentProjectId,
     tracks,
     clips,
@@ -106,6 +111,8 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     selectedClipIds,
     selectedMaskIds,
     previewCanvasRef,
+    setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
@@ -136,8 +143,14 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
 
   // Build saved project data
   const buildSavedProject = useCallback(
-    (projectId: string, nameOverride?: string): SavedVideoProject => {
-      const resolvedName = nameOverride || projectName;
+    (
+      projectId: string,
+      overrides?: { name?: string; projectGroup?: string }
+    ): SavedVideoProject => {
+      const resolvedName = (overrides?.name || projectName).trim() || "Untitled Project";
+      const resolvedProjectGroup = normalizeProjectGroupName(
+        overrides?.projectGroup || projectGroup
+      );
       const duration = calculateProjectDuration(clips);
       const normalizedTimelineView = sanitizeTimelineView(viewState);
       const normalizedPlaybackRange = playbackRange
@@ -155,6 +168,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
       return {
         id: projectId,
         name: resolvedName,
+        projectGroup: resolvedProjectGroup,
         project: {
           ...project,
           name: resolvedName,
@@ -173,7 +187,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         savedAt: Date.now(),
       };
     },
-    [project, projectName, tracks, clips, masks, viewState, currentTime, playbackRange]
+    [project, projectName, projectGroup, tracks, clips, masks, viewState, currentTime, playbackRange]
   );
 
   // Refresh project list after save
@@ -185,13 +199,13 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
   }, [storageProvider, setSavedProjects, setStorageInfo]);
 
   // Save project (overwrites existing or creates new)
-  const saveProject = useCallback(async () => {
+  const saveProject = useCallback(async (options?: { name?: string; projectGroup?: string }) => {
     if (savingRef.current) return;
     savingRef.current = true;
 
     const projectId = currentProjectIdRef.current || project.id || crypto.randomUUID();
     currentProjectIdRef.current = projectId;
-    const savedProject = buildSavedProject(projectId);
+    const savedProject = buildSavedProject(projectId, options);
     const thumbnailDataUrl = generateThumbnail();
 
     setIsSaving(true);
@@ -200,6 +214,8 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
       await storageProvider.saveProject(savedProject, thumbnailDataUrl, setSaveProgress);
       currentProjectIdRef.current = projectId;
       setCurrentProjectId(projectId);
+      setProjectName(savedProject.name);
+      setProjectGroup(normalizeProjectGroupName(savedProject.projectGroup));
       await refreshProjectList();
     } catch (error) {
       console.error("Failed to save video project:", error);
@@ -209,16 +225,25 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
       setIsSaving(false);
       setSaveProgress(null);
     }
-  }, [buildSavedProject, generateThumbnail, storageProvider, setCurrentProjectId, refreshProjectList, project.id]);
+  }, [
+    buildSavedProject,
+    generateThumbnail,
+    storageProvider,
+    setCurrentProjectId,
+    setProjectName,
+    setProjectGroup,
+    refreshProjectList,
+    project.id,
+  ]);
 
   // Save as new project
   const saveAsProject = useCallback(
-    async (nameOverride?: string) => {
+    async (options?: { name?: string; projectGroup?: string }) => {
       if (savingRef.current) return;
       savingRef.current = true;
 
       const projectId = crypto.randomUUID();
-      const savedProject = buildSavedProject(projectId, nameOverride);
+      const savedProject = buildSavedProject(projectId, options);
       const thumbnailDataUrl = generateThumbnail();
 
       setIsSaving(true);
@@ -227,6 +252,8 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         await storageProvider.saveProject(savedProject, thumbnailDataUrl, setSaveProgress);
         currentProjectIdRef.current = projectId;
         setCurrentProjectId(projectId);
+        setProjectName(savedProject.name);
+        setProjectGroup(normalizeProjectGroupName(savedProject.projectGroup));
         await refreshProjectList();
       } catch (error) {
         console.error("Failed to save video project:", error);
@@ -237,7 +264,15 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         setSaveProgress(null);
       }
     },
-    [buildSavedProject, generateThumbnail, storageProvider, setCurrentProjectId, refreshProjectList]
+    [
+      buildSavedProject,
+      generateThumbnail,
+      storageProvider,
+      setCurrentProjectId,
+      setProjectName,
+      setProjectGroup,
+      refreshProjectList,
+    ]
   );
 
   // Autosave effect (to IndexedDB, not cloud)
@@ -277,6 +312,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
           duration: autosaveDuration,
         },
         projectName,
+        projectGroup,
         tracks,
         clips,
         masks,
@@ -300,6 +336,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
     enabled,
     project,
     projectName,
+    projectGroup,
     tracks,
     clips,
     masks,

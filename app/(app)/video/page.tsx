@@ -10,6 +10,7 @@ import {
   Scrollbar,
   CanvasCropControls,
   PanLockFloatingButton,
+  SaveProjectModal,
   showErrorToast,
 } from "@/shared/components";
 import {
@@ -83,6 +84,8 @@ import {
 } from "@/shared/ai/frameInterpolation";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 import { useHorizontalWheelCapture } from "@/shared/hooks";
+import { useSaveProjectDialog } from "@/shared/hooks";
+import { collectProjectGroupNames } from "@/shared/utils/projectGroups";
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -135,8 +138,10 @@ function VideoEditorContent() {
   const {
     project,
     projectName,
+    projectGroup,
     setProject,
     setProjectName,
+    setProjectGroup,
     toolMode,
     setToolMode,
     selectedClipIds,
@@ -169,6 +174,8 @@ function VideoEditorContent() {
     autoKeyframeEnabled,
     previewPreRenderEnabled,
     togglePreviewPreRender,
+    previewQualityFirstEnabled,
+    togglePreviewQualityFirst,
     isPanLocked,
     setIsPanLocked,
   } = useVideoState();
@@ -256,6 +263,7 @@ function VideoEditorContent() {
     storageProvider,
     deleteConfirmLabel: t.deleteConfirm || "Delete this project?",
     setProjectName,
+    setProjectGroup,
     setProject,
     restoreTracks,
     restoreClips,
@@ -269,6 +277,23 @@ function VideoEditorContent() {
     clearHistory,
     clearMaskHistory,
   });
+
+  const {
+    dialogState: saveDialogState,
+    requestSaveDetails,
+    closeDialog: closeSaveDialog,
+    submitDialog: submitSaveDialog,
+  } = useSaveProjectDialog();
+  const requestProjectSaveDetails = useCallback((request: {
+    mode: "save" | "saveAs";
+    name: string;
+    projectGroup?: string;
+  }) => {
+    return requestSaveDetails({
+      ...request,
+      existingProjectGroups: collectProjectGroupNames(savedProjects),
+    });
+  }, [requestSaveDetails, savedProjects]);
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
   const playbackRange = useMemo(() => {
@@ -300,6 +325,7 @@ function VideoEditorContent() {
     storageProvider,
     project,
     projectName,
+    projectGroup,
     currentProjectId,
     tracks,
     clips,
@@ -312,6 +338,8 @@ function VideoEditorContent() {
     selectedClipIds,
     selectedMaskIds,
     previewCanvasRef,
+    setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
@@ -424,9 +452,10 @@ function VideoEditorContent() {
     newProjectConfirm: t.newProjectConfirm,
     cancelLabel: t.cancel,
     projectName,
-    setProjectName,
+    projectGroup,
     saveProject,
     saveAsProject,
+    requestSaveDetails: requestProjectSaveDetails,
     openProjectList,
     loadProject,
     deleteProject,
@@ -735,6 +764,26 @@ function VideoEditorContent() {
         } : null}
       />
 
+      <SaveProjectModal
+        isOpen={saveDialogState.isOpen}
+        initialName={saveDialogState.initialName}
+        initialProjectGroup={saveDialogState.initialProjectGroup}
+        existingProjectGroups={saveDialogState.existingProjectGroups}
+        isSaving={isSaving}
+        onClose={closeSaveDialog}
+        onSave={submitSaveDialog}
+        translations={{
+          title: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
+          name: t.projectName,
+          project: t.project,
+          defaultProject: "default",
+          newProject: `${t.newProject}...`,
+          newProjectName: t.projectName,
+          cancel: t.cancel,
+          save: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
+        }}
+      />
+
       {/* Header Slot - Menu Bar + Project Info */}
       <HeaderContent
         title={t.videoEditor}
@@ -769,6 +818,8 @@ function VideoEditorContent() {
             onResetLayout={resetLayout}
             onTogglePreviewCache={togglePreviewPreRender}
             previewCacheEnabled={previewPreRenderEnabled}
+            onTogglePreviewQualityFirst={togglePreviewQualityFirst}
+            previewQualityFirstEnabled={previewQualityFirstEnabled}
             translations={menuTranslations}
           />
         }
@@ -1007,6 +1058,9 @@ function VideoEditorContent() {
         translations={{
           savedProjects: t.savedProjects || "Saved Projects",
           noSavedProjects: t.noSavedProjects || "No saved projects",
+          project: t.project,
+          allProjects: t.allProjects,
+          defaultProject: "default",
           delete: t.delete,
           loading: projectListOperation === "delete" ? `${t.delete || "Delete"}...` : (t.loading || "Loading"),
         }}

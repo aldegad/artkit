@@ -2,6 +2,7 @@ export interface PreviewPerformanceConfig {
   isMobileLike: boolean;
   draftMode: boolean;
   preRenderEnabled: boolean;
+  qualityFirstMode: boolean;
   maxCanvasDpr: number;
   playbackRenderFpsCap: number;
   debugLogs: boolean;
@@ -13,6 +14,8 @@ const MODE_QUERY_KEY = "vp_mode";
 const MODE_STORAGE_KEY = "video.preview.mode";
 export const PRE_RENDER_QUERY_KEY = "vp_prerender";
 export const PRE_RENDER_STORAGE_KEY = "video.preview.prerender";
+export const QUALITY_FIRST_QUERY_KEY = "vp_quality";
+export const QUALITY_FIRST_STORAGE_KEY = "video.preview.qualityFirst";
 const DEBUG_QUERY_KEY = "vp_debug";
 const DEBUG_STORAGE_KEY = "video.preview.debug";
 const FPS_CAP_QUERY_KEY = "vp_fps";
@@ -85,6 +88,19 @@ export function setPreRenderEnabledSetting(enabled: boolean): void {
   }
 }
 
+export function resolvePreviewQualityFirstSetting(): boolean {
+  return parseBool(readSetting(QUALITY_FIRST_QUERY_KEY, QUALITY_FIRST_STORAGE_KEY)) ?? false;
+}
+
+export function setPreviewQualityFirstSetting(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(QUALITY_FIRST_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // Ignore storage failures (private mode / quota)
+  }
+}
+
 export function resolvePreviewPerformanceConfig(): PreviewPerformanceConfig {
   const isMobileLike = detectMobileLikeDevice();
 
@@ -103,13 +119,15 @@ export function resolvePreviewPerformanceConfig(): PreviewPerformanceConfig {
   const debugDefault = process.env.NODE_ENV !== "production";
   const debugLogs =
     parseBool(readSetting(DEBUG_QUERY_KEY, DEBUG_STORAGE_KEY)) ?? debugDefault;
+  const qualityFirstMode = resolvePreviewQualityFirstSetting();
 
   return {
     isMobileLike,
     draftMode,
     preRenderEnabled,
+    qualityFirstMode,
     // Keep preview sharp on smaller/mobile viewports by avoiding forced DPR=1.
-    maxCanvasDpr: 2,
+    maxCanvasDpr: qualityFirstMode ? Number.POSITIVE_INFINITY : 2,
     playbackRenderFpsCap,
     debugLogs,
   };

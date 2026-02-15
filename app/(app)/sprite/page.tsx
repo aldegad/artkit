@@ -52,12 +52,15 @@ import {
   SaveToast,
   LoadingOverlay,
   PanLockFloatingButton,
+  SaveProjectModal,
 } from "@/shared/components";
+import { useSaveProjectDialog } from "@/shared/hooks";
 import { SyncDialog } from "@/shared/components/app/auth";
 import {
   getSpriteStorageProvider,
 } from "@/domains/sprite/services/projectStorage";
 import { type SpriteExportFrameSize } from "@/domains/sprite/utils/export";
+import { collectProjectGroupNames } from "@/shared/utils/projectGroups";
 
 // ============================================
 // Main Editor Component
@@ -122,7 +125,18 @@ function SpriteEditorMain() {
   const animPreviewZoom = useSpriteViewportStore((s) => s.animPreviewZoom);
   const animPreviewVpApi = useSpriteViewportStore((s) => s._animPreviewVpApi);
   const { undo, redo, canUndo, canRedo, pushHistory } = useEditorHistory();
-  const { projectName, setProjectName, savedProjects, setSavedSpriteProjects, currentProjectId, setCurrentProjectId, newProject, isAutosaveLoading } = useEditorProject();
+  const {
+    projectName,
+    setProjectName,
+    projectGroup,
+    setProjectGroup,
+    savedProjects,
+    setSavedSpriteProjects,
+    currentProjectId,
+    setCurrentProjectId,
+    newProject,
+    isAutosaveLoading,
+  } = useEditorProject();
   const {
     isProjectListOpen,
     setIsProjectListOpen,
@@ -167,6 +181,23 @@ function SpriteEditorMain() {
 
   const { t } = useLanguage();
   const storageProvider = useMemo(() => getSpriteStorageProvider(user), [user]);
+  const {
+    dialogState: saveDialogState,
+    requestSaveDetails,
+    closeDialog: closeSaveDialog,
+    submitDialog: submitSaveDialog,
+  } = useSaveProjectDialog();
+
+  const requestProjectSaveDetails = useCallback((request: {
+    mode: "save" | "saveAs";
+    name: string;
+    projectGroup?: string;
+  }) => {
+    return requestSaveDetails({
+      ...request,
+      existingProjectGroups: collectProjectGroupNames(savedProjects),
+    });
+  }, [requestSaveDetails, savedProjects]);
 
   const handleBgRemovalQualityChange = useCallback((quality: BackgroundRemovalQuality) => {
     setBgRemovalQuality(quality);
@@ -330,6 +361,7 @@ function SpriteEditorMain() {
   } = useSpriteProjectFileActions({
     storageProvider,
     projectName,
+    projectGroup,
     currentProjectId,
     imageSrc,
     firstFrameImage,
@@ -343,6 +375,7 @@ function SpriteEditorMain() {
     setSavedSpriteProjects,
     setCurrentProjectId,
     setProjectName,
+    setProjectGroup,
     setImageSrc,
     setImageSize,
     setCanvasSize,
@@ -352,6 +385,7 @@ function SpriteEditorMain() {
     setScale,
     setIsProjectListOpen,
     newProject,
+    requestSaveDetails: requestProjectSaveDetails,
     t: {
       enterProjectName: t.enterProjectName,
       saveFailed: t.saveFailed,
@@ -538,6 +572,26 @@ function SpriteEditorMain() {
         className="hidden"
       />
 
+      <SaveProjectModal
+        isOpen={saveDialogState.isOpen}
+        initialName={saveDialogState.initialName}
+        initialProjectGroup={saveDialogState.initialProjectGroup}
+        existingProjectGroups={saveDialogState.existingProjectGroups}
+        isSaving={isSaving}
+        onClose={closeSaveDialog}
+        onSave={submitSaveDialog}
+        translations={{
+          title: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
+          name: t.projectName,
+          project: t.project,
+          defaultProject: "default",
+          newProject: `${t.newProject}...`,
+          newProjectName: t.projectName,
+          cancel: t.cancel,
+          save: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
+        }}
+      />
+
       {/* Header Slot */}
       <HeaderContent
         title={t.spriteEditor}
@@ -715,6 +769,9 @@ function SpriteEditorMain() {
           savedProjects: t.savedProjects || "저장된 프로젝트",
           noSavedProjects: t.noSavedProjects || "저장된 프로젝트가 없습니다",
           storage: t.storage || "저장소",
+          project: t.project,
+          allProjects: t.allProjects,
+          defaultProject: "default",
           load: t.load || "불러오기",
           delete: t.delete,
           frames: t.frames || "프레임",

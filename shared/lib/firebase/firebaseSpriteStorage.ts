@@ -4,8 +4,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  orderBy,
-  query,
   setDoc,
   Timestamp,
 } from "firebase/firestore";
@@ -24,6 +22,7 @@ import {
   removeUndefinedValues,
   readTimestampMillis,
 } from "./firestoreValueUtils";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 interface FirestoreSpriteFrameMeta {
   id: number;
@@ -50,6 +49,7 @@ interface FirestoreSpriteTrackMeta {
 interface FirestoreSpriteProject {
   id: string;
   name: string;
+  projectGroup?: string;
   imageSrcRef?: string;
   imageSrc?: string;
   imageSize: SavedSpriteProject["imageSize"];
@@ -67,6 +67,14 @@ interface FirestoreSpriteProject {
   mediaCleanupVersion?: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+function resolveProjectSavedAt(data: {
+  updatedAt?: unknown;
+  savedAt?: unknown;
+  createdAt?: unknown;
+}): number {
+  return readTimestampMillis(data.updatedAt ?? data.savedAt ?? data.createdAt);
 }
 
 export interface SpriteSaveLoadProgress {
@@ -567,6 +575,7 @@ export async function saveSpriteProjectToFirebase(
   const firestoreProject: FirestoreSpriteProject = {
     id: project.id,
     name: project.name || "Untitled Project",
+    projectGroup: normalizeProjectGroupName(project.projectGroup),
     imageSrcRef,
     imageSrc: inlineImageSrc,
     imageSize: project.imageSize,
@@ -716,6 +725,7 @@ export async function getSpriteProjectFromFirebase(
   return {
     id: data.id,
     name: data.name,
+    projectGroup: normalizeProjectGroupName(data.projectGroup),
     imageSrc,
     imageSize: data.imageSize,
     canvasSize: data.canvasSize ?? data.exportFrameSize,
@@ -724,7 +734,7 @@ export async function getSpriteProjectFromFirebase(
     nextFrameId: data.nextFrameId,
     fps: data.fps,
     viewState: data.viewState,
-    savedAt: readTimestampMillis(data.updatedAt),
+    savedAt: resolveProjectSavedAt(data),
     thumbnailUrl: data.thumbnailUrl,
   };
 }
@@ -733,8 +743,7 @@ export async function getAllSpriteProjectsFromFirebase(
   userId: string
 ): Promise<SavedSpriteProject[]> {
   const collectionRef = collection(db, "users", userId, "spriteProjects");
-  const q = query(collectionRef, orderBy("updatedAt", "desc"));
-  const querySnapshot = await getDocs(q);
+  const querySnapshot = await getDocs(collectionRef);
 
   const projects: SavedSpriteProject[] = [];
 
@@ -743,6 +752,7 @@ export async function getAllSpriteProjectsFromFirebase(
     projects.push({
       id: data.id,
       name: data.name,
+      projectGroup: normalizeProjectGroupName(data.projectGroup),
       imageSrc: "",
       imageSize: data.imageSize,
       canvasSize: data.canvasSize ?? data.exportFrameSize,
@@ -766,11 +776,12 @@ export async function getAllSpriteProjectsFromFirebase(
       nextFrameId: data.nextFrameId,
       fps: data.fps,
       viewState: data.viewState,
-      savedAt: readTimestampMillis(data.updatedAt),
+      savedAt: resolveProjectSavedAt(data),
       thumbnailUrl: data.thumbnailUrl,
     });
   }
 
+  projects.sort((a, b) => b.savedAt - a.savedAt);
   return projects;
 }
 

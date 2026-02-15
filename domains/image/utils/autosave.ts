@@ -11,6 +11,7 @@ export const EDITOR_AUTOSAVE_DEBOUNCE_MS = 1000;
 export interface EditorAutosaveData extends BaseAutosaveData {
   // Project identity (optional for backward compatibility)
   currentProjectId?: string | null;
+  projectGroup?: string;
   canvasSize: { width: number; height: number };
   rotation: number;
   zoom: number;

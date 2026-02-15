@@ -65,6 +65,7 @@ export interface ViewState {
 export interface SavedSpriteProject {
   id: string;
   name: string;
+  projectGroup?: string;
   imageSrc: string;
   imageSize: Size;
   canvasSize?: Size;

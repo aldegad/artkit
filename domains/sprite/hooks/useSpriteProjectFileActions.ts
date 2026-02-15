@@ -7,6 +7,7 @@ import { useSpriteTrackStore } from "../stores";
 import { migrateFramesToTracks } from "../utils/migration";
 import type { SavedSpriteProject, Size, SpriteFrame, SpriteTrack } from "../types";
 import type { SpriteStorageInfo, SpriteStorageProvider } from "../services/projectStorage";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 interface SpriteProjectActionTranslations {
   enterProjectName: string;
@@ -21,6 +22,7 @@ interface SpriteProjectActionTranslations {
 interface UseSpriteProjectFileActionsOptions {
   storageProvider: SpriteStorageProvider;
   projectName: string;
+  projectGroup: string;
   currentProjectId: string | null;
   imageSrc: string | null;
   firstFrameImage: string | undefined;
@@ -34,6 +36,7 @@ interface UseSpriteProjectFileActionsOptions {
   setSavedSpriteProjects: React.Dispatch<React.SetStateAction<SavedSpriteProject[]>>;
   setCurrentProjectId: (id: string | null) => void;
   setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setImageSrc: (src: string) => void;
   setImageSize: (size: Size) => void;
   setCanvasSize: (size: Size | null) => void;
@@ -43,6 +46,11 @@ interface UseSpriteProjectFileActionsOptions {
   setScale: (scale: number) => void;
   setIsProjectListOpen: (open: boolean) => void;
   newProject: () => void;
+  requestSaveDetails: (request: {
+    mode: "save" | "saveAs";
+    name: string;
+    projectGroup?: string;
+  }) => Promise<{ name: string; projectGroup: string } | null>;
   t: SpriteProjectActionTranslations;
 }
 
@@ -67,6 +75,7 @@ export function useSpriteProjectFileActions(
   const {
     storageProvider,
     projectName,
+    projectGroup,
     currentProjectId,
     imageSrc,
     firstFrameImage,
@@ -80,6 +89,7 @@ export function useSpriteProjectFileActions(
     setSavedSpriteProjects,
     setCurrentProjectId,
     setProjectName,
+    setProjectGroup,
     setImageSrc,
     setImageSize,
     setCanvasSize,
@@ -89,6 +99,7 @@ export function useSpriteProjectFileActions(
     setScale,
     setIsProjectListOpen,
     newProject,
+    requestSaveDetails,
     t,
   } = options;
   const [isSaving, setIsSaving] = useState(false);
@@ -113,6 +124,35 @@ export function useSpriteProjectFileActions(
     setStorageInfo(info);
   }, [setSavedSpriteProjects, storageProvider]);
 
+  const buildProjectToSave = useCallback((
+    projectId: string,
+    name: string,
+    resolvedProjectGroup: string
+  ): SavedSpriteProject => {
+    const saveImageSrc = imageSrc || firstFrameImage || "";
+    return {
+      id: projectId,
+      name,
+      projectGroup: resolvedProjectGroup,
+      imageSrc: saveImageSrc,
+      imageSize,
+      canvasSize: canvasSize ?? undefined,
+      exportFrameSize: canvasSize ?? undefined,
+      tracks,
+      nextFrameId,
+      fps,
+      savedAt: Date.now(),
+    };
+  }, [
+    canvasSize,
+    firstFrameImage,
+    fps,
+    imageSize,
+    imageSrc,
+    nextFrameId,
+    tracks,
+  ]);
+
   // Load saved projects when storage provider changes (login/logout)
   useEffect(() => {
     const loadProjects = async () => {
@@ -131,25 +171,23 @@ export function useSpriteProjectFileActions(
       return;
     }
     if (saveInFlightRef.current) return;
+
+    const saveDetails = await requestSaveDetails({
+      mode: "save",
+      name: projectName.trim() || `Project ${new Date().toLocaleString()}`,
+      projectGroup,
+    });
+    if (!saveDetails) return;
+
+    if (saveInFlightRef.current) return;
     saveInFlightRef.current = true;
 
-    const name = projectName.trim() || `Project ${new Date().toLocaleString()}`;
-    const saveImageSrc = imageSrc || firstFrameImage || "";
+    const name = saveDetails.name.trim() || `Project ${new Date().toLocaleString()}`;
+    const resolvedProjectGroup = normalizeProjectGroupName(saveDetails.projectGroup);
     const existingProjectId = currentProjectIdRef.current;
     const resolvedProjectId = existingProjectId || crypto.randomUUID();
     currentProjectIdRef.current = resolvedProjectId;
-    const projectToSave: SavedSpriteProject = {
-      id: resolvedProjectId,
-      name,
-      imageSrc: saveImageSrc,
-      imageSize,
-      canvasSize: canvasSize ?? undefined,
-      exportFrameSize: canvasSize ?? undefined,
-      tracks,
-      nextFrameId,
-      fps,
-      savedAt: Date.now(),
-    };
+    const projectToSave = buildProjectToSave(resolvedProjectId, name, resolvedProjectGroup);
 
     setIsSaving(true);
     setSaveProgress(null);
@@ -162,6 +200,8 @@ export function useSpriteProjectFileActions(
       );
       setCurrentProjectId(resolvedProjectId);
       currentProjectIdRef.current = resolvedProjectId;
+      setProjectName(name);
+      setProjectGroup(resolvedProjectGroup);
 
       const info = await storageProvider.getStorageInfo();
       setStorageInfo(info);
@@ -176,14 +216,13 @@ export function useSpriteProjectFileActions(
     }
   }, [
     allFrames,
-    canvasSize,
-    firstFrameImage,
-    fps,
-    imageSize,
-    imageSrc,
-    nextFrameId,
+    buildProjectToSave,
+    projectGroup,
     projectName,
+    requestSaveDetails,
     setCurrentProjectId,
+    setProjectGroup,
+    setProjectName,
     setSavedSpriteProjects,
     storageProvider,
     t.saveFailed,
@@ -196,29 +235,21 @@ export function useSpriteProjectFileActions(
       return;
     }
     if (saveInFlightRef.current) return;
+
+    const saveDetails = await requestSaveDetails({
+      mode: "saveAs",
+      name: projectName || "",
+      projectGroup,
+    });
+    if (!saveDetails) return;
+
+    if (saveInFlightRef.current) return;
     saveInFlightRef.current = true;
 
-    const inputName = prompt(t.enterProjectName, projectName || "");
-    if (inputName === null) {
-      saveInFlightRef.current = false;
-      return;
-    }
-
-    const name = inputName.trim() || `Project ${new Date().toLocaleString()}`;
+    const name = saveDetails.name.trim() || `Project ${new Date().toLocaleString()}`;
+    const resolvedProjectGroup = normalizeProjectGroupName(saveDetails.projectGroup);
     const newId = crypto.randomUUID();
-    const saveImageSrc = imageSrc || firstFrameImage || "";
-    const projectToSave: SavedSpriteProject = {
-      id: newId,
-      name,
-      imageSrc: saveImageSrc,
-      imageSize,
-      canvasSize: canvasSize ?? undefined,
-      exportFrameSize: canvasSize ?? undefined,
-      tracks,
-      nextFrameId,
-      fps,
-      savedAt: Date.now(),
-    };
+    const projectToSave = buildProjectToSave(newId, name, resolvedProjectGroup);
 
     setIsSaving(true);
     setSaveProgress(null);
@@ -228,6 +259,7 @@ export function useSpriteProjectFileActions(
       setCurrentProjectId(newId);
       currentProjectIdRef.current = newId;
       setProjectName(name);
+      setProjectGroup(resolvedProjectGroup);
 
       const info = await storageProvider.getStorageInfo();
       setStorageInfo(info);
@@ -242,18 +274,15 @@ export function useSpriteProjectFileActions(
     }
   }, [
     allFrames,
-    canvasSize,
-    firstFrameImage,
-    fps,
-    imageSize,
-    imageSrc,
-    nextFrameId,
+    buildProjectToSave,
+    projectGroup,
     projectName,
+    requestSaveDetails,
     setCurrentProjectId,
+    setProjectGroup,
     setProjectName,
     setSavedSpriteProjects,
     storageProvider,
-    t.enterProjectName,
     t.saveFailed,
     tracks,
   ]);
@@ -282,6 +311,7 @@ export function useSpriteProjectFileActions(
         : migrateFramesToTracks(raw.frames ?? []);
       restoreTracks(nextTracks, project.nextFrameId);
       setProjectName(project.name);
+      setProjectGroup(normalizeProjectGroupName(project.projectGroup));
       setCurrentProjectId(project.id);
       currentProjectIdRef.current = project.id;
       setCurrentPoints([]);
@@ -312,6 +342,7 @@ export function useSpriteProjectFileActions(
     setImageSize,
     setImageSrc,
     setIsProjectListOpen,
+    setProjectGroup,
     setProjectName,
     setScale,
     storageProvider,

@@ -97,7 +97,7 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
       return screenToCanvas(
         { x: e.clientX, y: e.clientY },
         rect,
-        { width: canvas.width, height: canvas.height }
+        { width: rect.width, height: rect.height }
       );
     },
     [canvasRef]
@@ -108,10 +108,11 @@ export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputRe
     (screenX: number, screenY: number): Point => {
       const canvas = canvasRef.current;
       if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
 
       const displaySize = getDisplayDimensions();
       const viewContext: ViewContext = {
-        canvasSize: { width: canvas.width, height: canvas.height },
+        canvasSize: { width: rect.width, height: rect.height },
         displaySize,
         zoom: zoomRef.current,
         pan: panRef.current,

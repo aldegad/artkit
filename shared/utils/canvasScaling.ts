@@ -13,6 +13,20 @@ export interface DrawScaledImageOptions {
   scratch?: CanvasScaleScratch;
 }
 
+export interface ResizeCanvasForDprOptions {
+  maxDevicePixelRatio?: number;
+  minDevicePixelRatio?: number;
+  scaleContext?: boolean;
+}
+
+export interface ResizeCanvasForDprResult {
+  width: number;
+  height: number;
+  dpr: number;
+  pixelWidth: number;
+  pixelHeight: number;
+}
+
 interface DrawRect {
   x: number;
   y: number;
@@ -26,6 +40,58 @@ interface SourceSize {
 }
 
 const fallbackScratch: CanvasScaleScratch = { primary: null, secondary: null };
+
+function sanitizeCssSize(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value;
+}
+
+export function resizeCanvasForDpr(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D | null,
+  width: number,
+  height: number,
+  options: ResizeCanvasForDprOptions = {},
+): ResizeCanvasForDprResult {
+  const cssWidth = sanitizeCssSize(width);
+  const cssHeight = sanitizeCssSize(height);
+  const deviceDpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const minDpr = Math.max(1, options.minDevicePixelRatio ?? 1);
+  const maxDpr = Math.max(minDpr, options.maxDevicePixelRatio ?? Number.POSITIVE_INFINITY);
+  const dpr = Math.max(minDpr, Math.min(deviceDpr, maxDpr));
+  const pixelWidth = Math.max(1, Math.round((cssWidth > 0 ? cssWidth : 1) * dpr));
+  const pixelHeight = Math.max(1, Math.round((cssHeight > 0 ? cssHeight : 1) * dpr));
+
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+
+  const cssWidthStyle = `${cssWidth}px`;
+  const cssHeightStyle = `${cssHeight}px`;
+  if (canvas.style.width !== cssWidthStyle) {
+    canvas.style.width = cssWidthStyle;
+  }
+  if (canvas.style.height !== cssHeightStyle) {
+    canvas.style.height = cssHeightStyle;
+  }
+
+  if (ctx) {
+    if (options.scaleContext) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    } else {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+  }
+
+  return {
+    width: cssWidth,
+    height: cssHeight,
+    dpr,
+    pixelWidth,
+    pixelHeight,
+  };
+}
 
 function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;

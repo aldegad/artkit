@@ -40,6 +40,8 @@ interface VideoMenuBarProps {
   onResetLayout: () => void;
   onTogglePreviewCache: () => void;
   previewCacheEnabled: boolean;
+  onTogglePreviewQualityFirst: () => void;
+  previewQualityFirstEnabled: boolean;
   translations: {
     file: string;
     edit: string;
@@ -64,6 +66,7 @@ interface VideoMenuBarProps {
     panelHeaders: string;
     timeline: string;
     previewVideoCache: string;
+    previewQualityFirst: string;
     resetLayout: string;
   };
 }
@@ -98,6 +101,8 @@ export default function VideoMenuBar({
   onResetLayout,
   onTogglePreviewCache,
   previewCacheEnabled,
+  onTogglePreviewQualityFirst,
+  previewQualityFirstEnabled,
   translations: t,
 }: VideoMenuBarProps) {
   const [openMenu, setOpenMenu] = useState<"file" | "edit" | "view" | "window" | "settings" | null>(null);
@@ -141,6 +146,7 @@ export default function VideoMenuBar({
 
   const settingsMenuItems: MenuItem[] = [
     { label: t.previewVideoCache, onClick: onTogglePreviewCache, checked: previewCacheEnabled },
+    { label: t.previewQualityFirst, onClick: onTogglePreviewQualityFirst, checked: previewQualityFirstEnabled },
   ];
 
   return (

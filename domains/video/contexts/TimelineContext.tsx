@@ -23,6 +23,7 @@ import {
 import { TIMELINE } from "../constants";
 import { useVideoState } from "./VideoStateContext";
 import { Size } from "@/shared/types";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 import {
   loadVideoAutosave,
   type VideoAutosaveData,
@@ -125,6 +126,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     project,
     setProject,
     setProjectName,
+    setProjectGroup,
     selectClips,
     selectMasksForTimeline,
     setToolMode,
@@ -281,6 +283,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     if (data.projectName) {
       setProjectName(data.projectName);
     }
+    if (data.projectGroup) {
+      setProjectGroup(normalizeProjectGroupName(data.projectGroup));
+    }
     if (data.toolMode) {
       setToolMode(data.toolMode);
     }
@@ -315,6 +320,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     setAutoKeyframeEnabled,
     setLoopRange,
     setProject,
+    setProjectGroup,
     setProjectName,
     setToolMode,
   ]);

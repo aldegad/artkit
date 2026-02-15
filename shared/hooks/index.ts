@@ -26,3 +26,5 @@ export type { PersistedCanvasViewportState } from "./useCanvasViewportPersistenc
 
 export { useViewportZoomTool } from "./useViewportZoomTool";
 export { useHorizontalWheelCapture } from "./useHorizontalWheelCapture";
+export { useSaveProjectDialog } from "./useSaveProjectDialog";
+export type { SaveProjectDialogRequest, SaveProjectDialogState } from "./useSaveProjectDialog";

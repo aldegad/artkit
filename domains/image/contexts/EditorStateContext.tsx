@@ -38,6 +38,7 @@ export interface EditorState {
 
   // Project Management
   projectName: string;
+  projectGroup: string;
   currentProjectId: string | null;
   savedProjects: SavedImageProject[];
   isProjectListOpen: boolean;
@@ -78,6 +79,7 @@ export interface EditorStateContextValue {
 
   // Project Management setters
   setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setCurrentProjectId: (id: string | null) => void;
   setSavedProjects: (projects: SavedImageProject[]) => void;
   setIsProjectListOpen: (open: boolean) => void;
@@ -119,6 +121,7 @@ const initialState: EditorState = {
 
   // Project Management
   projectName: "Untitled",
+  projectGroup: "default",
   currentProjectId: null,
   savedProjects: [],
   isProjectListOpen: false,
@@ -219,6 +222,10 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setState((prev) => ({ ...prev, projectName: name }));
   }, []);
 
+  const setProjectGroup = useCallback((group: string) => {
+    setState((prev) => ({ ...prev, projectGroup: group }));
+  }, []);
+
   const setCurrentProjectId = useCallback((id: string | null) => {
     setState((prev) => ({ ...prev, currentProjectId: id }));
   }, []);
@@ -265,6 +272,7 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setLockGuides,
     setSnapToGuides,
     setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setSavedProjects,
     setIsProjectListOpen,

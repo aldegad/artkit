@@ -10,7 +10,12 @@ import {
   useClipTransformTool,
 } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
-import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture } from "@/shared/utils";
+import {
+  drawScaledImage,
+  resizeCanvasForDpr,
+  safeReleasePointerCapture,
+  safeSetPointerCapture,
+} from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PRE_RENDER } from "../../constants";
 import { getClipScaleX, getClipScaleY } from "../../types";
@@ -66,6 +71,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cropAspectRatio,
     lockCropAspect,
     previewPreRenderEnabled,
+    previewQualityFirstEnabled,
     isPanLocked,
     isSpacePanning,
     autoKeyframeEnabled,
@@ -83,6 +89,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
   previewPerf.preRenderEnabled = previewPreRenderEnabled;
+  previewPerf.qualityFirstMode = previewQualityFirstEnabled;
+  previewPerf.maxCanvasDpr = previewQualityFirstEnabled ? Number.POSITIVE_INFINITY : 2;
   const playbackPerfRef = useRef(createPlaybackPerfStats());
   const syncMediaRef = useRef<(() => void) | null>(null);
   const syncMediaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -253,6 +261,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     console.info("[VideoPreviewConfig]", {
       draftMode: previewPerf.draftMode,
       preRenderEnabled: previewPerf.preRenderEnabled,
+      qualityFirstMode: previewPerf.qualityFirstMode,
       playbackRenderFpsCap: previewPerf.playbackRenderFpsCap,
       maxCanvasDpr: previewPerf.maxCanvasDpr,
       isMobileLike: previewPerf.isMobileLike,
@@ -261,6 +270,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     previewPerf.debugLogs,
     previewPerf.draftMode,
     previewPerf.preRenderEnabled,
+    previewPerf.qualityFirstMode,
     previewPerf.playbackRenderFpsCap,
     previewPerf.maxCanvasDpr,
     previewPerf.isMobileLike,
@@ -376,8 +386,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       ? getPlaybackSampleTime(ct, loopFrameBounds)
       : ct;
 
-    const deviceDpr = window.devicePixelRatio || 1;
-    const dpr = Math.max(1, Math.min(deviceDpr, previewPerf.maxCanvasDpr));
     let width = containerRectRef.current.width;
     let height = containerRectRef.current.height;
     if (width <= 0 || height <= 0) {
@@ -388,13 +396,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     // Set canvas size with DPI scaling
-    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const canvasSize = resizeCanvasForDpr(canvas, ctx, width, height, {
+      maxDevicePixelRatio: previewPerf.maxCanvasDpr,
+      scaleContext: true,
+    });
+    width = canvasSize.width;
+    height = canvasSize.height;
+    if (width <= 0 || height <= 0) return;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     const colors = getCanvasColorsSync();

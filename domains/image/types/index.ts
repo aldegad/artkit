@@ -84,6 +84,7 @@ export interface CropArea {
 export interface SavedImageProject {
   id: string;
   name: string;
+  projectGroup?: string;
   unifiedLayers: UnifiedLayer[];
   activeLayerId?: string;
   canvasSize: Size;

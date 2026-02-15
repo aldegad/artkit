@@ -9,7 +9,13 @@ import { extractFrameImageFromSource } from "../utils";
 import { ImageDropZone } from "../../../shared/components";
 import { ImageIcon } from "../../../shared/components/icons";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { drawScaledImage, safeReleasePointerCapture, safeSetPointerCapture, type CanvasScaleScratch } from "@/shared/utils";
+import {
+  drawScaledImage,
+  resizeCanvasForDpr,
+  safeReleasePointerCapture,
+  safeSetPointerCapture,
+  type CanvasScaleScratch,
+} from "@/shared/utils";
 import { useSpriteUIStore } from "../stores/useSpriteUIStore";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useCanvasViewportBridge, type CanvasViewportState } from "@/shared/hooks/useCanvasViewportBridge";
@@ -61,6 +67,7 @@ export default function CanvasContent() {
     },
     enableWheel: true,
     enablePinch: true,
+    coordinateSpace: "container",
   });
 
   // Extract stable references from viewport (useCallback-backed, won't change on re-render)
@@ -254,9 +261,14 @@ export default function CanvasContent() {
       const pan = viewport.getPan();
       const displayWidth = img.width * effectiveScale;
       const displayHeight = img.height * effectiveScale;
-
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
+      const { width: canvasWidth, height: canvasHeight } = resizeCanvasForDpr(
+        canvas,
+        ctx,
+        container.clientWidth,
+        container.clientHeight,
+        { scaleContext: true },
+      );
+      if (canvasWidth <= 0 || canvasHeight <= 0) return;
 
       // Checkerboard background - read CSS variables
       const colors = getCanvasColorsSync();
@@ -264,8 +276,8 @@ export default function CanvasContent() {
       const checkerDark = colors.checkerboardDark;
 
       const checkerSize = 10;
-      for (let y = 0; y < canvas.height; y += checkerSize) {
-        for (let x = 0; x < canvas.width; x += checkerSize) {
+      for (let y = 0; y < canvasHeight; y += checkerSize) {
+        for (let x = 0; x < canvasWidth; x += checkerSize) {
           ctx.fillStyle =
             (Math.floor(x / checkerSize) + Math.floor(y / checkerSize)) % 2 === 0
               ? checkerLight

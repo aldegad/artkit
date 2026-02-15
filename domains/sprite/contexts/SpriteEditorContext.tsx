@@ -71,6 +71,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
   // UI store actions (selector-based)
   const setProjectName = useSpriteUIStore((s) => s.setProjectName);
+  const setProjectGroup = useSpriteUIStore((s) => s.setProjectGroup);
   const setCurrentProjectId = useSpriteUIStore((s) => s.setCurrentProjectId);
   const setCanvasSize = useSpriteUIStore((s) => s.setCanvasSize);
   const setIsAutosaveLoading = useSpriteUIStore((s) => s.setIsAutosaveLoading);
@@ -108,6 +109,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
         // Restore UI state
         if (data.projectName) setProjectName(data.projectName);
+        if (data.projectGroup) setProjectGroup(data.projectGroup);
         if (data.currentProjectId !== undefined) {
           setCurrentProjectId(data.currentProjectId);
         }
@@ -144,6 +146,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         pan: vs.pan,
         scale: vs.scale,
         projectName: us.projectName,
+        projectGroup: us.projectGroup,
         animPreviewZoom: vs.animPreviewZoom,
         animPreviewPan: vs.animPreviewPan,
         frameEditZoom: vs.frameEditZoom,
@@ -188,6 +191,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
     const unsubUI = useSpriteUIStore.subscribe((state, prev) => {
       if (
         state.projectName === prev.projectName &&
+        state.projectGroup === prev.projectGroup &&
         state.currentProjectId === prev.currentProjectId &&
         state.canvasSize?.width === prev.canvasSize?.width &&
         state.canvasSize?.height === prev.canvasSize?.height
@@ -582,6 +586,8 @@ export function useEditorTracks() {
 export function useEditorProject() {
   const projectName = useSpriteUIStore((s) => s.projectName);
   const setProjectName = useSpriteUIStore((s) => s.setProjectName);
+  const projectGroup = useSpriteUIStore((s) => s.projectGroup);
+  const setProjectGroup = useSpriteUIStore((s) => s.setProjectGroup);
   const savedProjects = useSpriteUIStore((s) => s.savedProjects);
   const setSavedSpriteProjects = useSpriteUIStore((s) => s.setSavedSpriteProjects);
   const currentProjectId = useSpriteUIStore((s) => s.currentProjectId);
@@ -607,6 +613,8 @@ export function useEditorProject() {
   return {
     projectName,
     setProjectName,
+    projectGroup,
+    setProjectGroup,
     savedProjects,
     setSavedSpriteProjects,
     currentProjectId,

@@ -4,8 +4,8 @@ import { useState, useCallback, useEffect } from "react";
 import { showErrorToast } from "@/shared/components";
 
 interface UseEditorSaveActionsOptions {
-  saveProject: () => Promise<void>;
-  saveAsProject: () => Promise<void>;
+  saveProject: () => Promise<boolean>;
+  saveAsProject: () => Promise<boolean>;
   canSave: boolean;
   saveFailedMessage: string;
 }
@@ -23,13 +23,17 @@ export function useEditorSaveActions(
   const [saveCount, setSaveCount] = useState(0);
 
   const handleSaveProjectAction = useCallback(async () => {
-    await saveProject();
-    setSaveCount((count) => count + 1);
+    const saved = await saveProject();
+    if (saved) {
+      setSaveCount((count) => count + 1);
+    }
   }, [saveProject]);
 
   const handleSaveAsProjectAction = useCallback(async () => {
-    await saveAsProject();
-    setSaveCount((count) => count + 1);
+    const saved = await saveAsProject();
+    if (saved) {
+      setSaveCount((count) => count + 1);
+    }
   }, [saveAsProject]);
 
   useEffect(() => {

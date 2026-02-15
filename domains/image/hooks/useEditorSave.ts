@@ -11,6 +11,7 @@ import {
   drawLayerWithOptionalAlphaMask,
   getLayerAlphaMaskDataURL,
 } from "@/shared/utils/layerAlphaMask";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 // ============================================
 // Types
@@ -28,6 +29,7 @@ export interface UseEditorSaveOptions {
   zoom: number;
   pan: Point;
   projectName: string;
+  projectGroup: string;
   currentProjectId: string | null;
   activeLayerId: string | null;
   guides: Guide[];
@@ -46,9 +48,16 @@ export interface UseEditorSaveOptions {
   isPanLocked: boolean;
 
   // Callbacks
+  setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   setCurrentProjectId: (id: string | null) => void;
   setSavedProjects: (projects: SavedImageProject[]) => void;
   setStorageInfo: (info: StorageInfo) => void;
+  requestSaveDetails: (request: {
+    mode: "save" | "saveAs";
+    name: string;
+    projectGroup?: string;
+  }) => Promise<{ name: string; projectGroup: string } | null>;
 
   // Configuration
   enabled?: boolean;
@@ -56,8 +65,8 @@ export interface UseEditorSaveOptions {
 }
 
 export interface UseEditorSaveReturn {
-  saveProject: () => Promise<void>;
-  saveAsProject: () => Promise<void>;
+  saveProject: () => Promise<boolean>;
+  saveAsProject: () => Promise<boolean>;
   isSaving: boolean;
 }
 
@@ -75,6 +84,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     zoom,
     pan,
     projectName,
+    projectGroup,
     currentProjectId,
     activeLayerId,
     guides,
@@ -87,9 +97,12 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     lockGuides,
     snapToGuides,
     isPanLocked,
+    setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
+    requestSaveDetails,
     enabled = true,
     isInitialized = true,
   } = options;
@@ -138,14 +151,15 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
 
   // Prepare project data for saving
   const prepareProjectData = useCallback(
-    (projectId: string): SavedImageProject | null => {
+    (projectId: string, name: string, resolvedProjectGroup: string): SavedImageProject | null => {
       if (layers.length === 0) return null;
 
       const savedLayers = extractLayersWithPaintData();
 
       return {
         id: projectId,
-        name: projectName,
+        name,
+        projectGroup: resolvedProjectGroup,
         unifiedLayers: savedLayers,
         activeLayerId: activeLayerId || undefined,
         canvasSize,
@@ -172,7 +186,6 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     [
       layers,
       extractLayersWithPaintData,
-      projectName,
       activeLayerId,
       canvasSize,
       rotation,
@@ -200,17 +213,29 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     setStorageInfo(info);
   }, [storageProvider, setSavedProjects, setStorageInfo]);
 
-  // Save project (overwrites existing or creates new)
-  const saveProject = useCallback(async () => {
-    if (savingRef.current) return;
+  const runSave = useCallback(async (mode: "save" | "saveAs"): Promise<boolean> => {
+    if (savingRef.current) return false;
+
+    const saveDetails = await requestSaveDetails({
+      mode,
+      name: projectName,
+      projectGroup,
+    });
+    if (!saveDetails) return false;
+
+    if (savingRef.current) return false;
     savingRef.current = true;
 
-    const projectId = currentProjectIdRef.current || crypto.randomUUID();
+    const resolvedName = saveDetails.name.trim() || projectName.trim() || "Untitled";
+    const resolvedProjectGroup = normalizeProjectGroupName(saveDetails.projectGroup);
+    const projectId = mode === "saveAs"
+      ? crypto.randomUUID()
+      : (currentProjectIdRef.current || crypto.randomUUID());
     currentProjectIdRef.current = projectId;
-    const project = prepareProjectData(projectId);
+    const project = prepareProjectData(projectId, resolvedName, resolvedProjectGroup);
     if (!project) {
       savingRef.current = false;
-      return;
+      return false;
     }
 
     setIsSaving(true);
@@ -218,7 +243,10 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
       await storageProvider.saveProject(project);
       currentProjectIdRef.current = projectId;
       setCurrentProjectId(projectId);
+      setProjectName(resolvedName);
+      setProjectGroup(resolvedProjectGroup);
       await refreshProjectList();
+      return true;
     } catch (error) {
       console.error("Failed to save project:", error);
       throw error;
@@ -226,34 +254,25 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
       savingRef.current = false;
       setIsSaving(false);
     }
-  }, [prepareProjectData, storageProvider, setCurrentProjectId, refreshProjectList]);
+  }, [
+    requestSaveDetails,
+    projectName,
+    projectGroup,
+    prepareProjectData,
+    storageProvider,
+    setCurrentProjectId,
+    setProjectName,
+    setProjectGroup,
+    refreshProjectList,
+  ]);
 
-  // Save as new project (always creates new)
+  const saveProject = useCallback(async () => {
+    return runSave("save");
+  }, [runSave]);
+
   const saveAsProject = useCallback(async () => {
-    if (savingRef.current) return;
-    savingRef.current = true;
-
-    const projectId = crypto.randomUUID();
-    const project = prepareProjectData(projectId);
-    if (!project) {
-      savingRef.current = false;
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      await storageProvider.saveProject(project);
-      currentProjectIdRef.current = projectId;
-      setCurrentProjectId(projectId);
-      await refreshProjectList();
-    } catch (error) {
-      console.error("Failed to save project:", error);
-      throw error;
-    } finally {
-      savingRef.current = false;
-      setIsSaving(false);
-    }
-  }, [prepareProjectData, storageProvider, setCurrentProjectId, refreshProjectList]);
+    return runSave("saveAs");
+  }, [runSave]);
 
   // Autosave effect
   useEffect(() => {
@@ -277,6 +296,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
         zoom,
         pan,
         projectName,
+        projectGroup,
         layers: savedLayers,
         activeLayerId,
         brushSize,
@@ -309,6 +329,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
     zoom,
     pan,
     projectName,
+    projectGroup,
     activeLayerId,
     brushSize,
     brushColor,

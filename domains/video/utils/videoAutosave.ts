@@ -24,6 +24,7 @@ export interface VideoAutosaveData extends BaseAutosaveData {
   // Project data
   project: VideoProject;
   projectName: string;
+  projectGroup?: string;
 
   // Timeline data
   tracks: VideoTrack[];
