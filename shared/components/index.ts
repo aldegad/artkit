@@ -33,6 +33,8 @@ export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { ExportModal } from "./ExportModal";
 export type { ExportModalProps, ExportProgress } from "./ExportModal";
+export { SaveProjectModal } from "./SaveProjectModal";
+export type { SaveProjectModalProps, SaveProjectModalTranslations, SaveProjectModalValue } from "./SaveProjectModal";
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 export { ExportCanvasSizeControls } from "./ExportCanvasSizeControls";
 export type { ExportCanvasSize } from "./ExportCanvasSizeControls";

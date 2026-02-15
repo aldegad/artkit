@@ -13,6 +13,7 @@ import { ExportModal } from "./ExportModal";
 import { ImageResampleModal } from "./ImageResampleModal";
 import ProjectListModal from "./ProjectListModal";
 import { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
+import { SaveProjectModal, type SaveProjectModalTranslations, type SaveProjectModalValue } from "@/shared/components";
 
 export interface EditorOverlaysProps {
   // Export modal
@@ -101,6 +102,16 @@ export interface EditorOverlaysProps {
   fileInputRef: RefObject<HTMLInputElement | null>;
   handleFileSelect: ChangeEventHandler<HTMLInputElement>;
 
+  // Save modal
+  isSaveModalOpen: boolean;
+  saveModalInitialName: string;
+  saveModalInitialProjectGroup: string;
+  saveModalProjectGroups: string[];
+  closeSaveModal: () => void;
+  submitSaveModal: (value: SaveProjectModalValue) => void;
+  isSavingProject: boolean;
+  saveModalTranslations: SaveProjectModalTranslations;
+
   // Project list
   isProjectListOpen: boolean;
   setIsProjectListOpen: (open: boolean) => void;
@@ -115,6 +126,9 @@ export interface EditorOverlaysProps {
     noSavedProjects: string;
     delete: string;
     loading: string;
+    project?: string;
+    allProjects?: string;
+    defaultProject?: string;
   };
 
   // Sync dialog
@@ -169,6 +183,14 @@ export function EditorOverlays({
   selection,
   fileInputRef,
   handleFileSelect,
+  isSaveModalOpen,
+  saveModalInitialName,
+  saveModalInitialProjectGroup,
+  saveModalProjectGroups,
+  closeSaveModal,
+  submitSaveModal,
+  isSavingProject,
+  saveModalTranslations,
   isProjectListOpen,
   setIsProjectListOpen,
   savedProjects,
@@ -255,6 +277,17 @@ export function EditorOverlays({
         multiple
         onChange={handleFileSelect}
         className="hidden"
+      />
+
+      <SaveProjectModal
+        isOpen={isSaveModalOpen}
+        initialName={saveModalInitialName}
+        initialProjectGroup={saveModalInitialProjectGroup}
+        existingProjectGroups={saveModalProjectGroups}
+        isSaving={isSavingProject}
+        onClose={closeSaveModal}
+        onSave={submitSaveModal}
+        translations={saveModalTranslations}
       />
 
       <ProjectListModal

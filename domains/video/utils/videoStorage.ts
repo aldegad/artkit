@@ -66,12 +66,17 @@ export async function getAllVideoProjects(): Promise<SavedVideoProject[]> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readonly");
     const store = transaction.objectStore(STORE_NAME);
-    const index = store.index("savedAt");
-    const request = index.getAll();
+    const request = (
+      store.indexNames.contains("savedAt")
+        ? store.index("savedAt")
+        : store
+    ).getAll();
 
     request.onsuccess = () => {
       const projects = request.result as SavedVideoProject[];
-      projects.sort((a, b) => b.savedAt - a.savedAt);
+      projects.sort(
+        (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+      );
       resolve(projects);
     };
 

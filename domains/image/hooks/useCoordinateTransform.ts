@@ -87,15 +87,18 @@ export function useCoordinateTransform(
   );
 
   // 뷰 컨텍스트 (memoized)
-  const viewContext = useMemo<ViewContext>(() => ({
-    canvasSize: {
-      width: canvasRef.current?.width || canvasSize.width,
-      height: canvasRef.current?.height || canvasSize.height,
-    },
-    displaySize,
-    zoom,
-    pan,
-  }), [canvasRef, canvasSize, displaySize, zoom, pan]);
+  const viewContext = useMemo<ViewContext>(() => {
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    return {
+      canvasSize: {
+        width: canvasRect?.width || canvasSize.width,
+        height: canvasRect?.height || canvasSize.height,
+      },
+      displaySize,
+      zoom,
+      pan,
+    };
+  }, [canvasRef, canvasSize, displaySize, zoom, pan]);
 
   // 레이어 컨텍스트 (memoized)
   const layerContext = useMemo<LayerContext | null>(() => {
@@ -127,7 +130,7 @@ export function useCoordinateTransform(
       return screenToCanvas(
         { x: e.clientX, y: e.clientY },
         rect,
-        { width: canvas.width, height: canvas.height }
+        { width: rect.width, height: rect.height }
       );
     },
     [canvasRef]

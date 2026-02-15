@@ -44,6 +44,7 @@ export interface VideoProject {
 export interface SavedVideoProject {
   id: string;
   name: string;
+  projectGroup?: string;
   project: VideoProject;
 
   // View state

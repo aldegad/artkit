@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import { useSaveProjectDialog } from "@/shared/hooks";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { getStorageProvider } from "../services/projectStorage";
 import {
@@ -57,6 +58,7 @@ import type {
   BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
+import { collectProjectGroupNames } from "@/shared/utils/projectGroups";
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -94,6 +96,7 @@ export function useImageEditorController() {
       pan,
       isSpacePressed,
       projectName,
+      projectGroup,
       currentProjectId,
       savedProjects,
       isProjectListOpen,
@@ -111,6 +114,7 @@ export function useImageEditorController() {
     setZoom,
     setPan,
     setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setSavedProjects,
     setIsProjectListOpen,
@@ -124,6 +128,12 @@ export function useImageEditorController() {
   } = useEditorState();
 
   const { canvasRef, containerRef, imageRef, fileInputRef, editCanvasRef } = useEditorRefs();
+  const {
+    dialogState: saveDialogState,
+    requestSaveDetails,
+    closeDialog: closeSaveDialog,
+    submitDialog: submitSaveDialog,
+  } = useSaveProjectDialog();
   const historyAdapterRef = useRef<HistoryAdapter<EditorHistorySnapshot> | null>(null);
   const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>(
     () => readAISettings().backgroundRemovalQuality
@@ -752,6 +762,7 @@ export function useImageEditorController() {
     layers,
     currentProjectId,
     setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setRotation,
     setCanvasSize,
@@ -787,6 +798,17 @@ export function useImageEditorController() {
     },
   });
 
+  const requestProjectSaveDetails = useCallback((request: {
+    mode: "save" | "saveAs";
+    name: string;
+    projectGroup?: string;
+  }) => {
+    return requestSaveDetails({
+      ...request,
+      existingProjectGroups: collectProjectGroupNames(savedProjects),
+    });
+  }, [requestSaveDetails, savedProjects]);
+
   const { saveProject: handleSaveProject, saveAsProject: handleSaveAsProject, isSaving } = useEditorSave({
     storageProvider,
     layers,
@@ -796,6 +818,7 @@ export function useImageEditorController() {
     zoom,
     pan,
     projectName,
+    projectGroup,
     currentProjectId,
     activeLayerId,
     guides,
@@ -808,9 +831,12 @@ export function useImageEditorController() {
     lockGuides,
     snapToGuides,
     isPanLocked,
+    setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setSavedProjects,
     setStorageInfo,
+    requestSaveDetails: requestProjectSaveDetails,
     isInitialized,
   });
 
@@ -1029,6 +1055,23 @@ export function useImageEditorController() {
     selection,
     fileInputRef,
     handleFileSelect,
+    isSaveModalOpen: saveDialogState.isOpen,
+    saveModalInitialName: saveDialogState.initialName,
+    saveModalInitialProjectGroup: saveDialogState.initialProjectGroup,
+    saveModalProjectGroups: saveDialogState.existingProjectGroups,
+    closeSaveModal: closeSaveDialog,
+    submitSaveModal: submitSaveDialog,
+    isSavingProject: isSaving,
+    saveModalTranslations: {
+      title: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
+      name: t.projectName,
+      project: t.project,
+      defaultProject: "default",
+      newProject: `${t.newProject}...`,
+      newProjectName: t.projectName,
+      cancel: t.cancel,
+      save: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
+    },
     isProjectListOpen,
     setIsProjectListOpen,
     savedProjects,
@@ -1037,7 +1080,12 @@ export function useImageEditorController() {
     handleDeleteProject,
     storageInfo,
     isLoading,
-    projectListTranslations: uiText.projectList,
+    projectListTranslations: {
+      ...uiText.projectList,
+      project: t.project,
+      allProjects: t.allProjects,
+      defaultProject: "default",
+    },
     showSyncDialog,
     localProjectCount,
     cloudProjectCount,

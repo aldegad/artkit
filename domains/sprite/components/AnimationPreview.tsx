@@ -41,6 +41,7 @@ import { drawMagicWandOverlay } from "../utils/magicWandOverlay";
 import {
   drawScaledImage,
   clampZoom,
+  resizeCanvasForDpr,
   type CanvasScaleScratch,
   zoomAtPoint,
 } from "@/shared/utils";
@@ -301,18 +302,23 @@ export default function AnimationPreviewContent() {
       const zoom = getAnimVpZoom();
       const w = sourceCanvas.width * zoom;
       const h = sourceCanvas.height * zoom;
-
-      canvas.width = w;
-      canvas.height = h;
+      if (w <= 0 || h <= 0) return;
 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      const { width: canvasWidth, height: canvasHeight } = resizeCanvasForDpr(
+        canvas,
+        ctx,
+        w,
+        h,
+        { scaleContext: true },
+      );
 
-      ctx.clearRect(0, 0, w, h);
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
       drawScaledImage(
         ctx,
         sourceCanvas,
-        { x: 0, y: 0, width: w, height: h },
+        { x: 0, y: 0, width: canvasWidth, height: canvasHeight },
         { mode: "pixel-art", scratch: scaleScratchRef.current },
       );
 
@@ -330,8 +336,8 @@ export default function AnimationPreviewContent() {
           selection,
           selectionMaskCanvas,
           zoom,
-          width: w,
-          height: h,
+          width: canvasWidth,
+          height: canvasHeight,
         });
       }
 
@@ -340,8 +346,8 @@ export default function AnimationPreviewContent() {
         drawSpriteCropOverlay({
           ctx,
           zoom,
-          canvasWidth: w,
-          canvasHeight: h,
+          canvasWidth,
+          canvasHeight,
           sourceWidth: sourceCanvas.width,
           sourceHeight: sourceCanvas.height,
           cropArea,
@@ -664,7 +670,7 @@ export default function AnimationPreviewContent() {
         { zoom: currentZoom, pan: currentPan, baseScale: 1 },
         newZoom,
         "center",
-        { width: canvas.width, height: canvas.height },
+        { width: rect.width, height: rect.height },
       );
 
       setAnimVpPan(result.pan);

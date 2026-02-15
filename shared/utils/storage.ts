@@ -86,15 +86,18 @@ export async function getAllProjects(): Promise<SavedSpriteProject[]> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(SPRITE_STORE_NAME, "readonly");
     const store = transaction.objectStore(SPRITE_STORE_NAME);
-    const index = store.index("savedAt");
-
-    // Get all, sorted by savedAt descending
-    const request = index.getAll();
+    const request = (
+      store.indexNames.contains("savedAt")
+        ? store.index("savedAt")
+        : store
+    ).getAll();
 
     request.onsuccess = () => {
       const projects = request.result as SavedSpriteProject[];
       // Sort by savedAt descending (newest first)
-      projects.sort((a, b) => b.savedAt - a.savedAt);
+      projects.sort(
+        (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+      );
       resolve(projects);
     };
 
@@ -346,14 +349,18 @@ export async function getAllImageProjects(): Promise<SavedImageProject[]> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(IMAGE_STORE_NAME, "readonly");
     const store = transaction.objectStore(IMAGE_STORE_NAME);
-    const index = store.index("savedAt");
-
-    const request = index.getAll();
+    const request = (
+      store.indexNames.contains("savedAt")
+        ? store.index("savedAt")
+        : store
+    ).getAll();
 
     request.onsuccess = () => {
       const projects = request.result as SavedImageProject[];
       // Sort by savedAt descending (newest first)
-      projects.sort((a, b) => b.savedAt - a.savedAt);
+      projects.sort(
+        (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+      );
       resolve(projects);
     };
 

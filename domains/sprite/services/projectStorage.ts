@@ -17,6 +17,7 @@ import {
   saveSpriteProjectToFirebase,
   type SpriteSaveLoadProgress,
 } from "@/shared/lib/firebase/firebaseSpriteStorage";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 export interface SpriteStorageInfo {
   used: number;
@@ -47,7 +48,10 @@ class IndexedDBSpriteStorageProvider implements SpriteStorageProvider {
     onProgress?: (progress: SpriteSaveLoadProgress) => void
   ): Promise<void> {
     onProgress?.({ phase: "save", current: 1, total: 1, itemName: "Saving local project" });
-    await saveProject(project);
+    await saveProject({
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    });
   }
 
   async getProject(
@@ -56,11 +60,19 @@ class IndexedDBSpriteStorageProvider implements SpriteStorageProvider {
   ): Promise<SavedSpriteProject | null> {
     onProgress?.({ phase: "load", current: 1, total: 1, itemName: "Loading local project" });
     const project = await getProject(id);
-    return project ?? null;
+    if (!project) return null;
+    return {
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    };
   }
 
   async getAllProjects(): Promise<SavedSpriteProject[]> {
-    return getAllProjects();
+    const projects = await getAllProjects();
+    return projects.map((project) => ({
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    }));
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -84,18 +96,30 @@ class FirebaseSpriteStorageProvider implements SpriteStorageProvider {
     project: SavedSpriteProject,
     onProgress?: (progress: SpriteSaveLoadProgress) => void
   ): Promise<void> {
-    await saveSpriteProjectToFirebase(this.userId, project, onProgress);
+    await saveSpriteProjectToFirebase(this.userId, {
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    }, onProgress);
   }
 
   async getProject(
     id: string,
     onProgress?: (progress: SpriteSaveLoadProgress) => void
   ): Promise<SavedSpriteProject | null> {
-    return getSpriteProjectFromFirebase(this.userId, id, onProgress);
+    const project = await getSpriteProjectFromFirebase(this.userId, id, onProgress);
+    if (!project) return null;
+    return {
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    };
   }
 
   async getAllProjects(): Promise<SavedSpriteProject[]> {
-    return getAllSpriteProjectsFromFirebase(this.userId);
+    const projects = await getAllSpriteProjectsFromFirebase(this.userId);
+    return projects.map((project) => ({
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    }));
   }
 
   async deleteProject(id: string): Promise<void> {

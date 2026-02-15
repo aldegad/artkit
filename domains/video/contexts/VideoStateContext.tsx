@@ -20,7 +20,12 @@ import {
 import { PLAYBACK } from "../constants";
 import { playbackTick } from "../utils/playbackTick";
 import { emitImmediatePlaybackStop } from "../utils/playbackStopSignal";
-import { resolvePreRenderEnabledSetting, setPreRenderEnabledSetting } from "../utils/previewPerformance";
+import {
+  resolvePreRenderEnabledSetting,
+  setPreRenderEnabledSetting,
+  resolvePreviewQualityFirstSetting,
+  setPreviewQualityFirstSetting,
+} from "../utils/previewPerformance";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 
 export interface SelectedPositionKeyframe {
@@ -33,6 +38,7 @@ interface VideoState {
   // Project
   project: VideoProject;
   projectName: string;
+  projectGroup: string;
 
   // Playback
   playback: PlaybackState;
@@ -63,6 +69,7 @@ interface VideoStateContextValue extends VideoState {
   // Project actions
   setProject: (project: VideoProject) => void;
   setProjectName: (name: string) => void;
+  setProjectGroup: (group: string) => void;
   updateProjectDuration: () => void;
 
   // Playback actions
@@ -105,6 +112,9 @@ interface VideoStateContextValue extends VideoState {
   previewPreRenderEnabled: boolean;
   setPreviewPreRenderEnabled: (enabled: boolean) => void;
   togglePreviewPreRender: () => void;
+  previewQualityFirstEnabled: boolean;
+  setPreviewQualityFirstEnabled: (enabled: boolean) => void;
+  togglePreviewQualityFirst: () => void;
 
   // Refs for high-frequency access
   currentTimeRef: React.RefObject<number>;
@@ -121,6 +131,7 @@ const VideoStateContext = createContext<VideoStateContextValue | null>(null);
 const initialState: VideoState = {
   project: createVideoProject(),
   projectName: "Untitled Project",
+  projectGroup: "default",
   playback: INITIAL_PLAYBACK_STATE,
   toolMode: "select",
   selectedClipIds: [],
@@ -140,6 +151,7 @@ const initialState: VideoState = {
 export function VideoStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<VideoState>(initialState);
   const [previewPreRenderEnabled, setPreviewPreRenderEnabledState] = useState<boolean>(resolvePreRenderEnabledSetting);
+  const [previewQualityFirstEnabled, setPreviewQualityFirstEnabledState] = useState<boolean>(resolvePreviewQualityFirstSetting);
 
   // Refs for high-frequency access (playback loop)
   const currentTimeRef = useRef<number>(0);
@@ -159,6 +171,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   // Resolve persisted/query override on mount (safe fallback for SSR hydration)
   useEffect(() => {
     setPreviewPreRenderEnabledState(resolvePreRenderEnabledSetting());
+    setPreviewQualityFirstEnabledState(resolvePreviewQualityFirstSetting());
   }, []);
 
   // Playback-rate and loop refs to avoid recreating the RAF callback
@@ -245,6 +258,13 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       ...prev,
       projectName: name,
       project: { ...prev.project, name },
+    }));
+  }, []);
+
+  const setProjectGroup = useCallback((group: string) => {
+    setState((prev) => ({
+      ...prev,
+      projectGroup: group,
     }));
   }, []);
 
@@ -580,10 +600,24 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setPreviewQualityFirstEnabled = useCallback((enabled: boolean) => {
+    setPreviewQualityFirstEnabledState(enabled);
+    setPreviewQualityFirstSetting(enabled);
+  }, []);
+
+  const togglePreviewQualityFirst = useCallback(() => {
+    setPreviewQualityFirstEnabledState((prev) => {
+      const next = !prev;
+      setPreviewQualityFirstSetting(next);
+      return next;
+    });
+  }, []);
+
   const value: VideoStateContextValue = {
     ...state,
     setProject,
     setProjectName,
+    setProjectGroup,
     updateProjectDuration,
     play,
     pause,
@@ -616,6 +650,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     previewPreRenderEnabled,
     setPreviewPreRenderEnabled,
     togglePreviewPreRender,
+    previewQualityFirstEnabled,
+    setPreviewQualityFirstEnabled,
+    togglePreviewQualityFirst,
     currentTimeRef,
     isPlayingRef,
     clipboardRef,

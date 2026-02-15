@@ -10,9 +10,14 @@ interface UseVideoFileActionsOptions {
   newProjectConfirm?: string;
   cancelLabel?: string;
   projectName: string;
-  setProjectName: (name: string) => void;
-  saveProject: () => Promise<void>;
-  saveAsProject: (name: string) => Promise<void>;
+  projectGroup: string;
+  saveProject: (options?: { name?: string; projectGroup?: string }) => Promise<void>;
+  saveAsProject: (options?: { name?: string; projectGroup?: string }) => Promise<void>;
+  requestSaveDetails: (request: {
+    mode: "save" | "saveAs";
+    name: string;
+    projectGroup?: string;
+  }) => Promise<{ name: string; projectGroup: string } | null>;
   openProjectList: () => void;
   loadProject: (projectMeta: SavedVideoProject) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -38,9 +43,10 @@ export function useVideoFileActions(
     newProjectConfirm,
     cancelLabel,
     projectName,
-    setProjectName,
+    projectGroup,
     saveProject,
     saveAsProject,
+    requestSaveDetails,
     openProjectList,
     loadProject,
     deleteProject,
@@ -76,17 +82,26 @@ export function useVideoFileActions(
   }, []);
 
   const handleSave = useCallback(async () => {
-    await runProjectSaveAction(saveProject);
-  }, [runProjectSaveAction, saveProject]);
+    const saveDetails = await requestSaveDetails({
+      mode: "save",
+      name: projectName || "Untitled Project",
+      projectGroup,
+    });
+    if (!saveDetails) return;
+
+    await runProjectSaveAction(() => saveProject(saveDetails));
+  }, [projectGroup, projectName, requestSaveDetails, runProjectSaveAction, saveProject]);
 
   const handleSaveAs = useCallback(async () => {
-    const suggestedName = projectName || "Untitled Project";
-    const nextName = window.prompt("Project name", suggestedName);
-    if (!nextName) return;
+    const saveDetails = await requestSaveDetails({
+      mode: "saveAs",
+      name: projectName || "Untitled Project",
+      projectGroup,
+    });
+    if (!saveDetails) return;
 
-    setProjectName(nextName);
-    await runProjectSaveAction(() => saveAsProject(nextName));
-  }, [projectName, runProjectSaveAction, saveAsProject, setProjectName]);
+    await runProjectSaveAction(() => saveAsProject(saveDetails));
+  }, [projectGroup, projectName, requestSaveDetails, runProjectSaveAction, saveAsProject]);
 
   const handleLoadProject = useCallback(async (projectMeta: SavedVideoProject) => {
     await loadProject(projectMeta);

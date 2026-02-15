@@ -24,9 +24,12 @@ export function getCanvasPixelCoordinates(
 
   const scaleX = canvas.width / contentWidth;
   const scaleY = canvas.height / contentHeight;
+  const effectiveZoomX = zoom * scaleX;
+  const effectiveZoomY = zoom * scaleY;
+  if (effectiveZoomX <= 0 || effectiveZoomY <= 0) return null;
 
   return {
-    x: Math.floor(((clientX - rect.left - borderLeft) * scaleX) / zoom),
-    y: Math.floor(((clientY - rect.top - borderTop) * scaleY) / zoom),
+    x: Math.floor(((clientX - rect.left - borderLeft) * scaleX) / effectiveZoomX),
+    y: Math.floor(((clientY - rect.top - borderTop) * scaleY) / effectiveZoomY),
   };
 }

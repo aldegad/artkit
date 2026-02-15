@@ -9,6 +9,7 @@ import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, FLIP_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { resizeCanvasForDpr } from "@/shared/utils";
 
 // ============================================
 // Types
@@ -204,18 +205,24 @@ export function useCanvasRendering(
 
     // Set canvas size to container size
     const containerRect = container.getBoundingClientRect();
-    canvas.width = containerRect.width;
-    canvas.height = containerRect.height;
+    const { width: canvasWidth, height: canvasHeight, dpr } = resizeCanvasForDpr(
+      canvas,
+      ctx,
+      containerRect.width,
+      containerRect.height,
+      { scaleContext: true },
+    );
+    if (canvasWidth <= 0 || canvasHeight <= 0) return;
 
     // Clear canvas with background color
     ctx.fillStyle =
       getComputedStyle(document.documentElement).getPropertyValue("--color-surface-tertiary") ||
       "#2a2a2a";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     // Calculate centered position with pan and zoom using coordinate utility
     const viewContext: ViewContext = {
-      canvasSize: { width: canvas.width, height: canvas.height },
+      canvasSize: { width: canvasWidth, height: canvasHeight },
       displaySize: { width: displayWidth, height: displayHeight },
       zoom,
       pan,
@@ -439,11 +446,11 @@ export function useCanvasRendering(
         if (guide.orientation === "horizontal") {
           const screenY = offsetY + guide.position * zoom;
           ctx.moveTo(0, screenY);
-          ctx.lineTo(canvas.width, screenY);
+          ctx.lineTo(canvasWidth, screenY);
         } else {
           const screenX = offsetX + guide.position * zoom;
           ctx.moveTo(screenX, 0);
-          ctx.lineTo(screenX, canvas.height);
+          ctx.lineTo(screenX, canvasHeight);
         }
         ctx.stroke();
       }
@@ -461,11 +468,11 @@ export function useCanvasRendering(
       if (guideDragPreview.orientation === "horizontal") {
         const screenY = offsetY + guideDragPreview.position * zoom;
         ctx.moveTo(0, screenY);
-        ctx.lineTo(canvas.width, screenY);
+        ctx.lineTo(canvasWidth, screenY);
       } else {
         const screenX = offsetX + guideDragPreview.position * zoom;
         ctx.moveTo(screenX, 0);
-        ctx.lineTo(screenX, canvas.height);
+        ctx.lineTo(screenX, canvasHeight);
       }
       ctx.stroke();
       ctx.restore();
@@ -483,11 +490,11 @@ export function useCanvasRendering(
         if (source.orientation === "horizontal") {
           const screenY = offsetY + source.position * zoom;
           ctx.moveTo(0, screenY);
-          ctx.lineTo(canvas.width, screenY);
+          ctx.lineTo(canvasWidth, screenY);
         } else {
           const screenX = offsetX + source.position * zoom;
           ctx.moveTo(screenX, 0);
-          ctx.lineTo(screenX, canvas.height);
+          ctx.lineTo(screenX, canvasHeight);
         }
         ctx.stroke();
       }
@@ -599,7 +606,9 @@ export function useCanvasRendering(
       const screenY = offsetY + mousePos.y * zoom;
 
       // Get color at position
-      const pixel = ctx.getImageData(screenX, screenY, 1, 1).data;
+      const sampleX = Math.max(0, Math.min(canvas.width - 1, Math.round(screenX * dpr)));
+      const sampleY = Math.max(0, Math.min(canvas.height - 1, Math.round(screenY * dpr)));
+      const pixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
       const previewColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
 
       ctx.save();

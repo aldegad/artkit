@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../contexts";
 import { useVideoElements } from "./useVideoElements";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { drawScaledImage } from "@/shared/utils";
+import { drawScaledImage, resizeCanvasForDpr } from "@/shared/utils";
 import { PREVIEW } from "../constants";
 import { getClipScaleX, getClipScaleY } from "../types";
 import { Clip, VideoClip, ImageClip } from "../types";
@@ -109,18 +109,10 @@ export function usePreviewRendering() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
 
     // Set canvas size with DPI scaling
-    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-    }
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    resizeCanvasForDpr(canvas, ctx, rect.width, rect.height, { scaleContext: true });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 

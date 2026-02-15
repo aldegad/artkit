@@ -65,8 +65,10 @@ interface Translations {
   selected: string;
   point: string;
   newProject: string;
+  project: string;
   projectName: string;
   otherName: string;
+  allProjects: string;
   savedProjects: string;
   noSavedProjects: string;
   storage: string;
@@ -362,6 +364,7 @@ interface Translations {
   supportedFormats: string;
   resetLayout: string;
   previewVideoCache: string;
+  previewQualityFirst: string;
 
   // Landing page
   landingTagline: string;
@@ -449,8 +452,10 @@ const translations: Record<Language, Translations> = {
     selected: "선택됨",
     point: "점",
     newProject: "새 프로젝트",
+    project: "프로젝트",
     projectName: "프로젝트명",
     otherName: "다른이름",
+    allProjects: "전체 프로젝트",
     savedProjects: "저장된 프로젝트",
     noSavedProjects: "저장된 프로젝트가 없습니다",
     storage: "저장소",
@@ -746,6 +751,7 @@ const translations: Record<Language, Translations> = {
     supportedFormats: "이미지, 영상 파일",
     resetLayout: "기본 레이아웃으로 복원",
     previewVideoCache: "프리뷰 비디오 캐시",
+    previewQualityFirst: "품질 우선 프리뷰",
 
     // Landing page
     landingTagline: "웹 기반 크리에이티브 도구 모음",
@@ -831,8 +837,10 @@ const translations: Record<Language, Translations> = {
     selected: "selected",
     point: "point",
     newProject: "New Project",
+    project: "Project",
     projectName: "Project Name",
     otherName: "Save As",
+    allProjects: "All Projects",
     savedProjects: "Saved Projects",
     noSavedProjects: "No saved projects",
     storage: "Storage",
@@ -1128,6 +1136,7 @@ const translations: Record<Language, Translations> = {
     supportedFormats: "Images, video files",
     resetLayout: "Reset to Default Layout",
     previewVideoCache: "Preview Video Cache",
+    previewQualityFirst: "Quality-first Preview",
 
     // Landing page
     landingTagline: "Web-based Creative Toolkit",

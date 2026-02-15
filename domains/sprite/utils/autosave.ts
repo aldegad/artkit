@@ -21,6 +21,7 @@ export interface AutosaveData extends BaseAutosaveData {
   pan: Point;
   scale: number;
   projectName: string;
+  projectGroup?: string;
   // Legacy fields from older autosave versions (ignored on restore)
   currentFrameIndex?: number;
   isPlaying?: boolean;

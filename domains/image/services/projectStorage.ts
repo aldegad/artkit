@@ -15,6 +15,7 @@ import {
   hasCloudImageProjects,
   deleteAllImageProjectsFromFirebase,
 } from "@/shared/lib/firebase/firebaseImageStorage";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 // ============================================
 // Storage Provider Interface
@@ -43,16 +44,27 @@ class IndexedDBStorageProvider implements StorageProvider {
   readonly type = "local" as const;
 
   async saveProject(project: SavedImageProject): Promise<void> {
-    await saveImageProject(project);
+    await saveImageProject({
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    });
   }
 
   async getProject(id: string): Promise<SavedImageProject | null> {
     const project = await getImageProject(id);
-    return project ?? null;
+    if (!project) return null;
+    return {
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    };
   }
 
   async getAllProjects(): Promise<SavedImageProject[]> {
-    return getAllImageProjects();
+    const projects = await getAllImageProjects();
+    return projects.map((project) => ({
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    }));
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -77,15 +89,27 @@ class FirebaseStorageProvider implements StorageProvider {
   }
 
   async saveProject(project: SavedImageProject): Promise<void> {
-    await saveImageProjectToFirebase(this.userId, project);
+    await saveImageProjectToFirebase(this.userId, {
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    });
   }
 
   async getProject(id: string): Promise<SavedImageProject | null> {
-    return getImageProjectFromFirebase(this.userId, id);
+    const project = await getImageProjectFromFirebase(this.userId, id);
+    if (!project) return null;
+    return {
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    };
   }
 
   async getAllProjects(): Promise<SavedImageProject[]> {
-    return getAllImageProjectsFromFirebase(this.userId);
+    const projects = await getAllImageProjectsFromFirebase(this.userId);
+    return projects.map((project) => ({
+      ...project,
+      projectGroup: normalizeProjectGroupName(project.projectGroup),
+    }));
   }
 
   async deleteProject(id: string): Promise<void> {

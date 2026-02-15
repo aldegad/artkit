@@ -5,8 +5,6 @@ import {
   getDoc,
   getDocs,
   deleteDoc,
-  query,
-  orderBy,
   Timestamp,
 } from "firebase/firestore";
 import {
@@ -24,6 +22,7 @@ import {
 } from "./firestoreValueUtils";
 import { SavedImageProject, UnifiedLayer } from "@/domains/image/types";
 import { generateThumbnailFromLayers } from "@/shared/utils/thumbnail";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 // ============================================
 // Firestore Types
@@ -49,6 +48,7 @@ interface FirestoreLayerMeta {
 interface FirestoreImageProject {
   id: string;
   name: string;
+  projectGroup?: string;
   canvasSize: { width: number; height: number };
   rotation: number;
   isPanLocked?: boolean;
@@ -57,6 +57,14 @@ interface FirestoreImageProject {
   thumbnailUrl?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+function resolveProjectSavedAt(data: {
+  updatedAt?: unknown;
+  savedAt?: unknown;
+  createdAt?: unknown;
+}): number {
+  return readTimestampMillis(data.updatedAt ?? data.savedAt ?? data.createdAt);
 }
 
 const IMAGE_LOAD_CONCURRENCY = 8;
@@ -293,6 +301,7 @@ export async function saveImageProjectToFirebase(
   const firestoreProject: FirestoreImageProject = {
     id: project.id,
     name: project.name || "Untitled",
+    projectGroup: normalizeProjectGroupName(project.projectGroup),
     canvasSize: project.canvasSize || { width: 0, height: 0 },
     rotation: project.rotation ?? 0,
     isPanLocked: project.isPanLocked,
@@ -368,12 +377,13 @@ export async function getImageProjectFromFirebase(
   return {
     id: data.id,
     name: data.name,
+    projectGroup: normalizeProjectGroupName(data.projectGroup),
     canvasSize: data.canvasSize,
     rotation: data.rotation,
     isPanLocked: data.isPanLocked,
     unifiedLayers,
     activeLayerId: data.activeLayerId || undefined,
-    savedAt: readTimestampMillis(data.updatedAt),
+    savedAt: resolveProjectSavedAt(data),
   };
 }
 
@@ -384,8 +394,7 @@ export async function getAllImageProjectsFromFirebase(
   userId: string
 ): Promise<SavedImageProject[]> {
   const collectionRef = collection(db, "users", userId, "imageProjects");
-  const q = query(collectionRef, orderBy("updatedAt", "desc"));
-  const querySnapshot = await getDocs(q);
+  const querySnapshot = await getDocs(collectionRef);
 
   const projects: SavedImageProject[] = [];
 
@@ -397,6 +406,7 @@ export async function getAllImageProjectsFromFirebase(
     projects.push({
       id: data.id,
       name: data.name,
+      projectGroup: normalizeProjectGroupName(data.projectGroup),
       canvasSize: data.canvasSize,
       rotation: data.rotation,
       isPanLocked: data.isPanLocked,
@@ -418,10 +428,11 @@ export async function getAllImageProjectsFromFirebase(
         alphaMaskData: undefined,
       })),
       activeLayerId: data.activeLayerId || undefined,
-      savedAt: readTimestampMillis(data.updatedAt),
+      savedAt: resolveProjectSavedAt(data),
     });
   }
 
+  projects.sort((a, b) => b.savedAt - a.savedAt);
   return projects;
 }
 

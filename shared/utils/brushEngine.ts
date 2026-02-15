@@ -127,7 +127,8 @@ const eraseMaskScratch: {
 
 const eraseAlphaCarryScratch = new WeakMap<object, EraseAlphaCarryState>();
 const paintAlphaCarryScratch = new WeakMap<object, PaintColorCarryState>();
-const LOW_ALPHA_LINEAR_PAINT_THRESHOLD = 0.12;
+// Disabled for now: low-alpha linear paint path can introduce visible stamp artifacts.
+const LOW_ALPHA_LINEAR_PAINT_THRESHOLD = 0;
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));

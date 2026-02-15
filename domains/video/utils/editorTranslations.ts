@@ -22,6 +22,7 @@ interface VideoEditorTranslationSource {
   panelHeaders?: string;
   timeline?: string;
   previewVideoCache?: string;
+  previewQualityFirst?: string;
   resetLayout?: string;
   select?: string;
   selectDesc?: string;
@@ -66,6 +67,7 @@ export function createVideoMenuTranslations(t: VideoEditorTranslationSource) {
     panelHeaders: t.panelHeaders ?? "",
     timeline: t.timeline ?? "",
     previewVideoCache: t.previewVideoCache ?? "",
+    previewQualityFirst: t.previewQualityFirst ?? "",
     resetLayout: t.resetLayout ?? "",
   };
 }

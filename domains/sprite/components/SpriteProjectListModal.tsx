@@ -1,10 +1,17 @@
 "use client";
 
-import { Modal, Scrollbar } from "@/shared/components";
+import { useEffect, useMemo, useState } from "react";
+import { Modal, Scrollbar, Select } from "@/shared/components";
 import { formatBytes } from "@/shared/utils/storage";
 import { DeleteIcon } from "@/shared/components/icons";
 import type { SpriteSaveLoadProgress } from "@/shared/lib/firebase/firebaseSpriteStorage";
 import type { SavedSpriteProject } from "../types";
+import {
+  ALL_PROJECT_GROUPS_OPTION,
+  DEFAULT_PROJECT_GROUP,
+  collectProjectGroupNames,
+  normalizeProjectGroupName,
+} from "@/shared/utils/projectGroups";
 
 // ============================================
 // Types
@@ -30,6 +37,9 @@ interface SpriteProjectListModalProps {
     savedProjects: string;
     noSavedProjects: string;
     storage: string;
+    project?: string;
+    allProjects?: string;
+    defaultProject?: string;
     load: string;
     delete: string;
     frames: string;
@@ -53,6 +63,35 @@ export default function SpriteProjectListModal({
   loadProgress,
   translations: t,
 }: SpriteProjectListModalProps) {
+  const [selectedProjectGroup, setSelectedProjectGroup] = useState(ALL_PROJECT_GROUPS_OPTION);
+  const projectGroups = useMemo(() => collectProjectGroupNames(projects), [projects]);
+  const projectGroupOptions = useMemo(() => [
+    { value: ALL_PROJECT_GROUPS_OPTION, label: t.allProjects || "All projects" },
+    ...projectGroups.map((group) => ({
+      value: group,
+      label: group === DEFAULT_PROJECT_GROUP ? (t.defaultProject || DEFAULT_PROJECT_GROUP) : group,
+    })),
+  ], [projectGroups, t.allProjects, t.defaultProject]);
+  const filteredProjects = useMemo(() => {
+    if (selectedProjectGroup === ALL_PROJECT_GROUPS_OPTION) return projects;
+    return projects.filter(
+      (project) => normalizeProjectGroupName(project.projectGroup) === selectedProjectGroup
+    );
+  }, [projects, selectedProjectGroup]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedProjectGroup(ALL_PROJECT_GROUPS_OPTION);
+      return;
+    }
+    if (
+      selectedProjectGroup !== ALL_PROJECT_GROUPS_OPTION
+      && !projectGroups.includes(selectedProjectGroup)
+    ) {
+      setSelectedProjectGroup(ALL_PROJECT_GROUPS_OPTION);
+    }
+  }, [isOpen, projectGroups, selectedProjectGroup]);
+
   const titleContent = (
     <div className="flex items-center gap-3">
       <h2 className="font-semibold">{t.savedProjects}</h2>
@@ -111,15 +150,27 @@ export default function SpriteProjectListModal({
         </div>
       )}
 
+      <div className="px-4 py-3 border-b border-border-default flex items-center gap-2">
+        <span className="text-xs text-text-secondary shrink-0">{t.project || "Project"}</span>
+        <Select
+          value={selectedProjectGroup}
+          onChange={setSelectedProjectGroup}
+          options={projectGroupOptions}
+          size="sm"
+          disabled={isLoading}
+          className="min-w-[180px]"
+        />
+      </div>
+
       {/* Project list */}
       <Scrollbar className="flex-1 p-4" overflow={{ x: "hidden", y: "scroll" }}>
-        {projects.length === 0 ? (
+        {filteredProjects.length === 0 ? (
           <div className="text-center text-text-tertiary py-8">
             {t.noSavedProjects}
           </div>
         ) : (
           <div className="space-y-2">
-            {projects.map((project) => (
+            {filteredProjects.map((project) => (
               <div
                 key={project.id}
                 className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
@@ -149,6 +200,11 @@ export default function SpriteProjectListModal({
                     {project.tracks.length} tracks ·{" "}
                     {project.tracks.reduce((sum, tr) => sum + tr.frames.length, 0)} {t.frames} ·{" "}
                     {project.fps}fps
+                    {` · ${t.project || "Project"}: ${
+                      normalizeProjectGroupName(project.projectGroup) === DEFAULT_PROJECT_GROUP
+                        ? (t.defaultProject || DEFAULT_PROJECT_GROUP)
+                        : normalizeProjectGroupName(project.projectGroup)
+                    }`}
                   </div>
                   <div className="text-xs text-text-quaternary">
                     {new Date(project.savedAt).toLocaleString()}

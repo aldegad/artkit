@@ -355,10 +355,14 @@ export function useBrushTool(): UseBrushToolReturn {
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
+      const rect = canvas.getBoundingClientRect();
+      const logicalWidth = rect.width;
+      const logicalHeight = rect.height;
+      if (logicalWidth <= 0 || logicalHeight <= 0) return;
 
       const displaySize = getDisplayDimensions();
       const viewContext: ViewContext = {
-        canvasSize: { width: canvas.width, height: canvas.height },
+        canvasSize: { width: logicalWidth, height: logicalHeight },
         displaySize,
         zoom,
         pan,
@@ -367,7 +371,11 @@ export function useBrushTool(): UseBrushToolReturn {
       // Convert image position to screen position using utility
       const screenPos = imageToCanvas({ x, y }, viewContext);
 
-      const pixel = ctx.getImageData(screenPos.x, screenPos.y, 1, 1).data;
+      const pixelScaleX = canvas.width / logicalWidth;
+      const pixelScaleY = canvas.height / logicalHeight;
+      const sampleX = Math.max(0, Math.min(canvas.width - 1, Math.round(screenPos.x * pixelScaleX)));
+      const sampleY = Math.max(0, Math.min(canvas.height - 1, Math.round(screenPos.y * pixelScaleY)));
+      const pixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
       const hex =
         "#" + [pixel[0], pixel[1], pixel[2]].map((c) => c.toString(16).padStart(2, "0")).join("");
       setBrushColor(hex);

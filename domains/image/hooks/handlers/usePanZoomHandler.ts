@@ -33,6 +33,7 @@ export function usePanZoomHandler(options: PanZoomHandlerOptions): UsePanZoomHan
       if (activeMode === "zoom") {
         const canvas = canvasRef.current;
         if (!canvas) return { handled: false };
+        const canvasRect = canvas.getBoundingClientRect();
 
         const zoomFactor = e.altKey ? VIEWPORT.ZOOM_STEP_OUT : VIEWPORT.ZOOM_STEP_IN;
         const newZoom = clampZoom(
@@ -46,7 +47,7 @@ export function usePanZoomHandler(options: PanZoomHandlerOptions): UsePanZoomHan
           { zoom, pan, baseScale: 1 },
           newZoom,
           "center",
-          { width: canvas.width, height: canvas.height }
+          { width: canvasRect.width, height: canvasRect.height }
         );
 
         setPan(result.pan);

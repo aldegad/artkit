@@ -5,8 +5,6 @@ import {
   getDoc,
   getDocs,
   deleteDoc,
-  query,
-  orderBy,
   Timestamp,
 } from "firebase/firestore";
 import {
@@ -36,6 +34,7 @@ import {
   loadMediaBlob,
 } from "@/domains/video/utils/mediaStorage";
 import { normalizeClipTransformKeyframes } from "@/domains/video/utils/clipTransformKeyframes";
+import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
 // ============================================
 // Firestore Types
@@ -85,6 +84,7 @@ interface FirestoreMaskMeta {
 interface FirestoreVideoProject {
   id: string;
   name: string;
+  projectGroup?: string;
   canvasSize: { width: number; height: number };
   frameRate: number;
   duration: number;
@@ -101,6 +101,14 @@ interface FirestoreVideoProject {
   thumbnailUrl?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+function resolveProjectSavedAt(data: {
+  updatedAt?: unknown;
+  savedAt?: unknown;
+  createdAt?: unknown;
+}): number {
+  return readTimestampMillis(data.updatedAt ?? data.savedAt ?? data.createdAt);
 }
 
 const VIDEO_LIST_PREFIX_CONCURRENCY = 4;
@@ -513,6 +521,7 @@ export async function saveVideoProjectToFirebase(
   const firestoreProject: FirestoreVideoProject = {
     id: project.id,
     name: project.name || "Untitled Project",
+    projectGroup: normalizeProjectGroupName(project.projectGroup),
     canvasSize: project.project.canvasSize,
     frameRate: project.project.frameRate,
     duration: project.project.duration,
@@ -627,11 +636,12 @@ export async function getVideoProjectFromFirebase(
   return {
     id: data.id,
     name: data.name,
+    projectGroup: normalizeProjectGroupName(data.projectGroup),
     project: projectData,
     timelineView: data.timelineView,
     currentTime: data.currentTime,
     playbackRange: data.playbackRange,
-    savedAt: readTimestampMillis(data.updatedAt),
+    savedAt: resolveProjectSavedAt(data),
     thumbnailUrl: data.thumbnailUrl,
   };
 }
@@ -643,8 +653,7 @@ export async function getAllVideoProjectsFromFirebase(
   userId: string
 ): Promise<SavedVideoProject[]> {
   const collectionRef = collection(db, "users", userId, "videoProjects");
-  const q = query(collectionRef, orderBy("updatedAt", "desc"));
-  const querySnapshot = await getDocs(q);
+  const querySnapshot = await getDocs(collectionRef);
 
   const projects: SavedVideoProject[] = [];
 
@@ -654,6 +663,7 @@ export async function getAllVideoProjectsFromFirebase(
     projects.push({
       id: data.id,
       name: data.name,
+      projectGroup: normalizeProjectGroupName(data.projectGroup),
       project: {
         id: data.id,
         name: data.name,
@@ -668,11 +678,12 @@ export async function getAllVideoProjectsFromFirebase(
       timelineView: data.timelineView,
       currentTime: data.currentTime,
       playbackRange: data.playbackRange,
-      savedAt: readTimestampMillis(data.updatedAt),
+      savedAt: resolveProjectSavedAt(data),
       thumbnailUrl: data.thumbnailUrl,
     });
   }
 
+  projects.sort((a, b) => b.savedAt - a.savedAt);
   return projects;
 }
 

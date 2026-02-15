@@ -3,8 +3,14 @@ export { generateId } from "./generateId";
 export { downloadDataUrl, downloadBlob, downloadJson, downloadText } from "./download";
 export { safeSetPointerCapture, safeReleasePointerCapture } from "./pointerCapture";
 export { getPointerPressure, normalizePressureValue } from "./pointerPressure";
-export { drawScaledImage } from "./canvasScaling";
-export type { CanvasScaleMode, CanvasScaleScratch, DrawScaledImageOptions } from "./canvasScaling";
+export { drawScaledImage, resizeCanvasForDpr } from "./canvasScaling";
+export type {
+  CanvasScaleMode,
+  CanvasScaleScratch,
+  DrawScaledImageOptions,
+  ResizeCanvasForDprOptions,
+  ResizeCanvasForDprResult,
+} from "./canvasScaling";
 export {
   interpolateFramesWithRife,
   preloadRifeModel,
@@ -18,6 +24,14 @@ export {
   resampleImageDataByScale,
   resampleCanvasByScale,
 } from "./resample";
+export {
+  DEFAULT_PROJECT_GROUP,
+  NEW_PROJECT_GROUP_OPTION,
+  ALL_PROJECT_GROUPS_OPTION,
+  normalizeProjectGroupName,
+  collectProjectGroupNames,
+} from "./projectGroups";
+export type { ProjectGroupRecord } from "./projectGroups";
 
 // Brush engine
 export {
