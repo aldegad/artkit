@@ -15,9 +15,9 @@ import {
 import { imageToCanvas, ViewContext } from "../utils/coordinateSystem";
 import {
   drawDab,
-  drawLine,
   eraseDabLinear,
   eraseLineLinear,
+  parseHexColor,
   resetEraseAlphaCarry,
   resetPaintAlphaCarry,
 } from "@/shared/utils/brushEngine";
@@ -110,6 +110,17 @@ export function useBrushTool(): UseBrushToolReturn {
 
   const lastDrawPoint = useRef<Point | null>(null);
   const stampOffset = useRef<Point | null>(null);
+  const brushMaskScratchRef = useRef<{
+    canvas: HTMLCanvasElement | null;
+    ctx: CanvasRenderingContext2D | null;
+    width: number;
+    height: number;
+  }>({
+    canvas: null,
+    ctx: null,
+    width: 0,
+    height: 0,
+  });
 
   // ============================================
   // Preset Management
@@ -164,6 +175,143 @@ export function useBrushTool(): UseBrushToolReturn {
     stampOffset.current = null;
   }, []);
 
+  const ensureBrushMaskScratch = useCallback((width: number, height: number): CanvasRenderingContext2D | null => {
+    if (typeof document === "undefined") return null;
+    const scratch = brushMaskScratchRef.current;
+    if (
+      !scratch.canvas
+      || !scratch.ctx
+      || scratch.width !== width
+      || scratch.height !== height
+    ) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      scratch.canvas = canvas;
+      scratch.ctx = ctx;
+      scratch.width = width;
+      scratch.height = height;
+    }
+    return scratch.ctx;
+  }, []);
+
+  const stampBrushDab = useCallback((ctx: CanvasRenderingContext2D, options: {
+    x: number;
+    y: number;
+    radius: number;
+    hardness01: number;
+    color: string;
+    alpha: number;
+  }): void => {
+    const alpha = Math.max(0, Math.min(1, options.alpha));
+    if (alpha <= 0 || options.radius <= 0) return;
+    const canvasWidth = ctx.canvas.width;
+    const canvasHeight = ctx.canvas.height;
+    const pad = 2;
+    const left = Math.floor(options.x - options.radius - pad);
+    const top = Math.floor(options.y - options.radius - pad);
+    const right = Math.ceil(options.x + options.radius + pad);
+    const bottom = Math.ceil(options.y + options.radius + pad);
+
+    const clampedLeft = Math.max(0, Math.min(canvasWidth, left));
+    const clampedTop = Math.max(0, Math.min(canvasHeight, top));
+    const clampedRight = Math.max(0, Math.min(canvasWidth, right));
+    const clampedBottom = Math.max(0, Math.min(canvasHeight, bottom));
+    const width = clampedRight - clampedLeft;
+    const height = clampedBottom - clampedTop;
+    if (width <= 0 || height <= 0) return;
+
+    const maskCtx = ensureBrushMaskScratch(width, height);
+    if (!maskCtx) return;
+
+    const localX = options.x - clampedLeft;
+    const localY = options.y - clampedTop;
+    const innerStop = Math.max(0, Math.min(0.999, options.hardness01));
+    maskCtx.clearRect(0, 0, width, height);
+    const gradient = maskCtx.createRadialGradient(localX, localY, 0, localX, localY, options.radius);
+    gradient.addColorStop(0, "rgba(255,255,255,1)");
+    if (innerStop > 0) {
+      gradient.addColorStop(innerStop, "rgba(255,255,255,1)");
+    }
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    maskCtx.fillStyle = gradient;
+    maskCtx.beginPath();
+    maskCtx.arc(localX, localY, options.radius, 0, Math.PI * 2);
+    maskCtx.fill();
+
+    const targetImage = ctx.getImageData(clampedLeft, clampedTop, width, height);
+    const maskImage = maskCtx.getImageData(0, 0, width, height);
+    const target = targetImage.data;
+    const mask = maskImage.data;
+    const [r, g, b] = parseHexColor(options.color);
+
+    for (let i = 0; i < target.length; i += 4) {
+      const srcA = (mask[i + 3] / 255) * alpha;
+      if (srcA <= 0) continue;
+
+      const dstA = target[i + 3] / 255;
+      // Opacity behaves as "max coverage" (not additive flow) to avoid stop/start rings.
+      const outA = Math.max(dstA, srcA);
+      const outAlpha = Math.round(outA * 255);
+      if (outAlpha <= 0) continue;
+
+      target[i] = r;
+      target[i + 1] = g;
+      target[i + 2] = b;
+      target[i + 3] = outAlpha;
+    }
+
+    ctx.putImageData(targetImage, clampedLeft, clampedTop);
+  }, [ensureBrushMaskScratch]);
+
+  const drawContinuousBrushStroke = useCallback((ctx: CanvasRenderingContext2D, options: {
+    from: Point;
+    to: Point;
+    radius: number;
+    hardness01: number;
+    color: string;
+    alpha: number;
+    baseSpacing: number;
+  }): void => {
+    const dx = options.to.x - options.from.x;
+    const dy = options.to.y - options.from.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.001) {
+      stampBrushDab(ctx, {
+        x: options.to.x,
+        y: options.to.y,
+        radius: options.radius,
+        hardness01: options.hardness01,
+        color: options.color,
+        alpha: options.alpha,
+      });
+      return;
+    }
+
+    const alpha = Math.max(0, Math.min(1, options.alpha));
+    const hardness01 = Math.max(0, Math.min(1, options.hardness01));
+    const maxSpacingBySoftness = Math.max(
+      0.2,
+      options.radius * (0.03 + hardness01 * 0.07 + alpha * 0.05)
+    );
+    const spacing = Math.max(0.2, Math.min(options.baseSpacing, maxSpacingBySoftness));
+    const steps = Math.max(1, Math.ceil(distance / spacing));
+
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / steps;
+      stampBrushDab(ctx, {
+        x: options.from.x + dx * t,
+        y: options.from.y + dy * t,
+        radius: options.radius,
+        hardness01: options.hardness01,
+        color: options.color,
+        alpha: options.alpha,
+      });
+    }
+  }, [stampBrushDab]);
+
   const drawOnEditCanvas = useCallback(
     (x: number, y: number, isStart: boolean = false, pressure: number = 1) => {
       const editCanvas = editCanvasRef.current;
@@ -178,50 +326,55 @@ export function useBrushTool(): UseBrushToolReturn {
       x = Math.max(-edgeMargin, Math.min(x, editCanvas.width + edgeMargin));
       y = Math.max(-edgeMargin, Math.min(y, editCanvas.height + edgeMargin));
 
-      // Shared dab params for brush/eraser
       const strokeAlpha = (brushOpacity / 100) * params.opacity * params.flow;
-      const dabParams = (cx: number, cy: number, isEraser: boolean) => ({
-        x: cx,
-        y: cy,
-        radius: params.size / 2,
-        hardness: brushHardness / 100,
-        color: brushColor,
-        alpha: strokeAlpha,
-        isEraser,
-      });
-
       const lineSpacing = Math.max(1, params.size * (activePreset.spacing / 100));
 
       if (toolMode === "brush") {
         ctx.globalCompositeOperation = "source-over";
         const maskCtx = getLayerAlphaMaskContext(editCanvas);
+        const radius = params.size / 2;
+        const hardness01 = brushHardness / 100;
 
         if (isStart || !lastDrawPoint.current) {
           resetPaintAlphaCarry(ctx);
-          drawDab(ctx, dabParams(x, y, false));
+          stampBrushDab(ctx, {
+            x,
+            y,
+            radius,
+            hardness01,
+            color: brushColor,
+            alpha: strokeAlpha,
+          });
           if (maskCtx) {
             resetPaintAlphaCarry(maskCtx);
-            drawDab(maskCtx, {
-              ...dabParams(x, y, false),
+            stampBrushDab(maskCtx, {
+              x,
+              y,
+              radius,
+              hardness01,
               color: "#ffffff",
+              alpha: 1,
             });
           }
         } else {
-          drawLine(ctx, {
+          drawContinuousBrushStroke(ctx, {
             from: lastDrawPoint.current,
             to: { x, y },
-            spacing: lineSpacing,
-            dab: dabParams(0, 0, false),
+            radius,
+            hardness01,
+            color: brushColor,
+            alpha: strokeAlpha,
+            baseSpacing: lineSpacing,
           });
           if (maskCtx) {
-            drawLine(maskCtx, {
+            drawContinuousBrushStroke(maskCtx, {
               from: lastDrawPoint.current,
               to: { x, y },
-              spacing: lineSpacing,
-              dab: {
-                ...dabParams(0, 0, false),
-                color: "#ffffff",
-              },
+              radius,
+              hardness01,
+              color: "#ffffff",
+              alpha: 1,
+              baseSpacing: lineSpacing,
             });
           }
         }
@@ -303,7 +456,7 @@ export function useBrushTool(): UseBrushToolReturn {
               radius: params.size / 2,
               hardness: brushHardness / 100,
               color: "#ffffff",
-              alpha: strokeAlpha,
+              alpha: 1,
               isEraser: false,
             });
           }
@@ -340,6 +493,8 @@ export function useBrushTool(): UseBrushToolReturn {
       stampSource,
       activePreset,
       pressureEnabled,
+      stampBrushDab,
+      drawContinuousBrushStroke,
     ]
   );
 
