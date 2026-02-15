@@ -197,6 +197,22 @@ export function useBrushTool(): UseBrushToolReturn {
     return scratch.ctx;
   }, []);
 
+  const normalizeDabAlpha = useCallback(
+    (baseAlpha: number, spacing: number, referenceSpacing: number): number => {
+      const alpha = Math.max(0, Math.min(1, baseAlpha));
+      if (alpha <= 0) return 0;
+      if (alpha >= 1) return 1;
+
+      const clampedSpacing = Math.max(0.2, spacing);
+      const clampedReferenceSpacing = Math.max(0.2, referenceSpacing);
+      // Keep stroke density stable: when spacing is reduced (more dabs), scale
+      // each dab down so one pass does not overfill instantly.
+      const coverage = Math.max(0.02, Math.min(1, clampedSpacing / clampedReferenceSpacing));
+      return 1 - Math.pow(1 - alpha, coverage);
+    },
+    []
+  );
+
   const stampBrushDab = useCallback((ctx: CanvasRenderingContext2D, options: {
     x: number;
     y: number;
@@ -252,8 +268,9 @@ export function useBrushTool(): UseBrushToolReturn {
       if (srcA <= 0) continue;
 
       const dstA = target[i + 3] / 255;
-      // Opacity behaves as "max coverage" (not additive flow) to avoid stop/start rings.
-      const outA = Math.max(dstA, srcA);
+      // Standard source-over alpha accumulation:
+      // repeated passes over the same area gradually increase opacity.
+      const outA = dstA + srcA * (1 - dstA);
       const outAlpha = Math.round(outA * 255);
       if (outAlpha <= 0) continue;
 
@@ -278,6 +295,15 @@ export function useBrushTool(): UseBrushToolReturn {
     const dx = options.to.x - options.from.x;
     const dy = options.to.y - options.from.y;
     const distance = Math.hypot(dx, dy);
+    const alpha = Math.max(0, Math.min(1, options.alpha));
+    const hardness01 = Math.max(0, Math.min(1, options.hardness01));
+    const referenceSpacing = Math.max(0.2, options.baseSpacing);
+    const maxSpacingBySoftness = Math.max(
+      0.2,
+      options.radius * (0.03 + hardness01 * 0.07 + alpha * 0.05)
+    );
+    const spacing = Math.max(0.2, Math.min(referenceSpacing, maxSpacingBySoftness));
+    const dabAlpha = normalizeDabAlpha(alpha, spacing, referenceSpacing);
     if (distance <= 0.001) {
       stampBrushDab(ctx, {
         x: options.to.x,
@@ -285,18 +311,11 @@ export function useBrushTool(): UseBrushToolReturn {
         radius: options.radius,
         hardness01: options.hardness01,
         color: options.color,
-        alpha: options.alpha,
+        alpha: dabAlpha,
       });
       return;
     }
 
-    const alpha = Math.max(0, Math.min(1, options.alpha));
-    const hardness01 = Math.max(0, Math.min(1, options.hardness01));
-    const maxSpacingBySoftness = Math.max(
-      0.2,
-      options.radius * (0.03 + hardness01 * 0.07 + alpha * 0.05)
-    );
-    const spacing = Math.max(0.2, Math.min(options.baseSpacing, maxSpacingBySoftness));
     const steps = Math.max(1, Math.ceil(distance / spacing));
 
     for (let i = 1; i <= steps; i += 1) {
@@ -307,10 +326,10 @@ export function useBrushTool(): UseBrushToolReturn {
         radius: options.radius,
         hardness01: options.hardness01,
         color: options.color,
-        alpha: options.alpha,
+        alpha: dabAlpha,
       });
     }
-  }, [stampBrushDab]);
+  }, [stampBrushDab, normalizeDabAlpha]);
 
   const drawOnEditCanvas = useCallback(
     (x: number, y: number, isStart: boolean = false, pressure: number = 1) => {
@@ -334,6 +353,13 @@ export function useBrushTool(): UseBrushToolReturn {
         const maskCtx = getLayerAlphaMaskContext(editCanvas);
         const radius = params.size / 2;
         const hardness01 = brushHardness / 100;
+        const referenceSpacing = Math.max(0.2, lineSpacing);
+        const maxSpacingBySoftness = Math.max(
+          0.2,
+          radius * (0.03 + hardness01 * 0.07 + strokeAlpha * 0.05)
+        );
+        const initialSpacing = Math.max(0.2, Math.min(referenceSpacing, maxSpacingBySoftness));
+        const startDabAlpha = normalizeDabAlpha(strokeAlpha, initialSpacing, referenceSpacing);
 
         if (isStart || !lastDrawPoint.current) {
           resetPaintAlphaCarry(ctx);
@@ -343,7 +369,7 @@ export function useBrushTool(): UseBrushToolReturn {
             radius,
             hardness01,
             color: brushColor,
-            alpha: strokeAlpha,
+            alpha: startDabAlpha,
           });
           if (maskCtx) {
             resetPaintAlphaCarry(maskCtx);
@@ -495,6 +521,7 @@ export function useBrushTool(): UseBrushToolReturn {
       pressureEnabled,
       stampBrushDab,
       drawContinuousBrushStroke,
+      normalizeDabAlpha,
     ]
   );
 
