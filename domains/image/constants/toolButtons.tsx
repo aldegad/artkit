@@ -3,6 +3,7 @@
 import React from "react";
 import {
   MarqueeIcon,
+  LassoIcon,
   MoveIcon,
   TransformIcon,
   BrushIcon,
@@ -15,7 +16,7 @@ import {
   HandIcon,
   ZoomSearchIcon,
 } from "@/shared/components/icons";
-import { EditorToolMode } from "../types";
+import { EditorToolMode, MarqueeSubTool } from "../types";
 
 export interface EditorToolButtonConfig {
   mode: EditorToolMode;
@@ -50,9 +51,18 @@ export interface EditorToolButtonTranslations {
   zoomToolTip: string;
 }
 
+interface CreateEditorToolButtonsOptions {
+  marqueeSubTool?: MarqueeSubTool;
+}
+
 export function createEditorToolButtons(
-  t: EditorToolButtonTranslations
+  t: EditorToolButtonTranslations,
+  options: CreateEditorToolButtonsOptions = {}
 ): EditorToolButtonConfig[] {
+  const marqueeIcon = options.marqueeSubTool === "lasso"
+    ? <LassoIcon className="w-4 h-4" />
+    : <MarqueeIcon className="w-4 h-4" />;
+
   return [
     {
       mode: "marquee",
@@ -60,7 +70,7 @@ export function createEditorToolButtons(
       description: t.marquee,
       keys: ["⌥+Drag: Clone", "⇧: Axis lock", "Delete: Clear"],
       shortcut: "M",
-      icon: <MarqueeIcon className="w-4 h-4" />,
+      icon: marqueeIcon,
     },
     {
       mode: "move",

@@ -48,6 +48,7 @@ export {
 export {
   CursorIcon,
   MarqueeIcon,
+  LassoIcon,
   MoveIcon,
   TransformIcon,
   BrushIcon,
