@@ -63,6 +63,13 @@ export type EditorToolMode =
   | "fill"
   | "transform";
 
+export type MarqueeSubTool =
+  | "lasso"
+  | "freeRect"
+  | "ratio1x1"
+  | "ratio4x3"
+  | "ratio16x9";
+
 // Re-export shared AspectRatio types
 export type { AspectRatio, AspectRatioOption } from "../../../shared/types/aspectRatio";
 export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "../../../shared/types/aspectRatio";
@@ -76,6 +83,14 @@ export interface CropArea {
   y: number;
   width: number;
   height: number;
+}
+
+export interface SelectionMask {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  mask: Uint8Array;
 }
 
 /**

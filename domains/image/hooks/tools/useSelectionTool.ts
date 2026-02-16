@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, SetStateAction } from "react";
-import { CropArea, Point } from "../../types";
+import { useState, useCallback, useRef, SetStateAction, useEffect } from "react";
+import { CropArea, Point, MarqueeSubTool, SelectionMask } from "../../types";
 import { useEditorState, useEditorRefs } from "../../contexts";
 import { drawIntoLayerAlphaMask, drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
@@ -32,6 +32,12 @@ interface UseSelectionToolReturn {
   setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
+  marqueeSubTool: MarqueeSubTool;
+  setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
+  lassoPath: Point[] | null;
+  setLassoPath: React.Dispatch<React.SetStateAction<Point[] | null>>;
+  selectionMask: SelectionMask | null;
+  setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
   isMovingSelection: boolean;
   setIsMovingSelection: React.Dispatch<React.SetStateAction<boolean>>;
   isDuplicating: boolean;
@@ -74,17 +80,31 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const { getDisplayDimensions, saveToHistory } = options;
 
   // Local selection state wrapper that syncs with context
+  const [marqueeSubTool, setMarqueeSubTool] = useState<MarqueeSubTool>("freeRect");
+  const [lassoPath, setLassoPath] = useState<Point[] | null>(null);
+  const [selectionMask, setSelectionMask] = useState<SelectionMask | null>(null);
+
   const setSelection = useCallback((newSelection: SetStateAction<CropArea | null>) => {
-    const value = typeof newSelection === 'function'
+    const value = typeof newSelection === "function"
       ? newSelection(selection)
       : newSelection;
     setContextSelection(value);
+    if (!value) {
+      setLassoPath(null);
+      setSelectionMask(null);
+    }
   }, [selection, setContextSelection]);
   const [isMovingSelection, setIsMovingSelection] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [selectionFeather, setSelectionFeather] = useState(0);
   const [magicWandTolerance, setMagicWandTolerance] = useState(24);
+
+  useEffect(() => {
+    if (marqueeSubTool !== "lasso" && lassoPath) {
+      setLassoPath(null);
+    }
+  }, [marqueeSubTool, lassoPath]);
 
   // Refs
   const floatingLayerRef = useRef<FloatingLayer | null>(null);
@@ -93,6 +113,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
 
   // Start a new selection
   const startSelection = useCallback((x: number, y: number) => {
+    setSelectionMask(null);
     setSelection({ x: Math.round(x), y: Math.round(y), width: 0, height: 0 });
     floatingLayerRef.current = null;
   }, []);
@@ -110,6 +131,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
         width: Math.abs(clampedX - startX),
         height: Math.abs(clampedY - startY),
       };
+      setSelectionMask(null);
       setSelection(newSelection);
     },
     [getDisplayDimensions]
@@ -118,6 +140,8 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   // Clear selection
   const clearSelection = useCallback(() => {
     setSelection(null);
+    setLassoPath(null);
+    setSelectionMask(null);
     floatingLayerRef.current = null;
     setIsMovingSelection(false);
     setIsDuplicating(false);
@@ -288,6 +312,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       width: clipData.width,
       height: clipData.height,
     });
+    setSelectionMask(null);
 
     setIsMovingSelection(true);
     setIsDuplicating(true); // Paste acts like duplicate (doesn't clear origin)
@@ -299,6 +324,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   // Select entire canvas
   const selectAll = useCallback(() => {
     const { width, height } = getDisplayDimensions();
+    setSelectionMask(null);
     setSelection({ x: 0, y: 0, width, height });
   }, [getDisplayDimensions]);
 
@@ -310,6 +336,12 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setSelectionFeather,
     magicWandTolerance,
     setMagicWandTolerance,
+    marqueeSubTool,
+    setMarqueeSubTool,
+    lassoPath,
+    setLassoPath,
+    selectionMask,
+    setSelectionMask,
     isMovingSelection,
     setIsMovingSelection,
     isDuplicating,

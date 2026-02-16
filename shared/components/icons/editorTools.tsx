@@ -13,6 +13,18 @@ export const MarqueeIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+export const LassoIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 9c0-3 2.5-5 6-5s6 2 6 5-2.5 5-6 5c-2.2 0-4 1.2-4 2.5 0 1.4 1.1 2.5 2.5 2.5 1.2 0 2.5-.8 2.5-2v-1"
+    />
+    <circle cx="11" cy="20" r="1.5" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const MoveIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m0-16l-3 3m3-3l3 3m-3 13l-3-3m3 3l3-3M4 12h16m-16 0l3-3m-3 3l3 3m13-3l-3-3m3 3l-3 3" />

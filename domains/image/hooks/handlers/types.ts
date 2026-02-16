@@ -3,7 +3,7 @@
 // ============================================
 
 import { RefObject } from "react";
-import { EditorToolMode, CropArea, Point, DragType, Guide, AspectRatio } from "../../types";
+import { EditorToolMode, CropArea, Point, DragType, Guide, AspectRatio, MarqueeSubTool, SelectionMask } from "../../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 
 // ============================================
@@ -111,6 +111,11 @@ export interface BrushHandlerOptions extends BaseHandlerOptions {
 
 export interface SelectionHandlerOptions extends BaseHandlerOptions {
   activeLayerPosition?: { x: number; y: number } | null;
+  marqueeSubTool: MarqueeSubTool;
+  lassoPath: Point[] | null;
+  setLassoPath: React.Dispatch<React.SetStateAction<Point[] | null>>;
+  selectionMask: SelectionMask | null;
+  setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
   selection: CropArea | null;
   selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
@@ -141,6 +146,7 @@ export interface CropHandlerOptions extends BaseHandlerOptions {
 // ============================================
 
 export interface MoveHandlerOptions extends BaseHandlerOptions {
+  selectionMask: SelectionMask | null;
   selection: CropArea | null;
   selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;

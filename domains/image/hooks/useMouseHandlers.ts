@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, RefObject } from "react";
-import { EditorToolMode, CropArea, Point, DragType, Guide, AspectRatio } from "../types";
+import { EditorToolMode, CropArea, Point, DragType, Guide, AspectRatio, MarqueeSubTool, SelectionMask } from "../types";
 import { UnifiedLayer } from "@/shared/types/layers";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { HANDLE_SIZE } from "../constants";
 import { getRectHandleAtPosition } from "@/shared/utils/rectTransform";
 import { safeSetPointerCapture } from "@/shared/utils";
+import { translateSelectionMask } from "../utils/selectionRegion";
 import {
   buildContext,
   FloatingLayer,
@@ -48,6 +49,11 @@ interface UseMouseHandlersOptions {
   setStampSource: (source: { x: number; y: number } | null) => void;
 
   // Selection functions (from useSelectionTool)
+  marqueeSubTool: MarqueeSubTool;
+  lassoPath: Point[] | null;
+  setLassoPath: React.Dispatch<React.SetStateAction<Point[] | null>>;
+  selectionMask: SelectionMask | null;
+  setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
   selection: CropArea | null;
   selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
@@ -145,6 +151,11 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     resetLastDrawPoint,
     stampSource,
     setStampSource,
+    marqueeSubTool,
+    lassoPath,
+    setLassoPath,
+    selectionMask,
+    setSelectionMask,
     selection,
     selectionFeather,
     setSelection,
@@ -236,6 +247,11 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   const selectionHandler = useSelectionHandler({
     ...baseOptions,
     activeLayerPosition,
+    marqueeSubTool,
+    lassoPath,
+    setLassoPath,
+    selectionMask,
+    setSelectionMask,
     selection,
     selectionFeather,
     setSelection,
@@ -260,6 +276,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
   const moveHandler = useMoveHandler({
     ...baseOptions,
+    selectionMask,
     selection,
     selectionFeather,
     setSelection,
@@ -491,7 +508,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
           selectionHandler.handleMouseMove(ctx, dragStartRef.current);
           return;
         }
-        if (dragType === "move" && isMovingSelection) {
+        if (dragType === "move") {
           moveHandler.handleMouseMove(ctx);
           // Update selection position to match floating layer
           if (floatingLayerRef.current && !isDuplicating) {
@@ -500,6 +517,13 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
               x: floatingLayerRef.current.x,
               y: floatingLayerRef.current.y,
             });
+            setSelectionMask(
+              translateSelectionMask(
+                selectionMask,
+                floatingLayerRef.current.x,
+                floatingLayerRef.current.y
+              )
+            );
           }
           return;
         }
@@ -509,12 +533,19 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       if (activeMode === "move" && dragType === "move") {
         moveHandler.handleMouseMove(ctx);
         // Update selection position if we have a floating layer
-        if (isMovingSelection && floatingLayerRef.current) {
+        if (floatingLayerRef.current) {
           setSelection({
             ...selection!,
             x: floatingLayerRef.current.x,
             y: floatingLayerRef.current.y,
           });
+          setSelectionMask(
+            translateSelectionMask(
+              selectionMask,
+              floatingLayerRef.current.x,
+              floatingLayerRef.current.y
+            )
+          );
         }
         return;
       }
@@ -548,8 +579,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       isMovingSelection,
       isDuplicating,
       floatingLayerRef,
+      selectionMask,
       selection,
       setSelection,
+      setSelectionMask,
       cropArea,
       isTransformActive,
       handleTransformMouseMove,
@@ -575,7 +608,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     }
 
     // Commit floating layer to edit canvas when done moving
-    if (isMovingSelection && floatingLayerRef.current) {
+    if (dragType === "move" && floatingLayerRef.current) {
       const editCanvas = editCanvasRef.current;
       const ctx = editCanvas?.getContext("2d");
       if (editCanvas && ctx) {
@@ -603,6 +636,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
             width: imageData.width,
             height: imageData.height,
           });
+          setSelectionMask(translateSelectionMask(selectionMask, x, y));
         }
       }
       // Clear floating layer after commit
@@ -633,8 +667,10 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     isMovingSelection,
     isDuplicating,
     floatingLayerRef,
+    selectionMask,
     editCanvasRef,
     setSelection,
+    setSelectionMask,
     cropHandler,
     selectionHandler,
     moveHandler,
