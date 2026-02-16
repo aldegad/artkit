@@ -26,6 +26,7 @@ import {
   resolvePreviewQualityFirstSetting,
   setPreviewQualityFirstSetting,
 } from "../utils/previewPerformance";
+import { alignTimelineTimeToFrame, normalizeTimelineFrameRate } from "../utils/timelineFrame";
 import type { AspectRatio } from "@/shared/types/aspectRatio";
 
 export interface SelectedPositionKeyframe {
@@ -127,23 +128,6 @@ interface VideoStateContextValue extends VideoState {
 }
 
 const VideoStateContext = createContext<VideoStateContextValue | null>(null);
-
-const DEFAULT_TIMELINE_FRAME_RATE = 30;
-const TIMELINE_TIME_PRECISION = 1_000_000;
-
-function normalizeTimelineFrameRate(frameRate: number): number {
-  if (!Number.isFinite(frameRate) || frameRate <= 0) {
-    return DEFAULT_TIMELINE_FRAME_RATE;
-  }
-  return Math.max(1, Math.round(frameRate));
-}
-
-function snapTimelineTimeToFrame(time: number, frameRate: number): number {
-  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
-  const frameIndex = Math.round(safeTime * frameRate);
-  const frameTime = frameIndex / frameRate;
-  return Math.round(frameTime * TIMELINE_TIME_PRECISION) / TIMELINE_TIME_PRECISION;
-}
 
 const initialState: VideoState = {
   project: createVideoProject(),
@@ -347,7 +331,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
 
     const duration = projectDurationRef.current;
     const frameRate = projectFrameRateRef.current;
-    let snappedTime = snapTimelineTimeToFrame(currentTimeRef.current, frameRate);
+    let snappedTime = alignTimelineTimeToFrame(currentTimeRef.current, frameRate);
     snappedTime = Math.max(0, Math.min(snappedTime, duration));
     if (loopRef.current) {
       const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
@@ -373,7 +357,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
     const frameRate = projectFrameRateRef.current;
     const stopTarget = loopRef.current ? rangeStart : 0;
-    currentTimeRef.current = snapTimelineTimeToFrame(stopTarget, frameRate);
+    currentTimeRef.current = alignTimelineTimeToFrame(stopTarget, frameRate);
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -406,10 +390,10 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         ? Math.max(rangeStart + 0.001, Math.min(loopEndRef.current, duration))
         : duration;
       clampedTime = Math.max(rangeStart, Math.min(clampedTime, rangeEnd));
-      clampedTime = snapTimelineTimeToFrame(clampedTime, frameRate);
+      clampedTime = alignTimelineTimeToFrame(clampedTime, frameRate);
       clampedTime = Math.max(rangeStart, Math.min(clampedTime, rangeEnd));
     } else {
-      clampedTime = snapTimelineTimeToFrame(clampedTime, frameRate);
+      clampedTime = alignTimelineTimeToFrame(clampedTime, frameRate);
       clampedTime = Math.max(0, Math.min(clampedTime, duration));
     }
 
