@@ -120,6 +120,29 @@ interface TimelineContextValue {
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
 
+const DEFAULT_TIMELINE_FRAME_RATE = 30;
+const TIMELINE_TIME_PRECISION = 1_000_000;
+const SOURCE_TRIM_EPSILON = 1e-6;
+
+function normalizeProjectFrameRate(frameRate: number): number {
+  if (!Number.isFinite(frameRate) || frameRate <= 0) {
+    return DEFAULT_TIMELINE_FRAME_RATE;
+  }
+  return Math.max(1, Math.round(frameRate));
+}
+
+function normalizeTimelineTime(time: number): number {
+  if (!Number.isFinite(time)) return 0;
+  const clamped = Math.max(0, time);
+  return Math.round(clamped * TIMELINE_TIME_PRECISION) / TIMELINE_TIME_PRECISION;
+}
+
+function alignTimelineTimeToFrame(time: number, frameRate: number): number {
+  const safeTime = normalizeTimelineTime(time);
+  const frameIndex = Math.round(safeTime * frameRate);
+  return normalizeTimelineTime(frameIndex / frameRate);
+}
+
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
     updateProjectDuration,
@@ -188,6 +211,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       console.error(`Failed to copy media blob (${reason}):`, error);
     });
   }, []);
+
+  const getTimelineFrameRate = useCallback((): number => {
+    return normalizeProjectFrameRate(projectRef.current.frameRate);
+  }, []);
+
+  const snapTimeToFrame = useCallback((time: number): number => {
+    return alignTimelineTimeToFrame(time, getTimelineFrameRate());
+  }, [getTimelineFrameRate]);
+
+  const getMinClipDuration = useCallback((): number => {
+    return Math.max(TIMELINE.CLIP_MIN_DURATION, 1 / getTimelineFrameRate());
+  }, [getTimelineFrameRate]);
 
   const createSafeFittedVisualClip = useCallback((options: {
     baseClip: Clip;
@@ -476,17 +511,24 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       canvasSize?: Size
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "video", tracks);
-      const baseClip = createVideoClip(resolvedTrackId, sourceUrl, sourceDuration, sourceSize, startTime);
+      const frameAlignedStart = snapTimeToFrame(startTime);
+      const baseClip = createVideoClip(
+        resolvedTrackId,
+        sourceUrl,
+        sourceDuration,
+        sourceSize,
+        frameAlignedStart
+      );
       const clip = createSafeFittedVisualClip({
         baseClip,
         sourceSize,
-        startTime,
+        startTime: frameAlignedStart,
         canvasSize,
       });
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, createSafeFittedVisualClip, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
   );
 
   const addAudioClip = useCallback(
@@ -498,13 +540,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceSize: Size = { width: 0, height: 0 }
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "audio", tracks);
-
-      const clip = createAudioClip(resolvedTrackId, sourceUrl, sourceDuration, startTime, sourceSize);
-      const normalizedClip: Clip = withSafeClipStart(clipsRef.current, clip, startTime);
+      const frameAlignedStart = snapTimeToFrame(startTime);
+      const clip = createAudioClip(
+        resolvedTrackId,
+        sourceUrl,
+        sourceDuration,
+        frameAlignedStart,
+        sourceSize
+      );
+      const normalizedClip: Clip = withSafeClipStart(clipsRef.current, clip, frameAlignedStart);
       updateClipsWithDuration((prev) => [...prev, normalizedClip]);
       return normalizedClip.id;
     },
-    [tracks, updateClipsWithDuration]
+    [tracks, snapTimeToFrame, updateClipsWithDuration]
   );
 
   const addImageClip = useCallback(
@@ -517,17 +565,24 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       canvasSize?: Size
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
-      const baseClip = createImageClip(resolvedTrackId, sourceUrl, sourceSize, startTime, duration);
+      const frameAlignedStart = snapTimeToFrame(startTime);
+      const baseClip = createImageClip(
+        resolvedTrackId,
+        sourceUrl,
+        sourceSize,
+        frameAlignedStart,
+        duration
+      );
       const clip = createSafeFittedVisualClip({
         baseClip,
         sourceSize,
-        startTime,
+        startTime: frameAlignedStart,
         canvasSize,
       });
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, createSafeFittedVisualClip, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
   );
 
   const removeClip = useCallback((clipId: string) => {
@@ -551,42 +606,46 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const moveClip = useCallback((clipId: string, trackId: string, startTime: number, ignoreClipIds: string[] = []) => {
     const targetTrack = tracks.find((t) => t.id === trackId) || null;
     if (!targetTrack) return;
+    const frameRate = getTimelineFrameRate();
 
     updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
         if (!fitsTrackType(targetTrack, c)) return c;
-        const candidateStart = Math.max(0, startTime);
+        const candidateStart = snapTimeToFrame(startTime);
         const excludeIds = new Set<string>([clipId, ...ignoreClipIds]);
         const overlaps = hasTrackOverlap(prev, {
           trackId,
           startTime: candidateStart,
           duration: c.duration,
-        }, excludeIds);
+        }, excludeIds, frameRate);
         if (overlaps) return c;
         return { ...c, trackId, startTime: candidateStart };
       })
     );
-  }, [tracks, updateClipsWithDuration]);
+  }, [tracks, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   const trimClipStart = useCallback((clipId: string, newStartTime: number) => {
+    const frameRate = getTimelineFrameRate();
     updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
 
-        const deltaTime = newStartTime - c.startTime;
+        const minDuration = getMinClipDuration();
+        const frameAlignedStart = snapTimeToFrame(newStartTime);
+        const deltaTime = frameAlignedStart - c.startTime;
         const newTrimIn = c.trimIn + deltaTime;
         const newDuration = c.duration - deltaTime;
 
         // Validate
-        if (newTrimIn < 0 || newDuration < TIMELINE.CLIP_MIN_DURATION) return c;
+        if (newTrimIn < 0 || newDuration < minDuration) return c;
 
         const candidate = {
           trackId: c.trackId,
-          startTime: newStartTime,
+          startTime: frameAlignedStart,
           duration: newDuration,
         };
-        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]));
+        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]), frameRate);
         if (overlaps) return c;
 
         const transformKeyframes = sliceClipPositionKeyframes(
@@ -599,7 +658,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
         return {
           ...c,
-          startTime: newStartTime,
+          startTime: frameAlignedStart,
           trimIn: newTrimIn,
           duration: newDuration,
           position: { ...nextPosition },
@@ -607,26 +666,37 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         };
       })
     );
-  }, [updateClipsWithDuration]);
+  }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   const trimClipEnd = useCallback((clipId: string, newEndTime: number) => {
+    const frameRate = getTimelineFrameRate();
     updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
 
-        const newDuration = newEndTime - c.startTime;
+        const minDuration = getMinClipDuration();
+        const frameAlignedEnd = snapTimeToFrame(newEndTime);
+        const newDuration = frameAlignedEnd - c.startTime;
         const newTrimOut = c.trimIn + newDuration;
 
         // Validate
-        if (newDuration < TIMELINE.CLIP_MIN_DURATION) return c;
-        if ((c.type === "video" || c.type === "audio") && newTrimOut > c.sourceDuration) return c;
+        if (newDuration < minDuration) return c;
+        if (
+          (c.type === "video" || c.type === "audio")
+          && newTrimOut > c.sourceDuration + SOURCE_TRIM_EPSILON
+        ) {
+          return c;
+        }
+        const safeTrimOut = (c.type === "video" || c.type === "audio")
+          ? Math.min(newTrimOut, c.sourceDuration)
+          : newTrimOut;
 
         const candidate = {
           trackId: c.trackId,
           startTime: c.startTime,
           duration: newDuration,
         };
-        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]));
+        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]), frameRate);
         if (overlaps) return c;
 
         const transformKeyframes = sliceClipPositionKeyframes(
@@ -640,13 +710,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         return {
           ...c,
           duration: newDuration,
-          trimOut: newTrimOut,
+          trimOut: safeTrimOut,
           position: { ...nextPosition },
           transformKeyframes,
         };
       })
     );
-  }, [updateClipsWithDuration]);
+  }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   // Duplicate a clip to a target track (or new track if not specified)
   const duplicateClip = useCallback((clipId: string, targetTrackId?: string): string | null => {
@@ -676,20 +746,20 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       position: { ...sourceClip.position },
       sourceSize: { ...sourceClip.sourceSize },
       transformKeyframes: normalizeClipTransformKeyframes(sourceClip),
-    }, sourceClip.startTime + 0.25);
+    }, snapTimeToFrame(sourceClip.startTime + 0.25));
 
     void copyMediaBlobSafely(sourceClip.id, newClip.id, "timeline duplicate");
 
     updateClipsWithDuration((prev) => [...prev, newClip]);
     return newClip.id;
-  }, [clips, tracks, appendTrack, copyMediaBlobSafely, updateClipsWithDuration]);
+  }, [clips, tracks, appendTrack, copyMediaBlobSafely, snapTimeToFrame, updateClipsWithDuration]);
 
   const splitClipAtTime = useCallback((clipId: string, splitCursorTime: number): string | null => {
     const clip = clips.find((candidate) => candidate.id === clipId);
     if (!clip) return null;
 
     const snapToPoints = (time: number): number => {
-      if (!viewState.snapEnabled) return time;
+      if (!viewState.snapEnabled) return snapTimeToFrame(time);
       const safeZoom = Number.isFinite(viewState.zoom) && viewState.zoom > 0
         ? viewState.zoom
         : TIMELINE.DEFAULT_ZOOM;
@@ -704,15 +774,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       for (const point of points) {
         if (Math.abs(time - point) < threshold) {
-          return point;
+          return snapTimeToFrame(point);
         }
       }
-      return time;
+      return snapTimeToFrame(time);
     };
 
     const splitResult = buildRazorSplitClips({
       clip,
-      splitCursorTime,
+      splitCursorTime: snapTimeToFrame(splitCursorTime),
       snapToPoints,
     });
     if (!splitResult) return null;
@@ -732,7 +802,15 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     ]);
 
     return secondClip.id;
-  }, [clips, viewState.snapEnabled, viewState.zoom, saveToHistory, copyMediaBlobSafely, updateClipsWithDuration]);
+  }, [
+    clips,
+    viewState.snapEnabled,
+    viewState.zoom,
+    saveToHistory,
+    copyMediaBlobSafely,
+    snapTimeToFrame,
+    updateClipsWithDuration,
+  ]);
 
   // Add pre-formed clips (for paste)
   const addClips = useCallback((newClips: Clip[]) => {
@@ -741,10 +819,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       const normalized: Clip[] = [];
 
       for (const clip of newClips) {
+        const frameAlignedStart = snapTimeToFrame(clip.startTime);
         const adjusted = withSafeClipStart(
           next,
-          cloneClip(clip),
-          clip.startTime,
+          {
+            ...cloneClip(clip),
+            startTime: frameAlignedStart,
+          },
+          frameAlignedStart,
           new Set([clip.id])
         );
         normalized.push(adjusted);
@@ -753,7 +835,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       return [...prev, ...normalized];
     });
-  }, [updateClipsWithDuration]);
+  }, [snapTimeToFrame, updateClipsWithDuration]);
 
   // Queries
   const getClipAtTime = useCallback(

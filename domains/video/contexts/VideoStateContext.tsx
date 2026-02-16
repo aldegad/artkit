@@ -128,6 +128,23 @@ interface VideoStateContextValue extends VideoState {
 
 const VideoStateContext = createContext<VideoStateContextValue | null>(null);
 
+const DEFAULT_TIMELINE_FRAME_RATE = 30;
+const TIMELINE_TIME_PRECISION = 1_000_000;
+
+function normalizeTimelineFrameRate(frameRate: number): number {
+  if (!Number.isFinite(frameRate) || frameRate <= 0) {
+    return DEFAULT_TIMELINE_FRAME_RATE;
+  }
+  return Math.max(1, Math.round(frameRate));
+}
+
+function snapTimelineTimeToFrame(time: number, frameRate: number): number {
+  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
+  const frameIndex = Math.round(safeTime * frameRate);
+  const frameTime = frameIndex / frameRate;
+  return Math.round(frameTime * TIMELINE_TIME_PRECISION) / TIMELINE_TIME_PRECISION;
+}
+
 const initialState: VideoState = {
   project: createVideoProject(),
   projectName: "Untitled Project",
@@ -180,12 +197,16 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const loopStartRef = useRef(state.playback.loopStart);
   const loopEndRef = useRef(state.playback.loopEnd);
   const projectDurationRef = useRef(state.project.duration || 10);
+  const projectFrameRateRef = useRef<number>(normalizeTimelineFrameRate(state.project.frameRate));
 
   useEffect(() => { playbackRateRef.current = state.playback.playbackRate; }, [state.playback.playbackRate]);
   useEffect(() => { loopRef.current = state.playback.loop; }, [state.playback.loop]);
   useEffect(() => { loopStartRef.current = state.playback.loopStart; }, [state.playback.loopStart]);
   useEffect(() => { loopEndRef.current = state.playback.loopEnd; }, [state.playback.loopEnd]);
   useEffect(() => { projectDurationRef.current = state.project.duration || 10; }, [state.project.duration]);
+  useEffect(() => {
+    projectFrameRateRef.current = normalizeTimelineFrameRate(state.project.frameRate);
+  }, [state.project.frameRate]);
 
   // Playback animation loop — emits tick events instead of setState every frame
   const updatePlayback = useCallback(() => {
@@ -324,6 +345,20 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
       animationFrameRef.current = null;
     }
 
+    const duration = projectDurationRef.current;
+    const frameRate = projectFrameRateRef.current;
+    let snappedTime = snapTimelineTimeToFrame(currentTimeRef.current, frameRate);
+    snappedTime = Math.max(0, Math.min(snappedTime, duration));
+    if (loopRef.current) {
+      const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
+      const hasRange = loopEndRef.current > rangeStart + 0.001;
+      const rangeEnd = hasRange
+        ? Math.max(rangeStart + 0.001, Math.min(loopEndRef.current, duration))
+        : duration;
+      snappedTime = Math.max(rangeStart, Math.min(snappedTime, rangeEnd));
+    }
+    currentTimeRef.current = snappedTime;
+
     // Sync final time back to React state
     setState((prev) => ({
       ...prev,
@@ -336,7 +371,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     isPlayingRef.current = false;
     const duration = projectDurationRef.current;
     const rangeStart = Math.max(0, Math.min(loopStartRef.current, duration));
-    currentTimeRef.current = loopRef.current ? rangeStart : 0;
+    const frameRate = projectFrameRateRef.current;
+    const stopTarget = loopRef.current ? rangeStart : 0;
+    currentTimeRef.current = snapTimelineTimeToFrame(stopTarget, frameRate);
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -359,6 +396,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
 
   const seek = useCallback((time: number) => {
     const duration = projectDurationRef.current;
+    const frameRate = projectFrameRateRef.current;
     let clampedTime = Math.max(0, Math.min(time, duration));
 
     if (loopRef.current) {
@@ -368,6 +406,11 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
         ? Math.max(rangeStart + 0.001, Math.min(loopEndRef.current, duration))
         : duration;
       clampedTime = Math.max(rangeStart, Math.min(clampedTime, rangeEnd));
+      clampedTime = snapTimelineTimeToFrame(clampedTime, frameRate);
+      clampedTime = Math.max(rangeStart, Math.min(clampedTime, rangeEnd));
+    } else {
+      clampedTime = snapTimelineTimeToFrame(clampedTime, frameRate);
+      clampedTime = Math.max(0, Math.min(clampedTime, duration));
     }
 
     currentTimeRef.current = clampedTime;
@@ -380,11 +423,13 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const stepForward = useCallback(() => {
-    seek(currentTimeRef.current + PLAYBACK.FRAME_STEP);
+    const step = 1 / projectFrameRateRef.current;
+    seek(currentTimeRef.current + step);
   }, [seek]);
 
   const stepBackward = useCallback(() => {
-    seek(currentTimeRef.current - PLAYBACK.FRAME_STEP);
+    const step = 1 / projectFrameRateRef.current;
+    seek(currentTimeRef.current - step);
   }, [seek]);
 
   const setPlaybackRate = useCallback((rate: number) => {

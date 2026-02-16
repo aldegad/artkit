@@ -21,6 +21,7 @@ interface TrackProps {
   transformLaneOpen?: boolean;
   liftedClipId?: string | null;
   draggingClipIds?: Set<string>;
+  sortingAnimatedClipIds?: Set<string>;
   isLiftDropTarget?: boolean;
   className?: string;
 }
@@ -58,6 +59,7 @@ export function Track({
   transformLaneOpen = false,
   liftedClipId,
   draggingClipIds,
+  sortingAnimatedClipIds,
   isLiftDropTarget,
   className,
 }: TrackProps) {
@@ -222,6 +224,7 @@ export function Track({
             clip={clip}
             isLifted={liftedClipId === clip.id}
             isDragging={Boolean(draggingClipIds?.has(clip.id))}
+            isSortingAnimated={Boolean(sortingAnimatedClipIds?.has(clip.id))}
           />
         ))}
       </div>

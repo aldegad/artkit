@@ -144,20 +144,61 @@ export function getFittedVisualTransform(sourceSize: Size, canvasSize: Size): { 
   };
 }
 
+const OVERLAP_TIME_EPSILON = 1e-6;
+const FRAME_INDEX_EPSILON = 1e-6;
+
+function normalizeOverlapFrameRate(frameRate: number): number | null {
+  if (!Number.isFinite(frameRate) || frameRate <= 0) return null;
+  return Math.max(1, Math.round(frameRate));
+}
+
+function toStartFrameIndex(time: number, frameRate: number): number {
+  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
+  return Math.floor(safeTime * frameRate + FRAME_INDEX_EPSILON);
+}
+
+function toEndFrameIndex(time: number, frameRate: number): number {
+  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
+  return Math.ceil(safeTime * frameRate - FRAME_INDEX_EPSILON);
+}
+
 function rangesOverlap(startA: number, durationA: number, startB: number, durationB: number): boolean {
   const endA = startA + durationA;
   const endB = startB + durationB;
-  return startA < endB && endA > startB;
+  return startA < endB - OVERLAP_TIME_EPSILON && endA > startB + OVERLAP_TIME_EPSILON;
 }
 
 export function hasTrackOverlap(
   allClips: Clip[],
   candidate: { trackId: string; startTime: number; duration: number },
-  excludeClipIds: Set<string> = new Set()
+  excludeClipIds: Set<string> = new Set(),
+  frameRate?: number
 ): boolean {
+  const safeFrameRate = normalizeOverlapFrameRate(frameRate ?? Number.NaN);
+  const candidateStartFrame = safeFrameRate
+    ? toStartFrameIndex(candidate.startTime, safeFrameRate)
+    : null;
+  const candidateEndFrame = safeFrameRate
+    ? Math.max(
+      toStartFrameIndex(candidate.startTime, safeFrameRate),
+      toEndFrameIndex(candidate.startTime + candidate.duration, safeFrameRate)
+    )
+    : null;
+
   for (const clip of allClips) {
     if (clip.trackId !== candidate.trackId) continue;
     if (excludeClipIds.has(clip.id)) continue;
+    if (safeFrameRate && candidateStartFrame !== null && candidateEndFrame !== null) {
+      const clipStartFrame = toStartFrameIndex(clip.startTime, safeFrameRate);
+      const clipEndFrame = Math.max(
+        clipStartFrame,
+        toEndFrameIndex(clip.startTime + clip.duration, safeFrameRate)
+      );
+      if (candidateStartFrame < clipEndFrame && candidateEndFrame > clipStartFrame) {
+        return true;
+      }
+      continue;
+    }
     if (rangesOverlap(candidate.startTime, candidate.duration, clip.startTime, clip.duration)) {
       return true;
     }
