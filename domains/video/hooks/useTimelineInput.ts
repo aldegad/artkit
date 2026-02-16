@@ -73,6 +73,8 @@ interface UseTimelineInputOptions {
 const CLIP_SORT_TRIGGER_RATIO = 0.5;
 const DRAG_AUTO_SCROLL_EDGE_PX = 64;
 const DRAG_AUTO_SCROLL_MAX_STEP_PX = 28;
+const DEFAULT_TIMELINE_FRAME_RATE = 30;
+const TIMELINE_TIME_PRECISION = 1_000_000;
 
 export function useTimelineInput(options: UseTimelineInputOptions) {
   const { tracksContainerRef, containerRef, getTransformLaneHeight } = options;
@@ -89,6 +91,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     saveToHistory,
   } = useTimeline();
   const {
+    project,
     seek,
     selectClip,
     selectClips,
@@ -127,6 +130,20 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [viewState.snapEnabled, zoom, clips]
   );
 
+  const frameRate = useMemo(() => {
+    if (!Number.isFinite(project.frameRate) || project.frameRate <= 0) {
+      return DEFAULT_TIMELINE_FRAME_RATE;
+    }
+    return Math.max(1, Math.round(project.frameRate));
+  }, [project.frameRate]);
+
+  const snapTimeToFrame = useCallback((time: number): number => {
+    const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
+    const frameIndex = Math.round(safeTime * frameRate);
+    const frameTime = frameIndex / frameRate;
+    return Math.round(frameTime * TIMELINE_TIME_PRECISION) / TIMELINE_TIME_PRECISION;
+  }, [frameRate]);
+
   const [dragState, setDragState] = useState<DragState>(INITIAL_TIMELINE_DRAG_STATE);
   const activePointerIdRef = useRef<number | null>(null);
   const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
@@ -145,6 +162,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const dragAutoScrollRafRef = useRef<number | null>(null);
   const runDragAutoScrollTickRef = useRef<(() => void) | null>(null);
+  const [sortingAnimatedClipIds, setSortingAnimatedClipIds] = useState<Set<string>>(new Set());
+  const sortingAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
 
@@ -980,6 +999,18 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }
   }, []);
 
+  const triggerSortingAnimation = useCallback((clipIds: string[]) => {
+    if (clipIds.length === 0) return;
+    setSortingAnimatedClipIds(new Set(clipIds));
+    if (sortingAnimationTimerRef.current) {
+      clearTimeout(sortingAnimationTimerRef.current);
+    }
+    sortingAnimationTimerRef.current = setTimeout(() => {
+      sortingAnimationTimerRef.current = null;
+      setSortingAnimatedClipIds(new Set());
+    }, 220);
+  }, []);
+
   const getDragAutoScrollDeltaPixels = useCallback((x: number, width: number): number => {
     return getDragAutoScrollDeltaPixelsValue(x, width, {
       edgePx: DRAG_AUTO_SCROLL_EDGE_PX,
@@ -1018,10 +1049,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     if (!swap) return false;
 
     for (const update of swap.updates) {
-      updateClip(update.id, { startTime: update.startTime });
+      updateClip(update.id, { startTime: snapTimeToFrame(update.startTime) });
     }
+    triggerSortingAnimation(swap.updates.map((update) => update.id));
     return true;
-  }, [clipsById, clipsByTrackAsc, updateClip]);
+  }, [clipsById, clipsByTrackAsc, snapTimeToFrame, updateClip, triggerSortingAnimation]);
 
   const handleClipMoveDrag = useCallback((options: {
     drag: DragState;
@@ -1057,7 +1089,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
     // Move all items by the same time delta.
     for (const item of drag.items) {
-      const newStartTime = Math.max(0, item.originalStartTime + timeDelta);
+      const newStartTime = snapTimeToFrame(item.originalStartTime + timeDelta);
       if (item.type === "clip") {
         const clip = clipsById.get(item.id) || null;
         if (clip) {
@@ -1082,6 +1114,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     getSnappedClipMoveTimeDelta,
     masks,
     moveClip,
+    snapTimeToFrame,
     updateMaskTime,
   ]);
 
@@ -1091,10 +1124,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     const rawTrimStart = Math.max(0, drag.originalClipStart + deltaTime);
     const maxStart = drag.originalClipStart + drag.originalClipDuration - TIMELINE.CLIP_MIN_DURATION;
     const clampedStart = Math.min(rawTrimStart, maxStart);
-    trimClipStart(drag.clipId, snapToPoints(clampedStart, {
+    const snappedStart = snapToPoints(clampedStart, {
       excludeClipIds: new Set([drag.clipId]),
-    }));
-  }, [clipsById, trimClipStart, snapToPoints]);
+    });
+    trimClipStart(drag.clipId, snapTimeToFrame(snappedStart));
+  }, [clipsById, trimClipStart, snapToPoints, snapTimeToFrame]);
 
   const handleClipTrimEndDrag = useCallback((drag: DragState, deltaTime: number) => {
     if (!drag.clipId) return;
@@ -1102,10 +1136,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     const rawTrimEnd = drag.originalClipStart + drag.originalClipDuration + deltaTime;
     const minEnd = drag.originalClipStart + TIMELINE.CLIP_MIN_DURATION;
     const clampedEnd = Math.max(rawTrimEnd, minEnd);
-    trimClipEnd(drag.clipId, snapToPoints(clampedEnd, {
+    const snappedEnd = snapToPoints(clampedEnd, {
       excludeClipIds: new Set([drag.clipId]),
-    }));
-  }, [clipsById, trimClipEnd, snapToPoints]);
+    });
+    trimClipEnd(drag.clipId, snapTimeToFrame(snappedEnd));
+  }, [clipsById, trimClipEnd, snapToPoints, snapTimeToFrame]);
 
   const applyDragAtPosition = useCallback((options: {
     drag: DragState;
@@ -1248,9 +1283,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       dragPointerRef.current = null;
       cancelLongPress();
       releasePointer(event.pointerId);
-      // Keep liftedClipId active after pointerup so the track-selector popup stays visible.
-      // Only reset the non-touch lift (mouse cross-track drag).
-      if (!liftedClipId) {
+      if (event.pointerType === "touch") {
+        resetLift();
+      } else if (!liftedClipId) {
         isLiftedRef.current = false;
       }
       setDragState(INITIAL_TIMELINE_DRAG_STATE);
@@ -1286,6 +1321,10 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   useEffect(() => {
     return () => {
       stopDragAutoScroll();
+      if (sortingAnimationTimerRef.current) {
+        clearTimeout(sortingAnimationTimerRef.current);
+        sortingAnimationTimerRef.current = null;
+      }
       dragPointerRef.current = null;
       pinchPointersRef.current.clear();
       pinchSessionRef.current = null;
@@ -1325,6 +1364,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     handleContainerPointerDown,
     liftedClipId,
     draggingClipIds,
+    sortingAnimatedClipIds,
     dropClipToTrack,
     cancelLift: resetLift,
   };

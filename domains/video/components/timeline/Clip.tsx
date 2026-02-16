@@ -14,10 +14,13 @@ interface ClipProps {
   isLifted?: boolean;
   /** Whether this clip is currently being dragged */
   isDragging?: boolean;
+  /** Whether this clip should animate horizontal reordering */
+  isSortingAnimated?: boolean;
 }
 
 const waveformCache = new Map<string, number[]>();
 const waveformPending = new Map<string, Promise<number[]>>();
+const CLIP_VISUAL_RIGHT_INSET_PX = 1;
 
 async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   const cached = waveformCache.get(sourceUrl);
@@ -70,9 +73,14 @@ async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   }
 }
 
-export function Clip({ clip, isLifted, isDragging = false }: ClipProps) {
-  const { timeToPixel, durationToWidth } = useVideoCoordinates();
-  const { selectedClipIds } = useVideoState();
+export function Clip({
+  clip,
+  isLifted,
+  isDragging = false,
+  isSortingAnimated = false,
+}: ClipProps) {
+  const { timeToPixel } = useVideoCoordinates();
+  const { selectedClipIds, project } = useVideoState();
   const clipHasAudio =
     clip.type === "audio" || (clip.type === "video" && (clip.hasAudio ?? true));
   const clipSourceUrl = clip.type === "image" ? "" : clip.sourceUrl;
@@ -81,8 +89,16 @@ export function Clip({ clip, isLifted, isDragging = false }: ClipProps) {
   );
 
   const isSelected = selectedClipIds.includes(clip.id);
-  const x = timeToPixel(clip.startTime);
-  const width = durationToWidth(clip.duration);
+  const frameRate = Number.isFinite(project.frameRate) && project.frameRate > 0
+    ? Math.max(1, Math.round(project.frameRate))
+    : 30;
+  const frameEpsilon = 1e-6;
+  const clipStartTime = Math.max(0, clip.startTime);
+  const clipEndTime = Math.max(clipStartTime, clip.startTime + clip.duration);
+  const lastFrameIndex = Math.floor(clipEndTime * frameRate - frameEpsilon);
+  const nextFrameTime = Math.max(clipStartTime, (lastFrameIndex + 1) / frameRate);
+  const rawLeft = timeToPixel(clipStartTime);
+  const rawRight = timeToPixel(nextFrameTime);
 
   // Slice waveform to match trimIn/trimOut
   const visibleWaveform = useMemo(() => {
@@ -97,8 +113,10 @@ export function Clip({ clip, isLifted, isDragging = false }: ClipProps) {
     return waveform.slice(startBin, Math.max(startBin + 1, endBin));
   }, [waveform, clip]);
 
-  // Don't render if clip would be invisible
-  const minWidth = Math.max(width, UI.MIN_CLIP_WIDTH);
+  const visualWidth = Math.max(
+    UI.MIN_CLIP_WIDTH,
+    Math.max(0, rawRight - rawLeft - CLIP_VISUAL_RIGHT_INSET_PX)
+  );
   const trimVisualZoneWidth = Math.max(UI.TRIM_HANDLE_WIDTH, 12);
 
   const clipColor = useMemo(() => {
@@ -138,17 +156,17 @@ export function Clip({ clip, isLifted, isDragging = false }: ClipProps) {
     <div
       className={cn(
         "absolute top-[2px] bottom-[2px] rounded cursor-pointer",
-        isDragging
-          ? "transition-[transform,box-shadow] duration-100"
-          : "transition-[left,transform,box-shadow] duration-180 ease-out",
+        isSortingAnimated && !isDragging
+          ? "transition-[left,transform,box-shadow] duration-180 ease-out"
+          : "transition-[transform,box-shadow] duration-100",
         clipColor,
-        isSelected && "ring-2 ring-clip-selection-ring ring-offset-1 ring-offset-transparent",
+        isSelected && "ring-2 ring-inset ring-clip-selection-ring",
         !clip.visible && "opacity-50",
         isLifted && "scale-105 shadow-lg shadow-black/40 z-50 ring-2 ring-white/50"
       )}
       style={{
-        left: x,
-        width: minWidth,
+        left: rawLeft,
+        width: visualWidth,
       }}
     >
       {/* Clip name */}

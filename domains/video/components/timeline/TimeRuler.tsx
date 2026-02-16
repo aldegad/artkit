@@ -175,7 +175,17 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
       ctx.closePath();
       ctx.fill();
     }
-  }, [safeZoom, safeScrollX, timeToPixel, pixelToTime, currentTimeRef, hasCustomRange, rangeStart, rangeEnd, formatTimeLabel]);
+  }, [
+    safeZoom,
+    safeScrollX,
+    timeToPixel,
+    pixelToTime,
+    currentTimeRef,
+    hasCustomRange,
+    rangeStart,
+    rangeEnd,
+    formatTimeLabel,
+  ]);
 
   // Seek at a given clientX position
   const seekAtX = useCallback(
