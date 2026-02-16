@@ -1,6 +1,6 @@
 "use client";
 
-import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS } from "../../types";
+import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool } from "../../types";
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
 import { Select, Scrollbar, NumberScrubber } from "../../../../shared/components";
@@ -26,6 +26,8 @@ export interface EditorToolOptionsProps {
   selection: CropArea | null;
   selectionFeather: number;
   setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
+  marqueeSubTool: MarqueeSubTool;
+  setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   onClearSelectionPixels: () => void;
@@ -97,6 +99,8 @@ export function EditorToolOptions({
   selection,
   selectionFeather,
   setSelectionFeather,
+  marqueeSubTool,
+  setMarqueeSubTool,
   magicWandTolerance,
   setMagicWandTolerance,
   onClearSelectionPixels,
@@ -130,6 +134,14 @@ export function EditorToolOptions({
   onCancelTransform,
   translations: t,
 }: EditorToolOptionsProps) {
+  const marqueeModeOptions: Array<{ value: MarqueeSubTool; label: string }> = [
+    { value: "lasso", label: "올가미" },
+    { value: "freeRect", label: "자유 사각형" },
+    { value: "ratio1x1", label: "1:1" },
+    { value: "ratio4x3", label: "4:3" },
+    { value: "ratio16x9", label: "16:9" },
+  ];
+
   // Handle width/height input changes with aspect ratio lock
   const handleWidthChange = (newWidth: number) => {
     if (lockAspect && cropArea && cropArea.width > 0) {
@@ -241,6 +253,16 @@ export function EditorToolOptions({
 
       {toolMode === "marquee" && (
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">Mode:</span>
+            <Select
+              value={marqueeSubTool}
+              onChange={(value) => setMarqueeSubTool(value as MarqueeSubTool)}
+              options={marqueeModeOptions}
+              size="sm"
+            />
+          </div>
+          <div className="w-px h-4 bg-border-default" />
           <NumberScrubber
             value={selectionFeather}
             onChange={(v) => setSelectionFeather(Math.max(0, Math.round(v)))}

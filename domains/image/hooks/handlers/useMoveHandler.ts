@@ -5,8 +5,13 @@
 import { useCallback, useRef, useState } from "react";
 import { Point } from "../../types";
 import type { MouseEventContext, HandlerResult, MoveHandlerOptions, FloatingLayer } from "./types";
-import { applyFeatherToImageData, clearRectWithFeather } from "../../utils/selectionFeather";
+import { applyFeatherToImageData } from "../../utils/selectionFeather";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import {
+  applySelectionMaskToImageData,
+  clearSelectionFromLayer,
+  isPointInsideSelection,
+} from "../../utils/selectionRegion";
 
 export interface UseMoveHandlerReturn {
   isMovingLayer: boolean;
@@ -18,6 +23,7 @@ export interface UseMoveHandlerReturn {
 export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerReturn {
   const {
     editCanvasRef,
+    selectionMask,
     selection,
     selectionFeather,
     floatingLayerRef,
@@ -47,12 +53,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
 
       // First check if clicking inside a selection
       if (selection) {
-        if (
-          imagePos.x >= selection.x &&
-          imagePos.x <= selection.x + selection.width &&
-          imagePos.y >= selection.y &&
-          imagePos.y <= selection.y + selection.height
-        ) {
+        if (isPointInsideSelection(imagePos, selection, selectionMask)) {
           // If we don't have a floating layer yet, create one (cut operation)
           if (!floatingLayerRef.current) {
             const editCanvas = editCanvasRef.current;
@@ -77,6 +78,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
               Math.round(selection.width),
               Math.round(selection.height)
             );
+            imageData = applySelectionMaskToImageData(imageData, selection, selectionMask);
             imageData = applyFeatherToImageData(imageData, selectionFeather);
             (floatingLayerRef as { current: FloatingLayer | null }).current = {
               imageData,
@@ -89,15 +91,14 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
             saveToHistory();
 
             // Clear the original selection area (cut operation)
-            const clearX = Math.round(selection.x - layerPosX);
-            const clearY = Math.round(selection.y - layerPosY);
-            clearRectWithFeather(
+            clearSelectionFromLayer(
               ctx2d,
-              clearX,
-              clearY,
-              Math.round(selection.width),
-              Math.round(selection.height),
-              selectionFeather
+              selection,
+              {
+                selectionMask,
+                selectionFeather,
+                layerOffset: { x: layerPosX, y: layerPosY },
+              }
             );
           }
 
@@ -153,6 +154,7 @@ export function useMoveHandler(options: MoveHandlerOptions): UseMoveHandlerRetur
     },
     [
       selection,
+      selectionMask,
       selectionFeather,
       floatingLayerRef,
       dragStartOriginRef,

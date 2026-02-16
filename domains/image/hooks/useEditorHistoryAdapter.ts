@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { UnifiedLayer } from "../types";
+import type { CropArea, SelectionMask } from "../types";
 import { HistoryAdapter } from "./useHistory";
 import {
   clearLayerAlphaMask,
@@ -21,6 +22,8 @@ export interface EditorHistorySnapshot {
   layers: UnifiedLayer[];
   activeLayerId: string | null;
   selectedLayerIds: string[];
+  selection: CropArea | null;
+  selectionMask: SelectionMask | null;
   canvasSize: { width: number; height: number };
   canvases: LayerCanvasHistoryState[];
 }
@@ -29,6 +32,8 @@ interface UseEditorHistoryAdapterOptions {
   layers: UnifiedLayer[];
   activeLayerId: string | null;
   selectedLayerIds: string[];
+  selection: CropArea | null;
+  selectionMask: SelectionMask | null;
   layerCanvasesRef: React.MutableRefObject<Map<string, HTMLCanvasElement>>;
   canvasSize: { width: number; height: number };
   editCanvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -36,6 +41,8 @@ interface UseEditorHistoryAdapterOptions {
   setCanvasSize: (size: { width: number; height: number }) => void;
   setActiveLayerId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedLayerIds: React.Dispatch<React.SetStateAction<string[]>>;
+  setSelection: React.Dispatch<React.SetStateAction<CropArea | null>>;
+  setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
 }
 
 interface UseEditorHistoryAdapterReturn {
@@ -50,6 +57,27 @@ function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
   };
 }
 
+function cloneSelection(selection: CropArea | null): CropArea | null {
+  if (!selection) return null;
+  return {
+    x: selection.x,
+    y: selection.y,
+    width: selection.width,
+    height: selection.height,
+  };
+}
+
+function cloneSelectionMask(selectionMask: SelectionMask | null): SelectionMask | null {
+  if (!selectionMask) return null;
+  return {
+    x: selectionMask.x,
+    y: selectionMask.y,
+    width: selectionMask.width,
+    height: selectionMask.height,
+    mask: new Uint8Array(selectionMask.mask),
+  };
+}
+
 export function useEditorHistoryAdapter(
   options: UseEditorHistoryAdapterOptions
 ): UseEditorHistoryAdapterReturn {
@@ -57,6 +85,8 @@ export function useEditorHistoryAdapter(
     layers,
     activeLayerId,
     selectedLayerIds,
+    selection,
+    selectionMask,
     layerCanvasesRef,
     canvasSize,
     editCanvasRef,
@@ -64,6 +94,8 @@ export function useEditorHistoryAdapter(
     setCanvasSize,
     setActiveLayerId,
     setSelectedLayerIds,
+    setSelection,
+    setSelectionMask,
   } = options;
 
   const captureState = useCallback((): EditorHistorySnapshot => {
@@ -87,13 +119,24 @@ export function useEditorHistoryAdapter(
       layers: layers.map(cloneLayerForHistory),
       activeLayerId,
       selectedLayerIds: [...selectedLayerIds],
+      selection: cloneSelection(selection),
+      selectionMask: cloneSelectionMask(selectionMask),
       canvasSize: {
         width: canvasSize.width,
         height: canvasSize.height,
       },
       canvases,
     };
-  }, [layers, activeLayerId, selectedLayerIds, layerCanvasesRef, canvasSize.width, canvasSize.height]);
+  }, [
+    layers,
+    activeLayerId,
+    selectedLayerIds,
+    selection,
+    selectionMask,
+    layerCanvasesRef,
+    canvasSize.width,
+    canvasSize.height,
+  ]);
 
   const applyState = useCallback(
     (snapshot: EditorHistorySnapshot) => {
@@ -135,6 +178,8 @@ export function useEditorHistoryAdapter(
       setSelectedLayerIds(
         snapshot.selectedLayerIds.filter((layerId) => restoredLayerIds.has(layerId))
       );
+      setSelection(cloneSelection(snapshot.selection));
+      setSelectionMask(cloneSelectionMask(snapshot.selectionMask));
       editCanvasRef.current = nextActiveLayerId ? canvasMap.get(nextActiveLayerId) || null : null;
     },
     [
@@ -145,6 +190,8 @@ export function useEditorHistoryAdapter(
       setCanvasSize,
       setActiveLayerId,
       setSelectedLayerIds,
+      setSelection,
+      setSelectionMask,
       editCanvasRef,
     ]
   );

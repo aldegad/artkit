@@ -29,10 +29,10 @@ export function useTransformShortcuts(options: UseTransformShortcutsOptions): vo
   } = options;
 
   useEffect(() => {
-    if (toolMode === "transform" && !isTransformActive && activeLayerId) {
+    if (toolMode === "transform" && !isTransformActive) {
       startTransform();
     }
-  }, [toolMode, isTransformActive, activeLayerId, startTransform]);
+  }, [toolMode, isTransformActive, startTransform]);
 
   useEffect(() => {
     const handleTransformKeys = (e: KeyboardEvent) => {
@@ -48,7 +48,7 @@ export function useTransformShortcuts(options: UseTransformShortcutsOptions): vo
       if (e.code === "KeyT" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         e.stopPropagation();
-        if (activeLayerId && layersCount > 0) {
+        if (layersCount > 0) {
           if (toolMode !== "transform") {
             previousToolModeRef.current = toolMode;
           }
