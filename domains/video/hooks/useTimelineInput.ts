@@ -8,6 +8,12 @@ import { Clip } from "../types";
 import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { resolveTimelineClipSelection } from "../utils/timelineSelection";
 import {
+  buildClipsByTrackIndex,
+  getDragAutoScrollDeltaPixels as getDragAutoScrollDeltaPixelsValue,
+  isAutoScrollDragType,
+  resolveSingleClipTrackSwap,
+} from "../utils/timelineDragHelpers";
+import {
   type DragItem,
   type DragState,
   INITIAL_TIMELINE_DRAG_STATE,
@@ -65,33 +71,6 @@ interface UseTimelineInputOptions {
 const CLIP_SORT_TRIGGER_RATIO = 0.5;
 const DRAG_AUTO_SCROLL_EDGE_PX = 64;
 const DRAG_AUTO_SCROLL_MAX_STEP_PX = 28;
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
-function isAutoScrollDragType(type: DragState["type"]): boolean {
-  return type === "clip-move" || type === "clip-trim-start" || type === "clip-trim-end";
-}
-
-function buildClipsByTrackIndex(clips: Clip[], order: "asc" | "desc"): Map<string, Clip[]> {
-  const index = new Map<string, Clip[]>();
-  for (const clip of clips) {
-    const list = index.get(clip.trackId);
-    if (list) {
-      list.push(clip);
-    } else {
-      index.set(clip.trackId, [clip]);
-    }
-  }
-
-  const direction = order === "asc" ? 1 : -1;
-  for (const list of index.values()) {
-    list.sort((a, b) => (a.startTime - b.startTime) * direction);
-  }
-
-  return index;
-}
 
 export function useTimelineInput(options: UseTimelineInputOptions) {
   const { tracksContainerRef, containerRef, getTransformLaneHeight } = options;
@@ -1012,19 +991,10 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }, []);
 
   const getDragAutoScrollDeltaPixels = useCallback((x: number, width: number): number => {
-    if (!Number.isFinite(x) || !Number.isFinite(width) || width <= 0) return 0;
-
-    if (x < DRAG_AUTO_SCROLL_EDGE_PX) {
-      const ratio = clamp01((DRAG_AUTO_SCROLL_EDGE_PX - x) / DRAG_AUTO_SCROLL_EDGE_PX);
-      return -Math.ceil(DRAG_AUTO_SCROLL_MAX_STEP_PX * ratio * ratio);
-    }
-
-    if (x > width - DRAG_AUTO_SCROLL_EDGE_PX) {
-      const ratio = clamp01((x - (width - DRAG_AUTO_SCROLL_EDGE_PX)) / DRAG_AUTO_SCROLL_EDGE_PX);
-      return Math.ceil(DRAG_AUTO_SCROLL_MAX_STEP_PX * ratio * ratio);
-    }
-
-    return 0;
+    return getDragAutoScrollDeltaPixelsValue(x, width, {
+      edgePx: DRAG_AUTO_SCROLL_EDGE_PX,
+      maxStepPx: DRAG_AUTO_SCROLL_MAX_STEP_PX,
+    });
   }, []);
 
   const getTimeAtPixelWithViewport = useCallback((pixel: number): number => {
@@ -1058,60 +1028,20 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     deltaTime: number;
     pointerTrackId: string | null;
   }): boolean => {
-    const { drag, deltaTime, pointerTrackId } = options;
-    if (!drag.clipId) return false;
-    if (drag.items.length !== 1 || drag.items[0]?.type !== "clip") return false;
+    const swap = resolveSingleClipTrackSwap({
+      drag: options.drag,
+      deltaTime: options.deltaTime,
+      pointerTrackId: options.pointerTrackId,
+      clipsById,
+      clipsByTrackAsc,
+      triggerRatio: CLIP_SORT_TRIGGER_RATIO,
+    });
+    if (!swap) return false;
 
-    const primaryClip = clipsById.get(drag.clipId) || null;
-    if (!primaryClip) return false;
-
-    // Only sort when dragging in the same track.
-    if (pointerTrackId && pointerTrackId !== primaryClip.trackId) return false;
-
-    const trackClips = clipsByTrackAsc.get(primaryClip.trackId) || [];
-    if (trackClips.length < 2) return false;
-
-    const primaryIndex = trackClips.findIndex((clip) => clip.id === primaryClip.id);
-    if (primaryIndex < 0) return false;
-
-    const pointerTime = drag.startTime + deltaTime;
-    const pointerOffsetFromClipStart = drag.startTime - drag.originalClipStart;
-    const candidateStart = Math.max(0, pointerTime - pointerOffsetFromClipStart);
-    const candidateEnd = candidateStart + primaryClip.duration;
-
-    if (candidateStart > primaryClip.startTime) {
-      const nextClip = trackClips[primaryIndex + 1];
-      if (!nextClip) return false;
-
-      const forwardThreshold = nextClip.startTime + (nextClip.duration * CLIP_SORT_TRIGGER_RATIO);
-      if (candidateEnd < forwardThreshold) return false;
-
-      const gap = Math.max(0, nextClip.startTime - (primaryClip.startTime + primaryClip.duration));
-      const nextStart = primaryClip.startTime;
-      const primaryStart = nextStart + nextClip.duration + gap;
-
-      updateClip(nextClip.id, { startTime: nextStart });
-      updateClip(primaryClip.id, { startTime: primaryStart });
-      return true;
+    for (const update of swap.updates) {
+      updateClip(update.id, { startTime: update.startTime });
     }
-
-    if (candidateStart < primaryClip.startTime) {
-      const previousClip = trackClips[primaryIndex - 1];
-      if (!previousClip) return false;
-
-      const backwardThreshold = previousClip.startTime + (previousClip.duration * CLIP_SORT_TRIGGER_RATIO);
-      if (candidateStart > backwardThreshold) return false;
-
-      const gap = Math.max(0, primaryClip.startTime - (previousClip.startTime + previousClip.duration));
-      const primaryStart = previousClip.startTime;
-      const previousStart = primaryStart + primaryClip.duration + gap;
-
-      updateClip(primaryClip.id, { startTime: primaryStart });
-      updateClip(previousClip.id, { startTime: previousStart });
-      return true;
-    }
-
-    return false;
+    return true;
   }, [clipsById, clipsByTrackAsc, updateClip]);
 
   const handleClipMoveDrag = useCallback((options: {
