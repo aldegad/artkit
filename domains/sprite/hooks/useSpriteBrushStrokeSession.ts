@@ -22,7 +22,7 @@ interface UseSpriteBrushStrokeSessionResult {
   resetHasDrawn: () => void;
   startBrushStroke: (e: React.PointerEvent<HTMLCanvasElement>, coords: StrokePoint) => void;
   continueBrushStroke: (e: React.PointerEvent<HTMLCanvasElement>, coords: StrokePoint) => void;
-  endBrushStroke: (pointerId: number) => boolean;
+  endBrushStroke: (pointerId: number) => void;
   cancelBrushStroke: () => void;
 }
 
@@ -72,12 +72,11 @@ export function useSpriteBrushStrokeSession({
     lastPointRef.current = { x: coords.x, y: coords.y };
   }, [drawAt, isDrawing, requestRender]);
 
-  const endBrushStroke = useCallback((pointerId: number): boolean => {
-    if (drawingPointerIdRef.current !== pointerId) return false;
+  const endBrushStroke = useCallback((pointerId: number): void => {
+    if (drawingPointerIdRef.current !== pointerId) return;
     drawingPointerIdRef.current = null;
     setIsDrawing(false);
     commitStroke();
-    return true;
   }, [commitStroke]);
 
   const cancelBrushStroke = useCallback(() => {

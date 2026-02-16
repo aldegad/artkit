@@ -1,5 +1,6 @@
 import { SpriteFrame, SpriteTrack } from "../types";
 import { compositeAllFrames, compositeFrame, type CompositedFrame } from "./compositor";
+import { clampExportQuality } from "./exportQuality";
 
 // ============================================
 // Single Frame Export
@@ -497,8 +498,7 @@ interface LayeredTrackFramesMetadata {
 }
 
 function clampLayeredQuality(quality: number | undefined): number {
-  if (!Number.isFinite(quality)) return 0.9;
-  return Math.max(0.1, Math.min(1, quality as number));
+  return clampExportQuality(quality);
 }
 
 function sanitizeLayerEntryName(value: string, fallback: string): string {

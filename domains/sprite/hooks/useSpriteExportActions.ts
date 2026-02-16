@@ -9,6 +9,7 @@ import {
   downloadLayeredTrackFramesZip,
 } from "../utils/export";
 import { compositeFrame } from "../utils/compositor";
+import { clampExportQuality } from "../utils/exportQuality";
 import type { SpriteExportSettings } from "../components/SpriteExportModal";
 import type { SpriteMp4ExportOptions } from "./useSpriteExport";
 
@@ -59,11 +60,6 @@ function getFrameExportMimeType(format: SpriteFrameExportFormat): string {
 
 function getFrameExportExtension(format: SpriteFrameExportFormat): string {
   return format === "jpeg" ? "jpg" : format;
-}
-
-function clampQuality(quality: number): number {
-  if (!Number.isFinite(quality)) return 0.9;
-  return Math.max(0.1, Math.min(1, quality));
 }
 
 export function useSpriteExportActions(
@@ -196,7 +192,7 @@ export function useSpriteExportActions(
 
       const dataUrl = format === "png"
         ? exportCanvas.toDataURL(mimeType)
-        : exportCanvas.toDataURL(mimeType, clampQuality(settings.quality));
+        : exportCanvas.toDataURL(mimeType, clampExportQuality(settings.quality));
 
       const link = document.createElement("a");
       link.download = `${finalFileName}.${extension}`;
