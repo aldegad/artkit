@@ -774,7 +774,7 @@ function VideoEditorContent() {
         onSave={submitSaveDialog}
         translations={{
           title: saveDialogState.mode === "saveAs" ? t.saveAs : t.save,
-          name: t.projectName,
+          name: t.fileName,
           project: t.project,
           defaultProject: "default",
           newProject: `${t.newProject}...`,

@@ -67,6 +67,7 @@ interface Translations {
   newProject: string;
   project: string;
   projectName: string;
+  fileName: string;
   otherName: string;
   allProjects: string;
   savedProjects: string;
@@ -454,6 +455,7 @@ const translations: Record<Language, Translations> = {
     newProject: "새 프로젝트",
     project: "프로젝트",
     projectName: "프로젝트명",
+    fileName: "파일명",
     otherName: "다른이름",
     allProjects: "전체 프로젝트",
     savedProjects: "저장된 프로젝트",
@@ -839,6 +841,7 @@ const translations: Record<Language, Translations> = {
     newProject: "New Project",
     project: "Project",
     projectName: "Project Name",
+    fileName: "File Name",
     otherName: "Save As",
     allProjects: "All Projects",
     savedProjects: "Saved Projects",
