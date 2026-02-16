@@ -9,9 +9,11 @@ import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { resolveTimelineClipSelection } from "../utils/timelineSelection";
 import {
   buildClipsByTrackIndex,
+  calculateSnappedClipMoveTimeDelta,
   getDragAutoScrollDeltaPixels as getDragAutoScrollDeltaPixelsValue,
   isAutoScrollDragType,
   resolveSingleClipTrackSwap,
+  snapTimelineTimeToClipPoints,
 } from "../utils/timelineDragHelpers";
 import {
   type DragItem,
@@ -112,27 +114,15 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       time: number,
       options?: { scope?: "all" | "track"; trackId?: string; excludeClipIds?: Set<string> }
     ): number => {
-      if (!viewState.snapEnabled) return time;
-
-      const threshold = TIMELINE.SNAP_THRESHOLD / zoom; // convert pixels to time
-      const points: number[] = [0]; // always include time 0
-      const scope = options?.scope ?? "all";
-      const trackId = options?.trackId;
-      const excludeClipIds = options?.excludeClipIds || new Set<string>();
-
-      for (const clip of clips) {
-        if (scope === "track" && trackId && clip.trackId !== trackId) continue;
-        if (excludeClipIds.has(clip.id)) continue;
-        points.push(clip.startTime);
-        points.push(clip.startTime + clip.duration);
-      }
-
-      for (const point of points) {
-        if (Math.abs(time - point) < threshold) {
-          return point;
-        }
-      }
-      return time;
+      return snapTimelineTimeToClipPoints(time, {
+        snapEnabled: viewState.snapEnabled,
+        zoom,
+        snapThresholdPx: TIMELINE.SNAP_THRESHOLD,
+        clips,
+        scope: options?.scope,
+        trackId: options?.trackId,
+        excludeClipIds: options?.excludeClipIds,
+      });
     },
     [viewState.snapEnabled, zoom, clips]
   );
@@ -1004,23 +994,12 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }, [timelineViewportRef]);
 
   const getSnappedClipMoveTimeDelta = useCallback((drag: DragState, deltaTime: number, movingClipIds: Set<string>) => {
-    const rawStart = Math.max(0, drag.originalClipStart + deltaTime);
-    const snappedStart = snapToPoints(rawStart, {
-      excludeClipIds: movingClipIds,
+    return calculateSnappedClipMoveTimeDelta({
+      drag,
+      deltaTime,
+      movingClipIds,
+      snapTime: snapToPoints,
     });
-    // Also snap end edge: if end snaps, adjust start accordingly.
-    const rawEnd = rawStart + drag.originalClipDuration;
-    const snappedEnd = snapToPoints(rawEnd, {
-      excludeClipIds: movingClipIds,
-    });
-    const endAdjusted = Math.max(0, snappedEnd - drag.originalClipDuration);
-    // Use whichever snap is closer.
-    const startDelta = Math.abs(snappedStart - rawStart);
-    const endDelta = Math.abs(snappedEnd - rawEnd);
-    const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
-
-    // Time delta from primary clip's original position.
-    return finalStart - drag.originalClipStart;
   }, [snapToPoints]);
 
   const maybeSortSingleClipWithinTrack = useCallback((options: {

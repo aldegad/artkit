@@ -15,6 +15,24 @@ export interface SingleClipSwapResult {
   updates: ClipStartUpdate[];
 }
 
+export interface SnapTimeResolverOptions {
+  scope?: "all" | "track";
+  trackId?: string;
+  excludeClipIds?: Set<string>;
+}
+
+export interface SnapTimelineTimeToClipPointsOptions extends SnapTimeResolverOptions {
+  snapEnabled: boolean;
+  zoom: number;
+  snapThresholdPx: number;
+  clips: Clip[];
+}
+
+export type SnapTimeResolver = (
+  time: number,
+  options?: SnapTimeResolverOptions
+) => number;
+
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
@@ -60,6 +78,61 @@ export function getDragAutoScrollDeltaPixels(
   }
 
   return 0;
+}
+
+export function snapTimelineTimeToClipPoints(
+  time: number,
+  options: SnapTimelineTimeToClipPointsOptions
+): number {
+  if (!options.snapEnabled) return time;
+
+  const threshold = options.snapThresholdPx / Math.max(0.001, options.zoom);
+  const points: number[] = [0];
+  const scope = options.scope ?? "all";
+  const trackId = options.trackId;
+  const excludeClipIds = options.excludeClipIds || new Set<string>();
+
+  for (const clip of options.clips) {
+    if (scope === "track" && trackId && clip.trackId !== trackId) continue;
+    if (excludeClipIds.has(clip.id)) continue;
+    points.push(clip.startTime);
+    points.push(clip.startTime + clip.duration);
+  }
+
+  for (const point of points) {
+    if (Math.abs(time - point) < threshold) {
+      return point;
+    }
+  }
+
+  return time;
+}
+
+export function calculateSnappedClipMoveTimeDelta(options: {
+  drag: Pick<DragState, "originalClipStart" | "originalClipDuration">;
+  deltaTime: number;
+  movingClipIds: Set<string>;
+  snapTime: SnapTimeResolver;
+}): number {
+  const rawStart = Math.max(0, options.drag.originalClipStart + options.deltaTime);
+  const snappedStart = options.snapTime(rawStart, {
+    excludeClipIds: options.movingClipIds,
+  });
+
+  // Also snap end edge: if end snaps, adjust start accordingly.
+  const rawEnd = rawStart + options.drag.originalClipDuration;
+  const snappedEnd = options.snapTime(rawEnd, {
+    excludeClipIds: options.movingClipIds,
+  });
+  const endAdjusted = Math.max(0, snappedEnd - options.drag.originalClipDuration);
+
+  // Use whichever snap is closer.
+  const startDelta = Math.abs(snappedStart - rawStart);
+  const endDelta = Math.abs(snappedEnd - rawEnd);
+  const finalStart = startDelta <= endDelta ? snappedStart : endAdjusted;
+
+  // Time delta from primary clip's original position.
+  return finalStart - options.drag.originalClipStart;
 }
 
 export function resolveSingleClipTrackSwap(options: {
