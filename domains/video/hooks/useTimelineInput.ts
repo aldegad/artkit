@@ -70,6 +70,29 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function isAutoScrollDragType(type: DragState["type"]): boolean {
+  return type === "clip-move" || type === "clip-trim-start" || type === "clip-trim-end";
+}
+
+function buildClipsByTrackIndex(clips: Clip[], order: "asc" | "desc"): Map<string, Clip[]> {
+  const index = new Map<string, Clip[]>();
+  for (const clip of clips) {
+    const list = index.get(clip.trackId);
+    if (list) {
+      list.push(clip);
+    } else {
+      index.set(clip.trackId, [clip]);
+    }
+  }
+
+  const direction = order === "asc" ? 1 : -1;
+  for (const list of index.values()) {
+    list.sort((a, b) => (a.startTime - b.startTime) * direction);
+  }
+
+  return index;
+}
+
 export function useTimelineInput(options: UseTimelineInputOptions) {
   const { tracksContainerRef, containerRef, getTransformLaneHeight } = options;
   const {
@@ -162,37 +185,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     return Math.hypot(dx, dy);
   }, []);
 
-  const clipsByTrackDesc = useMemo(() => {
-    const index = new Map<string, Clip[]>();
-    for (const clip of clips) {
-      const list = index.get(clip.trackId);
-      if (list) {
-        list.push(clip);
-      } else {
-        index.set(clip.trackId, [clip]);
-      }
-    }
-    for (const list of index.values()) {
-      list.sort((a, b) => b.startTime - a.startTime);
-    }
-    return index;
-  }, [clips]);
+  const clipsByTrackDesc = useMemo(() => buildClipsByTrackIndex(clips, "desc"), [clips]);
 
-  const clipsByTrackAsc = useMemo(() => {
-    const index = new Map<string, Clip[]>();
-    for (const clip of clips) {
-      const list = index.get(clip.trackId);
-      if (list) {
-        list.push(clip);
-      } else {
-        index.set(clip.trackId, [clip]);
-      }
-    }
-    for (const list of index.values()) {
-      list.sort((a, b) => a.startTime - b.startTime);
-    }
-    return index;
-  }, [clips]);
+  const clipsByTrackAsc = useMemo(() => buildClipsByTrackIndex(clips, "asc"), [clips]);
 
   const clipsById = useMemo(() => {
     const index = new Map<string, Clip>();
@@ -1203,15 +1198,48 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }));
   }, [clipsById, trimClipEnd, snapToPoints]);
 
+  const applyDragAtPosition = useCallback((options: {
+    drag: DragState;
+    x: number;
+    contentY: number;
+    time: number;
+  }) => {
+    const { drag, x, contentY, time } = options;
+    const deltaTime = time - drag.startTime;
+
+    switch (drag.type) {
+      case "playhead":
+        handlePlayheadDragMove(time);
+        break;
+      case "clip-move":
+        handleClipMoveDrag({
+          drag,
+          x,
+          contentY,
+          deltaTime,
+        });
+        break;
+      case "clip-trim-start":
+        handleClipTrimStartDrag(drag, deltaTime);
+        break;
+      case "clip-trim-end":
+        handleClipTrimEndDrag(drag, deltaTime);
+        break;
+      default:
+        break;
+    }
+  }, [
+    handlePlayheadDragMove,
+    handleClipMoveDrag,
+    handleClipTrimStartDrag,
+    handleClipTrimEndDrag,
+  ]);
+
   const runDragAutoScrollTick = useCallback(() => {
     dragAutoScrollRafRef.current = null;
     const pointer = dragPointerRef.current;
     if (!pointer) return;
-    if (
-      dragState.type !== "clip-move"
-      && dragState.type !== "clip-trim-start"
-      && dragState.type !== "clip-trim-end"
-    ) {
+    if (!isAutoScrollDragType(dragState.type)) {
       return;
     }
 
@@ -1226,26 +1254,12 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
     const contentY = getContentY(pointer.clientY);
     const time = getTimeAtPixelWithViewport(x);
-    const deltaTime = time - dragState.startTime;
-
-    switch (dragState.type) {
-      case "clip-move":
-        handleClipMoveDrag({
-          drag: dragState,
-          x,
-          contentY,
-          deltaTime,
-        });
-        break;
-      case "clip-trim-start":
-        handleClipTrimStartDrag(dragState, deltaTime);
-        break;
-      case "clip-trim-end":
-        handleClipTrimEndDrag(dragState, deltaTime);
-        break;
-      default:
-        break;
-    }
+    applyDragAtPosition({
+      drag: dragState,
+      x,
+      contentY,
+      time,
+    });
 
     dragAutoScrollRafRef.current = requestAnimationFrame(() => {
       runDragAutoScrollTickRef.current?.();
@@ -1257,9 +1271,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     panByPixels,
     getContentY,
     getTimeAtPixelWithViewport,
-    handleClipMoveDrag,
-    handleClipTrimStartDrag,
-    handleClipTrimEndDrag,
+    applyDragAtPosition,
   ]);
   runDragAutoScrollTickRef.current = runDragAutoScrollTick;
 
@@ -1282,10 +1294,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
     const x = e.clientX - containerRect.left;
     const contentY = getContentY(e.clientY);
-    const shouldAutoScroll =
-      dragState.type === "clip-move"
-      || dragState.type === "clip-trim-start"
-      || dragState.type === "clip-trim-end";
+    const shouldAutoScroll = isAutoScrollDragType(dragState.type);
     if (shouldAutoScroll) {
       const autoScrollDeltaPixels = getDragAutoScrollDeltaPixels(x, containerRect.width);
       if (autoScrollDeltaPixels !== 0) {
@@ -1299,32 +1308,12 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }
 
     const time = getTimeAtPixelWithViewport(x);
-    const deltaTime = time - dragState.startTime;
-
-    switch (dragState.type) {
-      case "playhead":
-        handlePlayheadDragMove(time);
-        break;
-      case "clip-move":
-        handleClipMoveDrag({
-          drag: dragState,
-          x,
-          contentY,
-          deltaTime,
-        });
-        break;
-
-      case "clip-trim-start":
-        handleClipTrimStartDrag(dragState, deltaTime);
-        break;
-
-      case "clip-trim-end":
-        handleClipTrimEndDrag(dragState, deltaTime);
-        break;
-
-      default:
-        break;
-    }
+    applyDragAtPosition({
+      drag: dragState,
+      x,
+      contentY,
+      time,
+    });
   }, [
     dragState,
     tracksContainerRef,
@@ -1334,10 +1323,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     stopDragAutoScroll,
     getContentY,
     getTimeAtPixelWithViewport,
-    handlePlayheadDragMove,
-    handleClipMoveDrag,
-    handleClipTrimStartDrag,
-    handleClipTrimEndDrag,
+    applyDragAtPosition,
   ]);
 
   useDeferredPointerGesture<DragPointerPendingState>({
@@ -1363,11 +1349,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   });
 
   useEffect(() => {
-    if (
-      dragState.type !== "clip-move"
-      && dragState.type !== "clip-trim-start"
-      && dragState.type !== "clip-trim-end"
-    ) {
+    if (!isAutoScrollDragType(dragState.type)) {
       stopDragAutoScroll();
       if (dragState.type === "none") {
         dragPointerRef.current = null;
