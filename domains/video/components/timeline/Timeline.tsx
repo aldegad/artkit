@@ -134,6 +134,7 @@ export function Timeline({ className }: TimelineProps) {
     handlePointerDown: handleTimelinePointerDown,
     handleContainerPointerDown,
     liftedClipId,
+    draggingClipIds,
     dropClipToTrack,
     cancelLift,
   } = useTimelineInput({
@@ -642,6 +643,7 @@ export function Timeline({ className }: TimelineProps) {
                   masks={getMasksForTrack(track.id)}
                   transformLaneOpen={isTransformLaneOpen(track.id)}
                   liftedClipId={liftedClipId}
+                  draggingClipIds={draggingClipIds}
                   isLiftDropTarget={!!liftedClipId && liftedClipTrackId !== track.id}
                 />
               ))}

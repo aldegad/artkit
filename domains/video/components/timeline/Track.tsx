@@ -20,6 +20,7 @@ interface TrackProps {
   masks: MaskData[];
   transformLaneOpen?: boolean;
   liftedClipId?: string | null;
+  draggingClipIds?: Set<string>;
   isLiftDropTarget?: boolean;
   className?: string;
 }
@@ -56,6 +57,7 @@ export function Track({
   masks,
   transformLaneOpen = false,
   liftedClipId,
+  draggingClipIds,
   isLiftDropTarget,
   className,
 }: TrackProps) {
@@ -215,7 +217,12 @@ export function Track({
           isLiftDropTarget && "bg-accent/10"
         )} />
         {clips.map((clip) => (
-          <Clip key={clip.id} clip={clip} isLifted={liftedClipId === clip.id} />
+          <Clip
+            key={clip.id}
+            clip={clip}
+            isLifted={liftedClipId === clip.id}
+            isDragging={Boolean(draggingClipIds?.has(clip.id))}
+          />
         ))}
       </div>
 
