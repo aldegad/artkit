@@ -10,6 +10,7 @@ import {
   resizeRectByHandle,
   type RectHandle,
 } from "@/shared/utils/rectTransform";
+import { getDisplayDimensions as getRotatedDisplayDimensions } from "../../utils/coordinateSystem";
 
 // ============================================
 // Types
@@ -63,9 +64,7 @@ export function useCropTool(): UseCropToolReturn {
 
   // Calculate display dimensions (rotated canvas size)
   const getDisplayDimensions = useCallback(() => {
-    const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
-    const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
-    return { width, height };
+    return getRotatedDisplayDimensions(canvasSize, rotation);
   }, [rotation, canvasSize]);
 
   // State

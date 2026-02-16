@@ -52,8 +52,6 @@ export interface UseCanvasInputOptions {
   pan: Point;
   /** Function to get display dimensions */
   getDisplayDimensions: () => { width: number; height: number };
-  /** Whether input is enabled */
-  enabled?: boolean;
 }
 
 export interface UseCanvasInputReturn {
@@ -80,7 +78,7 @@ export interface UseCanvasInputReturn {
 // ============================================
 
 export function useCanvasInput(options: UseCanvasInputOptions): UseCanvasInputReturn {
-  const { canvasRef, zoom, pan, getDisplayDimensions, enabled = true } = options;
+  const { canvasRef, zoom, pan, getDisplayDimensions } = options;
 
   // Refs for zoom and pan to avoid stale closures in event handlers
   const zoomRef = useRef(zoom);
