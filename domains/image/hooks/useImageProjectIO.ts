@@ -13,6 +13,7 @@ import {
   clearCloudProjects,
 } from "../services/projectStorage";
 import { loadEditorAutosaveData, clearEditorAutosaveData } from "../utils/autosave";
+import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
 import { confirmDialog, showErrorToast } from "@/shared/components";
 import { DEFAULT_PROJECT_GROUP, normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
@@ -242,10 +243,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
       setPan({ x: 0, y: 0 });
       setStampSource(null);
 
-      const { width, height } =
-        project.rotation % 180 === 0
-          ? project.canvasSize
-          : { width: project.canvasSize.height, height: project.canvasSize.width };
+      const { width, height } = getRotatedDisplayDimensions(project.canvasSize, project.rotation);
 
       await initLayers(width, height, project.unifiedLayers);
       if (project.activeLayerId) {

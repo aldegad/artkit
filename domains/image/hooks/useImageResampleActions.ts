@@ -12,6 +12,7 @@ import {
   getLayerAlphaMask,
   clearLayerAlphaMask,
 } from "@/shared/utils/layerAlphaMask";
+import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
 
 interface UseImageResampleActionsOptions {
   layers: UnifiedLayer[];
@@ -70,8 +71,7 @@ export function useImageResampleActions(
   const getDisplayCanvasSize = useCallback(() => {
     const normalizedRotation = ((rotation % 360) + 360) % 360;
     const isSwapped = normalizedRotation === 90 || normalizedRotation === 270;
-    const width = isSwapped ? canvasSize.height : canvasSize.width;
-    const height = isSwapped ? canvasSize.width : canvasSize.height;
+    const { width, height } = getRotatedDisplayDimensions(canvasSize, rotation);
     return {
       width: clampResampleDimension(width),
       height: clampResampleDimension(height),

@@ -51,8 +51,11 @@ import { useEditorOverlayModel } from "./useEditorOverlayModel";
 import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { useImageResampleActions } from "./useImageResampleActions";
-import { clearSelectionFromLayer } from "../utils/selectionRegion";
-import { computeMagicWandSelection } from "@/shared/utils/magicWand";
+import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
+import {
+  useMagicWandSelectionAction,
+  useClearSelectionPixelsAction,
+} from "./useImageSelectionActions";
 import type {
   BackgroundRemovalModel,
   BackgroundRemovalQuality,
@@ -158,13 +161,11 @@ export function useImageEditorController() {
     maxHistory: 50,
   });
 
-  const getDisplayDimensions = useCallback(() => {
-    const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
-    const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
-    return { width, height };
-  }, [rotation, canvasSize]);
-
-  const displayDimensions = getDisplayDimensions();
+  const displayDimensions = useMemo(
+    () => getRotatedDisplayDimensions(canvasSize, rotation),
+    [canvasSize, rotation]
+  );
+  const getDisplayDimensions = useCallback(() => displayDimensions, [displayDimensions]);
   const viewport = useCanvasViewport({
     containerRef,
     canvasRef,
@@ -434,60 +435,16 @@ export function useImageEditorController() {
     saveToHistory,
   });
 
-  const applyMagicWandSelection = useCallback((imageX: number, imageY: number) => {
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d", { willReadFrequently: true });
-    if (!editCanvas || !ctx) {
-      setSelection(null);
-      floatingLayerRef.current = null;
-      return;
-    }
-
-    const layerPosX = activeLayerPosition?.x || 0;
-    const layerPosY = activeLayerPosition?.y || 0;
-    const localX = Math.floor(imageX - layerPosX);
-    const localY = Math.floor(imageY - layerPosY);
-
-    if (localX < 0 || localY < 0 || localX >= editCanvas.width || localY >= editCanvas.height) {
-      setSelection(null);
-      floatingLayerRef.current = null;
-      return;
-    }
-
-    const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    const wandSelection = computeMagicWandSelection(imageData, localX, localY, {
-      tolerance: magicWandTolerance,
-      connectedOnly: true,
-      ignoreAlpha: true,
-      colorMetric: "hsv",
-    });
-
-    if (!wandSelection) {
-      setSelection(null);
-      floatingLayerRef.current = null;
-      return;
-    }
-
-    setSelection({
-      x: wandSelection.bounds.x + layerPosX,
-      y: wandSelection.bounds.y + layerPosY,
-      width: wandSelection.bounds.width,
-      height: wandSelection.bounds.height,
-    });
-    setSelectionMask(null);
-    setIsMovingSelection(false);
-    setIsDuplicating(false);
-    floatingLayerRef.current = null;
-  }, [
+  const applyMagicWandSelection = useMagicWandSelectionAction({
     editCanvasRef,
     activeLayerPosition,
     magicWandTolerance,
+    floatingLayerRef,
     setSelection,
     setSelectionMask,
     setIsMovingSelection,
     setIsDuplicating,
-    floatingLayerRef,
-  ]);
+  });
 
   const {
     isDragging,
@@ -582,34 +539,16 @@ export function useImageEditorController() {
     getDisplayDimensions,
   });
 
-  const clearSelectionPixels = useCallback(() => {
-    if (!selection) return;
-
-    const editCanvas = editCanvasRef.current;
-    const ctx = editCanvas?.getContext("2d");
-    if (!editCanvas || !ctx) return;
-
-    const layerPosX = activeLayerPosition?.x || 0;
-    const layerPosY = activeLayerPosition?.y || 0;
-
-    saveToHistory();
-    clearSelectionFromLayer(ctx, selection, {
-      selectionMask,
-      selectionFeather,
-      layerOffset: { x: layerPosX, y: layerPosY },
-    });
-    floatingLayerRef.current = null;
-    requestRender();
-  }, [
+  const clearSelectionPixels = useClearSelectionPixelsAction({
     selection,
     selectionMask,
+    selectionFeather,
     editCanvasRef,
     activeLayerPosition,
-    saveToHistory,
-    selectionFeather,
     floatingLayerRef,
+    saveToHistory,
     requestRender,
-  ]);
+  });
 
   const handleUndo = useCallback(() => {
     undo();

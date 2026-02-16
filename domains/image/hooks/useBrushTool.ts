@@ -12,7 +12,11 @@ import {
   loadActivePresetId,
   saveActivePresetId,
 } from "../constants/brushPresets";
-import { imageToCanvas, ViewContext } from "../utils/coordinateSystem";
+import {
+  imageToCanvas,
+  ViewContext,
+  getDisplayDimensions as getRotatedDisplayDimensions,
+} from "../utils/coordinateSystem";
 import {
   drawDab,
   eraseDabLinear,
@@ -76,9 +80,7 @@ export function useBrushTool(): UseBrushToolReturn {
   const { editCanvasRef } = useEditorRefs();
 
   const getDisplayDimensions = useCallback(() => {
-    const width = rotation % 180 === 0 ? canvasSize.width : canvasSize.height;
-    const height = rotation % 180 === 0 ? canvasSize.height : canvasSize.width;
-    return { width, height };
+    return getRotatedDisplayDimensions(canvasSize, rotation);
   }, [rotation, canvasSize]);
 
   // ============================================
