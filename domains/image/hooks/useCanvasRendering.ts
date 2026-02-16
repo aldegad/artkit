@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, RefObject, useCallback, useRef } from "react";
-import { UnifiedLayer, Point, CropArea, Guide, SnapSource } from "../types";
+import { UnifiedLayer, Point, CropArea, Guide, SnapSource, MarqueeSubTool } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
@@ -46,6 +46,8 @@ interface UseCanvasRenderingOptions {
   stampSource: Point | null;
   activeLayerPosition?: Point | null;
   selection: { x: number; y: number; width: number; height: number } | null;
+  marqueeSubTool: MarqueeSubTool;
+  lassoPath: Point[] | null;
   isDuplicating: boolean;
   isMovingSelection: boolean;
 
@@ -104,6 +106,8 @@ export function useCanvasRendering(
     stampSource,
     activeLayerPosition,
     selection,
+    marqueeSubTool,
+    lassoPath,
     isDuplicating,
     isMovingSelection,
     transformBounds,
@@ -534,9 +538,58 @@ export function useCanvasRendering(
       ctx.restore();
     }
 
-    // Draw marquee selection (dotted line)
-    // Show selection for tools that use it: marquee, move, fill, brush, eraser, magic wand
-    if (selection && (toolMode === "marquee" || toolMode === "move" || toolMode === "fill" || toolMode === "brush" || toolMode === "eraser" || toolMode === "magicWand" || floatingLayerRef.current)) {
+    // Draw marquee selection overlay.
+    const showSelectionForTool = (
+      toolMode === "marquee"
+      || toolMode === "move"
+      || toolMode === "fill"
+      || toolMode === "brush"
+      || toolMode === "eraser"
+      || toolMode === "magicWand"
+      || !!floatingLayerRef.current
+    );
+
+    const showLassoPreview = (
+      toolMode === "marquee"
+      && marqueeSubTool === "lasso"
+      && !!lassoPath
+      && lassoPath.length > 1
+    );
+
+    if (showLassoPreview) {
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = colors.textOnColor;
+      ctx.beginPath();
+      lassoPath!.forEach((point, index) => {
+        const x = offsetX + point.x * zoom;
+        const y = offsetY + point.y * zoom;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+
+      ctx.strokeStyle = "#000000";
+      ctx.lineDashOffset = 4;
+      ctx.beginPath();
+      lassoPath!.forEach((point, index) => {
+        const x = offsetX + point.x * zoom;
+        const y = offsetY + point.y * zoom;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (selection && showSelectionForTool && !showLassoPreview) {
       const selX = offsetX + selection.x * zoom;
       const selY = offsetY + selection.y * zoom;
       const selW = selection.width * zoom;
@@ -814,6 +867,8 @@ export function useCanvasRendering(
     stampSource,
     activeLayerPosition,
     selection,
+    marqueeSubTool,
+    lassoPath,
     isDuplicating,
     isMovingSelection,
     transformBounds,

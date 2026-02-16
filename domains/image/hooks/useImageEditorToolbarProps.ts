@@ -7,10 +7,12 @@ import {
   createEditorToolButtons,
   EditorToolButtonTranslations,
 } from "../constants";
+import { MarqueeSubTool } from "../types";
 import { useEditorToolbarModels } from "./useEditorToolbarModels";
 
 interface UseImageEditorToolbarPropsOptions {
   hasLayers: boolean;
+  marqueeSubTool: MarqueeSubTool;
   toolButtonTranslations: EditorToolButtonTranslations;
   actionToolbarConfig: Omit<EditorActionToolbarProps, "toolButtons" | "translations">;
   actionToolbarTranslations: EditorActionToolbarProps["translations"];
@@ -23,6 +25,7 @@ export function useImageEditorToolbarProps(
 ) {
   const {
     hasLayers,
+    marqueeSubTool,
     toolButtonTranslations,
     actionToolbarConfig,
     actionToolbarTranslations,
@@ -31,8 +34,8 @@ export function useImageEditorToolbarProps(
   } = options;
 
   const toolButtons = useMemo(
-    () => createEditorToolButtons(toolButtonTranslations),
-    [toolButtonTranslations]
+    () => createEditorToolButtons(toolButtonTranslations, { marqueeSubTool }),
+    [toolButtonTranslations, marqueeSubTool]
   );
 
   const actionToolbarProps: EditorActionToolbarProps = {

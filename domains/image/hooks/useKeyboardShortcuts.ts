@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, RefObject } from "react";
-import { CropArea, EditorToolMode } from "../types";
+import { CropArea, EditorToolMode, SelectionMask } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { shouldIgnoreKeyEvent } from "@/shared/utils/keyboard";
 import { applyFeatherToImageData } from "../utils/selectionFeather";
 import { drawIntoLayerAlphaMask, drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { applySelectionMaskToImageData } from "../utils/selectionRegion";
 import {
   BRUSH_SIZE_SHORTCUTS,
   ZOOM_SHORTCUTS,
@@ -43,8 +44,10 @@ interface UseKeyboardShortcutsOptions {
 
   // Selection state (from useSelectionTool)
   selection: CropArea | null;
+  selectionMask: SelectionMask | null;
   selectionFeather: number;
   setSelection: (selection: CropArea | null) => void;
+  setSelectionMask: (mask: SelectionMask | null) => void;
   clearSelectionPixels?: () => void;
   clipboardRef: RefObject<ImageData | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
@@ -89,8 +92,10 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     undo,
     redo,
     selection,
+    selectionMask,
     selectionFeather,
     setSelection,
+    setSelectionMask,
     clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
@@ -201,6 +206,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
           selectionWidth,
           selectionHeight
         );
+        imageData = applySelectionMaskToImageData(imageData, selection, selectionMask);
         imageData = applyFeatherToImageData(imageData, selectionFeather);
         (clipboardRef as { current: ImageData | null }).current = imageData;
       }
@@ -244,6 +250,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
           width: clipData.width,
           height: clipData.height,
         });
+        setSelectionMask(null);
       }
 
       // Delete selection content (Delete / Backspace)
@@ -288,8 +295,10 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     undo,
     redo,
     selection,
+    selectionMask,
     selectionFeather,
     setSelection,
+    setSelectionMask,
     clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,

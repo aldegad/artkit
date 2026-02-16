@@ -51,7 +51,7 @@ import { useEditorOverlayModel } from "./useEditorOverlayModel";
 import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { useImageResampleActions } from "./useImageResampleActions";
-import { clearRectWithFeather } from "../utils/selectionFeather";
+import { clearSelectionFromLayer } from "../utils/selectionRegion";
 import { computeMagicWandSelection } from "@/shared/utils/magicWand";
 import type {
   BackgroundRemovalModel,
@@ -255,19 +255,6 @@ export function useImageEditorController() {
     },
   });
 
-  const { historyAdapter } = useEditorHistoryAdapter({
-    layers,
-    activeLayerId,
-    selectedLayerIds,
-    layerCanvasesRef,
-    canvasSize,
-    editCanvasRef,
-    setLayers,
-    setCanvasSize,
-    setActiveLayerId,
-    setSelectedLayerIds,
-  });
-
   const layerContextValue = useEditorLayerContextValue({
     layers,
     setLayers,
@@ -340,6 +327,12 @@ export function useImageEditorController() {
     setSelection,
     selectionFeather,
     setSelectionFeather,
+    marqueeSubTool,
+    setMarqueeSubTool,
+    lassoPath,
+    setLassoPath,
+    selectionMask,
+    setSelectionMask,
     magicWandTolerance,
     setMagicWandTolerance,
     isMovingSelection,
@@ -354,6 +347,23 @@ export function useImageEditorController() {
   } = useSelectionTool({
     getDisplayDimensions,
     saveToHistory,
+  });
+
+  const { historyAdapter } = useEditorHistoryAdapter({
+    layers,
+    activeLayerId,
+    selectedLayerIds,
+    selection,
+    selectionMask,
+    layerCanvasesRef,
+    canvasSize,
+    editCanvasRef,
+    setLayers,
+    setCanvasSize,
+    setActiveLayerId,
+    setSelectedLayerIds,
+    setSelection,
+    setSelectionMask,
   });
 
   const {
@@ -390,6 +400,7 @@ export function useImageEditorController() {
     zoom,
     saveToHistory,
     selection,
+    selectionMask,
     guides,
     canvasSize,
     snapEnabled: snapToGuides,
@@ -463,6 +474,7 @@ export function useImageEditorController() {
       width: wandSelection.bounds.width,
       height: wandSelection.bounds.height,
     });
+    setSelectionMask(null);
     setIsMovingSelection(false);
     setIsDuplicating(false);
     floatingLayerRef.current = null;
@@ -471,6 +483,7 @@ export function useImageEditorController() {
     activeLayerPosition,
     magicWandTolerance,
     setSelection,
+    setSelectionMask,
     setIsMovingSelection,
     setIsDuplicating,
     floatingLayerRef,
@@ -496,6 +509,11 @@ export function useImageEditorController() {
     resetLastDrawPoint,
     stampSource,
     setStampSource,
+    marqueeSubTool,
+    lassoPath,
+    setLassoPath,
+    selectionMask,
+    setSelectionMask,
     selection,
     selectionFeather,
     setSelection,
@@ -545,6 +563,8 @@ export function useImageEditorController() {
     stampSource,
     activeLayerPosition,
     selection,
+    marqueeSubTool,
+    lassoPath,
     isDuplicating,
     isMovingSelection,
     transformBounds: transformState.bounds,
@@ -571,17 +591,18 @@ export function useImageEditorController() {
 
     const layerPosX = activeLayerPosition?.x || 0;
     const layerPosY = activeLayerPosition?.y || 0;
-    const localX = Math.round(selection.x - layerPosX);
-    const localY = Math.round(selection.y - layerPosY);
-    const width = Math.max(1, Math.round(selection.width));
-    const height = Math.max(1, Math.round(selection.height));
 
     saveToHistory();
-    clearRectWithFeather(ctx, localX, localY, width, height, selectionFeather);
+    clearSelectionFromLayer(ctx, selection, {
+      selectionMask,
+      selectionFeather,
+      layerOffset: { x: layerPosX, y: layerPosY },
+    });
     floatingLayerRef.current = null;
     requestRender();
   }, [
     selection,
+    selectionMask,
     editCanvasRef,
     activeLayerPosition,
     saveToHistory,
@@ -608,8 +629,10 @@ export function useImageEditorController() {
     undo: handleUndo,
     redo: handleRedo,
     selection,
+    selectionMask,
     selectionFeather,
     setSelection,
+    setSelectionMask,
     clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
@@ -938,6 +961,7 @@ export function useImageEditorController() {
 
   const toolbarModels = useImageEditorToolbarProps({
     hasLayers,
+    marqueeSubTool,
     toolButtonTranslations: t,
     actionToolbarConfig: {
       toolMode,
@@ -969,6 +993,8 @@ export function useImageEditorController() {
       selection,
       selectionFeather,
       setSelectionFeather,
+      marqueeSubTool,
+      setMarqueeSubTool,
       magicWandTolerance,
       setMagicWandTolerance,
       onClearSelectionPixels: clearSelectionPixels,

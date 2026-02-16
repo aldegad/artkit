@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG, CropArea } from "../types";
+import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG, CropArea, SelectionMask } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
 import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
 import { HANDLE_SIZE as HANDLE_SIZE_CONST, ROTATE_HANDLE, FLIP_HANDLE } from "../constants";
+import { applySelectionMaskToImageData, clearSelectionFromLayer } from "../utils/selectionRegion";
 
 // ============================================
 // Types
@@ -76,6 +77,7 @@ interface UseTransformToolOptions {
   saveToHistory: () => void;
   // Selection for selection-based transform
   selection?: CropArea | null;
+  selectionMask?: SelectionMask | null;
   // Snap options
   guides?: Guide[];
   canvasSize?: { width: number; height: number };
@@ -193,6 +195,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     saveToHistory,
     // Snap options
     selection,
+    selectionMask,
     guides = [],
     canvasSize,
     snapEnabled = false,
@@ -362,7 +365,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
       if (clampedW <= 0 || clampedH <= 0) return;
 
-      const contentImageData = ctx.getImageData(clampedX, clampedY, clampedW, clampedH);
+      let contentImageData = ctx.getImageData(clampedX, clampedY, clampedW, clampedH);
+      contentImageData = applySelectionMaskToImageData(contentImageData, selection!, selectionMask || null);
       let hasContent = false;
       for (let i = 3; i < contentImageData.data.length; i += 4) {
         if (contentImageData.data[i] > 0) {
@@ -373,7 +377,11 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       if (!hasContent) return;
 
       saveToHistory();
-      ctx.clearRect(clampedX, clampedY, clampedW, clampedH);
+      clearSelectionFromLayer(ctx, selection!, {
+        selectionMask: selectionMask || null,
+        selectionFeather: 0,
+        layerOffset: { x: layerPosX, y: layerPosY },
+      });
 
       const imageBounds = {
         x: clampedX + layerPosX,
@@ -494,7 +502,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       perLayerData: perLayerData,
       isSelectionBased: false,
     });
-  }, [activeLayerId, selectedLayerIds, selection, layerCanvasesRef, layers, saveToHistory, findContentBounds]);
+  }, [activeLayerId, selectedLayerIds, selection, selectionMask, layerCanvasesRef, layers, saveToHistory, findContentBounds]);
 
   // Cancel transform
   const cancelTransform = useCallback(() => {
@@ -535,12 +543,23 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         if (!transformState.isSelectionBased) {
           // For full-content transform, rebuild layer from captured content.
           ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+          ctx.putImageData(
+            data.originalImageData,
+            data.contentOffset.x,
+            data.contentOffset.y
+          );
+          return;
         }
-        ctx.putImageData(
-          data.originalImageData,
-          data.contentOffset.x,
-          data.contentOffset.y
-        );
+
+        // For selection-based transform, draw with alpha blending so transparent
+        // pixels in the masked image do not erase unselected pixels in bounds.
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = data.originalImageData.width;
+        tempCanvas.height = data.originalImageData.height;
+        const tempCtx = tempCanvas.getContext("2d");
+        if (!tempCtx) return;
+        tempCtx.putImageData(data.originalImageData, 0, 0);
+        ctx.drawImage(tempCanvas, data.contentOffset.x, data.contentOffset.y);
       });
     }
     // Backward compatibility: single layer with originalImageData
@@ -554,9 +573,22 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
           if (!transformState.isSelectionBased) {
             ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+            ctx.putImageData(
+              transformState.originalImageData,
+              transformState.originalBounds.x - layerPosX,
+              transformState.originalBounds.y - layerPosY
+            );
+            return;
           }
-          ctx.putImageData(
-            transformState.originalImageData,
+
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = transformState.originalImageData.width;
+          tempCanvas.height = transformState.originalImageData.height;
+          const tempCtx = tempCanvas.getContext("2d");
+          if (!tempCtx) return;
+          tempCtx.putImageData(transformState.originalImageData, 0, 0);
+          ctx.drawImage(
+            tempCanvas,
             transformState.originalBounds.x - layerPosX,
             transformState.originalBounds.y - layerPosY
           );
@@ -645,13 +677,17 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       ctx.putImageData(oldData, localOffsetX, localOffsetY);
     }
 
-    // Clear original content area
-    ctx.clearRect(
-      contentOffset.x + localOffsetX,
-      contentOffset.y + localOffsetY,
-      originalBounds.width,
-      originalBounds.height
-    );
+    // Full-layer transform should clear the original content area. Selection-based
+    // transform already removed selected pixels at start, so clearing bounds here
+    // would erase unselected pixels inside the bounding rect.
+    if (!transformState.isSelectionBased) {
+      ctx.clearRect(
+        contentOffset.x + localOffsetX,
+        contentOffset.y + localOffsetY,
+        originalBounds.width,
+        originalBounds.height
+      );
+    }
 
     // Create temp canvas with original image data
     const tempCanvas = document.createElement("canvas");
