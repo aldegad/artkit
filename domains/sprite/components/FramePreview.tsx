@@ -14,14 +14,13 @@ import { useSpriteMagicWandSelection } from "../hooks/useSpriteMagicWandSelectio
 import { useSpriteBrushStrokeSession } from "../hooks/useSpriteBrushStrokeSession";
 import { useMagicWandOutlineAnimation } from "../hooks/useMagicWandOutlineAnimation";
 import { useSpritePanPointerSession } from "../hooks/useSpritePanPointerSession";
+import { useSpritePreviewPointerHandlers } from "../hooks/useSpritePreviewPointerHandlers";
 import { drawSpriteBrushPixel } from "../utils/brushDrawing";
 import { getCanvasPixelCoordinates } from "../utils/canvasPointer";
 import { drawMagicWandOverlay } from "../utils/magicWandOverlay";
 import {
   drawScaledImage,
   resizeCanvasForDpr,
-  safeReleasePointerCapture,
-  safeSetPointerCapture,
   type CanvasScaleScratch,
 } from "@/shared/utils";
 import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
@@ -54,8 +53,6 @@ export default function FramePreviewContent() {
   const isEyedropperTool = toolMode === "eyedropper";
 
   const [isPanning, setIsPanning] = useState(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
-  const [isOverCanvas, setIsOverCanvas] = useState(false);
   const [editFrameId, setEditFrameId] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -386,108 +383,42 @@ export default function FramePreviewContent() {
     },
   });
 
-  const handleCanvasPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (!currentFrame) return;
-
-      if (e.pointerType === "touch") {
-        activeTouchPointerIdsRef.current.add(e.pointerId);
-      }
-
-      if (activeTouchPointerIdsRef.current.size > 1) {
-        cancelBrushStroke();
-        return;
-      }
-
-      const isTouchPanOnlyInput = isPanLocked && e.pointerType === "touch";
-      if (isTouchPanOnlyInput || toolMode === "hand" || isPanning) {
-        return;
-      }
-
-      const coords = getPixelCoordinates(e.clientX, e.clientY);
-      if (!coords) return;
-
-      if (isEyedropperTool) {
-        pickColor(coords.x, coords.y);
-        return;
-      }
-
-      if (isMagicWandTool) {
-        if (isAiSelecting) {
-          return;
-        }
-        void applyMagicWandSelection(coords.x, coords.y);
-        return;
-      }
-
-      if (isBrushTool) {
-        startBrushStroke(e, coords);
-        safeSetPointerCapture(e.currentTarget, e.pointerId);
-      }
-    },
-    [
-      currentFrame,
-      isPanLocked,
-      toolMode,
-      isPanning,
-      isEyedropperTool,
-      isMagicWandTool,
-      isAiSelecting,
-      isBrushTool,
-      getPixelCoordinates,
-      applyMagicWandSelection,
-      pickColor,
-      startBrushStroke,
-      cancelBrushStroke,
-    ]
-  );
-
-  const handleCanvasPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-      }
-
-      if (e.pointerType === "touch" && activeTouchPointerIdsRef.current.size > 1) {
-        return;
-      }
-
-      if (!isDrawing || !currentFrame) return;
-      if (!isBrushTool) return;
-
-      const coords = getPixelCoordinates(e.clientX, e.clientY);
-      if (!coords) return;
-      continueBrushStroke(e, coords);
-    },
-    [isDrawing, currentFrame, isBrushTool, getPixelCoordinates, continueBrushStroke]
-  );
-
-  const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === "touch") {
-      activeTouchPointerIdsRef.current.delete(e.pointerId);
-    }
-
-    safeReleasePointerCapture(e.currentTarget, e.pointerId);
-
-    endBrushStroke(e.pointerId);
-  }, [endBrushStroke]);
-
-  const handleCanvasPointerEnter = useCallback(() => {
-    setIsOverCanvas(true);
-  }, []);
-
-  const handleCanvasPointerLeave = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === "touch") {
-      activeTouchPointerIdsRef.current.delete(e.pointerId);
-    }
-    setIsOverCanvas(false);
-    setCursorPos(null);
-    endBrushStroke(e.pointerId);
-  }, [endBrushStroke]);
-
   const isHandMode = toolMode === "hand" || isPanning;
+
+  const pickColorFromClient = useCallback((clientX: number, clientY: number) => {
+    const coords = getPixelCoordinates(clientX, clientY);
+    if (!coords) return;
+    pickColor(coords.x, coords.y);
+  }, [getPixelCoordinates, pickColor]);
+
+  const {
+    cursorPos,
+    isOverCanvas,
+    handlePreviewCanvasPointerDown: handleCanvasPointerDown,
+    handlePreviewCanvasPointerMove: handleCanvasPointerMove,
+    handlePreviewCanvasPointerUp: handleCanvasPointerUp,
+    handlePreviewCanvasPointerEnter: handleCanvasPointerEnter,
+    handlePreviewCanvasPointerLeave: handleCanvasPointerLeave,
+  } = useSpritePreviewPointerHandlers({
+    canvasRef,
+    activeTouchPointerIdsRef,
+    isPanLocked,
+    isHandMode,
+    isEyedropperTool,
+    isEditMode: Boolean(currentFrame),
+    isBrushEditMode: isBrushTool,
+    isMagicWandTool,
+    isAiSelecting,
+    isDrawing,
+    editableFrame: currentFrame ?? null,
+    pickColorFromComposited: pickColorFromClient,
+    applyMagicWandSelection,
+    startBrushStroke,
+    continueBrushStroke,
+    endBrushStroke,
+    cancelBrushStroke,
+    getPixelCoordinates,
+  });
 
   const getContainerCursor = () => {
     if (isAiSelecting) {

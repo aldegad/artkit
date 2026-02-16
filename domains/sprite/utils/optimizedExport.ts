@@ -1,5 +1,6 @@
 import { SpriteTrack } from "../types";
 import { compositeFrame } from "./compositor";
+import { clampExportQuality } from "./exportQuality";
 
 export type OptimizedTargetFramework = "canvas" | "phaser" | "pixi" | "custom";
 export type OptimizedImageFormat = "png" | "webp";
@@ -118,8 +119,7 @@ function normalizeOptimizedImageFormat(value: OptimizedImageFormat | undefined):
 }
 
 function clampOptimizedImageQuality(value: number | undefined): number {
-  if (!Number.isFinite(value)) return 0.9;
-  return Math.max(0.1, Math.min(1, value as number));
+  return clampExportQuality(value);
 }
 
 function getOptimizedImageMimeType(format: OptimizedImageFormat): string {

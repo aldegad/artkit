@@ -14,28 +14,28 @@ interface UseSpritePreviewPointerHandlersOptions {
   activeTouchPointerIdsRef: React.MutableRefObject<Set<number>>;
   isPanLocked: boolean;
   isHandMode: boolean;
-  isZoomTool: boolean;
+  isZoomTool?: boolean;
   isEyedropperTool: boolean;
   isEditMode: boolean;
   isBrushEditMode: boolean;
   isMagicWandTool: boolean;
   isAiSelecting: boolean;
-  isPlaying: boolean;
+  isPlaying?: boolean;
   isDrawing: boolean;
   editableFrame: SpriteFrame | null;
-  zoomAtCursor: (e: React.PointerEvent<HTMLCanvasElement>) => void;
+  zoomAtCursor?: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   pickColorFromComposited: (clientX: number, clientY: number) => void;
-  handleCropPointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => boolean;
-  handleCropPointerMove: (e: React.PointerEvent<HTMLCanvasElement>) => boolean;
-  handleCropPointerUp: () => void;
-  cancelCropDrag: () => void;
+  handleCropPointerDown?: (e: React.PointerEvent<HTMLCanvasElement>) => boolean;
+  handleCropPointerMove?: (e: React.PointerEvent<HTMLCanvasElement>) => boolean;
+  handleCropPointerUp?: () => void;
+  cancelCropDrag?: () => void;
   applyMagicWandSelection: (x: number, y: number) => Promise<void>;
   startBrushStroke: (e: React.PointerEvent<HTMLCanvasElement>, coords: Point) => void;
   continueBrushStroke: (e: React.PointerEvent<HTMLCanvasElement>, coords: Point) => void;
-  endBrushStroke: (pointerId: number) => boolean;
+  endBrushStroke: (pointerId: number) => void;
   cancelBrushStroke: () => void;
   getPixelCoordinates: (clientX: number, clientY: number) => Point | null;
-  setIsPlaying: (isPlaying: boolean) => void;
+  setIsPlaying?: (isPlaying: boolean) => void;
 }
 
 interface UseSpritePreviewPointerHandlersResult {
@@ -57,21 +57,21 @@ export function useSpritePreviewPointerHandlers(
     activeTouchPointerIdsRef,
     isPanLocked,
     isHandMode,
-    isZoomTool,
+    isZoomTool = false,
     isEyedropperTool,
     isEditMode,
     isBrushEditMode,
     isMagicWandTool,
     isAiSelecting,
-    isPlaying,
+    isPlaying = false,
     isDrawing,
     editableFrame,
     zoomAtCursor,
     pickColorFromComposited,
-    handleCropPointerDown,
-    handleCropPointerMove,
-    handleCropPointerUp,
-    cancelCropDrag,
+    handleCropPointerDown = () => false,
+    handleCropPointerMove = () => false,
+    handleCropPointerUp = () => {},
+    cancelCropDrag = () => {},
     applyMagicWandSelection,
     startBrushStroke,
     continueBrushStroke,
@@ -103,7 +103,7 @@ export function useSpritePreviewPointerHandlers(
       return;
     }
 
-    if (isZoomTool) {
+    if (isZoomTool && zoomAtCursor) {
       zoomAtCursor(e);
       return;
     }
@@ -138,7 +138,7 @@ export function useSpritePreviewPointerHandlers(
       return;
     }
 
-    if (isPlaying) {
+    if (isPlaying && setIsPlaying) {
       setIsPlaying(false);
     }
 
