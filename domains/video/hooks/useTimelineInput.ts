@@ -4,8 +4,10 @@ import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { useTimeline, useVideoState, useMask } from "../contexts";
 import { useVideoCoordinates } from "./useVideoCoordinates";
 import { useTimelineViewport } from "./useTimelineViewport";
+import { useTimelinePinchZoom } from "./useTimelinePinchZoom";
+import { useTimelineImmediateGesture, useTimelineTouchGesture } from "./useTimelineDeferredGestures";
 import { Clip } from "../types";
-import { GESTURE, TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
+import { TIMELINE, UI, MASK_LANE_HEIGHT } from "../constants";
 import { resolveTimelineClipSelection } from "../utils/timelineSelection";
 import {
   buildClipsByTrackIndex,
@@ -23,7 +25,7 @@ import {
   createPlayheadDragState,
   createTrimDragState,
 } from "../utils/timelineDragState";
-import { useDeferredPointerGesture } from "@/shared/hooks";
+import { alignTimelineTimeToFrame, normalizeTimelineFrameRate } from "../utils/timelineFrame";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
 // ── Touch pending state ───────────────────────────────────────────────
@@ -54,16 +56,6 @@ interface MiddlePanPendingState {
   zoomOnStart: number;
 }
 
-interface PinchPointer {
-  clientX: number;
-  clientY: number;
-}
-
-interface PinchSession {
-  initialDistance: number;
-  initialZoom: number;
-}
-
 interface UseTimelineInputOptions {
   tracksContainerRef: React.RefObject<HTMLDivElement | null>;
   containerRef?: React.RefObject<HTMLDivElement | null>;
@@ -73,8 +65,6 @@ interface UseTimelineInputOptions {
 const CLIP_SORT_TRIGGER_RATIO = 0.5;
 const DRAG_AUTO_SCROLL_EDGE_PX = 64;
 const DRAG_AUTO_SCROLL_MAX_STEP_PX = 28;
-const DEFAULT_TIMELINE_FRAME_RATE = 30;
-const TIMELINE_TIME_PRECISION = 1_000_000;
 
 export function useTimelineInput(options: UseTimelineInputOptions) {
   const { tracksContainerRef, containerRef, getTransformLaneHeight } = options;
@@ -131,31 +121,21 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   );
 
   const frameRate = useMemo(() => {
-    if (!Number.isFinite(project.frameRate) || project.frameRate <= 0) {
-      return DEFAULT_TIMELINE_FRAME_RATE;
-    }
-    return Math.max(1, Math.round(project.frameRate));
+    return normalizeTimelineFrameRate(project.frameRate);
   }, [project.frameRate]);
 
   const snapTimeToFrame = useCallback((time: number): number => {
-    const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
-    const frameIndex = Math.round(safeTime * frameRate);
-    const frameTime = frameIndex / frameRate;
-    return Math.round(frameTime * TIMELINE_TIME_PRECISION) / TIMELINE_TIME_PRECISION;
+    return alignTimelineTimeToFrame(time, frameRate);
   }, [frameRate]);
 
   const [dragState, setDragState] = useState<DragState>(INITIAL_TIMELINE_DRAG_STATE);
   const activePointerIdRef = useRef<number | null>(null);
   const [dragPointerPending, setDragPointerPending] = useState<DragPointerPendingState | null>(null);
   const [middlePanPending, setMiddlePanPending] = useState<MiddlePanPendingState | null>(null);
-  const pinchPointersRef = useRef<Map<number, PinchPointer>>(new Map());
-  const pinchSessionRef = useRef<PinchSession | null>(null);
-  const isPinchingRef = useRef(false);
 
   // Long-press lift state for cross-track touch movement
   const [liftedClipId, setLiftedClipId] = useState<string | null>(null);
   const isLiftedRef = useRef(false);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Touch pending state: deferred gesture resolution
   const [touchPending, setTouchPending] = useState<TouchPendingState | null>(null);
@@ -166,12 +146,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   const sortingAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
-
-  const getPinchDistance = useCallback((first: PinchPointer, second: PinchPointer) => {
-    const dx = first.clientX - second.clientX;
-    const dy = first.clientY - second.clientY;
-    return Math.hypot(dx, dy);
-  }, []);
 
   const clipsByTrackDesc = useMemo(() => buildClipsByTrackIndex(clips, "desc"), [clips]);
 
@@ -205,6 +179,20 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       setDragPointerPending(null);
     }
   }, [tracksContainerRef]);
+
+  const {
+    handleTouchPinchPointerDown,
+    resetPinchState,
+  } = useTimelinePinchZoom({
+    tracksContainerRef,
+    getCurrentZoom: () => Math.max(0.001, timelineViewportRef.current.zoom),
+    setZoomAtPixel,
+    onPinchStart: () => {
+      setTouchPending(null);
+      releasePointer();
+      setDragState(INITIAL_TIMELINE_DRAG_STATE);
+    },
+  });
 
   /** Get Y in content coordinates (accounts for scroll offset) */
   const getContentY = useCallback(
@@ -414,20 +402,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     };
   }, [clipsById, duplicateClip, duplicateMask, masks, selectClips, selectMasksForTimeline]);
 
-  /** Cancel any pending long-press timer */
-  const cancelLongPress = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
   /** Reset lift state */
   const resetLift = useCallback(() => {
-    cancelLongPress();
     isLiftedRef.current = false;
     setLiftedClipId(null);
-  }, [cancelLongPress]);
+  }, []);
 
   // ── Handle a touch tap (pointerup without significant movement) ──
   const handleTouchTap = useCallback(
@@ -444,10 +423,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [selectClip, seek, ensureTimeVisibleOnLeft, deselectAll]
   );
 
-  useDeferredPointerGesture<TouchPendingState>({
+  useTimelineTouchGesture<TouchPendingState>({
     pending: touchPending,
-    thresholdPx: GESTURE.TOUCH_GESTURE_THRESHOLD_PX,
-    longPressMs: GESTURE.LONG_PRESS_MS,
     shouldStartLongPress: (pending) =>
       !!(pending.clipResult && pending.clipResult.handle === "body"),
     onLongPress: (pending) => {
@@ -516,9 +493,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [timelineViewportRef]
   );
 
-  useDeferredPointerGesture<MiddlePanPendingState>({
+  useTimelineImmediateGesture<MiddlePanPendingState>({
     pending: middlePanPending,
-    thresholdPx: 0,
     onMoveResolved: ({ pending, event }) => {
       setScrollFromGestureAnchor(
         pending.scrollXOnStart,
@@ -875,30 +851,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
       // ── Touch: defer ALL processing until gesture direction is known ──
       if (e.pointerType === "touch" && e.button === 0) {
-        pinchPointersRef.current.set(e.pointerId, {
-          clientX: e.clientX,
-          clientY: e.clientY,
-        });
-
-        if (pinchPointersRef.current.size >= 2) {
-          e.preventDefault();
-          const pointers = Array.from(pinchPointersRef.current.values());
-          const first = pointers[0];
-          const second = pointers[1];
-          if (first && second) {
-            const initialDistance = getPinchDistance(first, second);
-            if (initialDistance > 0) {
-              pinchSessionRef.current = {
-                initialDistance,
-                initialZoom: Math.max(0.001, timelineViewportRef.current.zoom),
-              };
-              isPinchingRef.current = true;
-              cancelLongPress();
-              setTouchPending(null);
-              releasePointer();
-              setDragState(INITIAL_TIMELINE_DRAG_STATE);
-            }
-          }
+        if (handleTouchPinchPointerDown(e)) {
           return;
         }
 
@@ -915,66 +868,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       tracksContainerRef,
       getContentY,
       pixelToTime,
-      getPinchDistance,
-      timelineViewportRef,
-      cancelLongPress,
-      releasePointer,
+      handleTouchPinchPointerDown,
       handleTouchPointerDown,
       handlePrimaryPointerDown,
     ]
   );
-
-  useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!pinchPointersRef.current.has(event.pointerId)) return;
-      pinchPointersRef.current.set(event.pointerId, {
-        clientX: event.clientX,
-        clientY: event.clientY,
-      });
-
-      if (!isPinchingRef.current || !pinchSessionRef.current) return;
-      if (pinchPointersRef.current.size < 2) return;
-
-      const points = Array.from(pinchPointersRef.current.values());
-      const first = points[0];
-      const second = points[1];
-      if (!first || !second) return;
-
-      const currentDistance = getPinchDistance(first, second);
-      if (currentDistance <= 0) return;
-
-      const rect = tracksContainerRef.current?.getBoundingClientRect();
-      if (!rect || rect.width <= 0) return;
-
-      const ratio = currentDistance / pinchSessionRef.current.initialDistance;
-      const nextZoom = pinchSessionRef.current.initialZoom * ratio;
-      const centerX = (first.clientX + second.clientX) / 2;
-      const anchorX = Math.max(0, Math.min(centerX - rect.left, rect.width));
-
-      event.preventDefault();
-      setZoomAtPixel(nextZoom, anchorX);
-    };
-
-    const handlePointerEnd = (event: PointerEvent) => {
-      if (!pinchPointersRef.current.has(event.pointerId)) return;
-      pinchPointersRef.current.delete(event.pointerId);
-
-      if (pinchPointersRef.current.size < 2) {
-        isPinchingRef.current = false;
-        pinchSessionRef.current = null;
-      }
-    };
-
-    document.addEventListener("pointermove", handlePointerMove, { passive: false });
-    document.addEventListener("pointerup", handlePointerEnd);
-    document.addEventListener("pointercancel", handlePointerEnd);
-
-    return () => {
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerEnd);
-      document.removeEventListener("pointercancel", handlePointerEnd);
-    };
-  }, [getPinchDistance, tracksContainerRef, setZoomAtPixel]);
 
   const handlePlayheadDragMove = useCallback((time: number) => {
     const seekTime = Math.max(0, time);
@@ -982,15 +880,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     // Auto-scroll to keep playhead visible when seeking before visible area
     ensureTimeVisibleOnLeft(seekTime);
   }, [seek, ensureTimeVisibleOnLeft]);
-
-  const maybeCancelLongPressForDragMove = useCallback((drag: DragState, x: number, contentY: number) => {
-    if (!longPressTimerRef.current) return;
-    const dx = Math.abs(x - drag.startX);
-    const dy = Math.abs(contentY - drag.startY);
-    if (dx > 5 || dy > 5) {
-      cancelLongPress();
-    }
-  }, [cancelLongPress]);
 
   const stopDragAutoScroll = useCallback(() => {
     if (dragAutoScrollRafRef.current !== null) {
@@ -1057,15 +946,11 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   const handleClipMoveDrag = useCallback((options: {
     drag: DragState;
-    x: number;
     contentY: number;
     deltaTime: number;
   }) => {
-    const { drag, x, contentY, deltaTime } = options;
+    const { drag, contentY, deltaTime } = options;
     if (!drag.clipId || drag.items.length === 0) return;
-
-    // Cancel long-press timer if user starts moving (horizontal or vertical).
-    maybeCancelLongPressForDragMove(drag, x, contentY);
 
     const primaryClip = clipsById.get(drag.clipId) || null;
     if (!primaryClip) return;
@@ -1107,7 +992,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       }
     }
   }, [
-    maybeCancelLongPressForDragMove,
     clipsById,
     maybeSortSingleClipWithinTrack,
     getTrackAtY,
@@ -1158,7 +1042,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       case "clip-move":
         handleClipMoveDrag({
           drag,
-          x,
           contentY,
           deltaTime,
         });
@@ -1270,9 +1153,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     applyDragAtPosition,
   ]);
 
-  useDeferredPointerGesture<DragPointerPendingState>({
+  useTimelineImmediateGesture<DragPointerPendingState>({
     pending: dragState.type === "none" ? null : dragPointerPending,
-    thresholdPx: 0,
     onMoveResolved: ({ event }) => {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
       handleDragPointerMove(event);
@@ -1281,7 +1163,6 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
       stopDragAutoScroll();
       dragPointerRef.current = null;
-      cancelLongPress();
       releasePointer(event.pointerId);
       if (event.pointerType === "touch") {
         resetLift();
@@ -1326,12 +1207,10 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         sortingAnimationTimerRef.current = null;
       }
       dragPointerRef.current = null;
-      pinchPointersRef.current.clear();
-      pinchSessionRef.current = null;
-      isPinchingRef.current = false;
+      resetPinchState();
       releasePointer();
     };
-  }, [releasePointer, stopDragAutoScroll]);
+  }, [releasePointer, resetPinchState, stopDragAutoScroll]);
 
   /** Move the lifted clip to a different track (called from track-selector UI) */
   const dropClipToTrack = useCallback(

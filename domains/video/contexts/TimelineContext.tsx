@@ -48,6 +48,7 @@ import {
   restoreAutosavedClips,
 } from "../utils/timelineModel";
 import { buildRazorSplitClips } from "../utils/razorSplit";
+import { alignTimelineTimeToFrame, normalizeTimelineFrameRate } from "../utils/timelineFrame";
 import { useTimelineHistory } from "./useTimelineHistory";
 
 interface TimelineContextValue {
@@ -120,28 +121,7 @@ interface TimelineContextValue {
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
 
-const DEFAULT_TIMELINE_FRAME_RATE = 30;
-const TIMELINE_TIME_PRECISION = 1_000_000;
 const SOURCE_TRIM_EPSILON = 1e-6;
-
-function normalizeProjectFrameRate(frameRate: number): number {
-  if (!Number.isFinite(frameRate) || frameRate <= 0) {
-    return DEFAULT_TIMELINE_FRAME_RATE;
-  }
-  return Math.max(1, Math.round(frameRate));
-}
-
-function normalizeTimelineTime(time: number): number {
-  if (!Number.isFinite(time)) return 0;
-  const clamped = Math.max(0, time);
-  return Math.round(clamped * TIMELINE_TIME_PRECISION) / TIMELINE_TIME_PRECISION;
-}
-
-function alignTimelineTimeToFrame(time: number, frameRate: number): number {
-  const safeTime = normalizeTimelineTime(time);
-  const frameIndex = Math.round(safeTime * frameRate);
-  return normalizeTimelineTime(frameIndex / frameRate);
-}
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
@@ -213,7 +193,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getTimelineFrameRate = useCallback((): number => {
-    return normalizeProjectFrameRate(projectRef.current.frameRate);
+    return normalizeTimelineFrameRate(projectRef.current.frameRate);
   }, []);
 
   const snapTimeToFrame = useCallback((time: number): number => {
