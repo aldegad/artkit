@@ -62,12 +62,21 @@ interface UseTimelineInputOptions {
   getTransformLaneHeight?: (trackId: string) => number;
 }
 
+const CLIP_SORT_TRIGGER_RATIO = 0.5;
+const DRAG_AUTO_SCROLL_EDGE_PX = 64;
+const DRAG_AUTO_SCROLL_MAX_STEP_PX = 28;
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
 export function useTimelineInput(options: UseTimelineInputOptions) {
   const { tracksContainerRef, containerRef, getTransformLaneHeight } = options;
   const {
     tracks,
     clips,
     viewState,
+    updateClip,
     moveClip,
     trimClipStart,
     trimClipEnd,
@@ -141,6 +150,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   // Touch pending state: deferred gesture resolution
   const [touchPending, setTouchPending] = useState<TouchPendingState | null>(null);
+  const dragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const dragAutoScrollRafRef = useRef<number | null>(null);
+  const runDragAutoScrollTickRef = useRef<(() => void) | null>(null);
 
   const { getMasksForTrack, duplicateMask, updateMaskTime, masks, deselectMask, endMaskEdit, isEditingMask } = useMask();
 
@@ -162,6 +174,22 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }
     for (const list of index.values()) {
       list.sort((a, b) => b.startTime - a.startTime);
+    }
+    return index;
+  }, [clips]);
+
+  const clipsByTrackAsc = useMemo(() => {
+    const index = new Map<string, Clip[]>();
+    for (const clip of clips) {
+      const list = index.get(clip.trackId);
+      if (list) {
+        list.push(clip);
+      } else {
+        index.set(clip.trackId, [clip]);
+      }
+    }
+    for (const list of index.values()) {
+      list.sort((a, b) => a.startTime - b.startTime);
     }
     return index;
   }, [clips]);
@@ -981,6 +1009,35 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }
   }, [cancelLongPress]);
 
+  const stopDragAutoScroll = useCallback(() => {
+    if (dragAutoScrollRafRef.current !== null) {
+      cancelAnimationFrame(dragAutoScrollRafRef.current);
+      dragAutoScrollRafRef.current = null;
+    }
+  }, []);
+
+  const getDragAutoScrollDeltaPixels = useCallback((x: number, width: number): number => {
+    if (!Number.isFinite(x) || !Number.isFinite(width) || width <= 0) return 0;
+
+    if (x < DRAG_AUTO_SCROLL_EDGE_PX) {
+      const ratio = clamp01((DRAG_AUTO_SCROLL_EDGE_PX - x) / DRAG_AUTO_SCROLL_EDGE_PX);
+      return -Math.ceil(DRAG_AUTO_SCROLL_MAX_STEP_PX * ratio * ratio);
+    }
+
+    if (x > width - DRAG_AUTO_SCROLL_EDGE_PX) {
+      const ratio = clamp01((x - (width - DRAG_AUTO_SCROLL_EDGE_PX)) / DRAG_AUTO_SCROLL_EDGE_PX);
+      return Math.ceil(DRAG_AUTO_SCROLL_MAX_STEP_PX * ratio * ratio);
+    }
+
+    return 0;
+  }, []);
+
+  const getTimeAtPixelWithViewport = useCallback((pixel: number): number => {
+    const viewport = timelineViewportRef.current;
+    const zoomValue = Math.max(0.001, viewport.zoom);
+    return Math.max(0, viewport.scrollX + pixel / zoomValue);
+  }, [timelineViewportRef]);
+
   const getSnappedClipMoveTimeDelta = useCallback((drag: DragState, deltaTime: number, movingClipIds: Set<string>) => {
     const rawStart = Math.max(0, drag.originalClipStart + deltaTime);
     const snappedStart = snapToPoints(rawStart, {
@@ -1000,6 +1057,67 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     // Time delta from primary clip's original position.
     return finalStart - drag.originalClipStart;
   }, [snapToPoints]);
+
+  const maybeSortSingleClipWithinTrack = useCallback((options: {
+    drag: DragState;
+    deltaTime: number;
+    pointerTrackId: string | null;
+  }): boolean => {
+    const { drag, deltaTime, pointerTrackId } = options;
+    if (!drag.clipId) return false;
+    if (drag.items.length !== 1 || drag.items[0]?.type !== "clip") return false;
+
+    const primaryClip = clipsById.get(drag.clipId) || null;
+    if (!primaryClip) return false;
+
+    // Only sort when dragging in the same track.
+    if (pointerTrackId && pointerTrackId !== primaryClip.trackId) return false;
+
+    const trackClips = clipsByTrackAsc.get(primaryClip.trackId) || [];
+    if (trackClips.length < 2) return false;
+
+    const primaryIndex = trackClips.findIndex((clip) => clip.id === primaryClip.id);
+    if (primaryIndex < 0) return false;
+
+    const pointerTime = drag.startTime + deltaTime;
+    const pointerOffsetFromClipStart = drag.startTime - drag.originalClipStart;
+    const candidateStart = Math.max(0, pointerTime - pointerOffsetFromClipStart);
+    const candidateEnd = candidateStart + primaryClip.duration;
+
+    if (candidateStart > primaryClip.startTime) {
+      const nextClip = trackClips[primaryIndex + 1];
+      if (!nextClip) return false;
+
+      const forwardThreshold = nextClip.startTime + (nextClip.duration * CLIP_SORT_TRIGGER_RATIO);
+      if (candidateEnd < forwardThreshold) return false;
+
+      const gap = Math.max(0, nextClip.startTime - (primaryClip.startTime + primaryClip.duration));
+      const nextStart = primaryClip.startTime;
+      const primaryStart = nextStart + nextClip.duration + gap;
+
+      updateClip(nextClip.id, { startTime: nextStart });
+      updateClip(primaryClip.id, { startTime: primaryStart });
+      return true;
+    }
+
+    if (candidateStart < primaryClip.startTime) {
+      const previousClip = trackClips[primaryIndex - 1];
+      if (!previousClip) return false;
+
+      const backwardThreshold = previousClip.startTime + (previousClip.duration * CLIP_SORT_TRIGGER_RATIO);
+      if (candidateStart > backwardThreshold) return false;
+
+      const gap = Math.max(0, primaryClip.startTime - (previousClip.startTime + previousClip.duration));
+      const primaryStart = previousClip.startTime;
+      const previousStart = primaryStart + primaryClip.duration + gap;
+
+      updateClip(primaryClip.id, { startTime: primaryStart });
+      updateClip(previousClip.id, { startTime: previousStart });
+      return true;
+    }
+
+    return false;
+  }, [clipsById, clipsByTrackAsc, updateClip]);
 
   const handleClipMoveDrag = useCallback((options: {
     drag: DragState;
@@ -1022,6 +1140,15 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         .map((item) => item.id)
     );
     const pointerTrackId = getTrackAtY(contentY, { fallbackToEdgeTrack: true }).trackId || null;
+
+    if (maybeSortSingleClipWithinTrack({
+      drag,
+      deltaTime,
+      pointerTrackId,
+    })) {
+      return;
+    }
+
     const timeDelta = getSnappedClipMoveTimeDelta(drag, deltaTime, movingClipIds);
 
     // Move all items by the same time delta.
@@ -1046,6 +1173,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }, [
     maybeCancelLongPressForDragMove,
     clipsById,
+    maybeSortSingleClipWithinTrack,
     getTrackAtY,
     getSnappedClipMoveTimeDelta,
     masks,
@@ -1075,13 +1203,102 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     }));
   }, [clipsById, trimClipEnd, snapToPoints]);
 
+  const runDragAutoScrollTick = useCallback(() => {
+    dragAutoScrollRafRef.current = null;
+    const pointer = dragPointerRef.current;
+    if (!pointer) return;
+    if (
+      dragState.type !== "clip-move"
+      && dragState.type !== "clip-trim-start"
+      && dragState.type !== "clip-trim-end"
+    ) {
+      return;
+    }
+
+    const containerRect = tracksContainerRef.current?.getBoundingClientRect();
+    if (!containerRect || containerRect.width <= 0) return;
+
+    const x = pointer.clientX - containerRect.left;
+    const autoScrollDeltaPixels = getDragAutoScrollDeltaPixels(x, containerRect.width);
+    if (autoScrollDeltaPixels === 0) return;
+
+    panByPixels(autoScrollDeltaPixels);
+
+    const contentY = getContentY(pointer.clientY);
+    const time = getTimeAtPixelWithViewport(x);
+    const deltaTime = time - dragState.startTime;
+
+    switch (dragState.type) {
+      case "clip-move":
+        handleClipMoveDrag({
+          drag: dragState,
+          x,
+          contentY,
+          deltaTime,
+        });
+        break;
+      case "clip-trim-start":
+        handleClipTrimStartDrag(dragState, deltaTime);
+        break;
+      case "clip-trim-end":
+        handleClipTrimEndDrag(dragState, deltaTime);
+        break;
+      default:
+        break;
+    }
+
+    dragAutoScrollRafRef.current = requestAnimationFrame(() => {
+      runDragAutoScrollTickRef.current?.();
+    });
+  }, [
+    dragState,
+    tracksContainerRef,
+    getDragAutoScrollDeltaPixels,
+    panByPixels,
+    getContentY,
+    getTimeAtPixelWithViewport,
+    handleClipMoveDrag,
+    handleClipTrimStartDrag,
+    handleClipTrimEndDrag,
+  ]);
+  runDragAutoScrollTickRef.current = runDragAutoScrollTick;
+
+  const ensureDragAutoScrollRunning = useCallback(() => {
+    if (dragAutoScrollRafRef.current !== null) return;
+    dragAutoScrollRafRef.current = requestAnimationFrame(() => {
+      runDragAutoScrollTickRef.current?.();
+    });
+  }, []);
+
   const handleDragPointerMove = useCallback((e: PointerEvent) => {
     if (dragState.type === "none") return;
     const containerRect = tracksContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
+
+    dragPointerRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+    };
+
     const x = e.clientX - containerRect.left;
     const contentY = getContentY(e.clientY);
-    const time = pixelToTime(x);
+    const shouldAutoScroll =
+      dragState.type === "clip-move"
+      || dragState.type === "clip-trim-start"
+      || dragState.type === "clip-trim-end";
+    if (shouldAutoScroll) {
+      const autoScrollDeltaPixels = getDragAutoScrollDeltaPixels(x, containerRect.width);
+      if (autoScrollDeltaPixels !== 0) {
+        panByPixels(autoScrollDeltaPixels);
+        ensureDragAutoScrollRunning();
+      } else {
+        stopDragAutoScroll();
+      }
+    } else {
+      stopDragAutoScroll();
+    }
+
+    const time = getTimeAtPixelWithViewport(x);
     const deltaTime = time - dragState.startTime;
 
     switch (dragState.type) {
@@ -1111,8 +1328,12 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
   }, [
     dragState,
     tracksContainerRef,
+    getDragAutoScrollDeltaPixels,
+    panByPixels,
+    ensureDragAutoScrollRunning,
+    stopDragAutoScroll,
     getContentY,
-    pixelToTime,
+    getTimeAtPixelWithViewport,
     handlePlayheadDragMove,
     handleClipMoveDrag,
     handleClipTrimStartDrag,
@@ -1128,6 +1349,8 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     },
     onEnd: (_pending, event) => {
       if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) return;
+      stopDragAutoScroll();
+      dragPointerRef.current = null;
       cancelLongPress();
       releasePointer(event.pointerId);
       // Keep liftedClipId active after pointerup so the track-selector popup stays visible.
@@ -1138,6 +1361,19 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       setDragState(INITIAL_TIMELINE_DRAG_STATE);
     },
   });
+
+  useEffect(() => {
+    if (
+      dragState.type !== "clip-move"
+      && dragState.type !== "clip-trim-start"
+      && dragState.type !== "clip-trim-end"
+    ) {
+      stopDragAutoScroll();
+      if (dragState.type === "none") {
+        dragPointerRef.current = null;
+      }
+    }
+  }, [dragState.type, stopDragAutoScroll]);
 
   // Keep resize cursor stable while trim dragging, even if pointer leaves the handle.
   useEffect(() => {
@@ -1158,12 +1394,14 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
 
   useEffect(() => {
     return () => {
+      stopDragAutoScroll();
+      dragPointerRef.current = null;
       pinchPointersRef.current.clear();
       pinchSessionRef.current = null;
       isPinchingRef.current = false;
       releasePointer();
     };
-  }, [releasePointer]);
+  }, [releasePointer, stopDragAutoScroll]);
 
   /** Move the lifted clip to a different track (called from track-selector UI) */
   const dropClipToTrack = useCallback(
@@ -1181,11 +1419,21 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     [liftedClipId, clipsById, saveToHistory, moveClip, resetLift]
   );
 
+  const draggingClipIds = useMemo(() => {
+    if (dragState.type !== "clip-move") return new Set<string>();
+    return new Set(
+      dragState.items
+        .filter((item) => item.type === "clip")
+        .map((item) => item.id)
+    );
+  }, [dragState]);
+
   return {
     dragState,
     handlePointerDown,
     handleContainerPointerDown,
     liftedClipId,
+    draggingClipIds,
     dropClipToTrack,
     cancelLift: resetLift,
   };
