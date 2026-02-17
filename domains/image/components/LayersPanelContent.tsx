@@ -477,39 +477,36 @@ export default function LayersPanelContent() {
         )}
       </div>
 
-      {/* Shift hint */}
-      <div className="px-3 py-1.5 border-t border-border-default bg-surface-tertiary/50 shrink-0">
-        <p className="text-[10px] text-text-quaternary text-center">
-          Shift+Click to multi-select
-        </p>
-      </div>
-
       {/* Panel Footer - Opacity control */}
       {activeLayerId && activeLayer && (
         <div className="px-3 py-2 border-t border-border-default bg-surface-secondary shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-secondary">{t.opacity}:</span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={activeLayer.opacity}
-              onChange={(e) => updateLayerOpacity(activeLayerId, Number(e.target.value))}
-              className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-            />
-            <span className="text-xs text-text-secondary w-8 text-right">
-              {activeLayer.opacity}%
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-text-secondary w-12">Blend:</span>
-            <Select<LayerBlendMode>
-              value={activeLayer.blendMode || "source-over"}
-              onChange={(value) => updateLayer(activeLayerId, { blendMode: value })}
-              options={BLEND_MODE_OPTIONS}
-              size="sm"
-              className="flex-1"
-            />
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-text-secondary mb-1">{t.opacity}</p>
+              <div className="flex items-center gap-2 py-1">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={activeLayer.opacity}
+                  onChange={(e) => updateLayerOpacity(activeLayerId, Number(e.target.value))}
+                  className="flex-1 min-w-0 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-xs text-text-secondary w-8 text-right">
+                  {activeLayer.opacity}%
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-text-secondary mb-1">Blend</p>
+              <Select<LayerBlendMode>
+                value={activeLayer.blendMode || "source-over"}
+                onChange={(value) => updateLayer(activeLayerId, { blendMode: value })}
+                options={BLEND_MODE_OPTIONS}
+                size="sm"
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
       )}
