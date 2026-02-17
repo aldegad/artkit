@@ -836,149 +836,153 @@ function VideoEditorContent() {
       />
 
       {/* Toolbar */}
-      <div className="flex items-center gap-4 px-3 py-1.5 bg-surface-secondary border-b border-border-default overflow-x-auto">
-        <VideoToolbar
-          toolMode={toolMode}
-          onToolModeChange={handleToolModeChange}
-          onInterpolateGap={handleInterpolateClipGap}
-          canInterpolateGap={gapInterpolationAnalysis.ready}
-          isInterpolatingGap={isInterpolatingGap}
-          onDelete={handleDelete}
-          hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId || !!selectedPositionKeyframe}
-          previewZoom={previewZoom}
-          setPreviewZoom={setPreviewZoom}
-          onPreviewFit={handlePreviewFit}
-          translations={toolbarTranslations}
-        />
-
-        <div className="flex items-center gap-0.5 bg-surface-secondary rounded p-0.5">
-          <button
-            onClick={handleUndo}
-            disabled={!canUndoAny}
-            className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-            title={`${t.undo} (Ctrl+Z)`}
-          >
-            <UndoIcon className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleRedo}
-            disabled={!canRedoAny}
-            className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-            title={`${t.redo} (Ctrl+Shift+Z)`}
-          >
-            <RedoIcon className="w-4 h-4" />
-          </button>
-          <div className="w-px h-4 bg-border-default mx-0.5" />
-          <button
-            onClick={handleCaptureFrameToImageLayer}
-            disabled={isCapturingFrame}
-            className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
-            title="Capture current frame to image layer"
-          >
-            <VideoCameraIcon className="w-4 h-4" />
-          </button>
-        </div>
-
-        {toolMode === "crop" && (
-          <CanvasCropControls
-            cropAspectRatio={cropAspectRatio}
-            onCropAspectRatioChange={(ratio) => setCropAspectRatio(ratio)}
-            cropArea={cropArea}
-            onCropWidthChange={handleCropWidthChange}
-            onCropHeightChange={handleCropHeightChange}
-            lockCropAspect={lockCropAspect}
-            onToggleLockCropAspect={() => setLockCropAspect(!lockCropAspect)}
-            onExpandToSquare={handleExpandToSquare}
-            onFitToSquare={handleFitToSquare}
-            canvasExpandMode={canvasExpandMode}
-            onToggleCanvasExpandMode={() => setCanvasExpandMode(!canvasExpandMode)}
-            onSelectAllCrop={handleSelectAllCrop}
-            onApplyCrop={handleApplyCrop}
-            onClearCrop={handleClearCrop}
+      <Scrollbar
+        className="bg-surface-secondary border-b border-border-default shrink-0"
+        overflow={{ x: "scroll", y: "hidden" }}
+      >
+        <div className="flex items-center gap-4 px-3 py-1.5 min-w-full w-max">
+          <VideoToolbar
+            toolMode={toolMode}
+            onToolModeChange={handleToolModeChange}
+            onInterpolateGap={handleInterpolateClipGap}
+            canInterpolateGap={gapInterpolationAnalysis.ready}
+            isInterpolatingGap={isInterpolatingGap}
+            onDelete={handleDelete}
+            hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId || !!selectedPositionKeyframe}
+            previewZoom={previewZoom}
+            setPreviewZoom={setPreviewZoom}
+            onPreviewFit={handlePreviewFit}
+            translations={toolbarTranslations}
           />
-        )}
 
-        {toolMode === "transform" && (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-text-secondary">Ratio:</span>
-              <Select
-                value={previewTransformState.aspectRatio}
-                onChange={(value) => handleSetTransformAspectRatio(value as AspectRatio)}
-                options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
-                size="sm"
-              />
-            </div>
-            <span className="text-xs text-text-tertiary">
-              {previewTransformState.isActive
-                ? "Drag handles to resize. Shift: keep ratio, Alt: from center"
-                : "Select a visual clip to transform"}
-            </span>
-            {previewTransformState.isActive && (
-              <>
-                <div className="w-px h-4 bg-border-default" />
-                <button
-                  onClick={handleApplyTransform}
-                  className="px-1.5 py-0.5 text-xs bg-accent-primary text-white hover:bg-accent-primary/90 rounded transition-colors font-medium"
-                >
-                  Apply
-                </button>
-                <button
-                  onClick={handleCancelTransform}
-                  className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
-                >
-                  Cancel
-                </button>
-              </>
-            )}
+          <div className="flex items-center gap-0.5 bg-surface-secondary rounded p-0.5">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndoAny}
+              className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+              title={`${t.undo} (Ctrl+Z)`}
+            >
+              <UndoIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedoAny}
+              className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+              title={`${t.redo} (Ctrl+Shift+Z)`}
+            >
+              <RedoIcon className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-border-default mx-0.5" />
+            <button
+              onClick={handleCaptureFrameToImageLayer}
+              disabled={isCapturingFrame}
+              className="p-1 hover:bg-interactive-hover disabled:opacity-30 rounded transition-colors"
+              title="Capture current frame to image layer"
+            >
+              <VideoCameraIcon className="w-4 h-4" />
+            </button>
           </div>
-        )}
 
-        {selectedAudioClip && (
-          <>
-            <div className="h-4 w-px bg-border-default mx-1" />
-            <div className="flex items-center gap-2 min-w-[220px]">
-              <button
-                onClick={handleToggleSelectedClipMute}
-                className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
-                title={(selectedAudioClip.audioMuted ?? false) ? "Unmute clip audio" : "Mute clip audio"}
-              >
-                {(selectedAudioClip.audioMuted ?? false)
-                  ? <VolumeMutedIcon />
-                  : <VolumeOnIcon />}
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={selectedAudioClip.audioVolume ?? 100}
-                onMouseDown={beginAudioAdjustment}
-                onTouchStart={beginAudioAdjustment}
-                onMouseUp={endAudioAdjustment}
-                onTouchEnd={endAudioAdjustment}
-                onChange={(e) => handleSelectedClipVolumeChange(Number(e.target.value))}
-                className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="text-xs text-text-secondary w-10 text-right">
-                {selectedAudioClip.audioVolume ?? 100}%
+          {toolMode === "crop" && (
+            <CanvasCropControls
+              cropAspectRatio={cropAspectRatio}
+              onCropAspectRatioChange={(ratio) => setCropAspectRatio(ratio)}
+              cropArea={cropArea}
+              onCropWidthChange={handleCropWidthChange}
+              onCropHeightChange={handleCropHeightChange}
+              lockCropAspect={lockCropAspect}
+              onToggleLockCropAspect={() => setLockCropAspect(!lockCropAspect)}
+              onExpandToSquare={handleExpandToSquare}
+              onFitToSquare={handleFitToSquare}
+              canvasExpandMode={canvasExpandMode}
+              onToggleCanvasExpandMode={() => setCanvasExpandMode(!canvasExpandMode)}
+              onSelectAllCrop={handleSelectAllCrop}
+              onApplyCrop={handleApplyCrop}
+              onClearCrop={handleClearCrop}
+            />
+          )}
+
+          {toolMode === "transform" && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-secondary">Ratio:</span>
+                <Select
+                  value={previewTransformState.aspectRatio}
+                  onChange={(value) => handleSetTransformAspectRatio(value as AspectRatio)}
+                  options={ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label }))}
+                  size="sm"
+                />
+              </div>
+              <span className="text-xs text-text-tertiary">
+                {previewTransformState.isActive
+                  ? "Drag handles to resize. Shift: keep ratio, Alt: from center"
+                  : "Select a visual clip to transform"}
               </span>
+              {previewTransformState.isActive && (
+                <>
+                  <div className="w-px h-4 bg-border-default" />
+                  <button
+                    onClick={handleApplyTransform}
+                    className="px-1.5 py-0.5 text-xs bg-accent-primary text-white hover:bg-accent-primary/90 rounded transition-colors font-medium"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={handleCancelTransform}
+                    className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
             </div>
-          </>
-        )}
+          )}
 
-        {/* Spacer */}
-        <div className="flex-1 min-w-0" />
+          {selectedAudioClip && (
+            <>
+              <div className="h-4 w-px bg-border-default mx-1" />
+              <div className="flex items-center gap-2 min-w-[220px]">
+                <button
+                  onClick={handleToggleSelectedClipMute}
+                  className="p-1.5 rounded hover:bg-interactive-hover text-text-secondary hover:text-text-primary transition-colors"
+                  title={(selectedAudioClip.audioMuted ?? false) ? "Unmute clip audio" : "Mute clip audio"}
+                >
+                  {(selectedAudioClip.audioMuted ?? false)
+                    ? <VolumeMutedIcon />
+                    : <VolumeOnIcon />}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={selectedAudioClip.audioVolume ?? 100}
+                  onMouseDown={beginAudioAdjustment}
+                  onTouchStart={beginAudioAdjustment}
+                  onMouseUp={endAudioAdjustment}
+                  onTouchEnd={endAudioAdjustment}
+                  onChange={(e) => handleSelectedClipVolumeChange(Number(e.target.value))}
+                  className="flex-1 h-1.5 bg-surface-tertiary rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-xs text-text-secondary w-10 text-right">
+                  {selectedAudioClip.audioVolume ?? 100}%
+                </span>
+              </div>
+            </>
+          )}
 
-        {/* Canvas size */}
-        <div className="flex items-center gap-1 shrink-0">
-          <VideoCanvasSizeEditor
-            canvasWidth={project.canvasSize.width}
-            canvasHeight={project.canvasSize.height}
-            onApplyCanvasSize={handleApplyCanvasSize}
-          />
+          {/* Spacer */}
+          <div className="flex-1 min-w-0" />
+
+          {/* Canvas size */}
+          <div className="flex items-center gap-1 shrink-0">
+            <VideoCanvasSizeEditor
+              canvasWidth={project.canvasSize.width}
+              canvasHeight={project.canvasSize.height}
+              onApplyCanvasSize={handleApplyCanvasSize}
+            />
+          </div>
         </div>
-
-      </div>
+      </Scrollbar>
 
       {toolMode === "mask" && activeMaskId && (
         <Scrollbar

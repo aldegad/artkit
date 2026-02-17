@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "@/shared/contexts";
-import { ImageDropZone, Select, HeaderContent } from "@/shared/components";
+import { ImageDropZone, Select, HeaderContent, Scrollbar } from "@/shared/components";
 import { PlusIcon, FlipIcon, RotateIcon } from "@/shared/components/icons";
 import { downloadBlob } from "@/shared/utils/download";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
@@ -442,111 +442,116 @@ export default function ImageConverter() {
 
       {/* Main Content */}
       <div
-        className={`flex-1 overflow-auto bg-surface-secondary relative ${images.length > 0 ? "p-4" : ""}`}
+        className="flex-1 bg-surface-secondary relative min-h-0"
         onDragOver={handleContentDragOver}
         onDrop={handleContentDrop}
       >
-        {images.length === 0 ? (
-          <ImageDropZone variant="converter" onFileSelect={addFiles} />
-        ) : (
-          /* Image grid */
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {images.map((image) => (
-              <div key={image.id} className="bg-surface-secondary rounded-xl overflow-hidden border border-border-default">
-                {/* Preview */}
-                <div className="aspect-square bg-surface-tertiary relative">
-                  <img
-                    src={image.convertedUrl || image.originalUrl}
-                    alt=""
-                    className="w-full h-full object-contain"
-                    style={{
-                      transform: `rotate(${normalizeRotation(image.rotation)}deg) scaleX(${image.flipX ? -1 : 1})`,
-                    }}
-                  />
-                  <div className="absolute top-2 left-2 flex items-center gap-1">
+        <Scrollbar
+          className={`h-full ${images.length > 0 ? "p-4" : ""}`}
+          overflow={{ x: "hidden", y: "scroll" }}
+        >
+          {images.length === 0 ? (
+            <ImageDropZone variant="converter" onFileSelect={addFiles} />
+          ) : (
+            /* Image grid */
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {images.map((image) => (
+                <div key={image.id} className="bg-surface-secondary rounded-xl overflow-hidden border border-border-default">
+                  {/* Preview */}
+                  <div className="aspect-square bg-surface-tertiary relative">
+                    <img
+                      src={image.convertedUrl || image.originalUrl}
+                      alt=""
+                      className="w-full h-full object-contain"
+                      style={{
+                        transform: `rotate(${normalizeRotation(image.rotation)}deg) scaleX(${image.flipX ? -1 : 1})`,
+                      }}
+                    />
+                    <div className="absolute top-2 left-2 flex items-center gap-1">
+                      <button
+                        onClick={() => handleFlipImage(image.id)}
+                        className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-md flex items-center justify-center transition-colors"
+                        title={t.flipHorizontal}
+                      >
+                        <FlipIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleRotateImage(image.id)}
+                        className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-md flex items-center justify-center transition-colors"
+                        title={`${t.rotate} 90°`}
+                      >
+                        <RotateIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {/* Remove button */}
                     <button
-                      onClick={() => handleFlipImage(image.id)}
-                      className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-md flex items-center justify-center transition-colors"
-                      title={t.flipHorizontal}
+                      onClick={() => removeImage(image.id)}
+                      className="absolute top-2 right-2 w-6 h-6 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center text-sm transition-colors"
                     >
-                      <FlipIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleRotateImage(image.id)}
-                      className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-md flex items-center justify-center transition-colors"
-                      title={`${t.rotate} 90°`}
-                    >
-                      <RotateIcon className="w-4 h-4" />
+                      ×
                     </button>
                   </div>
-                  {/* Remove button */}
-                  <button
-                    onClick={() => removeImage(image.id)}
-                    className="absolute top-2 right-2 w-6 h-6 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center text-sm transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
 
-                {/* Info */}
-                <div className="p-3">
-                  <p className="text-sm truncate text-text-primary" title={image.file.name}>
-                    {image.file.name}
-                  </p>
-                  <p className="text-xs text-text-tertiary mt-1">
-                    {(normalizeRotation(image.rotation) % 180 === 0 ? image.width : image.height)} ×
-                    {" "}
-                    {(normalizeRotation(image.rotation) % 180 === 0 ? image.height : image.width)}
-                    {typeof image.convertedWidth === "number" && typeof image.convertedHeight === "number"
-                      ? ` → ${image.convertedWidth} × ${image.convertedHeight}`
-                      : ""}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2 text-xs">
-                    <span className="text-text-secondary">{formatBytes(image.originalSize)}</span>
-                    {image.convertedSize !== undefined && (
-                      <>
-                        <span className="text-text-tertiary">→</span>
-                        <span
-                          className={
-                            image.convertedSize < image.originalSize
-                              ? "text-accent-success font-medium"
-                              : "text-accent-danger font-medium"
-                          }
-                        >
-                          {formatBytes(image.convertedSize)}
-                        </span>
-                        <span className="text-text-tertiary">
-                          ({Math.round((1 - image.convertedSize / image.originalSize) * 100)}
-                          %)
-                        </span>
-                      </>
+                  {/* Info */}
+                  <div className="p-3">
+                    <p className="text-sm truncate text-text-primary" title={image.file.name}>
+                      {image.file.name}
+                    </p>
+                    <p className="text-xs text-text-tertiary mt-1">
+                      {(normalizeRotation(image.rotation) % 180 === 0 ? image.width : image.height)} ×
+                      {" "}
+                      {(normalizeRotation(image.rotation) % 180 === 0 ? image.height : image.width)}
+                      {typeof image.convertedWidth === "number" && typeof image.convertedHeight === "number"
+                        ? ` → ${image.convertedWidth} × ${image.convertedHeight}`
+                        : ""}
+                    </p>
+                    <div className="flex items-center gap-2 mt-2 text-xs">
+                      <span className="text-text-secondary">{formatBytes(image.originalSize)}</span>
+                      {image.convertedSize !== undefined && (
+                        <>
+                          <span className="text-text-tertiary">→</span>
+                          <span
+                            className={
+                              image.convertedSize < image.originalSize
+                                ? "text-accent-success font-medium"
+                                : "text-accent-danger font-medium"
+                            }
+                          >
+                            {formatBytes(image.convertedSize)}
+                          </span>
+                          <span className="text-text-tertiary">
+                            ({Math.round((1 - image.convertedSize / image.originalSize) * 100)}
+                            %)
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Download button */}
+                    {image.convertedBlob && (
+                      <button
+                        onClick={() => downloadImage(image)}
+                        className="w-full mt-3 px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-xs transition-colors"
+                      >
+                        {t.download}
+                      </button>
                     )}
                   </div>
-
-                  {/* Download button */}
-                  {image.convertedBlob && (
-                    <button
-                      onClick={() => downloadImage(image)}
-                      className="w-full mt-3 px-3 py-1.5 bg-accent-primary hover:bg-accent-primary-hover text-white rounded-lg text-xs transition-colors"
-                    >
-                      {t.download}
-                    </button>
-                  )}
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {/* Add more button */}
-            <button
-              type="button"
-              onClick={openFilePicker}
-              className="aspect-square border-2 border-dashed border-border-default rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-accent-primary hover:bg-surface-secondary/50 transition-colors"
-            >
-              <PlusIcon className="w-8 h-8 text-text-tertiary" />
-              <span className="text-sm text-text-tertiary">{t.addMore}</span>
-            </button>
-          </div>
-        )}
+              {/* Add more button */}
+              <button
+                type="button"
+                onClick={openFilePicker}
+                className="aspect-square border-2 border-dashed border-border-default rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-accent-primary hover:bg-surface-secondary/50 transition-colors"
+              >
+                <PlusIcon className="w-8 h-8 text-text-tertiary" />
+                <span className="text-sm text-text-tertiary">{t.addMore}</span>
+              </button>
+            </div>
+          )}
+        </Scrollbar>
       </div>
 
       {/* Hidden file input */}

@@ -17,6 +17,7 @@ import {
   ChevronDownIcon,
 } from "../shared/components/icons";
 import InteractiveDotGrid from "@/shared/components/app/landing/InteractiveDotGrid";
+import { Scrollbar } from "@/shared/components";
 
 const tools = [
   {
@@ -86,7 +87,11 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-auto">
+    <Scrollbar
+      className="h-screen bg-background text-foreground"
+      overflow={{ x: "hidden", y: "scroll" }}
+    >
+      <div className="min-h-screen">
       {/* ── Nav ── */}
       <nav className="fixed top-0 left-0 right-0 z-50 landing-nav bg-background/70 border-b border-border-subtle">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -305,6 +310,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </Scrollbar>
   );
 }

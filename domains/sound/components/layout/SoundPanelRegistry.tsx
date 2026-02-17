@@ -1,5 +1,6 @@
 "use client";
 
+import { Scrollbar } from "@/shared/components";
 import { createPanelRegistry } from "@/shared/components/layout";
 import { Waveform } from "../Waveform";
 import { TrimControls } from "../TrimControls";
@@ -49,15 +50,15 @@ registry.registerPanelComponent("waveform", () => (
 ));
 
 registry.registerPanelComponent("trim", () => (
-  <div className="h-full overflow-auto p-4">
+  <Scrollbar className="h-full p-4" overflow={{ x: "hidden", y: "scroll" }}>
     <TrimControls />
-  </div>
+  </Scrollbar>
 ));
 
 registry.registerPanelComponent("format", () => (
-  <div className="h-full overflow-auto p-4">
+  <Scrollbar className="h-full p-4" overflow={{ x: "hidden", y: "scroll" }}>
     <FormatConverter />
-  </div>
+  </Scrollbar>
 ));
 
 export const {
