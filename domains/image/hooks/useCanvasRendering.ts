@@ -9,7 +9,7 @@ import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, FLIP_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
-import { resizeCanvasForDpr } from "@/shared/utils";
+import { resizeCanvasForDpr, resolvePixelPreviewScalePolicy } from "@/shared/utils";
 
 // ============================================
 // Types
@@ -271,8 +271,7 @@ export function useCanvasRendering(
 
     // Pixel-accurate editing: disable smoothing for zoom >= 1
     // (keep smoothing only when downscaling).
-    const shouldSmoothPreview = zoom < 1;
-    const smoothingQuality: ImageSmoothingQuality = shouldSmoothPreview ? "high" : "low";
+    const previewScalePolicy = resolvePixelPreviewScalePolicy(zoom);
 
     // Draw all layers sorted by zIndex (lower first = background)
     // Unified layer system renders both image and paint layers in correct order
@@ -290,8 +289,8 @@ export function useCanvasRendering(
       // All layers are paint layers now - render from canvas
       const layerCanvas = layerCanvasesRef.current?.get(layer.id);
       if (layerCanvas) {
-        ctx.imageSmoothingEnabled = shouldSmoothPreview;
-        ctx.imageSmoothingQuality = smoothingQuality;
+        ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
+        ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
         ctx.translate(offsetX, offsetY);
         ctx.scale(zoom, zoom);
         // Use layer position for alignment/positioning
@@ -306,8 +305,8 @@ export function useCanvasRendering(
     // Fallback: Draw legacy edit canvas if no layers but edit canvas exists
     if (layers.length === 0 && editCanvas) {
       ctx.save();
-      ctx.imageSmoothingEnabled = shouldSmoothPreview;
-      ctx.imageSmoothingQuality = smoothingQuality;
+      ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
+      ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
       ctx.translate(offsetX, offsetY);
       ctx.scale(zoom, zoom);
       drawLayerWithOptionalAlphaMask(ctx, editCanvas, 0, 0);
@@ -642,8 +641,8 @@ export function useCanvasRendering(
       ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
       ctx.clip();
       ctx.globalAlpha = isDuplicating ? 0.8 : 1.0;
-      ctx.imageSmoothingEnabled = shouldSmoothPreview;
-      ctx.imageSmoothingQuality = smoothingQuality;
+      ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
+      ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
       const floatX = offsetX + floating.x * zoom;
       const floatY = offsetY + floating.y * zoom;
       ctx.drawImage(floatingCanvas, floatX, floatY, origW, origH);
@@ -718,8 +717,8 @@ export function useCanvasRendering(
           "transform-preview"
         );
         transformCtx.putImageData(transformOriginalImageData, 0, 0);
-        ctx.imageSmoothingEnabled = shouldSmoothPreview;
-        ctx.imageSmoothingQuality = smoothingQuality;
+        ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
+        ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
         ctx.save();
         ctx.beginPath();
         ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);

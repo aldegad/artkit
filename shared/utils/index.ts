@@ -3,11 +3,17 @@ export { generateId } from "./generateId";
 export { downloadDataUrl, downloadBlob, downloadJson, downloadText } from "./download";
 export { safeSetPointerCapture, safeReleasePointerCapture } from "./pointerCapture";
 export { getPointerPressure, normalizePressureValue } from "./pointerPressure";
-export { drawScaledImage, resizeCanvasForDpr } from "./canvasScaling";
+export {
+  drawScaledImage,
+  resizeCanvasForDpr,
+  resolvePixelPreviewScalePolicy,
+  applyPixelPreviewScalePolicy,
+} from "./canvasScaling";
 export type {
   CanvasScaleMode,
   CanvasScaleScratch,
   DrawScaledImageOptions,
+  PixelPreviewScalePolicy,
   ResizeCanvasForDprOptions,
   ResizeCanvasForDprResult,
 } from "./canvasScaling";

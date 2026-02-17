@@ -27,6 +27,12 @@ export interface ResizeCanvasForDprResult {
   pixelHeight: number;
 }
 
+export interface PixelPreviewScalePolicy {
+  mode: CanvasScaleMode;
+  imageSmoothingEnabled: boolean;
+  imageSmoothingQuality: ImageSmoothingQuality;
+}
+
 interface DrawRect {
   x: number;
   y: number;
@@ -44,6 +50,26 @@ const fallbackScratch: CanvasScaleScratch = { primary: null, secondary: null };
 function sanitizeCssSize(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return value;
+}
+
+export function resolvePixelPreviewScalePolicy(scale: number): PixelPreviewScalePolicy {
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const imageSmoothingEnabled = safeScale < 1;
+  return {
+    mode: imageSmoothingEnabled ? "continuous" : "pixel-art",
+    imageSmoothingEnabled,
+    imageSmoothingQuality: imageSmoothingEnabled ? "high" : "low",
+  };
+}
+
+export function applyPixelPreviewScalePolicy(
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+): PixelPreviewScalePolicy {
+  const policy = resolvePixelPreviewScalePolicy(scale);
+  ctx.imageSmoothingEnabled = policy.imageSmoothingEnabled;
+  ctx.imageSmoothingQuality = policy.imageSmoothingQuality;
+  return policy;
 }
 
 export function resizeCanvasForDpr(
