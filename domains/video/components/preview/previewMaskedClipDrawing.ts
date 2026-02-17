@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import { drawScaledImage } from "@/shared/utils";
+import { drawScaledImage, type CanvasScaleMode } from "@/shared/utils";
 
 interface SizeLike {
   width: number;
@@ -22,6 +22,7 @@ interface DrawMaskedClipOptions {
   previewRect: RectLike;
   clipOpacity: number;
   progressiveMinify: boolean;
+  previewScaleMode: CanvasScaleMode;
   maskTempCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   maskOverlayCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   overlayTint: string | null;
@@ -54,6 +55,7 @@ export function drawMaskedClipLayer({
   previewRect,
   clipOpacity,
   progressiveMinify,
+  previewScaleMode,
   maskTempCanvasRef,
   maskOverlayCanvasRef,
   overlayTint,
@@ -89,7 +91,7 @@ export function drawMaskedClipLayer({
     ctx,
     tmpCanvas,
     previewRect,
-    { mode: "continuous", progressiveMinify },
+    { mode: previewScaleMode, progressiveMinify },
   );
   ctx.globalAlpha = 1;
 
@@ -117,6 +119,6 @@ export function drawMaskedClipLayer({
     ctx,
     overlayCanvas,
     previewRect,
-    { mode: "continuous", progressiveMinify },
+    { mode: previewScaleMode, progressiveMinify },
   );
 }
