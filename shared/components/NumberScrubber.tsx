@@ -30,6 +30,8 @@ interface NumberScrubPendingState {
   startValue: number;
 }
 
+const SCRUB_CHANGE_SPEED_MULTIPLIER = 3;
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -63,7 +65,10 @@ export function NumberScrubber({
   const linearStep = typeof step === "number" ? step : 1;
   const multiplyFactor = isMultiplicative ? step.multiply : 1;
   const defaultSensitivity = isMultiplicative ? 40 : Math.max(2, 8 / linearStep);
-  const dragSensitivity = sensitivity ?? defaultSensitivity;
+  const dragSensitivity = Math.max(
+    0.5,
+    (sensitivity ?? defaultSensitivity) / SCRUB_CHANGE_SPEED_MULTIPLIER
+  );
 
   const handleIncrement = useCallback(() => {
     if (disabled) return;
