@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../contexts";
 import { useVideoElements } from "./useVideoElements";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { drawScaledImage, resizeCanvasForDpr, type CanvasScaleMode } from "@/shared/utils";
+import { applyPixelPreviewScalePolicy, drawScaledImage, resizeCanvasForDpr } from "@/shared/utils";
 import { PREVIEW } from "../constants";
 import { getClipScaleX, getClipScaleY } from "../types";
 import { Clip, VideoClip, ImageClip } from "../types";
@@ -113,8 +113,6 @@ export function usePreviewRendering() {
 
     // Set canvas size with DPI scaling
     resizeCanvasForDpr(canvas, ctx, rect.width, rect.height, { scaleContext: true });
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
 
     const width = rect.width;
     const height = rect.height;
@@ -134,10 +132,7 @@ export function usePreviewRendering() {
     const previewHeight = projectHeight * scale;
     const offsetX = (width - previewWidth) / 2;
     const offsetY = (height - previewHeight) / 2;
-    const shouldSmoothPreview = scale < 1;
-    const previewScaleMode: CanvasScaleMode = shouldSmoothPreview ? "continuous" : "pixel-art";
-    ctx.imageSmoothingEnabled = shouldSmoothPreview;
-    ctx.imageSmoothingQuality = shouldSmoothPreview ? "high" : "low";
+    const previewScalePolicy = applyPixelPreviewScalePolicy(ctx, scale);
 
     // Draw checkerboard for transparency
     drawCheckerboard(ctx, offsetX, offsetY, previewWidth, previewHeight);
@@ -181,7 +176,7 @@ export function usePreviewRendering() {
         ctx,
         frame,
         { x: clipX, y: clipY, width: clipWidth, height: clipHeight },
-        { mode: previewScaleMode, progressiveMinify: !playback.isPlaying },
+        { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
       );
 
       ctx.restore();

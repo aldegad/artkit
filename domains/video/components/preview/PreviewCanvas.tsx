@@ -11,11 +11,11 @@ import {
 } from "../../hooks";
 import { cn } from "@/shared/utils/cn";
 import {
+  applyPixelPreviewScalePolicy,
   drawScaledImage,
   resizeCanvasForDpr,
   safeReleasePointerCapture,
   safeSetPointerCapture,
-  type CanvasScaleMode,
 } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PRE_RENDER } from "../../constants";
@@ -404,8 +404,6 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     width = canvasSize.width;
     height = canvasSize.height;
     if (width <= 0 || height <= 0) return;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
     const colors = getCanvasColorsSync();
     // Cache getComputedStyle results to avoid per-frame style recalculation
     if (!cssColorsRef.current) {
@@ -430,10 +428,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const previewHeight = projectHeight * scale;
     const offsetX = renderOffset.x;
     const offsetY = renderOffset.y;
-    const shouldSmoothPreview = scale < 1;
-    const previewScaleMode: CanvasScaleMode = shouldSmoothPreview ? "continuous" : "pixel-art";
-    ctx.imageSmoothingEnabled = shouldSmoothPreview;
-    ctx.imageSmoothingQuality = shouldSmoothPreview ? "high" : "low";
+    const previewScalePolicy = applyPixelPreviewScalePolicy(ctx, scale);
 
     // Draw checkerboard for transparency
     ctx.save();
@@ -468,7 +463,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         ctx,
         cachedBitmap,
         { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-        { mode: previewScaleMode, progressiveMinify: !playback.isPlaying },
+        { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
       );
     } else {
       if (playback.isPlaying) {
@@ -573,7 +568,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               previewRect: { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
               clipOpacity: clip.opacity / 100,
               progressiveMinify: !playback.isPlaying,
-              previewScaleMode,
+              previewScaleMode: previewScalePolicy.mode,
               maskTempCanvasRef,
               maskOverlayCanvasRef,
               overlayTint,
@@ -584,7 +579,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               ctx,
               sourceEl,
               { x: drawX, y: drawY, width: drawW, height: drawH },
-              { mode: previewScaleMode, progressiveMinify: !playback.isPlaying },
+              { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
             );
             ctx.globalAlpha = 1;
           }
