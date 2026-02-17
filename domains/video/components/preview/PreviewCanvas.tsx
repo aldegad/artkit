@@ -15,6 +15,7 @@ import {
   resizeCanvasForDpr,
   safeReleasePointerCapture,
   safeSetPointerCapture,
+  type CanvasScaleMode,
 } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PRE_RENDER } from "../../constants";
@@ -429,6 +430,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const previewHeight = projectHeight * scale;
     const offsetX = renderOffset.x;
     const offsetY = renderOffset.y;
+    const shouldSmoothPreview = scale < 1;
+    const previewScaleMode: CanvasScaleMode = shouldSmoothPreview ? "continuous" : "pixel-art";
+    ctx.imageSmoothingEnabled = shouldSmoothPreview;
+    ctx.imageSmoothingQuality = shouldSmoothPreview ? "high" : "low";
 
     // Draw checkerboard for transparency
     ctx.save();
@@ -463,7 +468,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         ctx,
         cachedBitmap,
         { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-        { mode: "continuous", progressiveMinify: !playback.isPlaying },
+        { mode: previewScaleMode, progressiveMinify: !playback.isPlaying },
       );
     } else {
       if (playback.isPlaying) {
@@ -568,6 +573,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               previewRect: { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
               clipOpacity: clip.opacity / 100,
               progressiveMinify: !playback.isPlaying,
+              previewScaleMode,
               maskTempCanvasRef,
               maskOverlayCanvasRef,
               overlayTint,
@@ -578,7 +584,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               ctx,
               sourceEl,
               { x: drawX, y: drawY, width: drawW, height: drawH },
-              { mode: "continuous", progressiveMinify: !playback.isPlaying },
+              { mode: previewScaleMode, progressiveMinify: !playback.isPlaying },
             );
             ctx.globalAlpha = 1;
           }
