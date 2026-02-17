@@ -8,6 +8,7 @@ import { Track } from "./Track";
 import { Playhead } from "./Playhead";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { PreRenderBar } from "./PreRenderBar";
+import { Scrollbar } from "@/shared/components";
 import { cn } from "@/shared/utils/cn";
 import { EyeOpenIcon, EyeClosedIcon, TrackUnmutedIcon, TrackMutedIcon, DeleteIcon, MenuIcon, ChevronDownIcon, DuplicateIcon } from "@/shared/components/icons";
 import { Popover } from "@/shared/components/Popover";
@@ -72,6 +73,7 @@ function OffsetNumberInput({ value, onCommit }: OffsetNumberInputProps) {
 export function Timeline({ className }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksContainerRef = useRef<HTMLDivElement>(null);
+  const timelineTracksViewportRef = useRef<HTMLDivElement | null>(null);
   const {
     tracks,
     clips: allClips,
@@ -184,6 +186,16 @@ export function Timeline({ className }: TimelineProps) {
   const rangeStartX = timeToPixel(rangeStart);
   const rangeEndX = timeToPixel(rangeEnd);
   const timelineContentWidth = durationToWidth(project.duration);
+
+  const handleTracksViewportReady = useCallback((viewport: HTMLDivElement | null) => {
+    if (timelineTracksViewportRef.current && timelineTracksViewportRef.current !== viewport) {
+      timelineTracksViewportRef.current.removeAttribute("data-video-timeline-tracks");
+    }
+    timelineTracksViewportRef.current = viewport;
+    if (viewport) {
+      viewport.setAttribute("data-video-timeline-tracks", "");
+    }
+  }, []);
 
   const handleTrackDrop = useCallback((fromTrackId: string, toTrackId: string) => {
     if (!fromTrackId || !toTrackId || fromTrackId === toTrackId) return;
@@ -597,63 +609,68 @@ export function Timeline({ className }: TimelineProps) {
           </div>
 
           {/* Tracks content */}
-          <div
-            ref={tracksContainerRef}
-            data-video-timeline-tracks=""
-            className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none relative touch-none"
-            style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
-            onPointerDown={handleTimelinePointerDown}
+          <Scrollbar
+            className="flex-1 overflow-x-hidden overscroll-x-none relative touch-none"
+            overflow={{ x: "hidden", y: "scroll" }}
+            viewportRef={tracksContainerRef}
+            onViewportReady={handleTracksViewportReady}
           >
-            {/* Background for click handling */}
             <div
-              className="timeline-bg absolute inset-0"
-              style={{ minWidth: timelineContentWidth }}
-            />
+              className="relative h-full"
+              style={{ minWidth: `calc(100% - ${headerWidthPx})` }}
+              onPointerDown={handleTimelinePointerDown}
+            >
+              {/* Background for click handling */}
+              <div
+                className="timeline-bg absolute inset-0"
+                style={{ minWidth: timelineContentWidth }}
+              />
 
-            {/* Tracks */}
-            <div className="relative" style={{ minWidth: timelineContentWidth }}>
-              {hasCustomRange && (
-                <>
-                  <div
-                    className="absolute top-0 left-0 bottom-0 z-10 pointer-events-none bg-black/35"
-                    style={{ width: Math.max(0, rangeStartX) }}
-                  />
-                  <div
-                    className="absolute top-0 bottom-0 z-10 pointer-events-none bg-black/35"
-                    style={{
-                      left: Math.max(0, rangeEndX),
-                      right: 0,
-                    }}
-                  />
-                  <div
-                    className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
-                    style={{ left: Math.max(0, rangeStartX) }}
-                  />
-                  <div
-                    className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
-                    style={{ left: Math.max(0, rangeEndX) }}
-                  />
-                </>
-              )}
+              {/* Tracks */}
+              <div className="relative" style={{ minWidth: timelineContentWidth }}>
+                {hasCustomRange && (
+                  <>
+                    <div
+                      className="absolute top-0 left-0 bottom-0 z-10 pointer-events-none bg-black/35"
+                      style={{ width: Math.max(0, rangeStartX) }}
+                    />
+                    <div
+                      className="absolute top-0 bottom-0 z-10 pointer-events-none bg-black/35"
+                      style={{
+                        left: Math.max(0, rangeEndX),
+                        right: 0,
+                      }}
+                    />
+                    <div
+                      className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
+                      style={{ left: Math.max(0, rangeStartX) }}
+                    />
+                    <div
+                      className="absolute top-0 bottom-0 z-10 pointer-events-none border-l border-accent-primary/80"
+                      style={{ left: Math.max(0, rangeEndX) }}
+                    />
+                  </>
+                )}
 
-              {tracks.map((track) => (
-                <Track
-                  key={track.id}
-                  track={track}
-                  clips={getClipsInTrack(track.id)}
-                  masks={getMasksForTrack(track.id)}
-                  transformLaneOpen={isTransformLaneOpen(track.id)}
-                  liftedClipId={liftedClipId}
-                  draggingClipIds={draggingClipIds}
-                  sortingAnimatedClipIds={sortingAnimatedClipIds}
-                  isLiftDropTarget={!!liftedClipId && liftedClipTrackId !== track.id}
-                />
-              ))}
+                {tracks.map((track) => (
+                  <Track
+                    key={track.id}
+                    track={track}
+                    clips={getClipsInTrack(track.id)}
+                    masks={getMasksForTrack(track.id)}
+                    transformLaneOpen={isTransformLaneOpen(track.id)}
+                    liftedClipId={liftedClipId}
+                    draggingClipIds={draggingClipIds}
+                    sortingAnimatedClipIds={sortingAnimatedClipIds}
+                    isLiftDropTarget={!!liftedClipId && liftedClipTrackId !== track.id}
+                  />
+                ))}
 
-              {/* Playhead */}
-              <Playhead height={totalTracksHeight || DEFAULT_TRACK_HEIGHT} />
+                {/* Playhead */}
+                <Playhead height={totalTracksHeight || DEFAULT_TRACK_HEIGHT} />
+              </div>
             </div>
-          </div>
+          </Scrollbar>
         </div>
       </div>
     </div>

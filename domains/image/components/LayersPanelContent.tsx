@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
 import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
-import { Select } from "@/shared/components";
+import { Scrollbar, Select } from "@/shared/components";
 import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
 import type { LayerBlendMode } from "@/shared/types";
 
@@ -303,179 +303,181 @@ export default function LayersPanelContent() {
       </div>
 
       {/* Panel Content */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {layers.length === 0 ? (
-          <div className="text-center py-8 text-text-tertiary text-sm">
-            <p>{t.noLayersYet}</p>
-            <p className="text-xs mt-1">{t.clickAddLayerToStart}</p>
-          </div>
-        ) : (
-          sortedLayers.map((layer, index) => {
-              const isSelected = isLayerSelected(layer.id);
-              const isActive = activeLayerId === layer.id;
-              const canMergeDown = index < sortedLayers.length - 1;
+      <Scrollbar className="flex-1 min-h-0 p-2" overflow={{ x: "hidden", y: "scroll" }}>
+        <div className="space-y-1">
+          {layers.length === 0 ? (
+            <div className="text-center py-8 text-text-tertiary text-sm">
+              <p>{t.noLayersYet}</p>
+              <p className="text-xs mt-1">{t.clickAddLayerToStart}</p>
+            </div>
+          ) : (
+            sortedLayers.map((layer, index) => {
+                const isSelected = isLayerSelected(layer.id);
+                const isActive = activeLayerId === layer.id;
+                const canMergeDown = index < sortedLayers.length - 1;
 
-              return (
-                <div
-                  key={layer.id}
-                  draggable
-                  onDragStart={(e) => {
-                    setDraggedLayerId(layer.id);
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (draggedLayerId && draggedLayerId !== layer.id) {
-                      setDragOverLayerId(layer.id);
-                    }
-                  }}
-                  onDragLeave={() => {
-                    setDragOverLayerId(null);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (draggedLayerId && draggedLayerId !== layer.id) {
-                      reorderLayers(draggedLayerId, layer.id);
-                    }
-                    setDraggedLayerId(null);
-                    setDragOverLayerId(null);
-                  }}
-                  onDragEnd={() => {
-                    setDraggedLayerId(null);
-                    setDragOverLayerId(null);
-                  }}
-                  onClick={(e) => handleLayerClick(e, layer.id)}
-                  className={`group/layer flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
-                    isActive
-                      ? "bg-accent-primary/20 border border-accent-primary/50"
-                      : isSelected
-                      ? "bg-accent-primary/10 border border-accent-primary/30"
-                      : "hover:bg-interactive-hover border border-transparent"
-                  } ${
-                    draggedLayerId === layer.id ? "opacity-50 scale-95" : ""
-                  } ${
-                    dragOverLayerId === layer.id ? "border-accent-primary! bg-accent-primary/10 scale-105" : ""
-                  }`}
-                >
-                  {/* Visibility toggle */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleLayerVisibility(layer.id);
+                return (
+                  <div
+                    key={layer.id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedLayerId(layer.id);
+                      e.dataTransfer.effectAllowed = "move";
                     }}
-                    className={`p-1 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
-                    title={layer.visible ? t.hideLayer : t.showLayer}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedLayerId && draggedLayerId !== layer.id) {
+                        setDragOverLayerId(layer.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      setDragOverLayerId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedLayerId && draggedLayerId !== layer.id) {
+                        reorderLayers(draggedLayerId, layer.id);
+                      }
+                      setDraggedLayerId(null);
+                      setDragOverLayerId(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedLayerId(null);
+                      setDragOverLayerId(null);
+                    }}
+                    onClick={(e) => handleLayerClick(e, layer.id)}
+                    className={`group/layer flex items-center gap-2 p-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
+                      isActive
+                        ? "bg-accent-primary/20 border border-accent-primary/50"
+                        : isSelected
+                        ? "bg-accent-primary/10 border border-accent-primary/30"
+                        : "hover:bg-interactive-hover border border-transparent"
+                    } ${
+                      draggedLayerId === layer.id ? "opacity-50 scale-95" : ""
+                    } ${
+                      dragOverLayerId === layer.id ? "border-accent-primary! bg-accent-primary/10 scale-105" : ""
+                    }`}
                   >
-                    {layer.visible ? <EyeOpenIcon /> : <EyeClosedIcon />}
-                  </button>
+                    {/* Visibility toggle */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLayerVisibility(layer.id);
+                      }}
+                      className={`p-1 rounded ${layer.visible ? "text-text-primary" : "text-text-quaternary"}`}
+                      title={layer.visible ? t.hideLayer : t.showLayer}
+                    >
+                      {layer.visible ? <EyeOpenIcon /> : <EyeClosedIcon />}
+                    </button>
 
-                  {/* Layer thumbnail */}
-                  <LayerThumbnail
-                    layerId={layer.id}
-                    visible={layer.visible}
-                    layerCanvasesRef={layerCanvasesRef}
-                    renderTick={thumbRenderTick}
-                  />
+                    {/* Layer thumbnail */}
+                    <LayerThumbnail
+                      layerId={layer.id}
+                      visible={layer.visible}
+                      layerCanvasesRef={layerCanvasesRef}
+                      renderTick={thumbRenderTick}
+                    />
 
-                  {/* Layer name */}
-                  <div className="flex-1 min-w-0">
-                    {editingLayerId === layer.id ? (
-                      <input
-                        type="text"
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        onBlur={() => {
-                          if (editingName.trim()) {
-                            renameLayer(layer.id, editingName.trim());
-                          }
-                          setEditingLayerId(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                    {/* Layer name */}
+                    <div className="flex-1 min-w-0">
+                      {editingLayerId === layer.id ? (
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onBlur={() => {
                             if (editingName.trim()) {
                               renameLayer(layer.id, editingName.trim());
                             }
                             setEditingLayerId(null);
-                          } else if (e.key === "Escape") {
-                            setEditingLayerId(null);
-                          }
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                        className="w-full text-xs bg-surface-secondary border border-accent-primary/50 focus:outline-none px-1 rounded"
-                      />
-                    ) : (
-                      <div className="flex items-center gap-0.5 min-w-0">
-                        <span className="text-xs px-1 truncate select-none">
-                          {layer.name}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingLayerId(layer.id);
-                            setEditingName(layer.name);
                           }}
-                          className="p-0.5 rounded text-text-quaternary hover:text-text-primary shrink-0 opacity-0 group-hover/layer:opacity-100 transition-opacity"
-                          title="Rename"
-                        >
-                          <PencilPresetIcon className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                    <span className="text-[10px] text-text-quaternary px-1">
-                      {layer.blendMode && layer.blendMode !== "source-over" ? "Filter" : "Layer"}
-                    </span>
-                  </div>
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              if (editingName.trim()) {
+                                renameLayer(layer.id, editingName.trim());
+                              }
+                              setEditingLayerId(null);
+                            } else if (e.key === "Escape") {
+                              setEditingLayerId(null);
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                          className="w-full text-xs bg-surface-secondary border border-accent-primary/50 focus:outline-none px-1 rounded"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-0.5 min-w-0">
+                          <span className="text-xs px-1 truncate select-none">
+                            {layer.name}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingLayerId(layer.id);
+                              setEditingName(layer.name);
+                            }}
+                            className="p-0.5 rounded text-text-quaternary hover:text-text-primary shrink-0 opacity-0 group-hover/layer:opacity-100 transition-opacity"
+                            title="Rename"
+                          >
+                            <PencilPresetIcon className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                      <span className="text-[10px] text-text-quaternary px-1">
+                        {layer.blendMode && layer.blendMode !== "source-over" ? "Filter" : "Layer"}
+                      </span>
+                    </div>
 
-                  {/* Layer actions */}
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleLayerLock(layer.id);
-                      }}
-                      className={`p-1 rounded ${layer.locked ? "text-accent-warning" : "text-text-quaternary hover:text-text-primary"}`}
-                      title={layer.locked ? t.unlockLayer : t.lockLayer}
-                    >
-                      {layer.locked ? <LockClosedIcon className="w-3.5 h-3.5" /> : <LockOpenIcon className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        duplicateLayer(layer.id);
-                      }}
-                      className="p-1 rounded text-text-quaternary hover:text-text-primary"
-                      title={t.duplicateLayer}
-                    >
-                      <DuplicateIcon className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        mergeLayerDown(layer.id);
-                      }}
-                      disabled={!canMergeDown}
-                      className="p-1 rounded text-text-quaternary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={t.mergeDown}
-                    >
-                      <MergeDownIcon className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteLayer(layer.id);
-                      }}
-                      className="p-1 rounded text-text-quaternary hover:text-accent-danger"
-                      title={t.deleteLayer}
-                    >
-                      <DeleteIcon className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Layer actions */}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLayerLock(layer.id);
+                        }}
+                        className={`p-1 rounded ${layer.locked ? "text-accent-warning" : "text-text-quaternary hover:text-text-primary"}`}
+                        title={layer.locked ? t.unlockLayer : t.lockLayer}
+                      >
+                        {layer.locked ? <LockClosedIcon className="w-3.5 h-3.5" /> : <LockOpenIcon className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          duplicateLayer(layer.id);
+                        }}
+                        className="p-1 rounded text-text-quaternary hover:text-text-primary"
+                        title={t.duplicateLayer}
+                      >
+                        <DuplicateIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          mergeLayerDown(layer.id);
+                        }}
+                        disabled={!canMergeDown}
+                        className="p-1 rounded text-text-quaternary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={t.mergeDown}
+                      >
+                        <MergeDownIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteLayer(layer.id);
+                        }}
+                        className="p-1 rounded text-text-quaternary hover:text-accent-danger"
+                        title={t.deleteLayer}
+                      >
+                        <DeleteIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })
-        )}
-      </div>
+                );
+              })
+          )}
+        </div>
+      </Scrollbar>
 
       {/* Panel Footer - Opacity control */}
       {activeLayerId && activeLayer && (

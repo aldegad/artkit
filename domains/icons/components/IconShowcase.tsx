@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { Scrollbar } from "@/shared/components";
 import { iconRegistry, CATEGORY_LABELS } from "../data/iconRegistry";
 import type { IconCategory } from "../types";
 import { IconCard } from "./IconCard";
@@ -81,58 +82,65 @@ export function IconShowcase() {
       </div>
 
       {/* Category filters */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border-default bg-surface-primary shrink-0 overflow-x-auto">
-        <button
-          onClick={() => setActiveCategory("all")}
-          className={`px-2.5 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
-            activeCategory === "all"
-              ? "bg-accent-primary text-white"
-              : "bg-surface-tertiary text-text-secondary hover:bg-interactive-hover"
-          }`}
-        >
-          All
-        </button>
-        {categories.map((cat) => (
+      <Scrollbar
+        className="border-b border-border-default bg-surface-primary shrink-0"
+        overflow={{ x: "scroll", y: "hidden" }}
+      >
+        <div className="flex items-center gap-1 px-4 py-2 min-w-max">
           <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
+            onClick={() => setActiveCategory("all")}
             className={`px-2.5 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
-              activeCategory === cat
+              activeCategory === "all"
                 ? "bg-accent-primary text-white"
                 : "bg-surface-tertiary text-text-secondary hover:bg-interactive-hover"
             }`}
           >
-            {CATEGORY_LABELS[cat]}
+            All
           </button>
-        ))}
-      </div>
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`px-2.5 py-1 text-xs rounded-full whitespace-nowrap transition-colors ${
+                activeCategory === cat
+                  ? "bg-accent-primary text-white"
+                  : "bg-surface-tertiary text-text-secondary hover:bg-interactive-hover"
+              }`}
+            >
+              {CATEGORY_LABELS[cat]}
+            </button>
+          ))}
+        </div>
+      </Scrollbar>
 
       {/* Icon Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {filteredIcons.length === 0 ? (
-          <div className="flex items-center justify-center h-40 text-text-tertiary text-sm">
-            No icons found for &quot;{search}&quot;
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {groupedIcons.map((group) => (
-              <div key={group.category}>
-                <h3 className="text-sm font-medium text-text-secondary mb-3">
-                  {CATEGORY_LABELS[group.category]}
-                  <span className="text-text-tertiary font-normal ml-2">
-                    ({group.icons.length})
-                  </span>
-                </h3>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2">
-                  {group.icons.map((icon) => (
-                    <IconCard key={icon.name} icon={icon} />
-                  ))}
+      <Scrollbar className="flex-1 min-h-0" overflow={{ x: "hidden", y: "scroll" }}>
+        <div className="p-4">
+          {filteredIcons.length === 0 ? (
+            <div className="flex items-center justify-center h-40 text-text-tertiary text-sm">
+              No icons found for &quot;{search}&quot;
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {groupedIcons.map((group) => (
+                <div key={group.category}>
+                  <h3 className="text-sm font-medium text-text-secondary mb-3">
+                    {CATEGORY_LABELS[group.category]}
+                    <span className="text-text-tertiary font-normal ml-2">
+                      ({group.icons.length})
+                    </span>
+                  </h3>
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2">
+                    {group.icons.map((icon) => (
+                      <IconCard key={icon.name} icon={icon} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Scrollbar>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { SpriteFrame } from "../types";
-import { Modal, SpinnerIcon, showInfoToast } from "../../../shared/components";
+import { Modal, SpinnerIcon, Scrollbar, showInfoToast } from "../../../shared/components";
 import { VideoCameraIcon, CheckIcon } from "../../../shared/components/icons";
 
 // ============================================
@@ -436,7 +436,10 @@ export default function VideoImportModal({
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto bg-surface-secondary rounded-lg p-2">
+              <Scrollbar
+                className="flex-1 min-h-0 bg-surface-secondary rounded-lg p-2"
+                overflow={{ x: "hidden", y: "scroll" }}
+              >
                 <div className="grid grid-cols-8 gap-2">
                   {extractedFrames.map((frame, index) => (
                     <button
@@ -464,7 +467,7 @@ export default function VideoImportModal({
                     </button>
                   ))}
                 </div>
-              </div>
+              </Scrollbar>
             </div>
           )}
 

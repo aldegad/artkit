@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { SpriteFrame, Point } from "../types";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { Modal } from "../../../shared/components";
+import { Modal, Scrollbar } from "../../../shared/components";
 import { ImageIcon } from "../../../shared/components/icons";
 
 interface SpriteSheetImportModalProps {
@@ -361,9 +361,11 @@ export default function SpriteSheetImportModal({
       title="스프라이트 시트 가져오기"
       width="600px"
       maxHeight="90vh"
-      contentClassName="flex-1 overflow-y-auto p-4 space-y-4"
+      contentClassName="flex-1 min-h-0 p-0"
       footer={footerContent}
     >
+      <Scrollbar className="h-full p-4" overflow={{ x: "hidden", y: "scroll" }}>
+        <div className="space-y-4">
           {/* File upload area */}
           {!imageSrc ? (
             <div
@@ -477,6 +479,8 @@ export default function SpriteSheetImportModal({
               </p>
             </>
           )}
+        </div>
+      </Scrollbar>
     </Modal>
   );
 }
