@@ -20,7 +20,6 @@ import {
 import {
   drawDab,
   eraseDabLinear,
-  eraseLineLinear,
   parseHexColor,
   resetEraseAlphaCarry,
   resetPaintAlphaCarry,
@@ -123,6 +122,7 @@ export function useBrushTool(): UseBrushToolReturn {
     width: 0,
     height: 0,
   });
+  const strokeSpacingCarryByCanvasRef = useRef<WeakMap<HTMLCanvasElement, number>>(new WeakMap());
 
   // ============================================
   // Preset Management
@@ -175,6 +175,7 @@ export function useBrushTool(): UseBrushToolReturn {
   const resetLastDrawPoint = useCallback(() => {
     lastDrawPoint.current = null;
     stampOffset.current = null;
+    strokeSpacingCarryByCanvasRef.current = new WeakMap();
   }, []);
 
   const ensureBrushMaskScratch = useCallback((width: number, height: number): CanvasRenderingContext2D | null => {
@@ -199,18 +200,47 @@ export function useBrushTool(): UseBrushToolReturn {
     return scratch.ctx;
   }, []);
 
+  const resetStrokeSpacingCarry = useCallback((ctx: CanvasRenderingContext2D): void => {
+    strokeSpacingCarryByCanvasRef.current.set(ctx.canvas, 0);
+  }, []);
+
+  const getStrokeSampleDistances = useCallback(
+    (ctx: CanvasRenderingContext2D, segmentDistance: number, spacing: number): number[] => {
+      if (segmentDistance <= 0 || spacing <= 0) return [];
+
+      const normalizedSpacing = Math.max(0.2, spacing);
+      const carryMap = strokeSpacingCarryByCanvasRef.current;
+      const previousCarryRaw = carryMap.get(ctx.canvas) ?? 0;
+      const previousCarry = Math.max(0, Math.min(normalizedSpacing - 1e-6, previousCarryRaw));
+      let nextDistance = normalizedSpacing - previousCarry;
+      if (nextDistance < 1e-6) nextDistance = normalizedSpacing;
+
+      const distances: number[] = [];
+      while (nextDistance <= segmentDistance + 1e-6) {
+        distances.push(nextDistance);
+        nextDistance += normalizedSpacing;
+      }
+
+      const totalDistance = previousCarry + segmentDistance;
+      const nextCarry = totalDistance % normalizedSpacing;
+      carryMap.set(ctx.canvas, nextCarry < 1e-6 ? 0 : nextCarry);
+      return distances;
+    },
+    []
+  );
+
   const normalizeDabAlpha = useCallback(
     (baseAlpha: number, spacing: number, referenceSpacing: number): number => {
       const alpha = Math.max(0, Math.min(1, baseAlpha));
       if (alpha <= 0) return 0;
-      if (alpha >= 1) return 1;
 
       const clampedSpacing = Math.max(0.2, spacing);
       const clampedReferenceSpacing = Math.max(0.2, referenceSpacing);
       // Keep stroke density stable: when spacing is reduced (more dabs), scale
       // each dab down so one pass does not overfill instantly.
       const coverage = Math.max(0.02, Math.min(1, clampedSpacing / clampedReferenceSpacing));
-      return 1 - Math.pow(1 - alpha, coverage);
+      const normalizedTargetAlpha = alpha >= 1 ? 1 - 1 / 255 : alpha;
+      return 1 - Math.pow(1 - normalizedTargetAlpha, coverage);
     },
     []
   );
@@ -270,15 +300,27 @@ export function useBrushTool(): UseBrushToolReturn {
       if (srcA <= 0) continue;
 
       const dstA = target[i + 3] / 255;
-      // Standard source-over alpha accumulation:
-      // repeated passes over the same area gradually increase opacity.
-      const outA = dstA + srcA * (1 - dstA);
+      const invSrcA = 1 - srcA;
+      const outA = srcA + dstA * invSrcA;
       const outAlpha = Math.round(outA * 255);
       if (outAlpha <= 0) continue;
 
-      target[i] = r;
-      target[i + 1] = g;
-      target[i + 2] = b;
+      if (outAlpha >= 255) {
+        // Opaque destination fast path: blend RGB directly by source alpha.
+        target[i] = Math.round(r * srcA + target[i] * invSrcA);
+        target[i + 1] = Math.round(g * srcA + target[i + 1] * invSrcA);
+        target[i + 2] = Math.round(b * srcA + target[i + 2] * invSrcA);
+        target[i + 3] = 255;
+        continue;
+      }
+
+      const outPremultR = r * srcA + target[i] * dstA * invSrcA;
+      const outPremultG = g * srcA + target[i + 1] * dstA * invSrcA;
+      const outPremultB = b * srcA + target[i + 2] * dstA * invSrcA;
+
+      target[i] = Math.round(outPremultR / outA);
+      target[i + 1] = Math.round(outPremultG / outA);
+      target[i + 2] = Math.round(outPremultB / outA);
       target[i + 3] = outAlpha;
     }
 
@@ -297,31 +339,16 @@ export function useBrushTool(): UseBrushToolReturn {
     const dx = options.to.x - options.from.x;
     const dy = options.to.y - options.from.y;
     const distance = Math.hypot(dx, dy);
+    if (distance <= 0.001) return;
+
     const alpha = Math.max(0, Math.min(1, options.alpha));
-    const hardness01 = Math.max(0, Math.min(1, options.hardness01));
     const referenceSpacing = Math.max(0.2, options.baseSpacing);
-    const maxSpacingBySoftness = Math.max(
-      0.2,
-      options.radius * (0.03 + hardness01 * 0.07 + alpha * 0.05)
-    );
-    const spacing = Math.max(0.2, Math.min(referenceSpacing, maxSpacingBySoftness));
+    const spacing = referenceSpacing;
     const dabAlpha = normalizeDabAlpha(alpha, spacing, referenceSpacing);
-    if (distance <= 0.001) {
-      stampBrushDab(ctx, {
-        x: options.to.x,
-        y: options.to.y,
-        radius: options.radius,
-        hardness01: options.hardness01,
-        color: options.color,
-        alpha: dabAlpha,
-      });
-      return;
-    }
 
-    const steps = Math.max(1, Math.ceil(distance / spacing));
-
-    for (let i = 1; i <= steps; i += 1) {
-      const t = i / steps;
+    const sampleDistances = getStrokeSampleDistances(ctx, distance, spacing);
+    for (const sampleDistance of sampleDistances) {
+      const t = sampleDistance / distance;
       stampBrushDab(ctx, {
         x: options.from.x + dx * t,
         y: options.from.y + dy * t,
@@ -331,7 +358,38 @@ export function useBrushTool(): UseBrushToolReturn {
         alpha: dabAlpha,
       });
     }
-  }, [stampBrushDab, normalizeDabAlpha]);
+  }, [stampBrushDab, normalizeDabAlpha, getStrokeSampleDistances]);
+
+  const drawContinuousEraseStroke = useCallback((ctx: CanvasRenderingContext2D, options: {
+    from: Point;
+    to: Point;
+    radius: number;
+    hardness01: number;
+    alpha: number;
+    baseSpacing: number;
+  }): void => {
+    const dx = options.to.x - options.from.x;
+    const dy = options.to.y - options.from.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.001) return;
+
+    const alpha = Math.max(0, Math.min(1, options.alpha));
+    const referenceSpacing = Math.max(0.2, options.baseSpacing);
+    const spacing = referenceSpacing;
+    // Eraser is linear subtraction, so overlap compensation is linear too.
+    const dabAlpha = Math.max(0, Math.min(1, alpha * Math.max(0.02, Math.min(1, spacing / referenceSpacing))));
+    const sampleDistances = getStrokeSampleDistances(ctx, distance, spacing);
+    for (const sampleDistance of sampleDistances) {
+      const t = sampleDistance / distance;
+      eraseDabLinear(ctx, {
+        x: options.from.x + dx * t,
+        y: options.from.y + dy * t,
+        radius: options.radius,
+        hardness: options.hardness01,
+        alpha: dabAlpha,
+      });
+    }
+  }, [getStrokeSampleDistances]);
 
   const drawOnEditCanvas = useCallback(
     (x: number, y: number, isStart: boolean = false, pressure: number = 1) => {
@@ -355,16 +413,11 @@ export function useBrushTool(): UseBrushToolReturn {
         const maskCtx = getLayerAlphaMaskContext(editCanvas);
         const radius = params.size / 2;
         const hardness01 = brushHardness / 100;
-        const referenceSpacing = Math.max(0.2, lineSpacing);
-        const maxSpacingBySoftness = Math.max(
-          0.2,
-          radius * (0.03 + hardness01 * 0.07 + strokeAlpha * 0.05)
-        );
-        const initialSpacing = Math.max(0.2, Math.min(referenceSpacing, maxSpacingBySoftness));
-        const startDabAlpha = normalizeDabAlpha(strokeAlpha, initialSpacing, referenceSpacing);
+        const startDabAlpha = strokeAlpha;
 
         if (isStart || !lastDrawPoint.current) {
           resetPaintAlphaCarry(ctx);
+          resetStrokeSpacingCarry(ctx);
           stampBrushDab(ctx, {
             x,
             y,
@@ -375,6 +428,7 @@ export function useBrushTool(): UseBrushToolReturn {
           });
           if (maskCtx) {
             resetPaintAlphaCarry(maskCtx);
+            resetStrokeSpacingCarry(maskCtx);
             stampBrushDab(maskCtx, {
               x,
               y,
@@ -409,26 +463,28 @@ export function useBrushTool(): UseBrushToolReturn {
       } else if (toolMode === "eraser") {
         const maskCtx = getLayerAlphaMaskContext(editCanvas, true);
         if (!maskCtx) return;
+        const radius = params.size / 2;
+        const hardness01 = brushHardness / 100;
+        const startDabAlpha = strokeAlpha;
 
         if (isStart || !lastDrawPoint.current) {
           resetEraseAlphaCarry(maskCtx);
+          resetStrokeSpacingCarry(maskCtx);
           eraseDabLinear(maskCtx, {
             x,
             y,
-            radius: params.size / 2,
-            hardness: brushHardness / 100,
-            alpha: strokeAlpha,
+            radius,
+            hardness: hardness01,
+            alpha: startDabAlpha,
           });
         } else {
-          eraseLineLinear(maskCtx, {
+          drawContinuousEraseStroke(maskCtx, {
             from: lastDrawPoint.current,
             to: { x, y },
-            spacing: lineSpacing,
-            dab: {
-              radius: params.size / 2,
-              hardness: brushHardness / 100,
-              alpha: strokeAlpha,
-            },
+            radius,
+            hardness01,
+            alpha: strokeAlpha,
+            baseSpacing: lineSpacing,
           });
         }
       } else if (toolMode === "stamp" && stampSource) {
@@ -523,7 +579,8 @@ export function useBrushTool(): UseBrushToolReturn {
       pressureEnabled,
       stampBrushDab,
       drawContinuousBrushStroke,
-      normalizeDabAlpha,
+      drawContinuousEraseStroke,
+      resetStrokeSpacingCarry,
     ]
   );
 
