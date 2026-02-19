@@ -344,7 +344,10 @@ export function useBrushTool(): UseBrushToolReturn {
     const alpha = Math.max(0, Math.min(1, options.alpha));
     const referenceSpacing = Math.max(0.2, options.baseSpacing);
     const spacing = referenceSpacing;
-    const dabAlpha = normalizeDabAlpha(alpha, spacing, referenceSpacing);
+    const hardness01 = Math.max(0, Math.min(1, options.hardness01));
+    const softness = 1 - hardness01;
+    const adjustedAlpha = alpha * (1 - softness * 0.18);
+    const dabAlpha = normalizeDabAlpha(adjustedAlpha, spacing, referenceSpacing);
 
     const sampleDistances = getStrokeSampleDistances(ctx, distance, spacing);
     for (const sampleDistance of sampleDistances) {
@@ -376,8 +379,11 @@ export function useBrushTool(): UseBrushToolReturn {
     const alpha = Math.max(0, Math.min(1, options.alpha));
     const referenceSpacing = Math.max(0.2, options.baseSpacing);
     const spacing = referenceSpacing;
+    const hardness01 = Math.max(0, Math.min(1, options.hardness01));
+    const softness = 1 - hardness01;
+    const adjustedAlpha = alpha * (1 - softness * 0.24);
     // Eraser is linear subtraction, so overlap compensation is linear too.
-    const dabAlpha = Math.max(0, Math.min(1, alpha * Math.max(0.02, Math.min(1, spacing / referenceSpacing))));
+    const dabAlpha = Math.max(0, Math.min(1, adjustedAlpha));
     const sampleDistances = getStrokeSampleDistances(ctx, distance, spacing);
     for (const sampleDistance of sampleDistances) {
       const t = sampleDistance / distance;
