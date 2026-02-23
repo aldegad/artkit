@@ -25,7 +25,11 @@ import {
   createPlayheadDragState,
   createTrimDragState,
 } from "../utils/timelineDragState";
-import { alignTimelineTimeToFrame, normalizeTimelineFrameRate } from "../utils/timelineFrame";
+import {
+  alignTimelineTimeToFrame,
+  getTimelineFrameRange,
+  normalizeTimelineFrameRate,
+} from "../utils/timelineFrame";
 import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils";
 
 // ── Touch pending state ───────────────────────────────────────────────
@@ -101,6 +105,10 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     setScrollFromGestureAnchor,
   } = useTimelineViewport();
 
+  const frameRate = useMemo(() => {
+    return normalizeTimelineFrameRate(project.frameRate);
+  }, [project.frameRate]);
+
   // Snap a time value to nearby clip edges (optionally track-scoped).
   const snapToPoints = useCallback(
     (
@@ -112,17 +120,14 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         zoom,
         snapThresholdPx: TIMELINE.SNAP_THRESHOLD,
         clips,
+        frameRate,
         scope: options?.scope,
         trackId: options?.trackId,
         excludeClipIds: options?.excludeClipIds,
       });
     },
-    [viewState.snapEnabled, zoom, clips]
+    [viewState.snapEnabled, zoom, clips, frameRate]
   );
-
-  const frameRate = useMemo(() => {
-    return normalizeTimelineFrameRate(project.frameRate);
-  }, [project.frameRate]);
 
   const snapTimeToFrame = useCallback((time: number): number => {
     return alignTimelineTimeToFrame(time, frameRate);
@@ -268,8 +273,9 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
       const trimHandleHitWidth = options?.trimHandleHitWidth ?? UI.TRIM_HANDLE_WIDTH;
 
       for (const clip of trackClips) {
-        const clipStartX = timeToPixel(clip.startTime);
-        const clipEndX = timeToPixel(clip.startTime + clip.duration);
+        const frameRange = getTimelineFrameRange(clip.startTime, clip.duration, frameRate);
+        const clipStartX = timeToPixel(frameRange.startTime);
+        const clipEndX = timeToPixel(frameRange.endTime);
         const isWithinClipOrTrimHotzone =
           x >= clipStartX - trimHandleHitWidth && x <= clipEndX + trimHandleHitWidth;
         if (!isWithinClipOrTrimHotzone) continue;
@@ -283,13 +289,13 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
         }
 
         // Check clip body
-        if (time >= clip.startTime && time <= clip.startTime + clip.duration) {
+        if (time >= frameRange.startTime && time <= frameRange.endTime) {
           return { clip, handle: "body" };
         }
       }
       return null;
     },
-    [getTrackAtY, clipsByTrackDesc, pixelToTime, timeToPixel]
+    [getTrackAtY, clipsByTrackDesc, frameRate, pixelToTime, timeToPixel]
   );
 
   // Build drag items from selected clips and masks

@@ -63,6 +63,7 @@ import {
   usePreviewViewportState,
   useVideoToolModeHandlers,
   useGapInterpolationActions,
+  useVideoInpaintActions,
   analyzeGapInterpolationSelection,
   useMaskRestoreSync,
   useVideoFileActions,
@@ -179,7 +180,7 @@ function VideoEditorContent() {
     isPanLocked,
     setIsPanLocked,
   } = useVideoState();
-  const { previewCanvasRef, previewViewportRef } = useVideoRefs();
+  const { previewCanvasRef, previewViewportRef, inpaintMaskCanvasRef } = useVideoRefs();
   const {
     tracks,
     clips,
@@ -432,6 +433,35 @@ function VideoEditorContent() {
     saveToHistory,
     addClips,
     selectClips,
+  });
+  const {
+    isInpainting: isInpaintingClip,
+    inpaintStatus: inpaintStatusLabel,
+    canInpaint: canInpaintClip,
+    clearInpaintRegion,
+    handleInpaintClip,
+  } = useVideoInpaintActions({
+    selectedClip: selectedVisualClip,
+    inpaintMaskCanvasRef,
+    frameRate: project.frameRate,
+    projectCanvasSize: project.canvasSize,
+    isPlaying: playback.isPlaying,
+    pause,
+    saveToHistory,
+    updateClip,
+    translations: {
+      selectVideoClip: t.videoInpaintSelectVideoClip,
+      selectMask: t.videoInpaintSelectMask,
+      unsupportedTransform: t.videoInpaintUnsupportedTransform,
+      clipTooLong: t.videoInpaintClipTooLong,
+      preparing: t.videoInpaintPreparing,
+      loadingModel: t.videoInpaintLoadingModel,
+      processing: t.videoInpaintProcessing,
+      encoding: t.videoInpaintEncoding,
+      applying: t.videoInpaintApplying,
+      completed: t.videoInpaintCompleted,
+      failed: t.videoInpaintFailed,
+    },
   });
   const isTimelineVisible = isPanelOpen("timeline");
   const canUndoAny = canUndo || canUndoMask;
@@ -747,6 +777,7 @@ function VideoEditorContent() {
     >
       {/* Loading overlay during autosave restore */}
       <LoadingOverlay isLoading={!isAutosaveInitialized} message={t.loading || "Loading..."} />
+      <LoadingOverlay isLoading={isInpaintingClip} message={inpaintStatusLabel || t.videoInpaintPreparing} />
 
       <SaveToast
         isSaving={isSaving}
@@ -847,6 +878,10 @@ function VideoEditorContent() {
             onInterpolateGap={handleInterpolateClipGap}
             canInterpolateGap={gapInterpolationAnalysis.ready}
             isInterpolatingGap={isInterpolatingGap}
+            onInpaintClip={handleInpaintClip}
+            canInpaintClip={canInpaintClip}
+            isInpaintingClip={isInpaintingClip}
+            onClearInpaintRegion={clearInpaintRegion}
             onDelete={handleDelete}
             hasSelection={selectedClipIds.length > 0 || selectedMaskIds.length > 0 || !!activeMaskId || !!selectedPositionKeyframe}
             previewZoom={previewZoom}

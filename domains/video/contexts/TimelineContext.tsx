@@ -48,7 +48,11 @@ import {
   restoreAutosavedClips,
 } from "../utils/timelineModel";
 import { buildRazorSplitClips } from "../utils/razorSplit";
-import { alignTimelineTimeToFrame, normalizeTimelineFrameRate } from "../utils/timelineFrame";
+import {
+  alignTimelineTimeToFrame,
+  getTimelineFrameRange,
+  normalizeTimelineFrameRate,
+} from "../utils/timelineFrame";
 import { useTimelineHistory } from "./useTimelineHistory";
 
 interface TimelineContextValue {
@@ -210,13 +214,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     startTime: number;
     canvasSize?: Size;
   }): Clip => {
+    const frameRate = getTimelineFrameRate();
     const fitted = getFittedVisualTransform(options.sourceSize, options.canvasSize ?? projectRef.current.canvasSize);
     return withSafeClipStart(clipsRef.current, {
       ...options.baseClip,
       position: fitted.position,
       scale: fitted.scale,
-    }, options.startTime);
-  }, []);
+    }, options.startTime, { frameRate });
+  }, [getTimelineFrameRate]);
 
   useEffect(() => {
     projectRef.current = project;
@@ -528,11 +533,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         frameAlignedStart,
         sourceSize
       );
-      const normalizedClip: Clip = withSafeClipStart(clipsRef.current, clip, frameAlignedStart);
+      const normalizedClip: Clip = withSafeClipStart(clipsRef.current, clip, frameAlignedStart, {
+        frameRate: getTimelineFrameRate(),
+      });
       updateClipsWithDuration((prev) => [...prev, normalizedClip]);
       return normalizedClip.id;
     },
-    [tracks, snapTimeToFrame, updateClipsWithDuration]
+    [tracks, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]
   );
 
   const addImageClip = useCallback(
@@ -726,17 +733,20 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       position: { ...sourceClip.position },
       sourceSize: { ...sourceClip.sourceSize },
       transformKeyframes: normalizeClipTransformKeyframes(sourceClip),
-    }, snapTimeToFrame(sourceClip.startTime + 0.25));
+    }, snapTimeToFrame(sourceClip.startTime + 0.25), {
+      frameRate: getTimelineFrameRate(),
+    });
 
     void copyMediaBlobSafely(sourceClip.id, newClip.id, "timeline duplicate");
 
     updateClipsWithDuration((prev) => [...prev, newClip]);
     return newClip.id;
-  }, [clips, tracks, appendTrack, copyMediaBlobSafely, snapTimeToFrame, updateClipsWithDuration]);
+  }, [clips, tracks, appendTrack, copyMediaBlobSafely, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   const splitClipAtTime = useCallback((clipId: string, splitCursorTime: number): string | null => {
     const clip = clips.find((candidate) => candidate.id === clipId);
     if (!clip) return null;
+    const frameRate = getTimelineFrameRate();
 
     const snapToPoints = (time: number): number => {
       if (!viewState.snapEnabled) return snapTimeToFrame(time);
@@ -748,8 +758,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       for (const candidate of clips) {
         if (candidate.id === clip.id) continue;
-        points.push(candidate.startTime);
-        points.push(candidate.startTime + candidate.duration);
+        const range = getTimelineFrameRange(candidate.startTime, candidate.duration, frameRate);
+        points.push(range.startTime);
+        points.push(range.endTime);
       }
 
       for (const point of points) {
@@ -788,6 +799,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     viewState.zoom,
     saveToHistory,
     copyMediaBlobSafely,
+    getTimelineFrameRate,
     snapTimeToFrame,
     updateClipsWithDuration,
   ]);
@@ -807,7 +819,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
             startTime: frameAlignedStart,
           },
           frameAlignedStart,
-          new Set([clip.id])
+          {
+            excludeClipIds: new Set([clip.id]),
+            frameRate: getTimelineFrameRate(),
+          }
         );
         normalized.push(adjusted);
         next.push(adjusted);
@@ -815,7 +830,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       return [...prev, ...normalized];
     });
-  }, [snapTimeToFrame, updateClipsWithDuration]);
+  }, [getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   // Queries
   const getClipAtTime = useCallback(

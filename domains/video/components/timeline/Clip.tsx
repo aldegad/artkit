@@ -7,6 +7,7 @@ import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
 import { VideoClipIcon, AudioClipIcon, ImageClipIcon } from "@/shared/components/icons";
 import { UI } from "../../constants";
+import { getTimelineFrameRange, normalizeTimelineFrameRate } from "../../utils/timelineFrame";
 
 interface ClipProps {
   clip: ClipType;
@@ -20,7 +21,6 @@ interface ClipProps {
 
 const waveformCache = new Map<string, number[]>();
 const waveformPending = new Map<string, Promise<number[]>>();
-const CLIP_VISUAL_RIGHT_INSET_PX = 1;
 
 async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   const cached = waveformCache.get(sourceUrl);
@@ -89,16 +89,10 @@ export function Clip({
   );
 
   const isSelected = selectedClipIds.includes(clip.id);
-  const frameRate = Number.isFinite(project.frameRate) && project.frameRate > 0
-    ? Math.max(1, Math.round(project.frameRate))
-    : 30;
-  const frameEpsilon = 1e-6;
-  const clipStartTime = Math.max(0, clip.startTime);
-  const clipEndTime = Math.max(clipStartTime, clip.startTime + clip.duration);
-  const lastFrameIndex = Math.floor(clipEndTime * frameRate - frameEpsilon);
-  const nextFrameTime = Math.max(clipStartTime, (lastFrameIndex + 1) / frameRate);
-  const rawLeft = timeToPixel(clipStartTime);
-  const rawRight = timeToPixel(nextFrameTime);
+  const frameRate = normalizeTimelineFrameRate(project.frameRate);
+  const frameRange = getTimelineFrameRange(clip.startTime, clip.duration, frameRate);
+  const rawLeft = timeToPixel(frameRange.startTime);
+  const rawRight = timeToPixel(frameRange.endTime);
 
   // Slice waveform to match trimIn/trimOut
   const visibleWaveform = useMemo(() => {
@@ -115,7 +109,7 @@ export function Clip({
 
   const visualWidth = Math.max(
     UI.MIN_CLIP_WIDTH,
-    Math.max(0, rawRight - rawLeft - CLIP_VISUAL_RIGHT_INSET_PX)
+    Math.max(0, rawRight - rawLeft)
   );
   const trimVisualZoneWidth = Math.max(UI.TRIM_HANDLE_WIDTH, 12);
 

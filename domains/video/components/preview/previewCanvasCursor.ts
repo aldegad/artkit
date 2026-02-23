@@ -2,6 +2,7 @@ interface PreviewCanvasCursorOptions {
   isPanning: boolean;
   isHandMode: boolean;
   isEditingMask: boolean;
+  isInpaintMode: boolean;
   maskDrawShape: "brush" | "rectangle";
   isZoomTool: boolean;
   toolMode: string;
@@ -18,6 +19,7 @@ export function resolvePreviewCanvasCursor(options: PreviewCanvasCursorOptions):
   if (options.isEditingMask) {
     return options.maskDrawShape === "rectangle" ? "crosshair" : "none";
   }
+  if (options.isInpaintMode) return "none";
   if (options.isZoomTool) return "zoom-in";
   if (options.toolMode === "crop") {
     if (options.isDraggingCrop) {

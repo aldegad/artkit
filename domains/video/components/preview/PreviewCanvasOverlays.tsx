@@ -4,6 +4,7 @@ import BrushCursorOverlay from "@/shared/components/BrushCursorOverlay";
 
 interface PreviewCanvasOverlaysProps {
   isEditingMask: boolean;
+  isInpaintMode: boolean;
   maskDrawShape: "brush" | "rectangle";
   brushCursor: { x: number; y: number } | null;
   brushDisplaySize: number;
@@ -17,6 +18,7 @@ interface PreviewCanvasOverlaysProps {
 export function PreviewCanvasOverlays(props: PreviewCanvasOverlaysProps) {
   const {
     isEditingMask,
+    isInpaintMode,
     maskDrawShape,
     brushCursor,
     brushDisplaySize,
@@ -27,7 +29,13 @@ export function PreviewCanvasOverlays(props: PreviewCanvasOverlaysProps) {
     zoomPercent,
   } = props;
 
-  const showBrushCursor = isEditingMask && maskDrawShape === "brush" && Boolean(brushCursor);
+  const showBrushCursor = Boolean(
+    brushCursor
+    && (
+      (isEditingMask && maskDrawShape === "brush")
+      || isInpaintMode
+    )
+  );
   const showPerfBadge = draftMode || !preRenderEnabled;
   const showZoomIndicator = zoomPercent !== 100;
 

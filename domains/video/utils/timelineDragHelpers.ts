@@ -1,5 +1,10 @@
 import { Clip } from "../types";
 import { DragState } from "./timelineDragState";
+import {
+  alignTimelineTimeToFrame,
+  getTimelineFrameRange,
+  normalizeTimelineFrameRate,
+} from "./timelineFrame";
 
 export interface AutoScrollConfig {
   edgePx: number;
@@ -26,6 +31,7 @@ export interface SnapTimelineTimeToClipPointsOptions extends SnapTimeResolverOpt
   zoom: number;
   snapThresholdPx: number;
   clips: Clip[];
+  frameRate?: number;
 }
 
 export type SnapTimeResolver = (
@@ -84,7 +90,15 @@ export function snapTimelineTimeToClipPoints(
   time: number,
   options: SnapTimelineTimeToClipPointsOptions
 ): number {
-  if (!options.snapEnabled) return time;
+  const optionFrameRate = options.frameRate;
+  const hasFrameRate = typeof optionFrameRate === "number" && Number.isFinite(optionFrameRate) && optionFrameRate > 0;
+  const safeFrameRate = hasFrameRate
+    ? normalizeTimelineFrameRate(optionFrameRate)
+    : null;
+  const fallbackTime = safeFrameRate
+    ? alignTimelineTimeToFrame(time, safeFrameRate)
+    : time;
+  if (!options.snapEnabled) return fallbackTime;
 
   const threshold = options.snapThresholdPx / Math.max(0.001, options.zoom);
   const points: number[] = [0];
@@ -95,17 +109,23 @@ export function snapTimelineTimeToClipPoints(
   for (const clip of options.clips) {
     if (scope === "track" && trackId && clip.trackId !== trackId) continue;
     if (excludeClipIds.has(clip.id)) continue;
+    if (safeFrameRate) {
+      const range = getTimelineFrameRange(clip.startTime, clip.duration, safeFrameRate);
+      points.push(range.startTime);
+      points.push(range.endTime);
+      continue;
+    }
     points.push(clip.startTime);
     points.push(clip.startTime + clip.duration);
   }
 
   for (const point of points) {
     if (Math.abs(time - point) < threshold) {
-      return point;
+      return safeFrameRate ? alignTimelineTimeToFrame(point, safeFrameRate) : point;
     }
   }
 
-  return time;
+  return fallbackTime;
 }
 
 export function calculateSnappedClipMoveTimeDelta(options: {
