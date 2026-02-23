@@ -3319,6 +3319,11 @@ onnxruntime-common@1.21.0:
   resolved "https://registry.npmjs.org/onnxruntime-common/-/onnxruntime-common-1.21.0.tgz"
   integrity sha512-Q632iLLrtCAVOTO65dh2+mNbQir/QNTVBG3h/QdZBpns7mZ0RYbLRBgGABPbpU9351AgYy7SJf1WaeVwMrBFPQ==
 
+onnxruntime-common@1.22.0:
+  version "1.22.0"
+  resolved "https://registry.yarnpkg.com/onnxruntime-common/-/onnxruntime-common-1.22.0.tgz#27d7d06ebb6c7d3dd773dfa21b6fa2ae86f64983"
+  integrity sha512-vcuaNWgtF2dGQu/EP5P8UI5rEPEYqXG2sPPe5j9lg2TY/biJF8eWklTMwlDO08iuXq48xJo0awqIpK5mPG+IxA==
+
 onnxruntime-common@1.22.0-dev.20250409-89f8206ba4:
   version "1.22.0-dev.20250409-89f8206ba4"
   resolved "https://registry.npmjs.org/onnxruntime-common/-/onnxruntime-common-1.22.0-dev.20250409-89f8206ba4.tgz"
@@ -3332,6 +3337,18 @@ onnxruntime-node@1.21.0:
     global-agent "^3.0.0"
     onnxruntime-common "1.21.0"
     tar "^7.0.1"
+
+onnxruntime-web@1.22.0:
+  version "1.22.0"
+  resolved "https://registry.yarnpkg.com/onnxruntime-web/-/onnxruntime-web-1.22.0.tgz#ad9b16d535bc4f4a51e325723e0d1a7f422c39be"
+  integrity sha512-Ud/+EBo6mhuaQWt/OjaOk0iNWjXqJoeeMFr6xQEERZdIZH2OWpGzuujz7lfuOBjUa6TEE/sc4nb7Da5dNL34fg==
+  dependencies:
+    flatbuffers "^25.1.24"
+    guid-typescript "^1.0.9"
+    long "^5.2.3"
+    onnxruntime-common "1.22.0"
+    platform "^1.3.6"
+    protobufjs "^7.2.4"
 
 onnxruntime-web@1.22.0-dev.20250409-89f8206ba4:
   version "1.22.0-dev.20250409-89f8206ba4"

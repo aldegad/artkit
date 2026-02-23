@@ -95,7 +95,8 @@ export type VideoToolMode =
   | "crop"
   | "trim"
   | "razor" // Split clip
-  | "mask";
+  | "mask"
+  | "inpaint";
 
 /**
  * Video playback state

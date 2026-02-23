@@ -3,6 +3,13 @@ import { TIMELINE } from "../constants";
 import { Clip, INITIAL_TIMELINE_VIEW, TimelineViewState, VideoTrack } from "../types";
 import { loadMediaBlob } from "./mediaStorage";
 import { normalizeClipTransformKeyframes } from "./clipTransformKeyframes";
+import {
+  alignTimelineTimeToFrame,
+  getTimelineFrameRange,
+  normalizeTimelineFrameRate,
+  timelineFrameIndexToTime,
+  toTimelineFrameIndex,
+} from "./timelineFrame";
 
 export function cloneTrack(track: VideoTrack): VideoTrack {
   return { ...track };
@@ -145,21 +152,10 @@ export function getFittedVisualTransform(sourceSize: Size, canvasSize: Size): { 
 }
 
 const OVERLAP_TIME_EPSILON = 1e-6;
-const FRAME_INDEX_EPSILON = 1e-6;
 
 function normalizeOverlapFrameRate(frameRate: number): number | null {
   if (!Number.isFinite(frameRate) || frameRate <= 0) return null;
-  return Math.max(1, Math.round(frameRate));
-}
-
-function toStartFrameIndex(time: number, frameRate: number): number {
-  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
-  return Math.floor(safeTime * frameRate + FRAME_INDEX_EPSILON);
-}
-
-function toEndFrameIndex(time: number, frameRate: number): number {
-  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
-  return Math.ceil(safeTime * frameRate - FRAME_INDEX_EPSILON);
+  return normalizeTimelineFrameRate(frameRate);
 }
 
 function rangesOverlap(startA: number, durationA: number, startB: number, durationB: number): boolean {
@@ -175,26 +171,16 @@ export function hasTrackOverlap(
   frameRate?: number
 ): boolean {
   const safeFrameRate = normalizeOverlapFrameRate(frameRate ?? Number.NaN);
-  const candidateStartFrame = safeFrameRate
-    ? toStartFrameIndex(candidate.startTime, safeFrameRate)
-    : null;
-  const candidateEndFrame = safeFrameRate
-    ? Math.max(
-      toStartFrameIndex(candidate.startTime, safeFrameRate),
-      toEndFrameIndex(candidate.startTime + candidate.duration, safeFrameRate)
-    )
+  const candidateRange = safeFrameRate
+    ? getTimelineFrameRange(candidate.startTime, candidate.duration, safeFrameRate)
     : null;
 
   for (const clip of allClips) {
     if (clip.trackId !== candidate.trackId) continue;
     if (excludeClipIds.has(clip.id)) continue;
-    if (safeFrameRate && candidateStartFrame !== null && candidateEndFrame !== null) {
-      const clipStartFrame = toStartFrameIndex(clip.startTime, safeFrameRate);
-      const clipEndFrame = Math.max(
-        clipStartFrame,
-        toEndFrameIndex(clip.startTime + clip.duration, safeFrameRate)
-      );
-      if (candidateStartFrame < clipEndFrame && candidateEndFrame > clipStartFrame) {
+    if (safeFrameRate && candidateRange) {
+      const clipRange = getTimelineFrameRange(clip.startTime, clip.duration, safeFrameRate);
+      if (candidateRange.startFrame < clipRange.endFrame && candidateRange.endFrame > clipRange.startFrame) {
         return true;
       }
       continue;
@@ -211,8 +197,34 @@ function findNextNonOverlappingStart(
   trackId: string,
   startTime: number,
   duration: number,
-  excludeClipIds: Set<string> = new Set()
+  excludeClipIds: Set<string> = new Set(),
+  frameRate?: number
 ): number {
+  const safeFrameRate = normalizeOverlapFrameRate(frameRate ?? Number.NaN);
+  if (safeFrameRate) {
+    const candidateFrameCount = getTimelineFrameRange(0, duration, safeFrameRate).frameCount;
+    let nextStartFrame = toTimelineFrameIndex(startTime, safeFrameRate);
+    const trackClips = allClips
+      .filter((clip) => clip.trackId === trackId && !excludeClipIds.has(clip.id))
+      .sort((a, b) => a.startTime - b.startTime);
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const clip of trackClips) {
+        const clipRange = getTimelineFrameRange(clip.startTime, clip.duration, safeFrameRate);
+        const candidateEndFrame = nextStartFrame + candidateFrameCount;
+        if (nextStartFrame < clipRange.endFrame && candidateEndFrame > clipRange.startFrame) {
+          if (clipRange.endFrame === nextStartFrame) continue;
+          nextStartFrame = clipRange.endFrame;
+          changed = true;
+        }
+      }
+    }
+
+    return timelineFrameIndexToTime(nextStartFrame, safeFrameRate);
+  }
+
   let nextStart = Math.max(0, startTime);
   const trackClips = allClips
     .filter((clip) => clip.trackId === trackId && !excludeClipIds.has(clip.id))
@@ -232,22 +244,33 @@ function findNextNonOverlappingStart(
   return nextStart;
 }
 
+interface SafeClipStartOptions {
+  excludeClipIds?: Set<string>;
+  frameRate?: number;
+}
+
 export function withSafeClipStart(
   allClips: Clip[],
   clip: Clip,
   startTime: number = clip.startTime,
-  excludeClipIds: Set<string> = new Set()
+  options: SafeClipStartOptions = {}
 ): Clip {
+  const excludeClipIds = options.excludeClipIds ?? new Set<string>();
+  const safeFrameRate = normalizeOverlapFrameRate(options.frameRate ?? Number.NaN);
   const safeStartTime = findNextNonOverlappingStart(
     allClips,
     clip.trackId,
     startTime,
     clip.duration,
-    excludeClipIds
+    excludeClipIds,
+    safeFrameRate ?? undefined
   );
+  const alignedStartTime = safeFrameRate
+    ? alignTimelineTimeToFrame(safeStartTime, safeFrameRate)
+    : safeStartTime;
   return {
     ...clip,
-    startTime: safeStartTime,
+    startTime: alignedStartTime,
   };
 }
 

@@ -341,6 +341,19 @@ interface Translations {
   razorDesc: string;
   mask: string;
   maskDesc: string;
+  videoInpaint: string;
+  videoInpaintDescription: string;
+  videoInpaintSelectVideoClip: string;
+  videoInpaintSelectMask: string;
+  videoInpaintUnsupportedTransform: string;
+  videoInpaintClipTooLong: string;
+  videoInpaintPreparing: string;
+  videoInpaintLoadingModel: string;
+  videoInpaintProcessing: string;
+  videoInpaintEncoding: string;
+  videoInpaintApplying: string;
+  videoInpaintCompleted: string;
+  videoInpaintFailed: string;
   paintMask: string;
   eraseMask: string;
   rectangleMask: string;
@@ -729,6 +742,19 @@ const translations: Record<Language, Translations> = {
     razorDesc: "커서 위치에서 클립 분할",
     mask: "마스크",
     maskDesc: "클립에 마스크 그리기",
+    videoInpaint: "AI 얼룩 제거",
+    videoInpaintDescription: "AI 인페인트 도구로 영역을 칠해 프레임 단위 복원",
+    videoInpaintSelectVideoClip: "인페인트할 비디오 클립 1개를 선택하세요.",
+    videoInpaintSelectMask: "AI 인페인트 도구에서 지울 영역을 먼저 칠해 주세요.",
+    videoInpaintUnsupportedTransform: "현재 클립 변형 상태는 인페인트에 아직 지원되지 않습니다.",
+    videoInpaintClipTooLong: "클립 길이가 너무 깁니다. 트림으로 240프레임 이하로 줄여주세요.",
+    videoInpaintPreparing: "인페인트 준비 중...",
+    videoInpaintLoadingModel: "MI-GAN 모델 로딩 중...",
+    videoInpaintProcessing: "프레임 인페인트 중...",
+    videoInpaintEncoding: "결과 비디오 인코딩 중...",
+    videoInpaintApplying: "클립 적용 중...",
+    videoInpaintCompleted: "AI 인페인트가 완료되었습니다.",
+    videoInpaintFailed: "AI 인페인트 실패",
     paintMask: "마스크 칠하기",
     eraseMask: "마스크 지우기",
     rectangleMask: "사각형 마스크",
@@ -1115,6 +1141,19 @@ const translations: Record<Language, Translations> = {
     razorDesc: "Split clip at cursor position",
     mask: "Mask",
     maskDesc: "Draw mask on clip",
+    videoInpaint: "AI Inpaint",
+    videoInpaintDescription: "Paint an AI inpaint region and restore per frame with MI-GAN",
+    videoInpaintSelectVideoClip: "Select one video clip to inpaint.",
+    videoInpaintSelectMask: "Paint the AI inpaint region over the stain first.",
+    videoInpaintUnsupportedTransform: "This clip transform is not supported for inpaint yet.",
+    videoInpaintClipTooLong: "Clip is too long. Trim it to 240 frames or less first.",
+    videoInpaintPreparing: "Preparing inpaint...",
+    videoInpaintLoadingModel: "Loading MI-GAN model...",
+    videoInpaintProcessing: "Inpainting frames...",
+    videoInpaintEncoding: "Encoding output video...",
+    videoInpaintApplying: "Applying result clip...",
+    videoInpaintCompleted: "AI inpaint completed.",
+    videoInpaintFailed: "AI inpaint failed",
     paintMask: "Paint mask",
     eraseMask: "Erase mask",
     rectangleMask: "Rectangle mask",

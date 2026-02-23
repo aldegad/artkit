@@ -50,15 +50,34 @@ import {
   resetPlaybackPerfStatsWindow,
   countActiveVisualLayersAtTime,
 } from "./previewPlaybackStats";
+import {
+  drawDab as drawBrushDab,
+  drawLine as drawBrushLine,
+  eraseDabLinear,
+  eraseLineLinear,
+  resetEraseAlphaCarry,
+  resetPaintAlphaCarry,
+} from "@/shared/utils/brushEngine";
 
 interface PreviewCanvasProps {
   className?: string;
 }
 
 const SAMPLE_FRAME_EPSILON = 1e-6;
+const INPAINT_BRUSH_SIZE = 44;
+const INPAINT_BRUSH_HARDNESS = 80;
+const INPAINT_STROKE_SPACING = Math.max(1, INPAINT_BRUSH_SIZE * 0.35);
+type InpaintBrushMode = "paint" | "erase";
 
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
-  const { previewCanvasRef, previewContainerRef, previewViewportRef, videoElementsRef, audioElementsRef } = useVideoRefs();
+  const {
+    previewCanvasRef,
+    previewContainerRef,
+    previewViewportRef,
+    videoElementsRef,
+    audioElementsRef,
+    inpaintMaskCanvasRef,
+  } = useVideoRefs();
   const {
     playback,
     project,
@@ -87,6 +106,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
+  const [inpaintBrushMode, setInpaintBrushMode] = useState<InpaintBrushMode>("paint");
+  const inpaintStrokeActiveRef = useRef(false);
+  const inpaintLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const inpaintStrokeModeRef = useRef<InpaintBrushMode>("paint");
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
   const previewPerf = previewPerfRef.current;
   previewPerf.preRenderEnabled = previewPreRenderEnabled;
@@ -100,6 +123,16 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     cancelAnimationFrame(renderRequestRef.current);
     renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
   }, []);
+
+  useEffect(() => {
+    const handleInpaintRegionUpdate = () => {
+      scheduleRender();
+    };
+    window.addEventListener("artkit:inpaint-region-updated", handleInpaintRegionUpdate);
+    return () => {
+      window.removeEventListener("artkit:inpaint-region-updated", handleInpaintRegionUpdate);
+    };
+  }, [scheduleRender]);
 
   // Mask
   const {
@@ -124,6 +157,41 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const isHandTool = toolMode === "hand";
   const isZoomTool = toolMode === "zoom";
   const isHandMode = isHandTool || isSpacePanning;
+  const isInpaintMode = toolMode === "inpaint";
+
+  const ensureInpaintMaskCanvas = useCallback((): HTMLCanvasElement | null => {
+    const targetWidth = Math.max(1, Math.floor(project.canvasSize.width));
+    const targetHeight = Math.max(1, Math.floor(project.canvasSize.height));
+    if (targetWidth <= 0 || targetHeight <= 0) return null;
+
+    let canvas = inpaintMaskCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      inpaintMaskCanvasRef.current = canvas;
+      return canvas;
+    }
+
+    if (canvas.width === targetWidth && canvas.height === targetHeight) {
+      return canvas;
+    }
+
+    const resized = document.createElement("canvas");
+    resized.width = targetWidth;
+    resized.height = targetHeight;
+    const resizedCtx = resized.getContext("2d");
+    if (resizedCtx) {
+      resizedCtx.clearRect(0, 0, targetWidth, targetHeight);
+      resizedCtx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+    }
+    inpaintMaskCanvasRef.current = resized;
+    return resized;
+  }, [inpaintMaskCanvasRef, project.canvasSize.height, project.canvasSize.width]);
+
+  useEffect(() => {
+    ensureInpaintMaskCanvas();
+  }, [ensureInpaintMaskCanvas]);
 
   // Shared viewport hook — fitOnMount auto-calculates baseScale
   const viewport = useCanvasViewport({
@@ -665,6 +733,27 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
     }
 
+    if (isInpaintMode) {
+      const inpaintMaskCanvas = ensureInpaintMaskCanvas();
+      if (inpaintMaskCanvas) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(offsetX, offsetY, previewWidth, previewHeight);
+        ctx.clip();
+        ctx.globalAlpha = 0.38;
+        drawScaledImage(
+          ctx,
+          inpaintMaskCanvas,
+          { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+          { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
+        );
+        ctx.globalCompositeOperation = "source-atop";
+        ctx.fillStyle = "rgba(255, 109, 74, 0.95)";
+        ctx.fillRect(offsetX, offsetY, previewWidth, previewHeight);
+        ctx.restore();
+      }
+    }
+
     // Draw frame border
     ctx.strokeStyle = borderDefault;
     ctx.lineWidth = 1;
@@ -679,6 +768,135 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     getClipAtTime,
     currentTimeRef,
   });
+
+  const getInpaintPointFromClient = useCallback((clientX: number, clientY: number) => {
+    const projectPoint = screenToProject(clientX, clientY, true);
+    if (!projectPoint) return null;
+    return clampToCanvas(projectPoint);
+  }, [screenToProject, clampToCanvas]);
+
+  const drawInpaintDab = useCallback((
+    ctx: CanvasRenderingContext2D,
+    point: { x: number; y: number },
+    mode: InpaintBrushMode
+  ) => {
+    const radius = INPAINT_BRUSH_SIZE / 2;
+    const hardness = INPAINT_BRUSH_HARDNESS / 100;
+    if (mode === "erase") {
+      eraseDabLinear(ctx, {
+        x: point.x,
+        y: point.y,
+        radius,
+        hardness,
+        alpha: 1,
+      });
+      return;
+    }
+
+    drawBrushDab(ctx, {
+      x: point.x,
+      y: point.y,
+      radius,
+      hardness,
+      color: "#ffffff",
+      alpha: 1,
+      isEraser: false,
+    });
+  }, []);
+
+  const drawInpaintLine = useCallback((
+    ctx: CanvasRenderingContext2D,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    mode: InpaintBrushMode
+  ) => {
+    const radius = INPAINT_BRUSH_SIZE / 2;
+    const hardness = INPAINT_BRUSH_HARDNESS / 100;
+    if (mode === "erase") {
+      eraseLineLinear(ctx, {
+        from,
+        to,
+        spacing: INPAINT_STROKE_SPACING,
+        dab: {
+          radius,
+          hardness,
+          alpha: 1,
+        },
+      });
+      return;
+    }
+
+    drawBrushLine(ctx, {
+      from,
+      to,
+      spacing: INPAINT_STROKE_SPACING,
+      dab: {
+        radius,
+        hardness,
+        color: "#ffffff",
+        alpha: 1,
+        isEraser: false,
+      },
+    });
+  }, []);
+
+  const handleInpaintPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>): boolean => {
+    if (!isInpaintMode || e.button !== 0) return false;
+    const point = getInpaintPointFromClient(e.clientX, e.clientY);
+    if (!point) return false;
+
+    const canvas = ensureInpaintMaskCanvas();
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return false;
+
+    const mode: InpaintBrushMode = e.altKey ? "erase" : "paint";
+    inpaintStrokeModeRef.current = mode;
+    setInpaintBrushMode(mode);
+    inpaintStrokeActiveRef.current = true;
+    inpaintLastPointRef.current = point;
+
+    if (mode === "erase") {
+      resetEraseAlphaCarry(ctx);
+    } else {
+      resetPaintAlphaCarry(ctx);
+    }
+    drawInpaintDab(ctx, point, mode);
+    scheduleRender();
+    return true;
+  }, [isInpaintMode, getInpaintPointFromClient, ensureInpaintMaskCanvas, drawInpaintDab, scheduleRender]);
+
+  const handleInpaintPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>): boolean => {
+    if (!isInpaintMode) return false;
+
+    const mode: InpaintBrushMode = e.altKey ? "erase" : "paint";
+    setInpaintBrushMode((prev) => (prev === mode ? prev : mode));
+
+    if (!inpaintStrokeActiveRef.current) {
+      return false;
+    }
+
+    const point = getInpaintPointFromClient(e.clientX, e.clientY);
+    if (!point) return true;
+
+    const canvas = ensureInpaintMaskCanvas();
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return true;
+
+    const strokeMode = inpaintStrokeModeRef.current;
+    if (inpaintLastPointRef.current) {
+      drawInpaintLine(ctx, inpaintLastPointRef.current, point, strokeMode);
+    } else {
+      drawInpaintDab(ctx, point, strokeMode);
+    }
+    inpaintLastPointRef.current = point;
+    scheduleRender();
+    return true;
+  }, [isInpaintMode, getInpaintPointFromClient, ensureInpaintMaskCanvas, drawInpaintLine, drawInpaintDab, scheduleRender]);
+
+  const stopInpaintStroke = useCallback(() => {
+    inpaintStrokeActiveRef.current = false;
+    inpaintLastPointRef.current = null;
+  }, []);
 
   const transformTool = useClipTransformTool({
     clips,
@@ -809,6 +1027,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
+    if (handleInpaintPointerDown(e)) {
+      preventAndCapturePointer(e);
+      return;
+    }
+
     if (isEditingMask && activeTrackId) {
       const handledMask = handleMaskPointerDown(e);
       if (handledMask) {
@@ -839,6 +1062,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isZoomTool,
     zoomAtClientPoint,
     isHandMode,
+    handleInpaintPointerDown,
     isEditingMask,
     activeTrackId,
     handleMaskPointerDown,
@@ -856,13 +1080,17 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       return;
     }
 
-    // Update brush cursor position when editing mask
-    if (isEditingMask) {
+    // Update brush cursor position for mask/inpaint brush tools
+    if (isEditingMask || isInpaintMode) {
       const container = previewContainerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
         setBrushCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
       }
+    }
+
+    if (handleInpaintPointerMove(e)) {
+      return;
     }
 
     if (handleMaskPointerMove(e)) {
@@ -882,10 +1110,22 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
 
     handleClipPointerMove(e);
-  }, [vpUpdatePanDrag, toolMode, isEditingMask, previewContainerRef, transformTool, handleMaskPointerMove, handleCropPointerMove, handleClipPointerMove]);
+  }, [
+    vpUpdatePanDrag,
+    toolMode,
+    isEditingMask,
+    isInpaintMode,
+    previewContainerRef,
+    transformTool,
+    handleInpaintPointerMove,
+    handleMaskPointerMove,
+    handleCropPointerMove,
+    handleClipPointerMove,
+  ]);
 
   const handlePointerUp = useCallback((e?: React.PointerEvent<HTMLCanvasElement>) => {
     stopPanDrag();
+    stopInpaintStroke();
     handleMaskPointerUp();
 
     if (e) {
@@ -894,7 +1134,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     transformTool.handlePointerUp();
     handleClipPointerUp();
     handleCropPointerUp();
-  }, [stopPanDrag, handleMaskPointerUp, transformTool, handleClipPointerUp, handleCropPointerUp]);
+  }, [stopPanDrag, stopInpaintStroke, handleMaskPointerUp, transformTool, handleClipPointerUp, handleCropPointerUp]);
 
   usePreviewPlaybackRenderTick({
     playbackIsPlaying: playback.isPlaying,
@@ -953,6 +1193,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     isPanning: isPanningRef.current,
     isHandMode,
     isEditingMask,
+    isInpaintMode,
     maskDrawShape,
     isZoomTool,
     toolMode,
@@ -962,7 +1203,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     transformCursor: transformTool.cursor,
     isDraggingClip,
   });
-  const brushDisplaySize = brushSettings.size * vpGetEffectiveScale();
+  const brushDisplaySize = (isInpaintMode ? INPAINT_BRUSH_SIZE : brushSettings.size) * vpGetEffectiveScale();
+  const brushHardness = isInpaintMode ? INPAINT_BRUSH_HARDNESS : brushSettings.hardness;
+  const brushMode = isInpaintMode ? inpaintBrushMode : brushSettings.mode;
 
   return (
     <div
@@ -992,11 +1235,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       />
       <PreviewCanvasOverlays
         isEditingMask={isEditingMask}
+        isInpaintMode={isInpaintMode}
         maskDrawShape={maskDrawShape}
         brushCursor={brushCursor}
         brushDisplaySize={brushDisplaySize}
-        brushHardness={brushSettings.hardness}
-        brushMode={brushSettings.mode}
+        brushHardness={brushHardness}
+        brushMode={brushMode}
         draftMode={previewPerf.draftMode}
         preRenderEnabled={previewPerf.preRenderEnabled}
         zoomPercent={zoomPercent}

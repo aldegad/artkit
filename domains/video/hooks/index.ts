@@ -25,6 +25,7 @@ export { usePreviewViewportState } from "./usePreviewViewportState";
 export { useVideoToolModeHandlers } from "./useVideoToolModeHandlers";
 export { useGapInterpolationActions, analyzeGapInterpolationSelection } from "./useGapInterpolationActions";
 export { useMaskRestoreSync } from "./useMaskRestoreSync";
+export { useVideoInpaintActions } from "./useVideoInpaintActions";
 export type {
   ExportProgressState,
   VideoExportFormat,

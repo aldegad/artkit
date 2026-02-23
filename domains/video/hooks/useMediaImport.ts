@@ -8,6 +8,7 @@ import {
   SUPPORTED_AUDIO_FORMATS,
 } from "../constants";
 import { saveMediaBlob } from "../utils/mediaStorage";
+import { alignTimelineTimeToFrame, normalizeTimelineFrameRate } from "../utils/timelineFrame";
 
 type MediaType = "video" | "image" | "audio";
 
@@ -74,7 +75,9 @@ export function useMediaImport() {
       let targetVideoTrackId = tracks.find((track) => track.type === "video")?.id || null;
       let targetAudioTrackId = tracks.find((track) => track.type === "audio")?.id || null;
       const hasExistingVisualClip = clips.some((clip) => clip.type !== "audio");
-      let insertTime = playback.currentTime;
+      const frameRate = normalizeTimelineFrameRate(project.frameRate);
+      const alignInsertTime = (time: number): number => alignTimelineTimeToFrame(Math.max(0, time), frameRate);
+      let insertTime = alignInsertTime(playback.currentTime);
       let visualImportedCount = 0;
 
       for (const file of supportedFiles) {
@@ -121,7 +124,7 @@ export function useMediaImport() {
             url,
             metadata.duration,
             metadata.size,
-            Math.max(0, insertTime),
+            alignInsertTime(insertTime),
             isFirstVisual ? metadata.size : undefined
           );
 
@@ -131,7 +134,7 @@ export function useMediaImport() {
             console.error("Failed to save media blob:", error);
           }
 
-          insertTime += metadata.duration;
+          insertTime = alignInsertTime(insertTime + metadata.duration);
           visualImportedCount += 1;
           continue;
         }
@@ -163,7 +166,7 @@ export function useMediaImport() {
             targetAudioTrackId,
             url,
             metadata.duration,
-            Math.max(0, insertTime),
+            alignInsertTime(insertTime),
             { ...project.canvasSize }
           );
 
@@ -173,7 +176,7 @@ export function useMediaImport() {
             console.error("Failed to save media blob:", error);
           }
 
-          insertTime += metadata.duration;
+          insertTime = alignInsertTime(insertTime + metadata.duration);
           continue;
         }
 
@@ -213,7 +216,7 @@ export function useMediaImport() {
             targetVideoTrackId,
             url,
             size,
-            Math.max(0, insertTime),
+            alignInsertTime(insertTime),
             5,
             isFirstVisual ? size : undefined
           );
@@ -224,7 +227,7 @@ export function useMediaImport() {
             console.error("Failed to save media blob:", error);
           }
 
-          insertTime += 5;
+          insertTime = alignInsertTime(insertTime + 5);
           visualImportedCount += 1;
         }
       }

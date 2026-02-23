@@ -11,6 +11,7 @@ import {
   RazorToolIcon,
   MaskToolIcon,
   MagicWandIcon,
+  BackgroundRemovalIcon,
   DeleteIcon,
 } from "@/shared/components/icons";
 import { VideoToolMode } from "../types";
@@ -30,6 +31,10 @@ interface VideoToolbarProps {
   onInterpolateGap?: () => void;
   canInterpolateGap?: boolean;
   isInterpolatingGap?: boolean;
+  onInpaintClip?: () => void;
+  canInpaintClip?: boolean;
+  isInpaintingClip?: boolean;
+  onClearInpaintRegion?: () => void;
   onDelete?: () => void;
   hasSelection?: boolean;
   previewZoom: number;
@@ -54,6 +59,9 @@ interface VideoToolbarProps {
     maskDesc: string;
     frameInterpolation: string;
     frameInterpolationDescription: string;
+    videoInpaint: string;
+    videoInpaintDescription: string;
+    clearMask: string;
     delete: string;
     fitToScreen: string;
   };
@@ -65,6 +73,10 @@ export default function VideoToolbar({
   onInterpolateGap,
   canInterpolateGap,
   isInterpolatingGap,
+  onInpaintClip,
+  canInpaintClip,
+  isInpaintingClip,
+  onClearInpaintRegion,
   onDelete,
   hasSelection,
   previewZoom,
@@ -112,6 +124,14 @@ export default function VideoToolbar({
       shortcut: "M",
       keys: ["Draw: Paint mask", "Alt+Draw: Erase mask"],
       icon: <MaskToolIcon />,
+    },
+    {
+      mode: "inpaint",
+      name: t.videoInpaint,
+      description: t.videoInpaintDescription,
+      shortcut: "I",
+      keys: ["Draw: Paint area", "Alt+Draw: Erase area"],
+      icon: <BackgroundRemovalIcon />,
     },
     {
       mode: "hand",
@@ -192,6 +212,44 @@ export default function VideoToolbar({
           <MagicWandIcon />
         </button>
       </Tooltip>
+
+      {toolMode === "inpaint" && (
+        <>
+          {/* AI clip inpaint */}
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.videoInpaint}</span>
+                <span className="text-text-tertiary text-[11px]">{t.videoInpaintDescription}</span>
+              </div>
+            }
+          >
+            <button
+              onClick={onInpaintClip}
+              disabled={!canInpaintClip || isInpaintingClip}
+              className={`p-1.5 rounded transition-colors ${
+                canInpaintClip
+                  ? isInpaintingClip
+                    ? "bg-accent-primary text-white cursor-wait"
+                    : "hover:bg-interactive-hover text-text-secondary hover:text-text-primary"
+                  : "text-text-quaternary cursor-not-allowed"
+              }`}
+            >
+              <MagicWandIcon />
+            </button>
+          </Tooltip>
+
+          <Tooltip content={t.clearMask}>
+            <button
+              onClick={onClearInpaintRegion}
+              disabled={!onClearInpaintRegion}
+              className="p-1.5 rounded transition-colors hover:bg-interactive-hover text-text-secondary hover:text-text-primary"
+            >
+              <DeleteIcon />
+            </button>
+          </Tooltip>
+        </>
+      )}
 
       {/* Separator */}
       <div className="w-px bg-border-default mx-0.5" />

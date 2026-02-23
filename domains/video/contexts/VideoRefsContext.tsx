@@ -44,6 +44,8 @@ interface VideoRefsContextValue {
 
   // Mask editing canvas (offscreen)
   maskCanvasRef: RefObject<HTMLCanvasElement | null>;
+  // AI inpaint region canvas (offscreen, separate from mask tool)
+  inpaintMaskCanvasRef: RefObject<HTMLCanvasElement | null>;
 
   // Compositing canvas (offscreen for layer compositing)
   compositingCanvasRef: RefObject<HTMLCanvasElement | null>;
@@ -64,6 +66,7 @@ export function VideoRefsProvider({ children }: { children: ReactNode }) {
   const timelineCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const inpaintMaskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const compositingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -75,6 +78,7 @@ export function VideoRefsProvider({ children }: { children: ReactNode }) {
     timelineCanvasRef,
     timelineContainerRef,
     maskCanvasRef,
+    inpaintMaskCanvasRef,
     compositingCanvasRef,
     videoElementsRef,
     audioElementsRef,

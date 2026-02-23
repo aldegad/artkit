@@ -29,6 +29,7 @@ export const VIDEO_TOOL_SHORTCUTS: ToolShortcutMap<VideoToolMode> = {
   KeyR: "crop",
   KeyC: "razor",
   KeyM: "mask",
+  KeyI: "inpaint",
 };
 
 export const VIDEO_TRANSFORM_SHORTCUTS = {

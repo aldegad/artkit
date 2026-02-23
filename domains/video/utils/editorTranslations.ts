@@ -40,6 +40,9 @@ interface VideoEditorTranslationSource {
   maskDesc?: string;
   frameInterpolation?: string;
   frameInterpolationDescription?: string;
+  videoInpaint?: string;
+  videoInpaintDescription?: string;
+  clearMask?: string;
 }
 
 export function createVideoMenuTranslations(t: VideoEditorTranslationSource) {
@@ -92,6 +95,9 @@ export function createVideoToolbarTranslations(t: VideoEditorTranslationSource) 
     maskDesc: t.maskDesc ?? "",
     frameInterpolation: t.frameInterpolation ?? "",
     frameInterpolationDescription: t.frameInterpolationDescription ?? "",
+    videoInpaint: t.videoInpaint ?? "",
+    videoInpaintDescription: t.videoInpaintDescription ?? "",
+    clearMask: t.clearMask ?? "",
     delete: t.delete ?? "",
     fitToScreen: t.fitToScreen ?? "",
   };
