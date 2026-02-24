@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback } from "react";
 
-type Shape = "circle" | "triangle" | "square" | "diamond";
+type IconType = "image" | "video" | "sprite" | "sound" | "converter" | "icons";
 
 interface Particle {
   x: number;
@@ -11,7 +11,7 @@ interface Particle {
   vy: number;
   size: number;
   baseSize: number;
-  shape: Shape;
+  icon: IconType;
   rotation: number;
   rotationSpeed: number;
   opacity: number;
@@ -54,15 +54,15 @@ function readThemeColors(): ThemeColors {
   return { dot, dotR, dotG, dotB, accent, accentR, accentG, accentB, bg };
 }
 
-const SHAPES: Shape[] = ["circle", "triangle", "square", "diamond"];
+const ICON_TYPES: IconType[] = ["image", "video", "sprite", "sound", "converter", "icons"];
 const MOUSE_RADIUS = 150;
 const CONNECT_RADIUS = 120;
 const TRAIL_MAX_AGE = 30;
 const TRAIL_SPAWN_INTERVAL = 2;
 
 function createParticle(w: number, h: number): Particle {
-  const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-  const baseSize = 2 + Math.random() * 4;
+  const icon = ICON_TYPES[Math.floor(Math.random() * ICON_TYPES.length)];
+  const baseSize = 4 + Math.random() * 5;
   const baseOpacity = 0.15 + Math.random() * 0.35;
   return {
     x: Math.random() * w,
@@ -71,7 +71,7 @@ function createParticle(w: number, h: number): Particle {
     vy: (Math.random() - 0.5) * 0.4,
     size: baseSize,
     baseSize,
-    shape,
+    icon,
     rotation: Math.random() * Math.PI * 2,
     rotationSpeed: (Math.random() - 0.5) * 0.02,
     opacity: baseOpacity,
@@ -79,9 +79,9 @@ function createParticle(w: number, h: number): Particle {
   };
 }
 
-function drawShape(
+function drawIcon(
   ctx: CanvasRenderingContext2D,
-  shape: Shape,
+  icon: IconType,
   x: number,
   y: number,
   size: number,
@@ -91,32 +91,121 @@ function drawShape(
   ctx.translate(x, y);
   ctx.rotate(rotation);
 
-  switch (shape) {
-    case "circle":
+  const s = size;
+  const lw = Math.max(0.7, s * 0.16);
+  ctx.lineWidth = lw;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = ctx.fillStyle;
+
+  switch (icon) {
+    case "image": {
+      // Frame
       ctx.beginPath();
-      ctx.arc(0, 0, size, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.rect(-s, -s, 2 * s, 2 * s);
+      ctx.stroke();
+      // Sun
+      ctx.beginPath();
+      ctx.arc(-s * 0.4, -s * 0.4, s * 0.22, 0, Math.PI * 2);
+      ctx.stroke();
+      // Mountain
+      ctx.beginPath();
+      ctx.moveTo(s, s * 0.3);
+      ctx.lineTo(s * 0.1, -s * 0.35);
+      ctx.lineTo(-s, s);
+      ctx.stroke();
       break;
-    case "triangle":
+    }
+    case "video": {
+      // Screen
       ctx.beginPath();
-      ctx.moveTo(0, -size);
-      ctx.lineTo(size * 0.866, size * 0.5);
-      ctx.lineTo(-size * 0.866, size * 0.5);
+      ctx.rect(-s, -s * 0.75, 2 * s, 1.5 * s);
+      ctx.stroke();
+      // Play triangle
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.3, -s * 0.35);
+      ctx.lineTo(-s * 0.3, s * 0.35);
+      ctx.lineTo(s * 0.45, 0);
       ctx.closePath();
-      ctx.fill();
+      ctx.stroke();
       break;
-    case "square":
-      ctx.fillRect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
-      break;
-    case "diamond":
+    }
+    case "sprite": {
+      // Outer frame
       ctx.beginPath();
-      ctx.moveTo(0, -size);
-      ctx.lineTo(size * 0.7, 0);
-      ctx.lineTo(0, size);
-      ctx.lineTo(-size * 0.7, 0);
-      ctx.closePath();
-      ctx.fill();
+      ctx.rect(-s, -s * 0.85, 2 * s, 1.7 * s);
+      ctx.stroke();
+      // Vertical dividers
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.33, -s * 0.85);
+      ctx.lineTo(-s * 0.33, s * 0.85);
+      ctx.moveTo(s * 0.33, -s * 0.85);
+      ctx.lineTo(s * 0.33, s * 0.85);
+      // Horizontal divider
+      ctx.moveTo(-s, 0);
+      ctx.lineTo(s, 0);
+      ctx.stroke();
       break;
+    }
+    case "sound": {
+      // Waveform bars
+      const heights = [0.4, 0.75, 1.0, 0.6, 0.85, 0.5];
+      const gap = (2 * s) / (heights.length + 1);
+      for (let i = 0; i < heights.length; i++) {
+        const bx = -s + gap * (i + 1);
+        const half = s * heights[i];
+        ctx.beginPath();
+        ctx.moveTo(bx, -half);
+        ctx.lineTo(bx, half);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "converter": {
+      // Top arrow (left to right)
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.7, -s * 0.35);
+      ctx.lineTo(s * 0.7, -s * 0.35);
+      ctx.moveTo(s * 0.3, -s * 0.7);
+      ctx.lineTo(s * 0.7, -s * 0.35);
+      ctx.lineTo(s * 0.3, 0);
+      ctx.stroke();
+      // Bottom arrow (right to left)
+      ctx.beginPath();
+      ctx.moveTo(s * 0.7, s * 0.35);
+      ctx.lineTo(-s * 0.7, s * 0.35);
+      ctx.moveTo(-s * 0.3, 0);
+      ctx.lineTo(-s * 0.7, s * 0.35);
+      ctx.lineTo(-s * 0.3, s * 0.7);
+      ctx.stroke();
+      break;
+    }
+    case "icons": {
+      // Circle (top-left)
+      ctx.beginPath();
+      ctx.arc(-s * 0.45, -s * 0.45, s * 0.32, 0, Math.PI * 2);
+      ctx.stroke();
+      // Triangle (top-right)
+      ctx.beginPath();
+      ctx.moveTo(s * 0.45, -s * 0.75);
+      ctx.lineTo(s * 0.75, -s * 0.15);
+      ctx.lineTo(s * 0.15, -s * 0.15);
+      ctx.closePath();
+      ctx.stroke();
+      // Square (bottom-left)
+      ctx.beginPath();
+      ctx.rect(-s * 0.75, s * 0.15, s * 0.6, s * 0.6);
+      ctx.stroke();
+      // Diamond (bottom-right)
+      ctx.beginPath();
+      ctx.moveTo(s * 0.45, s * 0.15);
+      ctx.lineTo(s * 0.75, s * 0.45);
+      ctx.lineTo(s * 0.45, s * 0.75);
+      ctx.lineTo(s * 0.15, s * 0.45);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    }
   }
 
   ctx.restore();
@@ -314,7 +403,7 @@ export default function InteractiveDotGrid() {
         }
       }
 
-      // Draw particles
+      // Draw particles as editor icons
       for (const p of particles) {
         const isNearMouse =
           mouse.active &&
@@ -338,7 +427,7 @@ export default function InteractiveDotGrid() {
           ctx.fillStyle = `rgba(${colors.dotR}, ${colors.dotG}, ${colors.dotB}, ${p.opacity})`;
         }
 
-        drawShape(ctx, p.shape, p.x, p.y, p.size, p.rotation);
+        drawIcon(ctx, p.icon, p.x, p.y, p.size, p.rotation);
       }
 
       animRef.current = requestAnimationFrame(animate);
