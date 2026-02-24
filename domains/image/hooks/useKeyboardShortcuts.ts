@@ -59,6 +59,8 @@ interface UseKeyboardShortcutsOptions {
 
   // Dimensions helper
   getDisplayDimensions: () => { width: number; height: number };
+  loadImageFile?: (file: File) => void;
+  addImageLayer?: (imageSrc: string, name?: string) => void;
 
   // Tool mode change handler (optional, uses context setToolMode if not provided)
   onToolModeChange?: (mode: EditorToolMode) => void;
@@ -103,6 +105,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     isTransformActive = false,
     cancelTransform,
     getDisplayDimensions,
+    loadImageFile,
+    addImageLayer,
     saveToHistory,
     onToolModeChange,
     enabled = true,
@@ -115,6 +119,85 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
 
   useEffect(() => {
     if (!enabled) return;
+
+    const isInteractiveTarget = (target: EventTarget | null): boolean => {
+      const element = target as HTMLElement | null;
+      if (!element) return false;
+      return (
+        element.tagName === "INPUT" ||
+        element.tagName === "SELECT" ||
+        element.tagName === "TEXTAREA" ||
+        element.isContentEditable
+      );
+    };
+
+    const pasteFromInternalClipboard = () => {
+      if (!clipboardRef.current) return;
+
+      const editCanvas = editCanvasRef.current;
+      const ctx = editCanvas?.getContext("2d");
+      if (!editCanvas || !ctx) return;
+
+      const clipData = clipboardRef.current;
+      const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
+
+      saveToHistory();
+
+      // Create temp canvas to draw clipboard data
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = clipData.width;
+      tempCanvas.height = clipData.height;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return;
+      tempCtx.putImageData(clipData, 0, 0);
+
+      // Paste at center or at current selection position
+      const pasteX = Math.round(selection ? selection.x : (displayWidth - clipData.width) / 2);
+      const pasteY = Math.round(selection ? selection.y : (displayHeight - clipData.height) / 2);
+      const layerPosX = activeLayerPosition?.x || 0;
+      const layerPosY = activeLayerPosition?.y || 0;
+      const localPasteX = pasteX - layerPosX;
+      const localPasteY = pasteY - layerPosY;
+
+      ctx.drawImage(tempCanvas, localPasteX, localPasteY);
+      drawIntoLayerAlphaMask(editCanvas, tempCanvas, localPasteX, localPasteY);
+      (floatingLayerRef as { current: FloatingLayer | null }).current = null;
+
+      // Update selection to new position
+      setSelection({
+        x: pasteX,
+        y: pasteY,
+        width: clipData.width,
+        height: clipData.height,
+      });
+      setSelectionMask(null);
+    };
+
+    const writeImageDataToSystemClipboard = async (imageData: ImageData): Promise<void> => {
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return;
+
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = imageData.width;
+      tempCanvas.height = imageData.height;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return;
+      tempCtx.putImageData(imageData, 0, 0);
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        tempCanvas.toBlob((result) => resolve(result), "image/png");
+      });
+      if (!blob) return;
+
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [blob.type || "image/png"]: blob,
+          }),
+        ]);
+      } catch {
+        // Ignore clipboard write failures (permission/browser constraints).
+      }
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreKeyEvent(e)) return;
@@ -209,48 +292,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         imageData = applySelectionMaskToImageData(imageData, selection, selectionMask);
         imageData = applyFeatherToImageData(imageData, selectionFeather);
         (clipboardRef as { current: ImageData | null }).current = imageData;
-      }
-
-      // Paste (Cmd+V)
-      if (matchesShortcut(e, CLIPBOARD_SHORTCUTS.paste) && clipboardRef.current) {
-        e.preventDefault();
-        const editCanvas = editCanvasRef.current;
-        const ctx = editCanvas?.getContext("2d");
-        if (!editCanvas || !ctx) return;
-
-        const clipData = clipboardRef.current;
-        const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-
-        saveToHistory();
-
-        // Create temp canvas to draw clipboard data
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = clipData.width;
-        tempCanvas.height = clipData.height;
-        const tempCtx = tempCanvas.getContext("2d");
-        if (!tempCtx) return;
-        tempCtx.putImageData(clipData, 0, 0);
-
-        // Paste at center or at current selection position
-        const pasteX = Math.round(selection ? selection.x : (displayWidth - clipData.width) / 2);
-        const pasteY = Math.round(selection ? selection.y : (displayHeight - clipData.height) / 2);
-        const layerPosX = activeLayerPosition?.x || 0;
-        const layerPosY = activeLayerPosition?.y || 0;
-        const localPasteX = pasteX - layerPosX;
-        const localPasteY = pasteY - layerPosY;
-
-        ctx.drawImage(tempCanvas, localPasteX, localPasteY);
-        drawIntoLayerAlphaMask(editCanvas, tempCanvas, localPasteX, localPasteY);
-        (floatingLayerRef as { current: FloatingLayer | null }).current = null;
-
-        // Update selection to new position
-        setSelection({
-          x: pasteX,
-          y: pasteY,
-          width: clipData.width,
-          height: clipData.height,
-        });
-        setSelectionMask(null);
+        void writeImageDataToSystemClipboard(imageData);
       }
 
       // Delete selection content (Delete / Backspace)
@@ -270,6 +312,40 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
       }
     };
 
+    const handlePaste = (e: ClipboardEvent) => {
+      if (isInteractiveTarget(e.target)) return;
+
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+
+      const imageItem = Array.from(clipboardData.items).find((item) => item.type.startsWith("image/"));
+      if (imageItem) {
+        const imageFile = imageItem.getAsFile();
+        if (!imageFile) return;
+
+        e.preventDefault();
+        if (loadImageFile) {
+          loadImageFile(imageFile);
+          return;
+        }
+        if (!addImageLayer) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === "string") {
+            addImageLayer(reader.result);
+          }
+        };
+        reader.readAsDataURL(imageFile);
+        return;
+      }
+
+      if (clipboardRef.current) {
+        e.preventDefault();
+        pasteFromInternalClipboard();
+      }
+    };
+
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === SPECIAL_SHORTCUTS.temporaryHand) {
         setIsSpacePressed(false);
@@ -278,10 +354,12 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("paste", handlePaste);
     window.addEventListener("keyup", handleKeyUp);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("paste", handlePaste);
       window.removeEventListener("keyup", handleKeyUp);
     };
   }, [
@@ -306,6 +384,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     cancelTransform,
     editCanvasRef,
     getDisplayDimensions,
+    loadImageFile,
+    addImageLayer,
     saveToHistory,
     activeLayerPosition,
     isProjectListOpen,

@@ -560,6 +560,22 @@ export function useImageEditorController() {
     requestRender();
   }, [redo, requestRender]);
 
+  const { loadImageFile, loadImageFiles, handleFileSelect, handleDrop, handleDragOver } = useImageImport({
+    layersCount: layers.length,
+    addImageLayer,
+    layerCanvasesRef,
+    editCanvasRef,
+    imageRef,
+    setLayers,
+    setActiveLayerId,
+    setCanvasSize,
+    setRotation,
+    setCropArea,
+    setZoom,
+    setPan,
+    setStampSource,
+  });
+
   historyAdapterRef.current = historyAdapter;
 
   useKeyboardShortcuts({
@@ -578,6 +594,8 @@ export function useImageEditorController() {
     isTransformActive: transformState.isActive,
     cancelTransform,
     getDisplayDimensions,
+    loadImageFile,
+    addImageLayer,
     saveToHistory,
     activeLayerPosition,
     onToolModeChange: handleToolModeChange,
@@ -616,22 +634,6 @@ export function useImageEditorController() {
     applyTransform,
     cancelTransform,
     previousToolModeRef,
-  });
-
-  const { loadImageFile, loadImageFiles, handleFileSelect, handleDrop, handleDragOver } = useImageImport({
-    layersCount: layers.length,
-    addImageLayer,
-    layerCanvasesRef,
-    editCanvasRef,
-    imageRef,
-    setLayers,
-    setActiveLayerId,
-    setCanvasSize,
-    setRotation,
-    setCropArea,
-    setZoom,
-    setPan,
-    setStampSource,
   });
 
   useEditorPanelRegistration();
