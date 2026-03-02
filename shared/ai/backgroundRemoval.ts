@@ -2,6 +2,7 @@ import {
   BACKGROUND_REMOVAL_MODELS,
   DEFAULT_BACKGROUND_REMOVAL_MODEL,
   getBackgroundRemovalErrorMessage,
+  getBackgroundRemovalRawErrorMessage,
   removeBackground as removeBackgroundWithModel,
   removeBackgroundFromCanvas as removeBackgroundFromCanvasWithModel,
   type BackgroundRemovalModel,
@@ -43,5 +44,6 @@ export {
   BACKGROUND_REMOVAL_MODELS,
   DEFAULT_BACKGROUND_REMOVAL_MODEL,
   getBackgroundRemovalErrorMessage,
+  getBackgroundRemovalRawErrorMessage,
 };
 export type { BackgroundRemovalModel, BackgroundRemovalOptions, BackgroundRemovalQuality };
