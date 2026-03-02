@@ -202,6 +202,7 @@ export function useImageEditorController() {
     setCropSize,
     expandToSquare,
     fitToSquare,
+    fitToObjectBounds,
     getCropHandleAtPosition,
     moveCrop,
     resizeCrop,
@@ -829,6 +830,23 @@ export function useImageEditorController() {
   const canRedoNow = canRedo();
   const canResample = hasLayers && canvasSize.width > 0 && canvasSize.height > 0;
   const canResizeSelectedLayersToSmallest = selectedLayerIds.length > 1;
+  const activeLayerBounds = useMemo(() => {
+    if (!activeLayerId) return null;
+    const activeLayer = layers.find((layer) => layer.id === activeLayerId);
+    if (!activeLayer) return null;
+
+    const activeCanvas = layerCanvasesRef.current.get(activeLayerId);
+    const width = activeCanvas?.width || activeLayer.originalSize?.width || 0;
+    const height = activeCanvas?.height || activeLayer.originalSize?.height || 0;
+    if (width <= 0 || height <= 0) return null;
+
+    return {
+      x: activeLayer.position?.x || 0,
+      y: activeLayer.position?.y || 0,
+      width,
+      height,
+    };
+  }, [activeLayerId, layers, layerCanvasesRef]);
 
   const {
     isResampling,
@@ -964,15 +982,15 @@ export function useImageEditorController() {
       aspectRatio,
       setAspectRatio,
       cropArea,
+      activeLayerBounds,
       selectAll: selectAllCrop,
       clearCrop,
-      canvasExpandMode,
-      setCanvasExpandMode,
       lockAspect,
       setLockAspect,
       setCropSize,
       expandToSquare,
       fitToSquare,
+      fitToObjectBounds,
       onApplyCrop: handleApplyCrop,
       isTransformActive: transformState.isActive,
       transformAspectRatio,

@@ -4,7 +4,7 @@ import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSub
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
 import { Select, Scrollbar, NumberScrubber } from "../../../../shared/components";
-import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, CanvasExpandIcon } from "@/shared/components/icons";
+import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon } from "@/shared/components/icons";
 import { DeleteIcon } from "@/shared/components/icons";
 
 // ============================================
@@ -42,16 +42,16 @@ export interface EditorToolOptionsProps {
   aspectRatio: AspectRatio;
   setAspectRatio: React.Dispatch<React.SetStateAction<AspectRatio>>;
   cropArea: CropArea | null;
+  activeLayerBounds: CropArea | null;
   selectAll: () => void;
   clearCrop: () => void;
   // Extended crop props
-  canvasExpandMode: boolean;
-  setCanvasExpandMode: React.Dispatch<React.SetStateAction<boolean>>;
   lockAspect: boolean;
   setLockAspect: React.Dispatch<React.SetStateAction<boolean>>;
   setCropSize: (width: number, height: number) => void;
   expandToSquare: () => void;
   fitToSquare: () => void;
+  fitToObjectBounds: (bounds: CropArea | null) => void;
   onApplyCrop: () => void;
   // Tool name for default display
   currentToolName?: string;
@@ -113,15 +113,15 @@ export function EditorToolOptions({
   aspectRatio,
   setAspectRatio,
   cropArea,
+  activeLayerBounds,
   selectAll,
   clearCrop,
-  canvasExpandMode,
-  setCanvasExpandMode,
   lockAspect,
   setLockAspect,
   setCropSize,
   expandToSquare,
   fitToSquare,
+  fitToObjectBounds,
   onApplyCrop,
   currentToolName,
   isTransformActive,
@@ -356,52 +356,41 @@ export function EditorToolOptions({
           {/* Divider */}
           <div className="w-px h-4 bg-border-default" />
 
-          {/* Square buttons */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={expandToSquare}
-              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
-              title="Expand to square (longer side)"
-            >
-              <SquareExpandIcon />
-              <span>Expand</span>
-            </button>
-            <button
-              onClick={fitToSquare}
-              className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
-              title="Fit to square (shorter side)"
-            >
-              <SquareFitIcon />
-              <span>Fit</span>
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="w-px h-4 bg-border-default" />
-
-          {/* Canvas expand mode toggle */}
-          <button
-            onClick={() => setCanvasExpandMode(!canvasExpandMode)}
-            className={`px-1.5 py-0.5 text-xs rounded transition-colors flex items-center gap-0.5 ${
-              canvasExpandMode
-                ? "bg-accent-primary text-white"
-                : "hover:bg-interactive-hover"
-            }`}
-            title={canvasExpandMode ? "Canvas expand mode ON" : "Canvas expand mode OFF"}
-          >
-            <CanvasExpandIcon />
-            <span>Canvas</span>
-          </button>
-
-          {/* Divider */}
-          <div className="w-px h-4 bg-border-default" />
-
-          {/* All, Apply, Clear buttons */}
+          {/* All, Expand/Fit, Object Fit, Apply, Clear buttons */}
           <button
             onClick={selectAll}
             className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors"
           >
             All
+          </button>
+          {aspectRatio !== "free" && (
+            <>
+              <button
+                onClick={expandToSquare}
+                className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
+                title="Cover canvas with selected ratio (can expand outside canvas)"
+              >
+                <SquareExpandIcon />
+                <span>Expand</span>
+              </button>
+              <button
+                onClick={fitToSquare}
+                className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5"
+                title="Contain inside canvas with selected ratio"
+              >
+                <SquareFitIcon />
+                <span>Fit</span>
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => fitToObjectBounds(activeLayerBounds)}
+            disabled={!activeLayerBounds}
+            className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Contain using active layer bounds"
+          >
+            <SquareFitIcon />
+            <span>Object Fit</span>
           </button>
           {cropArea && (
             <>
