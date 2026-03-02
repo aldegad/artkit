@@ -36,6 +36,7 @@ interface UseCropToolReturn {
   setCropSize: (width: number, height: number) => void;
   expandToSquare: () => void;
   fitToSquare: () => void;
+  fitToObjectBounds: (bounds: CropArea | null) => void;
 
   // Crop handle detection
   getCropHandleAtPosition: (
@@ -78,28 +79,56 @@ export function useCropTool(): UseCropToolReturn {
     return ASPECT_RATIO_VALUES[ratio];
   }, []);
 
-  // Select all (entire canvas) with aspect ratio consideration
-  const selectAllCrop = useCallback(() => {
+  const getCanvasBounds = useCallback(() => {
     const { width, height } = getDisplayDimensions();
-    const ratioValue = getAspectRatioValue(aspectRatio);
+    return { x: 0, y: 0, width, height };
+  }, [getDisplayDimensions]);
 
-    if (ratioValue) {
-      let newWidth = width;
-      let newHeight = width / ratioValue;
-
-      if (newHeight > height) {
-        newHeight = height;
-        newWidth = height * ratioValue;
+  const createAspectCropFromBounds = useCallback(
+    (bounds: CropArea, mode: "contain" | "cover"): CropArea => {
+      const ratioValue = getAspectRatioValue(aspectRatio);
+      if (!ratioValue) {
+        return {
+          x: Math.round(bounds.x),
+          y: Math.round(bounds.y),
+          width: Math.round(bounds.width),
+          height: Math.round(bounds.height),
+        };
       }
 
-      const x = Math.round((width - newWidth) / 2);
-      const y = Math.round((height - newHeight) / 2);
+      let width = bounds.width;
+      let height = width / ratioValue;
 
-      setCropArea({ x, y, width: Math.round(newWidth), height: Math.round(newHeight) });
-    } else {
-      setCropArea({ x: 0, y: 0, width, height });
-    }
-  }, [getDisplayDimensions, aspectRatio, getAspectRatioValue]);
+      if (mode === "contain") {
+        if (height > bounds.height) {
+          height = bounds.height;
+          width = height * ratioValue;
+        }
+      } else if (height < bounds.height) {
+        height = bounds.height;
+        width = height * ratioValue;
+      }
+
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
+
+      return {
+        x: Math.round(centerX - width / 2),
+        y: Math.round(centerY - height / 2),
+        width: Math.round(width),
+        height: Math.round(height),
+      };
+    },
+    [aspectRatio, getAspectRatioValue]
+  );
+
+  // Select all (entire canvas) with aspect ratio consideration
+  const selectAllCrop = useCallback(() => {
+    const canvasBounds = getCanvasBounds();
+    const nextCrop = createAspectCropFromBounds(canvasBounds, "contain");
+    setCropArea(nextCrop);
+    setCanvasExpandMode(false);
+  }, [getCanvasBounds, createAspectCropFromBounds]);
 
   // Clear crop selection
   const clearCrop = useCallback(() => {
@@ -145,44 +174,38 @@ export function useCropTool(): UseCropToolReturn {
     [cropArea, getDisplayDimensions, canvasExpandMode]
   );
 
-  // Expand to square (based on longer side)
+  // Expand (cover) to current aspect ratio based on canvas bounds.
   const expandToSquare = useCallback(() => {
-    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const maxSide = Math.max(displayWidth, displayHeight);
+    const canvasBounds = getCanvasBounds();
+    const nextCrop = createAspectCropFromBounds(canvasBounds, "cover");
+    setCropArea(nextCrop);
+    setCanvasExpandMode(true);
+  }, [getCanvasBounds, createAspectCropFromBounds]);
 
-    // Center the square crop area (may extend beyond canvas)
-    const x = (displayWidth - maxSide) / 2;
-    const y = (displayHeight - maxSide) / 2;
-
-    setCropArea({
-      x: Math.round(x),
-      y: Math.round(y),
-      width: Math.round(maxSide),
-      height: Math.round(maxSide),
-    });
-
-    // Enable expand mode if square extends beyond canvas
-    if (x < 0 || y < 0) {
-      setCanvasExpandMode(true);
-    }
-  }, [getDisplayDimensions]);
-
-  // Fit to square (based on shorter side - crop mode)
+  // Fit (contain) to current aspect ratio based on canvas bounds.
   const fitToSquare = useCallback(() => {
+    const canvasBounds = getCanvasBounds();
+    const nextCrop = createAspectCropFromBounds(canvasBounds, "contain");
+    setCropArea(nextCrop);
+    setCanvasExpandMode(false);
+  }, [getCanvasBounds, createAspectCropFromBounds]);
+
+  // Fit (contain) to active layer bounds.
+  const fitToObjectBounds = useCallback((bounds: CropArea | null) => {
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+
+    const nextCrop = createAspectCropFromBounds(bounds, "contain");
+    setCropArea(nextCrop);
+
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const minSide = Math.min(displayWidth, displayHeight);
-
-    // Center the square crop area within canvas
-    const x = (displayWidth - minSide) / 2;
-    const y = (displayHeight - minSide) / 2;
-
-    setCropArea({
-      x: Math.round(x),
-      y: Math.round(y),
-      width: Math.round(minSide),
-      height: Math.round(minSide),
-    });
-  }, [getDisplayDimensions]);
+    const isOutsideCanvas = (
+      nextCrop.x < 0
+      || nextCrop.y < 0
+      || nextCrop.x + nextCrop.width > displayWidth
+      || nextCrop.y + nextCrop.height > displayHeight
+    );
+    setCanvasExpandMode(isOutsideCanvas);
+  }, [createAspectCropFromBounds, getDisplayDimensions]);
 
   // Get crop handle at position
   const getCropHandleAtPosition = useCallback(
@@ -318,21 +341,25 @@ export function useCropTool(): UseCropToolReturn {
     let newWidth = cropArea.width;
     let newHeight = cropArea.width / ratioValue;
 
-    if (newHeight > displayHeight) {
-      newHeight = displayHeight;
-      newWidth = newHeight * ratioValue;
-    }
-    if (newWidth > displayWidth) {
-      newWidth = displayWidth;
-      newHeight = newWidth / ratioValue;
+    if (!canvasExpandMode) {
+      if (newHeight > displayHeight) {
+        newHeight = displayHeight;
+        newWidth = newHeight * ratioValue;
+      }
+      if (newWidth > displayWidth) {
+        newWidth = displayWidth;
+        newHeight = newWidth / ratioValue;
+      }
     }
 
     let newX = centerX - newWidth / 2;
     let newY = centerY - newHeight / 2;
 
-    // Clamp to bounds
-    newX = Math.max(0, Math.min(newX, displayWidth - newWidth));
-    newY = Math.max(0, Math.min(newY, displayHeight - newHeight));
+    // Clamp only when canvas expand mode is disabled.
+    if (!canvasExpandMode) {
+      newX = Math.max(0, Math.min(newX, displayWidth - newWidth));
+      newY = Math.max(0, Math.min(newY, displayHeight - newHeight));
+    }
 
     setCropArea({
       x: Math.round(newX),
@@ -340,7 +367,7 @@ export function useCropTool(): UseCropToolReturn {
       width: Math.round(newWidth),
       height: Math.round(newHeight),
     });
-  }, [aspectRatio]);
+  }, [aspectRatio, canvasExpandMode, cropArea, getAspectRatioValue, getDisplayDimensions]);
 
   return {
     // State
@@ -360,6 +387,7 @@ export function useCropTool(): UseCropToolReturn {
     setCropSize,
     expandToSquare,
     fitToSquare,
+    fitToObjectBounds,
 
     // Crop handle detection
     getCropHandleAtPosition,
