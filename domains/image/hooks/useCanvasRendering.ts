@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, RefObject, useCallback, useRef } from "react";
-import { UnifiedLayer, Point, CropArea, Guide, SnapSource, MarqueeSubTool } from "../types";
+import { UnifiedLayer, Point, CropArea, Guide, SnapSource, MarqueeSubTool, SelectionMask } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
@@ -9,6 +9,7 @@ import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, FLIP_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { drawMagicWandSelectionOutline, type MagicWandSelection } from "@/shared/utils/magicWand";
 import { resizeCanvasForDpr, resolvePixelPreviewScalePolicy } from "@/shared/utils";
 
 // ============================================
@@ -46,6 +47,7 @@ interface UseCanvasRenderingOptions {
   stampSource: Point | null;
   activeLayerPosition?: Point | null;
   selection: { x: number; y: number; width: number; height: number } | null;
+  selectionMask: SelectionMask | null;
   marqueeSubTool: MarqueeSubTool;
   lassoPath: Point[] | null;
   isDuplicating: boolean;
@@ -77,6 +79,9 @@ interface UseCanvasRenderingReturn {
   requestRender: () => void;
 }
 
+const MAGIC_WAND_OUTLINE_DASH = [4, 4];
+const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
+
 // ============================================
 // Hook Implementation
 // ============================================
@@ -106,6 +111,7 @@ export function useCanvasRendering(
     stampSource,
     activeLayerPosition,
     selection,
+    selectionMask,
     marqueeSubTool,
     lassoPath,
     isDuplicating,
@@ -592,22 +598,69 @@ export function useCanvasRendering(
     }
 
     if (selection && showSelectionForTool && !showLassoPreview) {
-      const selX = offsetX + selection.x * zoom;
-      const selY = offsetY + selection.y * zoom;
-      const selW = selection.width * zoom;
-      const selH = selection.height * zoom;
+      const shouldDrawMagicWandMask = (
+        toolMode === "magicWand"
+        && !!selectionMask
+        && selectionMask.width > 0
+        && selectionMask.height > 0
+        && selectionMask.mask.length === selectionMask.width * selectionMask.height
+      );
 
-      ctx.save();
-      ctx.strokeStyle = colors.textOnColor;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.strokeRect(selX, selY, selW, selH);
+      if (shouldDrawMagicWandMask && selectionMask) {
+        const wandSelection: MagicWandSelection = {
+          width: selectionMask.width,
+          height: selectionMask.height,
+          mask: selectionMask.mask,
+          selectedCount: 0,
+          bounds: {
+            x: 0,
+            y: 0,
+            width: selectionMask.width,
+            height: selectionMask.height,
+          },
+        };
 
-      // Draw second layer with offset for "marching ants" effect
-      ctx.strokeStyle = "#000000";
-      ctx.lineDashOffset = 4;
-      ctx.strokeRect(selX, selY, selW, selH);
-      ctx.restore();
+        const dashCycle = MAGIC_WAND_OUTLINE_DASH.reduce((sum, value) => sum + value, 0);
+        const antsOffset = dashCycle > 0
+          ? -((performance.now() / MAGIC_WAND_OUTLINE_SPEED_MS) % dashCycle)
+          : 0;
+
+        drawMagicWandSelectionOutline(ctx, wandSelection, {
+          zoom,
+          offsetX: offsetX + selectionMask.x * zoom,
+          offsetY: offsetY + selectionMask.y * zoom,
+          color: "rgba(0, 0, 0, 0.9)",
+          lineWidth: 2,
+          dash: MAGIC_WAND_OUTLINE_DASH,
+          dashOffset: antsOffset,
+        });
+        drawMagicWandSelectionOutline(ctx, wandSelection, {
+          zoom,
+          offsetX: offsetX + selectionMask.x * zoom,
+          offsetY: offsetY + selectionMask.y * zoom,
+          color: "rgba(255, 255, 255, 0.95)",
+          lineWidth: 1,
+          dash: MAGIC_WAND_OUTLINE_DASH,
+          dashOffset: antsOffset + (dashCycle / 2),
+        });
+      } else {
+        const selX = offsetX + selection.x * zoom;
+        const selY = offsetY + selection.y * zoom;
+        const selW = selection.width * zoom;
+        const selH = selection.height * zoom;
+
+        ctx.save();
+        ctx.strokeStyle = colors.textOnColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(selX, selY, selW, selH);
+
+        // Draw second layer with offset for "marching ants" effect
+        ctx.strokeStyle = "#000000";
+        ctx.lineDashOffset = 4;
+        ctx.strokeRect(selX, selY, selW, selH);
+        ctx.restore();
+      }
     }
 
     // Draw floating layer (when moving selection - both duplicate and cut-move)
@@ -871,6 +924,7 @@ export function useCanvasRendering(
     stampSource,
     activeLayerPosition,
     selection,
+    selectionMask,
     marqueeSubTool,
     lassoPath,
     isDuplicating,
