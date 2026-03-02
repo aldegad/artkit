@@ -53,6 +53,9 @@ export function BackgroundRemovalModals({
   status,
   translations: t,
 }: BackgroundRemovalModalsProps) {
+  const modelKeys = Object.keys(BACKGROUND_REMOVAL_MODELS) as BackgroundRemovalModel[];
+  const selectedModel = BACKGROUND_REMOVAL_MODELS[model];
+
   return (
     <SharedBackgroundRemovalModals
       showConfirm={showConfirm}
@@ -113,30 +116,41 @@ export function BackgroundRemovalModals({
             </div>
           </div>
 
-          <div>
-            <div className="text-xs text-text-tertiary mb-1.5">Model</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {(Object.keys(BACKGROUND_REMOVAL_MODELS) as BackgroundRemovalModel[]).map((modelKey) => {
-                const modelConfig = BACKGROUND_REMOVAL_MODELS[modelKey];
-                const isSelected = model === modelKey;
-                return (
-                  <button
-                    key={modelKey}
-                    onClick={() => onModelChange(modelKey)}
-                    className={`text-left px-3 py-2 rounded border transition-colors ${
-                      isSelected
-                        ? "border-accent-primary bg-accent-primary/10"
-                        : "border-border-default bg-surface-secondary hover:bg-surface-tertiary"
-                    }`}
-                  >
-                    <div className="text-sm text-text-primary font-medium">{modelConfig.label}</div>
-                    <div className="text-[11px] text-text-tertiary">{modelConfig.downloadHint}</div>
-                    <div className="text-[11px] text-text-tertiary">{modelConfig.description}</div>
-                  </button>
-                );
-              })}
+          {modelKeys.length > 1 ? (
+            <div>
+              <div className="text-xs text-text-tertiary mb-1.5">Model</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {modelKeys.map((modelKey) => {
+                  const modelConfig = BACKGROUND_REMOVAL_MODELS[modelKey];
+                  const isSelected = model === modelKey;
+                  return (
+                    <button
+                      key={modelKey}
+                      onClick={() => onModelChange(modelKey)}
+                      className={`text-left px-3 py-2 rounded border transition-colors ${
+                        isSelected
+                          ? "border-accent-primary bg-accent-primary/10"
+                          : "border-border-default bg-surface-secondary hover:bg-surface-tertiary"
+                      }`}
+                    >
+                      <div className="text-sm text-text-primary font-medium">{modelConfig.label}</div>
+                      <div className="text-[11px] text-text-tertiary">{modelConfig.downloadHint}</div>
+                      <div className="text-[11px] text-text-tertiary">{modelConfig.description}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <div className="text-xs text-text-tertiary mb-1.5">Model</div>
+              <div className="px-3 py-2 rounded border border-border-default bg-surface-secondary">
+                <div className="text-sm text-text-primary font-medium">{selectedModel.label}</div>
+                <div className="text-[11px] text-text-tertiary">{selectedModel.downloadHint}</div>
+                <div className="text-[11px] text-text-tertiary">{selectedModel.description}</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     />
