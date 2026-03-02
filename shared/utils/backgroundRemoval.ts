@@ -43,6 +43,7 @@ let loadingPromise: Promise<void> | null = null;
 let loadedModelKey: BackgroundRemovalModel | null = null;
 let loadingModelKey: BackgroundRemovalModel | null = null;
 let loadedModelDevice: ModelLoadAttempt["device"] | null = null;
+let webGpuDisabledForSession = false;
 
 export type BackgroundRemovalModel = "rmbg-1.4" | "birefnet-lite" | "birefnet";
 export const DEFAULT_BACKGROUND_REMOVAL_MODEL: BackgroundRemovalModel = "rmbg-1.4";
@@ -309,6 +310,10 @@ async function loadModel(
         } catch {
           canUseWebGPU = false;
         }
+      }
+
+      if (webGpuDisabledForSession) {
+        canUseWebGPU = false;
       }
 
       const attempts = getModelLoadAttempts(canUseWebGPU, modelKey, forcedDevice);
@@ -1049,6 +1054,7 @@ export async function removeBackground(
       throw error;
     }
 
+    webGpuDisabledForSession = true;
     console.warn("[Background Removal] WebGPU execution failed. Retrying with WASM.", error);
     onProgress?.(62, "WebGPU failed, retrying with WASM...");
 
@@ -1067,8 +1073,43 @@ export async function removeBackground(
     activeModel = model as NonNullable<typeof model>;
     activeProcessor = processor as NonNullable<typeof processor>;
 
-    const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
-    modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+    try {
+      const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
+      modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+    } catch (wasmError) {
+      const canDowngradeModel = modelKey !== DEFAULT_BACKGROUND_REMOVAL_MODEL
+        && (isExecutionProviderError(wasmError) || isOpaqueRuntimeCodeError(wasmError) || isOutOfMemoryError(wasmError));
+
+      if (!canDowngradeModel) {
+        throw wasmError;
+      }
+
+      const fallbackModelKey = DEFAULT_BACKGROUND_REMOVAL_MODEL;
+      const fallbackModelLabel = BACKGROUND_REMOVAL_MODELS[fallbackModelKey].label;
+      console.warn(
+        `[Background Removal] ${BACKGROUND_REMOVAL_MODELS[modelKey].label} failed on WASM. Retrying with ${fallbackModelLabel}.`,
+        wasmError,
+      );
+      onProgress?.(66, `Retrying with ${fallbackModelLabel}...`);
+
+      model = null;
+      processor = null;
+      loadedModelKey = null;
+      loadedModelDevice = null;
+
+      await loadModel(fallbackModelKey, "wasm", (progress, status) => {
+        onProgress?.(66 + progress * 0.08, `${status} (${fallbackModelLabel})`);
+      });
+
+      if (!model || !processor) {
+        throw wasmError;
+      }
+      activeModel = model as NonNullable<typeof model>;
+      activeProcessor = processor as NonNullable<typeof processor>;
+
+      const fallbackProcessed = await activeProcessor(image) as ModelInputFeeds;
+      modelOutput = await runModelWithCompatibleInputs(activeModel, fallbackProcessed);
+    }
   }
 
   const selectedMask = pickMaskTensor(modelOutput);
