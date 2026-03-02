@@ -185,10 +185,10 @@ function getModelLoadAttempts(
   forcedDevice?: ModelLoadAttempt["device"],
 ): ModelLoadAttempt[] {
   const wasmAttempts: ModelLoadAttempt[] = (() => {
-    // BiRefNet variants can stall browsers on wasm/fp32 due model size/compute pressure.
-    // Prefer default wasm dtype (auto, typically q8) for stability.
+    // BiRefNet variants do not provide quantized (_quantized) ONNX artifacts.
+    // Force fp32 on WASM so the loader resolves to model.onnx deterministically.
     if (modelKey === "birefnet" || modelKey === "birefnet-lite") {
-      return [{ device: "wasm", label: "wasm/default" }];
+      return [{ device: "wasm", dtype: "fp32", label: "wasm/fp32" }];
     }
 
     return [
@@ -211,9 +211,7 @@ function getModelLoadAttempts(
     return canUseWebGPU ? [...webgpuAttempts, ...wasmAttempts] : wasmAttempts;
   }
 
-  // BiRefNet variants frequently exceed WebGPU binding limits on consumer GPUs.
-  const wasmOnlyByDefault = modelKey === "birefnet" || modelKey === "birefnet-lite";
-  if (!canUseWebGPU || wasmOnlyByDefault) {
+  if (!canUseWebGPU) {
     return wasmAttempts;
   }
 
@@ -313,7 +311,8 @@ async function loadModel(
       }
 
       if (!loadedModel) {
-        throw lastError || new Error("Failed to load background removal model.");
+        const reason = getBackgroundRemovalErrorMessage(lastError);
+        throw new Error(`Failed to load ${modelConfig.label}: ${reason}`);
       }
 
       const loadedProcessor = await AutoProcessor.from_pretrained(modelId, {
@@ -755,6 +754,28 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isModelFileMissingError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("404")
+    || message.includes("not found")
+    || message.includes("no such file")
+    || message.includes("invalid username or password")
+    || message.includes("failed to fetch")
+  );
+}
+
+function isOutOfMemoryError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("out of memory")
+    || message.includes("wasm memory")
+    || message.includes("cannot enlarge memory")
+    || message.includes("allocation failed")
+    || message.includes("memory access out of bounds")
+  );
+}
+
 function isModelInputMismatchError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   return (
@@ -775,6 +796,33 @@ function isWebGpuRuntimeLimitError(error: unknown): boolean {
     || message.includes("createcomputepipeline")
     || message.includes("createbindgroup")
   );
+}
+
+function isExecutionProviderError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    isWebGpuRuntimeLimitError(error)
+    || message.includes("execution provider")
+    || message.includes("verifyeachnodeisassignedtoanep")
+    || message.includes("assigned to an ep")
+  );
+}
+
+export function getBackgroundRemovalErrorMessage(error: unknown): string {
+  if (isModelFileMissingError(error)) {
+    return "Model file download failed (404 or missing artifact).";
+  }
+
+  if (isOutOfMemoryError(error)) {
+    return "Insufficient memory while running model. Try a smaller image or model.";
+  }
+
+  if (isExecutionProviderError(error)) {
+    return "Execution provider limit hit (WebGPU/WASM).";
+  }
+
+  const message = getErrorMessage(error).trim();
+  return message || "Unknown background removal error.";
 }
 
 function resolvePrimaryInputTensor(processed: ModelInputFeeds): unknown {

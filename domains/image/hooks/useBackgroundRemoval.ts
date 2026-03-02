@@ -3,6 +3,7 @@
 import { useState, useCallback, RefObject } from "react";
 import { UnifiedLayer } from "../types";
 import {
+  getBackgroundRemovalErrorMessage,
   removeBackground,
   type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
@@ -163,8 +164,10 @@ export function useBackgroundRemoval(
       setBgRemovalStatus("Done!");
     } catch (error) {
       console.error("Background removal failed:", error);
-      setBgRemovalStatus("Failed");
-      showErrorToast(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
+      const reason = getBackgroundRemovalErrorMessage(error);
+      setBgRemovalStatus(`Failed: ${reason}`);
+      const baseMessage = t.backgroundRemovalFailed || "Background removal failed. Please try again.";
+      showErrorToast(`${baseMessage} (${reason})`);
     } finally {
       setIsRemovingBackground(false);
       // Clear status after a delay
