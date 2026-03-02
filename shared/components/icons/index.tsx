@@ -139,6 +139,7 @@ export {
   SquareExpandIcon,
   SquareFitIcon,
   CanvasExpandIcon,
+  PivotIcon,
 } from "./crop";
 
 // Sidebar Navigation

@@ -71,6 +71,17 @@ export type MarqueeSubTool =
   | "ratio4x3"
   | "ratio16x9";
 
+export type CropSizePivot =
+  | "topLeft"
+  | "topCenter"
+  | "topRight"
+  | "middleLeft"
+  | "center"
+  | "middleRight"
+  | "bottomLeft"
+  | "bottomCenter"
+  | "bottomRight";
+
 // Re-export shared AspectRatio types
 export type { AspectRatio, AspectRatioOption } from "../../../shared/types/aspectRatio";
 export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "../../../shared/types/aspectRatio";

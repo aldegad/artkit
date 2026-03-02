@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { CropArea, AspectRatio, ASPECT_RATIO_VALUES } from "../../types";
+import { CropArea, AspectRatio, ASPECT_RATIO_VALUES, CropSizePivot } from "../../types";
 import { HANDLE_SIZE, INTERACTION } from "../../constants";
 import { useEditorState } from "../../contexts";
 import {
@@ -28,6 +28,8 @@ interface UseCropToolReturn {
   setCanvasExpandMode: React.Dispatch<React.SetStateAction<boolean>>;
   lockAspect: boolean;
   setLockAspect: React.Dispatch<React.SetStateAction<boolean>>;
+  cropSizePivot: CropSizePivot;
+  setCropSizePivot: React.Dispatch<React.SetStateAction<CropSizePivot>>;
 
   // Operations
   selectAllCrop: () => void;
@@ -73,6 +75,7 @@ export function useCropTool(): UseCropToolReturn {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("free");
   const [canvasExpandMode, setCanvasExpandMode] = useState<boolean>(false);
   const [lockAspect, setLockAspect] = useState<boolean>(false);
+  const [cropSizePivot, setCropSizePivot] = useState<CropSizePivot>("center");
 
   // Get aspect ratio numeric value
   const getAspectRatioValue = useCallback((ratio: AspectRatio): number | null => {
@@ -145,17 +148,30 @@ export function useCropTool(): UseCropToolReturn {
         const x = canvasExpandMode ? (displayWidth - width) / 2 : Math.max(0, (displayWidth - width) / 2);
         const y = canvasExpandMode ? (displayHeight - height) / 2 : Math.max(0, (displayHeight - height) / 2);
         setCropArea({
-          x: Math.round(x),
-          y: Math.round(y),
+          // Keep sub-pixel anchor so center-pivot resize does not bias to one side.
+          x,
+          y,
           width: Math.round(width),
           height: Math.round(height),
         });
       } else {
-        // Update existing crop area, keep center position
-        const centerX = cropArea.x + cropArea.width / 2;
-        const centerY = cropArea.y + cropArea.height / 2;
-        let newX = centerX - width / 2;
-        let newY = centerY - height / 2;
+        const pivotFactors: Record<CropSizePivot, { fx: number; fy: number }> = {
+          topLeft: { fx: 0, fy: 0 },
+          topCenter: { fx: 0.5, fy: 0 },
+          topRight: { fx: 1, fy: 0 },
+          middleLeft: { fx: 0, fy: 0.5 },
+          center: { fx: 0.5, fy: 0.5 },
+          middleRight: { fx: 1, fy: 0.5 },
+          bottomLeft: { fx: 0, fy: 1 },
+          bottomCenter: { fx: 0.5, fy: 1 },
+          bottomRight: { fx: 1, fy: 1 },
+        };
+        const { fx, fy } = pivotFactors[cropSizePivot];
+
+        const pivotX = cropArea.x + cropArea.width * fx;
+        const pivotY = cropArea.y + cropArea.height * fy;
+        let newX = pivotX - width * fx;
+        let newY = pivotY - height * fy;
 
         // Only clamp if not in expand mode
         if (!canvasExpandMode) {
@@ -164,14 +180,15 @@ export function useCropTool(): UseCropToolReturn {
         }
 
         setCropArea({
-          x: Math.round(newX),
-          y: Math.round(newY),
+          // Preserve fractional position (e.g. 0.5px) to keep center anchor stable.
+          x: newX,
+          y: newY,
           width: Math.round(width),
           height: Math.round(height),
         });
       }
     },
-    [cropArea, getDisplayDimensions, canvasExpandMode]
+    [cropArea, getDisplayDimensions, canvasExpandMode, cropSizePivot]
   );
 
   // Expand (cover) to current aspect ratio based on canvas bounds.
@@ -379,6 +396,8 @@ export function useCropTool(): UseCropToolReturn {
     setCanvasExpandMode,
     lockAspect,
     setLockAspect,
+    cropSizePivot,
+    setCropSizePivot,
 
     // Operations
     selectAllCrop,

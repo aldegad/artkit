@@ -34,3 +34,11 @@ export const CanvasExpandIcon: React.FC<IconProps> = ({ className = "w-3 h-3" })
     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
   </svg>
 );
+
+export const PivotIcon: React.FC<IconProps> = ({ className = "w-3.5 h-3.5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" />
+    <path d="M12 4v4M20 12h-4M12 20v-4M4 12h4" />
+  </svg>
+);

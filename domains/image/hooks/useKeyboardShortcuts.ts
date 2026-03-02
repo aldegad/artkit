@@ -206,13 +206,20 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (shouldIgnoreKeyEvent(e)) return;
+      const isIgnoredByInputFocus = shouldIgnoreKeyEvent(e);
+      const target = e.target as HTMLElement | null;
+      const isNumericInputTarget = (
+        target instanceof HTMLInputElement
+        && (target.type === "number" || target.type === "range")
+      );
 
       // Space for temporary hand tool
-      if (e.code === SPECIAL_SHORTCUTS.temporaryHand && !e.repeat) {
+      if (e.code === SPECIAL_SHORTCUTS.temporaryHand && !e.repeat && (!isIgnoredByInputFocus || isNumericInputTarget)) {
         e.preventDefault();
         setIsSpacePressed(true);
       }
+
+      if (isIgnoredByInputFocus) return;
 
       // Track Alt for marquee tool cursor
       if (e.altKey) setIsAltPressed(true);
