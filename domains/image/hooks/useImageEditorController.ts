@@ -52,6 +52,7 @@ import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { useImageResampleActions } from "./useImageResampleActions";
 import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
+import { getLayerContentBounds } from "../utils/layerContentBounds";
 import {
   useMagicWandSelectionAction,
   useClearSelectionPixelsAction,
@@ -820,23 +821,23 @@ export function useImageEditorController() {
   const canRedoNow = canRedo();
   const canResample = hasLayers && canvasSize.width > 0 && canvasSize.height > 0;
   const canResizeSelectedLayersToSmallest = selectedLayerIds.length > 1;
-  const activeLayerBounds = useMemo(() => {
-    if (!activeLayerId) return null;
+  const canObjectFit = activeLayerId !== null;
+  const handleObjectFitToActiveLayer = useCallback(() => {
+    if (!activeLayerId) return;
     const activeLayer = layers.find((layer) => layer.id === activeLayerId);
-    if (!activeLayer) return null;
+    if (!activeLayer) return;
 
-    const activeCanvas = layerCanvasesRef.current.get(activeLayerId);
-    const width = activeCanvas?.width || activeLayer.originalSize?.width || 0;
-    const height = activeCanvas?.height || activeLayer.originalSize?.height || 0;
-    if (width <= 0 || height <= 0) return null;
+    const activeCanvas = layerCanvasesRef.current.get(activeLayerId) || null;
+    const bounds = getLayerContentBounds(activeLayer, activeCanvas);
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
 
-    return {
-      x: activeLayer.position?.x || 0,
-      y: activeLayer.position?.y || 0,
-      width,
-      height,
-    };
-  }, [activeLayerId, layers, layerCanvasesRef]);
+    fitToObjectBounds({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    });
+  }, [activeLayerId, layers, layerCanvasesRef, fitToObjectBounds]);
 
   const {
     isResampling,
@@ -972,7 +973,7 @@ export function useImageEditorController() {
       aspectRatio,
       setAspectRatio,
       cropArea,
-      activeLayerBounds,
+      canObjectFit,
       selectAll: selectAllCrop,
       clearCrop,
       lockAspect,
@@ -980,7 +981,7 @@ export function useImageEditorController() {
       setCropSize,
       expandToSquare,
       fitToSquare,
-      fitToObjectBounds,
+      onObjectFit: handleObjectFitToActiveLayer,
       onApplyCrop: handleApplyCrop,
       isTransformActive: transformState.isActive,
       transformAspectRatio,
