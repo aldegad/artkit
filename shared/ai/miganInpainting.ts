@@ -1,4 +1,5 @@
 import * as ort from "onnxruntime-web";
+import type { InferenceSession, Tensor } from "onnxruntime-common";
 
 const ORT_WEB_VERSION = "1.22.0";
 const ORT_WASM_BASE_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WEB_VERSION}/dist/`;
@@ -21,7 +22,7 @@ export interface MiGanFrameInpaintOptions {
 
 let ortConfigured = false;
 let loadedSessionKey: string | null = null;
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
+let sessionPromise: Promise<InferenceSession> | null = null;
 
 function configureOrtEnv(): void {
   if (ortConfigured) return;
@@ -57,11 +58,11 @@ async function canUseWebGpu(): Promise<boolean> {
   }
 }
 
-async function createSession(modelUrl: string): Promise<ort.InferenceSession> {
+async function createSession(modelUrl: string): Promise<InferenceSession> {
   configureOrtEnv();
 
   const webGpuAvailable = await canUseWebGpu();
-  const preferredProviders: ort.InferenceSession.SessionOptions["executionProviders"] = webGpuAvailable
+  const preferredProviders: InferenceSession.SessionOptions["executionProviders"] = webGpuAvailable
     ? ["webgpu", "wasm"]
     : ["wasm"];
 
@@ -80,7 +81,7 @@ async function createSession(modelUrl: string): Promise<ort.InferenceSession> {
   }
 }
 
-async function getSession(options?: MiGanSessionLoadOptions): Promise<ort.InferenceSession> {
+async function getSession(options?: MiGanSessionLoadOptions): Promise<InferenceSession> {
   const modelUrl = options?.modelUrl ?? DEFAULT_MIGAN_MODEL_URL;
 
   if (!sessionPromise || loadedSessionKey !== modelUrl) {
@@ -128,7 +129,7 @@ function clampByte(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-function normalizeToByteArray(data: ort.Tensor["data"]): Uint8Array {
+function normalizeToByteArray(data: Tensor["data"]): Uint8Array {
   if (data instanceof Uint8Array) {
     return data;
   }
@@ -161,7 +162,7 @@ function normalizeToByteArray(data: ort.Tensor["data"]): Uint8Array {
   return output;
 }
 
-function tensorToRgbChw(tensor: ort.Tensor, width: number, height: number): Uint8Array {
+function tensorToRgbChw(tensor: Tensor, width: number, height: number): Uint8Array {
   const dims = tensor.dims.map((dim) => Number(dim));
   const data = normalizeToByteArray(tensor.data);
   const planeSize = width * height;
@@ -250,7 +251,7 @@ export async function inpaintFrameWithMiGan(options: MiGanFrameInpaintOptions): 
   ]);
 
   onProgress?.(20, "Running MI-GAN...");
-  const feeds: Record<string, ort.Tensor> = {
+  const feeds: Record<string, Tensor> = {
     [session.inputNames[0]]: imageTensor,
     [session.inputNames[1]]: maskTensor,
   };
