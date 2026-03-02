@@ -7,10 +7,8 @@ import {
   clearLayerAlphaMask,
   copyLayerAlphaMask,
   drawLayerWithOptionalAlphaMask,
-  getLayerAlphaMaskImageData,
   loadLayerAlphaMaskFromDataURL,
   rotateLayerAlphaMask,
-  setLayerAlphaMaskImageData,
 } from "@/shared/utils/layerAlphaMask";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
 
@@ -591,22 +589,14 @@ export function useLayerManagement(
     saveToHistory?.();
 
     for (const { id, canvas, bounds } of selectedTargets) {
-      const sourceCanvas = document.createElement("canvas");
-      sourceCanvas.width = bounds.width;
-      sourceCanvas.height = bounds.height;
-      const sourceCtx = sourceCanvas.getContext("2d");
-      if (!sourceCtx) continue;
-      sourceCtx.drawImage(
-        canvas,
-        bounds.localX,
-        bounds.localY,
-        bounds.width,
-        bounds.height,
-        0,
-        0,
-        bounds.width,
-        bounds.height
-      );
+      const sourceVisibleCanvas = document.createElement("canvas");
+      sourceVisibleCanvas.width = bounds.width;
+      sourceVisibleCanvas.height = bounds.height;
+      const sourceVisibleCtx = sourceVisibleCanvas.getContext("2d");
+      if (!sourceVisibleCtx) continue;
+
+      // Use mask-aware draw to extract only visible content in bounds.
+      drawLayerWithOptionalAlphaMask(sourceVisibleCtx, canvas, -bounds.localX, -bounds.localY);
 
       const resizedCanvas = document.createElement("canvas");
       resizedCanvas.width = targetWidth;
@@ -617,49 +607,10 @@ export function useLayerManagement(
       resizedCtx.clearRect(0, 0, targetWidth, targetHeight);
       resizedCtx.imageSmoothingEnabled = true;
       resizedCtx.imageSmoothingQuality = "high";
-      resizedCtx.drawImage(sourceCanvas, 0, 0, targetWidth, targetHeight);
+      resizedCtx.drawImage(sourceVisibleCanvas, 0, 0, targetWidth, targetHeight);
 
-      const sourceMaskImageData = getLayerAlphaMaskImageData(canvas);
-      if (sourceMaskImageData) {
-        const sourceMaskCanvas = document.createElement("canvas");
-        sourceMaskCanvas.width = sourceMaskImageData.width;
-        sourceMaskCanvas.height = sourceMaskImageData.height;
-        const sourceMaskCtx = sourceMaskCanvas.getContext("2d");
-        if (sourceMaskCtx) {
-          sourceMaskCtx.putImageData(sourceMaskImageData, 0, 0);
-
-          const trimmedMaskCanvas = document.createElement("canvas");
-          trimmedMaskCanvas.width = bounds.width;
-          trimmedMaskCanvas.height = bounds.height;
-          const trimmedMaskCtx = trimmedMaskCanvas.getContext("2d");
-          if (trimmedMaskCtx) {
-            trimmedMaskCtx.drawImage(
-              sourceMaskCanvas,
-              bounds.localX,
-              bounds.localY,
-              bounds.width,
-              bounds.height,
-              0,
-              0,
-              bounds.width,
-              bounds.height
-            );
-
-            const resizedMaskCanvas = document.createElement("canvas");
-            resizedMaskCanvas.width = targetWidth;
-            resizedMaskCanvas.height = targetHeight;
-            const resizedMaskCtx = resizedMaskCanvas.getContext("2d");
-            if (resizedMaskCtx) {
-              resizedMaskCtx.clearRect(0, 0, targetWidth, targetHeight);
-              resizedMaskCtx.imageSmoothingEnabled = true;
-              resizedMaskCtx.imageSmoothingQuality = "high";
-              resizedMaskCtx.drawImage(trimmedMaskCanvas, 0, 0, targetWidth, targetHeight);
-              const resizedMaskImageData = resizedMaskCtx.getImageData(0, 0, targetWidth, targetHeight);
-              setLayerAlphaMaskImageData(resizedCanvas, resizedMaskImageData);
-            }
-          }
-        }
-      }
+      // Content is flattened into pixels for this AI operation.
+      clearLayerAlphaMask(resizedCanvas);
 
       clearLayerAlphaMask(canvas);
       layerCanvasesRef.current.set(id, resizedCanvas);
@@ -671,8 +622,15 @@ export function useLayerManagement(
         ? {
             ...layer,
             position: {
-              x: selectedTargetMap.get(layer.id)!.bounds.x,
-              y: selectedTargetMap.get(layer.id)!.bounds.y,
+              // Keep content center stable while normalizing dimensions.
+              x: Math.round(
+                selectedTargetMap.get(layer.id)!.bounds.x
+                + (selectedTargetMap.get(layer.id)!.bounds.width - targetWidth) / 2
+              ),
+              y: Math.round(
+                selectedTargetMap.get(layer.id)!.bounds.y
+                + (selectedTargetMap.get(layer.id)!.bounds.height - targetHeight) / 2
+              ),
             },
           }
         : layer
