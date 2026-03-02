@@ -41,6 +41,28 @@ interface UseClearSelectionPixelsActionOptions {
   requestRender: () => void;
 }
 
+function areSelectionsEqual(a: CropArea | null, b: CropArea | null): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.x === b.x
+    && a.y === b.y
+    && a.width === b.width
+    && a.height === b.height
+  );
+}
+
+function areMasksEqual(a: SelectionMask | null, b: SelectionMask | null): boolean {
+  if (!a || !b) return a === b;
+  if (a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) {
+    return false;
+  }
+  if (a.mask.length !== b.mask.length) return false;
+  for (let i = 0; i < a.mask.length; i += 1) {
+    if (a.mask[i] !== b.mask[i]) return false;
+  }
+  return true;
+}
+
 export function useMagicWandSelectionAction(options: UseMagicWandSelectionActionOptions) {
   const {
     activeLayerId,
@@ -55,6 +77,8 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     setIsMovingSelection,
     setIsDuplicating,
   } = options;
+  const layerPosX = activeLayerPosition?.x || 0;
+  const layerPosY = activeLayerPosition?.y || 0;
 
   const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
   const magicWandLayerIdRef = useRef<string | null>(null);
@@ -69,35 +93,40 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     magicWandSelectionRef.current = null;
   }, []);
 
+  const selectionRef = useRef<CropArea | null>(selection);
+  const selectionMaskRef = useRef<SelectionMask | null>(selectionMask);
+  useEffect(() => {
+    selectionRef.current = selection;
+    selectionMaskRef.current = selectionMask;
+  }, [selection, selectionMask]);
+
   const applyMagicWandSelectionAtSeed = useCallback((seedX: number, seedY: number) => {
     const editCanvas = editCanvasRef.current;
     const ctx = editCanvas?.getContext("2d", { willReadFrequently: true });
     if (!editCanvas || !ctx) {
-      setSelection(null);
-      setSelectionMask(null);
+      if (selectionRef.current) setSelection(null);
+      if (selectionMaskRef.current) setSelectionMask(null);
       floatingLayerRef.current = null;
       clearMagicWandTracking();
       return;
     }
 
     if (seedX < 0 || seedY < 0 || seedX >= editCanvas.width || seedY >= editCanvas.height) {
-      setSelection(null);
-      setSelectionMask(null);
+      if (selectionRef.current) setSelection(null);
+      if (selectionMaskRef.current) setSelectionMask(null);
       floatingLayerRef.current = null;
       clearMagicWandTracking();
       return;
     }
 
-    const layerPosX = activeLayerPosition?.x || 0;
-    const layerPosY = activeLayerPosition?.y || 0;
     const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
     const wandSelection = computeMagicWandColorSelection(imageData, seedX, seedY, {
       tolerance: magicWandTolerance,
     });
 
     if (!wandSelection) {
-      setSelection(null);
-      setSelectionMask(null);
+      if (selectionRef.current) setSelection(null);
+      if (selectionMaskRef.current) setSelectionMask(null);
       floatingLayerRef.current = null;
       clearMagicWandTracking();
       return;
@@ -117,6 +146,8 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
       height: mask.height,
       mask: mask.mask,
     };
+    const shouldUpdateSelection = !areSelectionsEqual(selectionRef.current, nextSelection);
+    const shouldUpdateSelectionMask = !areMasksEqual(selectionMaskRef.current, nextSelectionMask);
 
     magicWandSelectionRef.current = {
       selection: nextSelection,
@@ -128,15 +159,18 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
       },
     };
 
-    setSelection(nextSelection);
-    setSelectionMask(nextSelectionMask);
+    if (shouldUpdateSelection) setSelection(nextSelection);
+    if (shouldUpdateSelectionMask) setSelectionMask(nextSelectionMask);
     setIsMovingSelection(false);
     setIsDuplicating(false);
     floatingLayerRef.current = null;
   }, [
     editCanvasRef,
-    activeLayerPosition,
+    layerPosX,
+    layerPosY,
     magicWandTolerance,
+    selectionRef,
+    selectionMaskRef,
     floatingLayerRef,
     setSelection,
     setSelectionMask,
@@ -177,11 +211,16 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
       return;
     }
     applyMagicWandSelectionAtSeed(seed.x, seed.y);
-  }, [activeLayerId, magicWandTolerance, applyMagicWandSelectionAtSeed, clearMagicWandTracking]);
+  }, [
+    activeLayerId,
+    magicWandTolerance,
+    layerPosX,
+    layerPosY,
+    applyMagicWandSelectionAtSeed,
+    clearMagicWandTracking,
+  ]);
 
   return useCallback((imageX: number, imageY: number) => {
-    const layerPosX = activeLayerPosition?.x || 0;
-    const layerPosY = activeLayerPosition?.y || 0;
     const localX = Math.floor(imageX - layerPosX);
     const localY = Math.floor(imageY - layerPosY);
 
@@ -190,7 +229,8 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     applyMagicWandSelectionAtSeed(localX, localY);
   }, [
     activeLayerId,
-    activeLayerPosition,
+    layerPosX,
+    layerPosY,
     applyMagicWandSelectionAtSeed,
   ]);
 }
