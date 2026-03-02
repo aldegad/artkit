@@ -6,7 +6,6 @@ import {
   getBackgroundRemovalErrorMessage,
   getBackgroundRemovalRawErrorMessage,
   removeBackground,
-  type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { confirmDialog, showInfoToast } from "@/shared/components";
@@ -23,7 +22,6 @@ interface UseFrameBackgroundRemovalOptions {
   setFrames: Dispatch<SetStateAction<SpriteFrame[]>>;
   pushHistory: () => void;
   quality?: BackgroundRemovalQuality;
-  model?: BackgroundRemovalModel;
   translations: {
     backgroundRemovalFailed?: string;
     selectFrameForBgRemoval?: string;
@@ -54,7 +52,6 @@ export function useFrameBackgroundRemoval(
     setFrames,
     pushHistory,
     quality,
-    model,
     translations: t,
   } = options;
 
@@ -106,12 +103,7 @@ export function useFrameBackgroundRemoval(
     try {
       pushHistory();
 
-      const backgroundRemovalOptions = (quality || model)
-        ? {
-            ...(quality ? { quality } : {}),
-            ...(model ? { model } : {}),
-          }
-        : undefined;
+      const backgroundRemovalOptions = quality ? { quality } : undefined;
 
       const totalFrames = framesToProcess.length;
       const updatedFrameData = new Map<number, string>();
@@ -163,7 +155,7 @@ export function useFrameBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, model, t]);
+  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, t]);
 
   return {
     isRemovingBackground,
