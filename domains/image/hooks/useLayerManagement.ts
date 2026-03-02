@@ -25,6 +25,10 @@ interface UseLayerManagementOptions {
   };
 }
 
+interface AddImageLayerOptions {
+  preserveActiveLayerId?: string | null;
+}
+
 interface UseLayerManagementReturn {
   // State
   layers: UnifiedLayer[];
@@ -47,7 +51,7 @@ interface UseLayerManagementReturn {
   // Actions
   addPaintLayer: () => void;
   addFilterLayer: () => void;
-  addImageLayer: (imageSrc: string, name?: string) => void;
+  addImageLayer: (imageSrc: string, name?: string, options?: AddImageLayerOptions) => void;
   deleteLayer: (layerId: string) => void;
   selectLayer: (layerId: string) => void;
   toggleLayerVisibility: (layerId: string) => void;
@@ -232,7 +236,8 @@ export function useLayerManagement(
   }, [layers, getDisplayDimensions, saveToHistory]);
 
   // Add new layer with image drawn to canvas
-  const addImageLayer = useCallback((imageSrc: string, name?: string) => {
+  const addImageLayer = useCallback((imageSrc: string, name?: string, options?: AddImageLayerOptions) => {
+    const preserveActiveLayerId = options?.preserveActiveLayerId ?? null;
     const img = new Image();
     img.onload = () => {
       saveToHistory?.();
@@ -264,8 +269,24 @@ export function useLayerManagement(
           ...prev,
         ];
       });
-      setActiveLayerId(newLayer.id);
-      editCanvasRef.current = layerCanvas;
+
+      const preservedCanvas = preserveActiveLayerId
+        ? layerCanvasesRef.current.get(preserveActiveLayerId) || null
+        : null;
+
+      if (preserveActiveLayerId && preservedCanvas) {
+        setActiveLayerId(preserveActiveLayerId);
+        editCanvasRef.current = preservedCanvas;
+        setSelectedLayerIds((prev) => {
+          const next = new Set(prev);
+          next.add(preserveActiveLayerId);
+          next.add(newLayer.id);
+          return Array.from(next);
+        });
+      } else {
+        setActiveLayerId(newLayer.id);
+        editCanvasRef.current = layerCanvas;
+      }
     };
     img.src = imageSrc;
   }, [saveToHistory, t.layer]);

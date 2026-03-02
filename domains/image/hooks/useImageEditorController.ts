@@ -595,6 +595,7 @@ export function useImageEditorController() {
     clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
+    activeLayerId,
     isTransformActive: transformState.isActive,
     cancelTransform,
     getDisplayDimensions,
