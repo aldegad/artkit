@@ -9,6 +9,7 @@ export interface ConfirmDialogOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  hideCancel?: boolean;
 }
 
 interface ConfirmRequest {
@@ -41,6 +42,10 @@ export function confirmDialog(input: string | ConfirmDialogOptions): Promise<boo
     return globalConfirmHandler(options);
   }
   if (typeof window !== "undefined") {
+    if (options.hideCancel) {
+      window.alert(options.message);
+      return Promise.resolve(true);
+    }
     return Promise.resolve(window.confirm(options.message));
   }
   return Promise.resolve(false);
@@ -82,12 +87,14 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
     const options = active.options;
     return (
       <div className="flex justify-end gap-2">
-        <button
-          onClick={() => resolveActive(false)}
-          className="px-4 py-2 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
-        >
-          {options.cancelLabel || "Cancel"}
-        </button>
+        {!options.hideCancel && (
+          <button
+            onClick={() => resolveActive(false)}
+            className="px-4 py-2 text-sm rounded bg-surface-secondary hover:bg-surface-tertiary transition-colors"
+          >
+            {options.cancelLabel || "Cancel"}
+          </button>
+        )}
         <button
           onClick={() => resolveActive(true)}
           className={`px-4 py-2 text-sm rounded text-white transition-colors ${

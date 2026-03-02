@@ -57,7 +57,6 @@ import {
   useClearSelectionPixelsAction,
 } from "./useImageSelectionActions";
 import type {
-  BackgroundRemovalModel,
   BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
@@ -141,18 +140,10 @@ export function useImageEditorController() {
   const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>(
     () => readAISettings().backgroundRemovalQuality
   );
-  const [bgRemovalModel, setBgRemovalModel] = useState<BackgroundRemovalModel>(
-    () => readAISettings().backgroundRemovalModel
-  );
 
   const handleBgRemovalQualityChange = useCallback((quality: BackgroundRemovalQuality) => {
     setBgRemovalQuality(quality);
     updateAISettings({ backgroundRemovalQuality: quality });
-  }, []);
-
-  const handleBgRemovalModelChange = useCallback((model: BackgroundRemovalModel) => {
-    setBgRemovalModel(model);
-    updateAISettings({ backgroundRemovalModel: model });
   }, []);
 
   const { saveToHistory, undo, redo, clearHistory, canUndo, canRedo } = useHistory({
@@ -631,7 +622,6 @@ export function useImageEditorController() {
     layerCanvasesRef,
     saveToHistory,
     quality: bgRemovalQuality,
-    model: bgRemovalModel,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
     },
@@ -1018,8 +1008,6 @@ export function useImageEditorController() {
     hasSelection: !!selection,
     bgRemovalQuality,
     setBgRemovalQuality: handleBgRemovalQualityChange,
-    bgRemovalModel,
-    setBgRemovalModel: handleBgRemovalModelChange,
     isRemovingBackground,
     bgRemovalProgress,
     bgRemovalStatus,

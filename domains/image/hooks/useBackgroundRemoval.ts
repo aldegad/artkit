@@ -4,11 +4,11 @@ import { useState, useCallback, RefObject } from "react";
 import { UnifiedLayer } from "../types";
 import {
   getBackgroundRemovalErrorMessage,
+  getBackgroundRemovalRawErrorMessage,
   removeBackground,
-  type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
-import { showErrorToast, showInfoToast } from "@/shared/components";
+import { confirmDialog, showInfoToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -21,7 +21,6 @@ interface UseBackgroundRemovalOptions {
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
   saveToHistory: () => void;
   quality?: BackgroundRemovalQuality;
-  model?: BackgroundRemovalModel;
   translations: {
     backgroundRemovalFailed?: string;
     selectLayerForBgRemoval?: string;
@@ -52,7 +51,6 @@ export function useBackgroundRemoval(
     layerCanvasesRef,
     saveToHistory,
     quality,
-    model,
     translations: t,
   } = options;
 
@@ -89,12 +87,7 @@ export function useBackgroundRemoval(
 
       let resultCanvas: HTMLCanvasElement;
 
-      const backgroundRemovalOptions = (quality || model)
-        ? {
-            ...(quality ? { quality } : {}),
-            ...(model ? { model } : {}),
-          }
-        : undefined;
+      const backgroundRemovalOptions = quality ? { quality } : undefined;
 
       if (selection) {
         // Process only the selected area
@@ -164,10 +157,17 @@ export function useBackgroundRemoval(
       setBgRemovalStatus("Done!");
     } catch (error) {
       console.error("Background removal failed:", error);
+      const rawReason = getBackgroundRemovalRawErrorMessage(error);
       const reason = getBackgroundRemovalErrorMessage(error);
-      setBgRemovalStatus(`Failed: ${reason}`);
+      setBgRemovalStatus(`Failed: ${rawReason}`);
       const baseMessage = t.backgroundRemovalFailed || "Background removal failed. Please try again.";
-      showErrorToast(`${baseMessage} (${reason})`);
+      const message = rawReason === reason ? rawReason : `${rawReason}\n\nSummary: ${reason}`;
+      void confirmDialog({
+        title: baseMessage,
+        message,
+        confirmLabel: "Close",
+        hideCancel: true,
+      });
     } finally {
       setIsRemovingBackground(false);
       // Clear status after a delay
@@ -176,7 +176,7 @@ export function useBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, layers, activeLayerId, selection, layerCanvasesRef, saveToHistory, quality, model, t]);
+  }, [isRemovingBackground, layers, activeLayerId, selection, layerCanvasesRef, saveToHistory, quality, t]);
 
   return {
     isRemovingBackground,

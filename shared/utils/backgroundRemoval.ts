@@ -43,8 +43,8 @@ let loadingPromise: Promise<void> | null = null;
 let loadedModelKey: BackgroundRemovalModel | null = null;
 let loadingModelKey: BackgroundRemovalModel | null = null;
 let loadedModelDevice: ModelLoadAttempt["device"] | null = null;
-
-export type BackgroundRemovalModel = "rmbg-1.4" | "birefnet-lite" | "birefnet";
+let webGpuDisabledForSession = false;
+export type BackgroundRemovalModel = "rmbg-1.4";
 export const DEFAULT_BACKGROUND_REMOVAL_MODEL: BackgroundRemovalModel = "rmbg-1.4";
 export const BACKGROUND_REMOVAL_MODELS: Record<BackgroundRemovalModel, {
   id: string;
@@ -56,19 +56,7 @@ export const BACKGROUND_REMOVAL_MODELS: Record<BackgroundRemovalModel, {
     id: "briaai/RMBG-1.4",
     label: "RMBG-1.4",
     downloadHint: "~42MB-168MB",
-    description: "Current default model",
-  },
-  "birefnet-lite": {
-    id: "onnx-community/BiRefNet_lite-ONNX",
-    label: "BiRefNet Lite",
-    downloadHint: "~109MB-214MB",
-    description: "Balanced quality and speed",
-  },
-  birefnet: {
-    id: "onnx-community/BiRefNet-ONNX",
-    label: "BiRefNet",
-    downloadHint: "~467MB-928MB",
-    description: "Highest quality, largest download",
+    description: "Stable browser runtime",
   },
 };
 
@@ -181,21 +169,13 @@ function resolveRefinementConfig(options: BackgroundRemovalOptions | undefined):
 
 function getModelLoadAttempts(
   canUseWebGPU: boolean,
-  modelKey: BackgroundRemovalModel,
+  _modelKey: BackgroundRemovalModel,
   forcedDevice?: ModelLoadAttempt["device"],
 ): ModelLoadAttempt[] {
-  const wasmAttempts: ModelLoadAttempt[] = (() => {
-    // BiRefNet variants do not provide quantized (_quantized) ONNX artifacts.
-    // Force fp32 on WASM so the loader resolves to model.onnx deterministically.
-    if (modelKey === "birefnet" || modelKey === "birefnet-lite") {
-      return [{ device: "wasm", dtype: "fp32", label: "wasm/fp32" }];
-    }
-
-    return [
-      { device: "wasm", dtype: "fp32", label: "wasm/fp32" },
-      { device: "wasm", label: "wasm/default" },
-    ];
-  })();
+  const wasmAttempts: ModelLoadAttempt[] = [
+    { device: "wasm", dtype: "fp32", label: "wasm/fp32" },
+    { device: "wasm", label: "wasm/default" },
+  ];
 
   const webgpuAttempts: ModelLoadAttempt[] = [
     { device: "webgpu", dtype: "fp16", label: "webgpu/fp16" },
@@ -288,10 +268,31 @@ async function loadModel(
           const adapter = await (navigator as Navigator & {
             gpu: { requestAdapter: () => Promise<unknown> };
           }).gpu.requestAdapter();
-          canUseWebGPU = adapter !== null;
+          if (adapter) {
+            const maxStorageBuffersPerStage = Number((adapter as {
+              limits?: { maxStorageBuffersPerShaderStage?: unknown };
+            }).limits?.maxStorageBuffersPerShaderStage);
+
+            // Some adapters expose the minimum guaranteed value (8), which is too low
+            // for large concat kernels emitted by certain ONNX graphs.
+            if (Number.isFinite(maxStorageBuffersPerStage) && maxStorageBuffersPerStage <= 8) {
+              canUseWebGPU = false;
+              console.warn(
+                `[Background Removal] WebGPU adapter limit is low (maxStorageBuffersPerShaderStage=${maxStorageBuffersPerStage}). Using WASM.`,
+              );
+            } else {
+              canUseWebGPU = true;
+            }
+          } else {
+            canUseWebGPU = false;
+          }
         } catch {
           canUseWebGPU = false;
         }
+      }
+
+      if (webGpuDisabledForSession) {
+        canUseWebGPU = false;
       }
 
       const attempts = getModelLoadAttempts(canUseWebGPU, modelKey, forcedDevice);
@@ -791,11 +792,27 @@ function isWebGpuRuntimeLimitError(error: unknown): boolean {
   return (
     message.includes("webgpu validation error")
     || (message.includes("storage buffers") && message.includes("compute stage"))
+    || message.includes("error while parsing wgsl")
+    || message.includes("statement nesting depth")
+    || message.includes("no matching constructor for 'i32(vec4<u32>)'")
+    || message.includes("invalid shadermodule")
     || message.includes("invalid computepipeline")
     || message.includes("invalid bindgrouplayout")
+    || message.includes("invalid commandbuffer")
+    || message.includes("queue].submit")
     || message.includes("createcomputepipeline")
     || message.includes("createbindgroup")
   );
+}
+
+function isOpaqueRuntimeCodeError(error: unknown): boolean {
+  const message = getErrorMessage(error).trim();
+  return /^[0-9]+$/.test(message);
+}
+
+function getOpaqueRuntimeCode(error: unknown): string | null {
+  const message = getErrorMessage(error).trim();
+  return /^[0-9]+$/.test(message) ? message : null;
 }
 
 function isExecutionProviderError(error: unknown): boolean {
@@ -821,8 +838,199 @@ export function getBackgroundRemovalErrorMessage(error: unknown): string {
     return "Execution provider limit hit (WebGPU/WASM).";
   }
 
+  if (isOpaqueRuntimeCodeError(error)) {
+    return "Opaque runtime failure (numeric code only). Likely WASM memory pressure or runtime compatibility issue.";
+  }
+
   const message = getErrorMessage(error).trim();
   return message || "Unknown background removal error.";
+}
+
+export function getBackgroundRemovalRawErrorMessage(error: unknown): string {
+  const message = getErrorMessage(error).trim();
+  return message || "Unknown background removal error.";
+}
+
+interface OpaqueWasmFailureDiagnostics {
+  code: string;
+  modelKey: BackgroundRemovalModel;
+  modelLabel: string;
+  originalWidth: number;
+  originalHeight: number;
+  probeWidth: number;
+  probeHeight: number;
+  originalInputShape: number[] | null;
+  probeInputShape: number[] | null;
+  probeShapeChanged: boolean;
+  probeSucceeded: boolean;
+  probeErrorMessage?: string;
+  webGpuErrorMessage?: string;
+}
+
+function getPrimaryInputShape(processed: ModelInputFeeds): number[] | null {
+  const primary = resolvePrimaryInputTensor(processed);
+  if (!primary || !isTensorLike(primary)) {
+    return null;
+  }
+  const dims = getTensorDims(primary);
+  return dims.length > 0 ? dims : null;
+}
+
+function areSameShape(a: number[] | null, b: number[] | null): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function formatShape(shape: number[] | null): string {
+  return shape && shape.length > 0 ? shape.join("x") : "unknown";
+}
+
+async function diagnoseOpaqueWasmFailure(
+  code: string,
+  modelKey: BackgroundRemovalModel,
+  image: RawImage,
+  activeModel: Awaited<ReturnType<typeof AutoModel.from_pretrained>>,
+  activeProcessor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>,
+  failedProcessedInput?: ModelInputFeeds,
+  webGpuError?: unknown,
+): Promise<OpaqueWasmFailureDiagnostics> {
+  const modelLabel = BACKGROUND_REMOVAL_MODELS[modelKey].label;
+  const originalWidth = image.width;
+  const originalHeight = image.height;
+  const probeWidth = Math.max(32, Math.min(originalWidth, 128));
+  const probeHeight = Math.max(32, Math.min(originalHeight, 128));
+  const originalInputShape = failedProcessedInput ? getPrimaryInputShape(failedProcessedInput) : null;
+  const webGpuErrorMessage = webGpuError ? getBackgroundRemovalRawErrorMessage(webGpuError) : undefined;
+
+  // If input is already tiny, probing adds no additional signal.
+  if (probeWidth === originalWidth && probeHeight === originalHeight) {
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      originalInputShape,
+      probeInputShape: originalInputShape,
+      probeShapeChanged: false,
+      probeSucceeded: false,
+      probeErrorMessage: "Probe skipped: input already small.",
+      webGpuErrorMessage,
+    };
+  }
+
+  const probeImage = await image.resize(probeWidth, probeHeight);
+  let probeProcessed: ModelInputFeeds;
+  let probeInputShape: number[] | null = null;
+  try {
+    probeProcessed = await activeProcessor(probeImage) as ModelInputFeeds;
+    probeInputShape = getPrimaryInputShape(probeProcessed);
+  } catch (probePreprocessError) {
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      originalInputShape,
+      probeInputShape,
+      probeShapeChanged: !areSameShape(originalInputShape, probeInputShape),
+      probeSucceeded: false,
+      probeErrorMessage: `Probe preprocess failed: ${getBackgroundRemovalRawErrorMessage(probePreprocessError)}`,
+      webGpuErrorMessage,
+    };
+  }
+
+  try {
+    await runModelWithCompatibleInputs(activeModel, probeProcessed);
+
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      originalInputShape,
+      probeInputShape,
+      probeShapeChanged: !areSameShape(originalInputShape, probeInputShape),
+      probeSucceeded: true,
+      webGpuErrorMessage,
+    };
+  } catch (probeError) {
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      originalInputShape,
+      probeInputShape,
+      probeShapeChanged: !areSameShape(originalInputShape, probeInputShape),
+      probeSucceeded: false,
+      probeErrorMessage: getBackgroundRemovalRawErrorMessage(probeError),
+      webGpuErrorMessage,
+    };
+  }
+}
+
+function buildOpaqueWasmFailureMessage(diagnostics: OpaqueWasmFailureDiagnostics): string {
+  const {
+    code,
+    modelLabel,
+    originalWidth,
+    originalHeight,
+    probeWidth,
+    probeHeight,
+    originalInputShape,
+    probeInputShape,
+    probeShapeChanged,
+    probeSucceeded,
+    probeErrorMessage,
+    webGpuErrorMessage,
+  } = diagnostics;
+
+  const webGpuRootCause = webGpuErrorMessage && isWebGpuRuntimeLimitError(webGpuErrorMessage)
+    ? "WebGPU failed first due shader/binding limits in this model graph."
+    : "";
+
+  if (!probeShapeChanged) {
+    const probeDetail = probeErrorMessage ? ` Probe error: ${probeErrorMessage}` : "";
+    return [
+      `WASM execution failed with numeric code ${code} on ${originalWidth}x${originalHeight} (${modelLabel}).`,
+      `Model input tensor shape did not change between original/probe (${formatShape(originalInputShape)} -> ${formatShape(probeInputShape)}).`,
+      `This model preprocesses to a fixed size, so source-image downscale probing is not conclusive.${probeDetail}`,
+      webGpuRootCause,
+      "Conclusion: likely runtime/model compatibility issue (and possibly memory pressure at fixed model resolution), not a user action bug.",
+    ].filter(Boolean).join(" ");
+  }
+
+  if (probeSucceeded) {
+    return [
+      `WASM execution failed with numeric code ${code} on ${originalWidth}x${originalHeight} (${modelLabel}).`,
+      `A ${probeWidth}x${probeHeight} probe succeeded with the same model.`,
+      webGpuRootCause,
+      "Conclusion: likely memory pressure/input-size limit, not feed-key mismatch.",
+    ].filter(Boolean).join(" ");
+  }
+
+  const probeDetail = probeErrorMessage ? ` Probe error: ${probeErrorMessage}` : "";
+  return [
+    `WASM execution failed with numeric code ${code} on ${originalWidth}x${originalHeight} (${modelLabel}).`,
+    `A ${probeWidth}x${probeHeight} probe also failed.${probeDetail}`,
+    webGpuRootCause,
+    "Conclusion: likely runtime/model compatibility issue (or severe memory constraint), not just input size.",
+  ].filter(Boolean).join(" ");
 }
 
 function resolvePrimaryInputTensor(processed: ModelInputFeeds): unknown {
@@ -1006,14 +1214,20 @@ export async function removeBackground(
 
   const processed = await activeProcessor(image) as ModelInputFeeds;
   let modelOutput: Record<string, unknown>;
+  let webGpuError: unknown = null;
 
   try {
     modelOutput = await runModelWithCompatibleInputs(activeModel, processed);
   } catch (error) {
-    if (loadedModelDevice !== "webgpu" || !isWebGpuRuntimeLimitError(error)) {
+    webGpuError = error;
+    const shouldRetryWithWasm = loadedModelDevice === "webgpu"
+      && !isModelInputMismatchError(error);
+
+    if (!shouldRetryWithWasm) {
       throw error;
     }
 
+    webGpuDisabledForSession = true;
     console.warn("[Background Removal] WebGPU execution failed. Retrying with WASM.", error);
     onProgress?.(62, "WebGPU failed, retrying with WASM...");
 
@@ -1032,8 +1246,28 @@ export async function removeBackground(
     activeModel = model as NonNullable<typeof model>;
     activeProcessor = processor as NonNullable<typeof processor>;
 
-    const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
-    modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+    let wasmProcessed: ModelInputFeeds | undefined;
+    try {
+      wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
+      modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+    } catch (wasmError) {
+      const opaqueCode = getOpaqueRuntimeCode(wasmError);
+      if (!opaqueCode) {
+        throw wasmError;
+      }
+
+      const diagnostics = await diagnoseOpaqueWasmFailure(
+        opaqueCode,
+        modelKey,
+        image,
+        activeModel,
+        activeProcessor,
+        wasmProcessed,
+        webGpuError,
+      );
+      const diagnosedMessage = buildOpaqueWasmFailureMessage(diagnostics);
+      throw new Error(diagnosedMessage);
+    }
   }
 
   const selectedMask = pickMaskTensor(modelOutput);

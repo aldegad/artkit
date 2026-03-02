@@ -39,7 +39,6 @@ import {
 import { useSpriteTrackStore, useSpriteViewportStore } from "@/domains/sprite/stores";
 import type { RifeInterpolationQuality } from "@/shared/utils/rifeInterpolation";
 import {
-  type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
@@ -169,9 +168,6 @@ function SpriteEditorMain() {
   const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>(
     () => readAISettings().backgroundRemovalQuality
   );
-  const [bgRemovalModel, setBgRemovalModel] = useState<BackgroundRemovalModel>(
-    () => readAISettings().backgroundRemovalModel
-  );
   const [showFrameInterpolationConfirm, setShowFrameInterpolationConfirm] = useState(false);
   const [interpolationSteps, setInterpolationSteps] = useState(1);
   const [interpolationQuality, setInterpolationQuality] = useState<RifeInterpolationQuality>("fast");
@@ -204,11 +200,6 @@ function SpriteEditorMain() {
     updateAISettings({ backgroundRemovalQuality: quality });
   }, []);
 
-  const handleBgRemovalModelChange = useCallback((model: BackgroundRemovalModel) => {
-    setBgRemovalModel(model);
-    updateAISettings({ backgroundRemovalModel: model });
-  }, []);
-
   // Background removal hook
   const {
     isRemovingBackground,
@@ -222,7 +213,6 @@ function SpriteEditorMain() {
     setFrames,
     pushHistory,
     quality: bgRemovalQuality,
-    model: bgRemovalModel,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
       selectFrameForBgRemoval: t.selectFrameForBgRemoval,
@@ -910,8 +900,6 @@ function SpriteEditorMain() {
         }}
         quality={bgRemovalQuality}
         onQualityChange={handleBgRemovalQualityChange}
-        model={bgRemovalModel}
-        onModelChange={handleBgRemovalModelChange}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
         status={bgRemovalStatus}
