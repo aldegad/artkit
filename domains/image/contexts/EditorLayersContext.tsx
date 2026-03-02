@@ -53,6 +53,7 @@ export interface EditorLayersContextValue {
   mergeLayerDown: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
   rotateAllLayerCanvases: (degrees: number) => void;
+  resizeSelectedLayersToSmallest: () => void;
 
   // Multi-select actions
   selectLayerWithModifier: (layerId: string, shiftKey: boolean) => void;

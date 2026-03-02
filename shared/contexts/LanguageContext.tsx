@@ -225,6 +225,9 @@ interface Translations {
   zoomToolTip: string;
   magicWandToolTip: string;
   moveToolTip: string;
+  matchSmallestLayerSize: string;
+  matchSmallestLayerSizeToolTip: string;
+  aiNoModelRequired: string;
 
   // Timeline
   reorderMode: string;
@@ -626,6 +629,9 @@ const translations: Record<Language, Translations> = {
     zoomToolTip: "클릭: 확대 | Alt+클릭: 축소",
     magicWandToolTip: "클릭한 픽셀과 연결된 유사 색상 영역 선택",
     moveToolTip: "선택 영역 이동",
+    matchSmallestLayerSize: "AI 레이어 크기 통일",
+    matchSmallestLayerSizeToolTip: "선택한 레이어들을 가장 작은 레이어 크기로 축소해 동일 크기로 맞춥니다.",
+    aiNoModelRequired: "모델 로드 없이 즉시 처리",
 
     // Timeline
     reorderMode: "순서 변경 모드",
@@ -1025,6 +1031,9 @@ const translations: Record<Language, Translations> = {
     zoomToolTip: "Click: Zoom in | Alt+click: Zoom out",
     magicWandToolTip: "Select connected pixels similar to clicked color",
     moveToolTip: "Move selection",
+    matchSmallestLayerSize: "AI Match Layer Size",
+    matchSmallestLayerSizeToolTip: "Resize selected layers down to the smallest layer size and match them exactly.",
+    aiNoModelRequired: "Runs locally without loading AI models",
 
     // Timeline
     reorderMode: "Reorder Mode",
