@@ -5,7 +5,11 @@ import { CropArea, Point, UnifiedLayer, createPaintLayer } from "../types";
 
 interface UseImageImportOptions {
   layersCount: number;
-  addImageLayer: (imageSrc: string, name?: string) => void;
+  addImageLayer: (
+    imageSrc: string,
+    name?: string,
+    options?: { preserveActiveLayerId?: string | null }
+  ) => void;
   layerCanvasesRef: React.MutableRefObject<Map<string, HTMLCanvasElement>>;
   editCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   imageRef: React.RefObject<HTMLImageElement | null>;

@@ -51,6 +51,7 @@ interface UseKeyboardShortcutsOptions {
   clearSelectionPixels?: () => void;
   clipboardRef: RefObject<ImageData | null>;
   floatingLayerRef: RefObject<FloatingLayer | null>;
+  activeLayerId?: string | null;
   activeLayerPosition?: { x: number; y: number } | null;
 
   // Transform state (from useTransformTool)
@@ -60,7 +61,11 @@ interface UseKeyboardShortcutsOptions {
   // Dimensions helper
   getDisplayDimensions: () => { width: number; height: number };
   loadImageFile?: (file: File) => void;
-  addImageLayer?: (imageSrc: string, name?: string) => void;
+  addImageLayer?: (
+    imageSrc: string,
+    name?: string,
+    options?: { preserveActiveLayerId?: string | null }
+  ) => void;
 
   // Tool mode change handler (optional, uses context setToolMode if not provided)
   onToolModeChange?: (mode: EditorToolMode) => void;
@@ -101,6 +106,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
+    activeLayerId,
     activeLayerPosition,
     isTransformActive = false,
     cancelTransform,
@@ -333,7 +339,9 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
         const reader = new FileReader();
         reader.onload = () => {
           if (typeof reader.result === "string") {
-            addImageLayer(reader.result);
+            addImageLayer(reader.result, undefined, {
+              preserveActiveLayerId: activeLayerId || null,
+            });
           }
         };
         reader.readAsDataURL(imageFile);
@@ -380,6 +388,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
     clearSelectionPixels,
     clipboardRef,
     floatingLayerRef,
+    activeLayerId,
     isTransformActive,
     cancelTransform,
     editCanvasRef,
