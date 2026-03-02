@@ -3,6 +3,9 @@
 import { useCallback, RefObject } from "react";
 import { UnifiedLayer, OutputFormat, CropArea } from "../types";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { getLayerContentBounds } from "../utils/layerContentBounds";
+
+export type ImageExportMode = "single" | "layers" | "sprite";
 
 interface UseImageExportOptions {
   layers: UnifiedLayer[];
@@ -26,7 +29,7 @@ interface UseImageExportReturn {
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: "single" | "layers"
+    mode: ImageExportMode
   ) => void;
 }
 
@@ -223,19 +226,128 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     URL.revokeObjectURL(url);
   }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
 
+  const exportSelectedLayersAsSprite = useCallback((
+    fileName: string,
+    format: OutputFormat,
+    quality: number,
+    backgroundColor: string | null
+  ) => {
+    const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
+    if (targetIds.length === 0) return;
+
+    const targetLayers = [...layers]
+      .filter((layer) => targetIds.includes(layer.id))
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+    type SpriteFrameEntry = {
+      layer: UnifiedLayer;
+      maskedCanvas: HTMLCanvasElement;
+      bounds: NonNullable<ReturnType<typeof getLayerContentBounds>>;
+    };
+
+    const frameEntries: SpriteFrameEntry[] = [];
+    for (const layer of targetLayers) {
+      const layerCanvas = layerCanvasesRef.current?.get(layer.id);
+      if (!layerCanvas) continue;
+
+      const bounds = getLayerContentBounds(layer, layerCanvas);
+      if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
+
+      const maskedCanvas = document.createElement("canvas");
+      maskedCanvas.width = layerCanvas.width;
+      maskedCanvas.height = layerCanvas.height;
+      const maskedCtx = maskedCanvas.getContext("2d");
+      if (!maskedCtx) continue;
+      drawLayerWithOptionalAlphaMask(maskedCtx, layerCanvas, 0, 0);
+
+      frameEntries.push({ layer, maskedCanvas, bounds });
+    }
+
+    if (frameEntries.length === 0) return;
+
+    const frameWidth = Math.max(...frameEntries.map((entry) => entry.bounds.width));
+    const frameHeight = Math.max(...frameEntries.map((entry) => entry.bounds.height));
+    if (frameWidth <= 0 || frameHeight <= 0) return;
+
+    const columns = Math.max(1, Math.ceil(Math.sqrt(frameEntries.length)));
+    const rows = Math.ceil(frameEntries.length / columns);
+
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = frameWidth * columns;
+    exportCanvas.height = frameHeight * rows;
+    const exportCtx = exportCanvas.getContext("2d");
+    if (!exportCtx) return;
+
+    if (backgroundColor) {
+      exportCtx.fillStyle = backgroundColor;
+      exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    } else if (format === "jpeg") {
+      exportCtx.fillStyle = "#ffffff";
+      exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    }
+
+    frameEntries.forEach((entry, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      const cellX = col * frameWidth;
+      const cellY = row * frameHeight;
+      const bounds = entry.bounds;
+
+      const destX = cellX + Math.floor((frameWidth - bounds.width) / 2);
+      const destY = cellY + Math.floor((frameHeight - bounds.height) / 2);
+
+      exportCtx.globalAlpha = entry.layer.opacity / 100;
+      exportCtx.globalCompositeOperation = entry.layer.blendMode || "source-over";
+      exportCtx.drawImage(
+        entry.maskedCanvas,
+        bounds.localX,
+        bounds.localY,
+        bounds.width,
+        bounds.height,
+        destX,
+        destY,
+        bounds.width,
+        bounds.height,
+      );
+      exportCtx.globalAlpha = 1;
+      exportCtx.globalCompositeOperation = "source-over";
+    });
+
+    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
+    const extension = format === "jpeg" ? "jpg" : format;
+
+    exportCanvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${fileName}.${extension}`;
+        link.click();
+        URL.revokeObjectURL(url);
+      },
+      mimeType,
+      quality,
+    );
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef]);
+
   const handleExportFromModal = useCallback((
     fileName: string,
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: "single" | "layers"
+    mode: ImageExportMode
   ) => {
     if (mode === "single") {
       exportImage(fileName, format, quality);
-    } else {
-      void exportSelectedLayers(fileName, format, quality, backgroundColor);
+      return;
     }
-  }, [exportImage, exportSelectedLayers]);
+    if (mode === "layers") {
+      void exportSelectedLayers(fileName, format, quality, backgroundColor);
+      return;
+    }
+    exportSelectedLayersAsSprite(fileName, format, quality, backgroundColor);
+  }, [exportImage, exportSelectedLayers, exportSelectedLayersAsSprite]);
 
   return {
     exportImage,

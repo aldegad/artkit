@@ -82,6 +82,9 @@ interface Translations {
   resampleQualityHint: string;
   resampling: string;
   exportLayers: string;
+  exportMode: string;
+  exportSingleImage: string;
+  exportSpriteSheet: string;
   import: string;
   importComplete: string;
   added: string;
@@ -486,6 +489,9 @@ const translations: Record<Language, Translations> = {
     resampleQualityHint: "축소 시 smooth가 가장 자연스럽고, pixel은 도트 느낌을 유지합니다.",
     resampling: "리샘플링 중...",
     exportLayers: "레이어 개별 내보내기",
+    exportMode: "내보내기 모드",
+    exportSingleImage: "단일 이미지",
+    exportSpriteSheet: "스프라이트 시트",
     import: "가져오기",
     importComplete: "가져오기 완료!",
     added: "추가됨",
@@ -888,6 +894,9 @@ const translations: Record<Language, Translations> = {
     resampleQualityHint: "For downscale, smooth looks most natural. Use pixel to keep crisp pixel-art edges.",
     resampling: "Resampling...",
     exportLayers: "Export Layers",
+    exportMode: "Export Mode",
+    exportSingleImage: "Single Image",
+    exportSpriteSheet: "Sprite Sheet",
     import: "Import",
     importComplete: "Import complete!",
     added: "added",

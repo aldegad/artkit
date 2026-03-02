@@ -3,6 +3,7 @@
 import { ChangeEventHandler, RefObject } from "react";
 import { SyncDialog } from "@/shared/components/app/auth";
 import { CropArea, OutputFormat, SavedImageProject } from "../types";
+import type { ImageExportMode } from "../hooks/useImageExport";
 import type {
   BackgroundRemovalModel,
   BackgroundRemovalQuality,
@@ -24,12 +25,17 @@ export interface EditorOverlaysProps {
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: "single" | "layers"
+    mode: ImageExportMode
   ) => void;
-  exportMode: "single" | "layers";
+  exportMode: ImageExportMode;
+  setExportMode: (mode: ImageExportMode) => void;
   projectName: string;
   exportTranslations: {
     export: string;
+    exportMode: string;
+    exportSingleImage: string;
+    exportLayers: string;
+    exportSpriteSheet: string;
     cancel: string;
     fileName: string;
     format: string;
@@ -145,6 +151,7 @@ export function EditorOverlays({
   setShowExportModal,
   handleExportFromModal,
   exportMode,
+  setExportMode,
   projectName,
   exportTranslations,
   showBgRemovalConfirm,
@@ -212,11 +219,12 @@ export function EditorOverlays({
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
-        onExport={(fileName, format, quality, backgroundColor) =>
-          handleExportFromModal(fileName, format, quality, backgroundColor, exportMode)
+        onExport={(fileName, format, quality, backgroundColor, mode) =>
+          handleExportFromModal(fileName, format, quality, backgroundColor, mode)
         }
         defaultFileName={projectName || "Untitled"}
         mode={exportMode}
+        onModeChange={setExportMode}
         translations={exportTranslations}
       />
 

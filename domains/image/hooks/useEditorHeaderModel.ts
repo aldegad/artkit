@@ -15,12 +15,10 @@ interface UseEditorHeaderModelOptions {
   onSaveAs: () => void;
   onImportImage: () => void;
   onExport: () => void;
-  onExportLayers: () => void;
   onResampleAllResolution: () => void;
   onToggleLayers: () => void;
   isLayersOpen: boolean;
   canSave: boolean;
-  hasSelectedLayers: boolean;
   canResample: boolean;
   isLoading: boolean;
   onUndo: () => void;
@@ -56,12 +54,10 @@ export function useEditorHeaderModel(
     onSaveAs,
     onImportImage,
     onExport,
-    onExportLayers,
     onResampleAllResolution,
     onToggleLayers,
     isLayersOpen,
     canSave,
-    hasSelectedLayers,
     canResample,
     isLoading,
     onUndo,
@@ -111,12 +107,10 @@ export function useEditorHeaderModel(
       onSaveAs,
       onImportImage,
       onExport,
-      onExportLayers,
       onResampleAllResolution,
       onToggleLayers,
       isLayersOpen,
       canSave,
-      hasSelectedLayers,
       canResample,
       isLoading,
       onUndo,
@@ -148,12 +142,10 @@ export function useEditorHeaderModel(
       onSaveAs,
       onImportImage,
       onExport,
-      onExportLayers,
       onResampleAllResolution,
       onToggleLayers,
       isLayersOpen,
       canSave,
-      hasSelectedLayers,
       canResample,
       isLoading,
       onUndo,

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ExportModal as ExportModalBase } from "@/shared/components";
+import { ExportModal as ExportModalBase, Select } from "@/shared/components";
+import type { ImageExportMode } from "../hooks/useImageExport";
 
 // ============================================
 // Types
@@ -12,12 +13,22 @@ type OutputFormat = "png" | "webp" | "jpeg";
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (fileName: string, format: OutputFormat, quality: number, backgroundColor: string | null) => void;
+  onExport: (
+    fileName: string,
+    format: OutputFormat,
+    quality: number,
+    backgroundColor: string | null,
+    mode: ImageExportMode
+  ) => void;
   defaultFileName: string;
-  /** "single" for merged image, "layers" for per-layer ZIP */
-  mode: "single" | "layers";
+  mode: ImageExportMode;
+  onModeChange: (mode: ImageExportMode) => void;
   translations: {
     export: string;
+    exportMode: string;
+    exportSingleImage: string;
+    exportLayers: string;
+    exportSpriteSheet: string;
     cancel: string;
     fileName: string;
     format: string;
@@ -37,6 +48,7 @@ export function ExportModal({
   onExport,
   defaultFileName,
   mode,
+  onModeChange,
   translations: t,
 }: ExportModalProps) {
   const [fileName, setFileName] = useState(defaultFileName);
@@ -54,9 +66,9 @@ export function ExportModal({
 
   const handleExport = useCallback(() => {
     if (!fileName.trim()) return;
-    onExport(fileName.trim(), format, quality, useBgColor ? bgColor : null);
+    onExport(fileName.trim(), format, quality, useBgColor ? bgColor : null, mode);
     onClose();
-  }, [fileName, format, quality, useBgColor, bgColor, onExport, onClose]);
+  }, [fileName, format, quality, useBgColor, bgColor, mode, onExport, onClose]);
 
   const ext = format === "jpeg" ? "jpg" : format;
   const fileSuffix = mode === "layers" ? ".zip" : `.${ext}`;
@@ -82,6 +94,20 @@ export function ExportModal({
       cancelLabel={t.cancel}
       exportLabel={t.export}
     >
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-text-secondary">{t.exportMode}</label>
+        <Select<ImageExportMode>
+          value={mode}
+          onChange={(value) => onModeChange(value as ImageExportMode)}
+          options={[
+            { value: "single", label: t.exportSingleImage },
+            { value: "layers", label: t.exportLayers },
+            { value: "sprite", label: t.exportSpriteSheet },
+          ]}
+          size="sm"
+        />
+      </div>
+
       {/* Quality (non-PNG only) */}
       {format !== "png" && (
         <div className="flex flex-col gap-1">
