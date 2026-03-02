@@ -53,6 +53,11 @@ import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { useImageResampleActions } from "./useImageResampleActions";
 import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import {
+  computeMagicWandSelectionFromAlphaMask,
+  toMagicWandBoundsMask,
+} from "@/shared/utils/magicWand";
 import {
   useMagicWandSelectionAction,
   useClearSelectionPixelsAction,
@@ -62,6 +67,8 @@ import type {
 } from "@/shared/ai/backgroundRemoval";
 import { readAISettings, updateAISettings } from "@/shared/ai/settings";
 import { collectProjectGroupNames } from "@/shared/utils/projectGroups";
+
+const LAYER_PIXEL_SELECTION_ALPHA_THRESHOLD = 16;
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -248,45 +255,6 @@ export function useImageEditorController() {
       layer: t.layer,
       minOneLayerRequired: t.minOneLayerRequired,
     },
-  });
-
-  const layerContextValue = useEditorLayerContextValue({
-    layers,
-    setLayers,
-    activeLayerId,
-    setActiveLayerId,
-    selectedLayerIds,
-    setSelectedLayerIds,
-    draggedLayerId,
-    setDraggedLayerId,
-    dragOverLayerId,
-    setDragOverLayerId,
-    layerCanvasesRef,
-    editCanvasRef,
-    addPaintLayer,
-    addFilterLayer,
-    addImageLayer,
-    deleteLayer,
-    selectLayer,
-    toggleLayerVisibility,
-    updateLayer,
-    updateLayerOpacity,
-    updateLayerPosition,
-    updateMultipleLayerPositions,
-    renameLayer,
-    toggleLayerLock,
-    moveLayer,
-    reorderLayers,
-    mergeLayerDown,
-    duplicateLayer,
-    rotateAllLayerCanvases,
-    resizeSelectedLayersToSmallest,
-    selectLayerWithModifier,
-    clearLayerSelection,
-    alignLayers,
-    distributeLayers,
-    initLayers,
-    addLayer,
   });
 
   const {
@@ -547,6 +515,133 @@ export function useImageEditorController() {
     floatingLayerRef,
     saveToHistory,
     requestRender,
+  });
+
+  const selectLayerPixelsToSelection = useCallback((layerId: string) => {
+    const clearSelectionState = () => {
+      setSelection(null);
+      setSelectionMask(null);
+      setLassoPath(null);
+      setIsMovingSelection(false);
+      setIsDuplicating(false);
+      floatingLayerRef.current = null;
+      requestRender();
+    };
+
+    const layer = layers.find((item) => item.id === layerId);
+    const layerCanvas = layerCanvasesRef.current.get(layerId);
+    if (!layer || !layerCanvas || layerCanvas.width <= 0 || layerCanvas.height <= 0) {
+      clearSelectionState();
+      return;
+    }
+
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = layerCanvas.width;
+    sampleCanvas.height = layerCanvas.height;
+    const sampleCtx = sampleCanvas.getContext("2d");
+    if (!sampleCtx) {
+      clearSelectionState();
+      return;
+    }
+
+    drawLayerWithOptionalAlphaMask(sampleCtx, layerCanvas, 0, 0);
+    const imageData = sampleCtx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
+    let seedIndex = -1;
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      if (imageData.data[i + 3] > LAYER_PIXEL_SELECTION_ALPHA_THRESHOLD) {
+        seedIndex = i / 4;
+        break;
+      }
+    }
+
+    if (seedIndex < 0) {
+      clearSelectionState();
+      return;
+    }
+
+    const seedX = seedIndex % layerCanvas.width;
+    const seedY = Math.floor(seedIndex / layerCanvas.width);
+    const layerSelection = computeMagicWandSelectionFromAlphaMask(imageData, seedX, seedY, {
+      alphaThreshold: LAYER_PIXEL_SELECTION_ALPHA_THRESHOLD,
+      connectedOnly: false,
+    });
+
+    if (!layerSelection) {
+      clearSelectionState();
+      return;
+    }
+
+    const mask = toMagicWandBoundsMask(layerSelection);
+    const layerPosX = layer.position?.x || 0;
+    const layerPosY = layer.position?.y || 0;
+    setSelection({
+      x: mask.x + layerPosX,
+      y: mask.y + layerPosY,
+      width: mask.width,
+      height: mask.height,
+    });
+    setSelectionMask({
+      x: mask.x + layerPosX,
+      y: mask.y + layerPosY,
+      width: mask.width,
+      height: mask.height,
+      mask: mask.mask,
+    });
+    setLassoPath(null);
+    setIsMovingSelection(false);
+    setIsDuplicating(false);
+    floatingLayerRef.current = null;
+    requestRender();
+  }, [
+    layers,
+    layerCanvasesRef,
+    setSelection,
+    setSelectionMask,
+    setLassoPath,
+    setIsMovingSelection,
+    setIsDuplicating,
+    floatingLayerRef,
+    requestRender,
+  ]);
+
+  const layerContextValue = useEditorLayerContextValue({
+    layers,
+    setLayers,
+    activeLayerId,
+    setActiveLayerId,
+    selectedLayerIds,
+    setSelectedLayerIds,
+    draggedLayerId,
+    setDraggedLayerId,
+    dragOverLayerId,
+    setDragOverLayerId,
+    layerCanvasesRef,
+    editCanvasRef,
+    addPaintLayer,
+    addFilterLayer,
+    addImageLayer,
+    deleteLayer,
+    selectLayer,
+    toggleLayerVisibility,
+    updateLayer,
+    updateLayerOpacity,
+    updateLayerPosition,
+    updateMultipleLayerPositions,
+    renameLayer,
+    toggleLayerLock,
+    moveLayer,
+    reorderLayers,
+    mergeLayerDown,
+    duplicateLayer,
+    rotateAllLayerCanvases,
+    resizeSelectedLayersToSmallest,
+    selectLayerWithModifier,
+    selectLayerPixelsToSelection,
+    clearLayerSelection,
+    alignLayers,
+    distributeLayers,
+    initLayers,
+    addLayer,
   });
 
   const handleUndo = useCallback(() => {

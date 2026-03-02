@@ -598,15 +598,14 @@ export function useCanvasRendering(
     }
 
     if (selection && showSelectionForTool && !showLassoPreview) {
-      const shouldDrawMagicWandMask = (
-        toolMode === "magicWand"
-        && !!selectionMask
+      const shouldDrawMaskedSelection = (
+        !!selectionMask
         && selectionMask.width > 0
         && selectionMask.height > 0
         && selectionMask.mask.length === selectionMask.width * selectionMask.height
       );
 
-      if (shouldDrawMagicWandMask && selectionMask) {
+      if (shouldDrawMaskedSelection && selectionMask) {
         const wandSelection: MagicWandSelection = {
           width: selectionMask.width,
           height: selectionMask.height,

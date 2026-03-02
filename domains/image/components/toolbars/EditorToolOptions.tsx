@@ -136,6 +136,7 @@ export function EditorToolOptions({
 }: EditorToolOptionsProps) {
   const marqueeModeOptions: Array<{ value: MarqueeSubTool; label: string }> = [
     { value: "lasso", label: "올가미" },
+    { value: "object", label: "오브젝트" },
     { value: "freeRect", label: "자유 사각형" },
     { value: "ratio1x1", label: "1:1" },
     { value: "ratio4x3", label: "4:3" },

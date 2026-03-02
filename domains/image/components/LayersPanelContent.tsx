@@ -184,6 +184,7 @@ export default function LayersPanelContent() {
     addFilterLayer,
     addImageLayer,
     selectLayerWithModifier,
+    selectLayerPixelsToSelection,
     toggleLayerVisibility,
     toggleLayerLock,
     duplicateLayer,
@@ -240,8 +241,13 @@ export default function LayersPanelContent() {
     e.target.value = "";
   };
 
-  // Handle layer click with shift modifier
+  // Handle layer click with shift/meta modifiers
   const handleLayerClick = (e: React.MouseEvent, layerId: string) => {
+    if (e.metaKey || e.ctrlKey) {
+      selectLayerWithModifier(layerId, false);
+      selectLayerPixelsToSelection(layerId);
+      return;
+    }
     selectLayerWithModifier(layerId, e.shiftKey);
   };
 

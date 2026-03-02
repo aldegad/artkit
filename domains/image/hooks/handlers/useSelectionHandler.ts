@@ -9,6 +9,10 @@ import { createRectFromDrag } from "@/shared/utils/rectTransform";
 import { applyFeatherToImageData } from "../../utils/selectionFeather";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 import {
+  computeMagicWandSelectionFromAlphaMask,
+  toMagicWandBoundsMask,
+} from "@/shared/utils/magicWand";
+import {
   applySelectionMaskToImageData,
   createSelectionMaskFromPath,
   isPointInsideSelection,
@@ -22,11 +26,13 @@ export interface UseSelectionHandlerReturn {
 
 const MARQUEE_ASPECT_RATIO: Record<MarqueeSubTool, number | null> = {
   lasso: null,
+  object: null,
   freeRect: null,
   ratio1x1: 1,
   ratio4x3: 4 / 3,
   ratio16x9: 16 / 9,
 };
+const OBJECT_SELECTION_ALPHA_THRESHOLD = 16;
 
 function clampPointToDisplay(point: Point, width: number, height: number): Point {
   return {
@@ -87,6 +93,75 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       const { width: displayWidth, height: displayHeight } = displayDimensions;
 
       if (activeMode !== "marquee") return { handled: false };
+      if (marqueeSubTool === "object") {
+        const editCanvas = editCanvasRef.current;
+        const layerPosX = activeLayerPosition?.x || 0;
+        const layerPosY = activeLayerPosition?.y || 0;
+        const localX = Math.floor(imagePos.x - layerPosX);
+        const localY = Math.floor(imagePos.y - layerPosY);
+
+        setLassoPath(null);
+        (floatingLayerRef as { current: FloatingLayer | null }).current = null;
+        setIsMovingSelection(false);
+        setIsDuplicating(false);
+
+        if (
+          !editCanvas
+          || localX < 0
+          || localY < 0
+          || localX >= editCanvas.width
+          || localY >= editCanvas.height
+        ) {
+          setSelectionMask(null);
+          setSelection(null);
+          return { handled: true };
+        }
+
+        const sampleCanvas = document.createElement("canvas");
+        sampleCanvas.width = editCanvas.width;
+        sampleCanvas.height = editCanvas.height;
+        const sampleCtx = sampleCanvas.getContext("2d");
+        if (!sampleCtx) {
+          setSelectionMask(null);
+          setSelection(null);
+          return { handled: true };
+        }
+
+        drawLayerWithOptionalAlphaMask(sampleCtx, editCanvas, 0, 0);
+        const imageData = sampleCtx.getImageData(0, 0, editCanvas.width, editCanvas.height);
+        const seedAlpha = imageData.data[(localY * editCanvas.width + localX) * 4 + 3];
+        if (seedAlpha <= OBJECT_SELECTION_ALPHA_THRESHOLD) {
+          setSelectionMask(null);
+          setSelection(null);
+          return { handled: true };
+        }
+
+        const objectSelection = computeMagicWandSelectionFromAlphaMask(imageData, localX, localY, {
+          alphaThreshold: OBJECT_SELECTION_ALPHA_THRESHOLD,
+          connectedOnly: true,
+        });
+        if (!objectSelection) {
+          setSelectionMask(null);
+          setSelection(null);
+          return { handled: true };
+        }
+
+        const objectMask = toMagicWandBoundsMask(objectSelection);
+        setSelection({
+          x: objectMask.x + layerPosX,
+          y: objectMask.y + layerPosY,
+          width: objectMask.width,
+          height: objectMask.height,
+        });
+        setSelectionMask({
+          x: objectMask.x + layerPosX,
+          y: objectMask.y + layerPosY,
+          width: objectMask.width,
+          height: objectMask.height,
+          mask: objectMask.mask,
+        });
+        return { handled: true };
+      }
 
       if (selection) {
         // Check if clicking inside selection
@@ -196,6 +271,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       const { imagePos, displayDimensions, e } = ctx;
       const { width: displayWidth, height: displayHeight } = displayDimensions;
       const clampedPos = clampPointToDisplay(imagePos, displayWidth, displayHeight);
+      if (marqueeSubTool === "object") return;
 
       if (marqueeSubTool === "lasso") {
         const basePath = lassoPath && lassoPath.length > 0
@@ -260,7 +336,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       return;
     }
 
-    if (selection && (selection.width < 5 || selection.height < 5)) {
+    if (marqueeSubTool !== "object" && selection && (selection.width < 5 || selection.height < 5)) {
       setSelectionMask(null);
       setSelection(null);
     }

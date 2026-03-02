@@ -65,6 +65,7 @@ export type EditorToolMode =
 
 export type MarqueeSubTool =
   | "lasso"
+  | "object"
   | "freeRect"
   | "ratio1x1"
   | "ratio4x3"

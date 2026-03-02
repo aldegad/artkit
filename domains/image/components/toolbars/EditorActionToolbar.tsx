@@ -141,24 +141,6 @@ export function EditorActionToolbar({
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
-                <span className="font-medium">{t.matchSmallestLayerSize}</span>
-                <span className="text-text-tertiary text-[11px]">{t.matchSmallestLayerSizeToolTip}</span>
-                <span className="text-[10px] text-text-tertiary">{t.aiNoModelRequired}</span>
-              </div>
-            }
-          >
-            <button
-              onClick={onResizeSelectedLayersToSmallest}
-              disabled={!canResizeSelectedLayersToSmallest}
-              className="p-1.5 rounded transition-colors hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <SquareFitIcon className="w-4 h-4" />
-            </button>
-          </Tooltip>
-
-          <Tooltip
-            content={
-              <div className="flex flex-col gap-1">
                 <span className="font-medium">{t.removeBackground}</span>
                 <span className="text-text-tertiary text-[11px]">
                   AI 모델을 사용해 이미지 배경을 제거합니다
@@ -179,6 +161,24 @@ export function EditorActionToolbar({
               }`}
             >
               <BackgroundRemovalIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.matchSmallestLayerSize}</span>
+                <span className="text-text-tertiary text-[11px]">{t.matchSmallestLayerSizeToolTip}</span>
+                <span className="text-[10px] text-text-tertiary">{t.aiNoModelRequired}</span>
+              </div>
+            }
+          >
+            <button
+              onClick={onResizeSelectedLayersToSmallest}
+              disabled={!canResizeSelectedLayersToSmallest}
+              className="p-1.5 rounded transition-colors hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <SquareFitIcon className="w-4 h-4" />
             </button>
           </Tooltip>
         </div>
