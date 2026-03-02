@@ -831,6 +831,11 @@ function isOpaqueRuntimeCodeError(error: unknown): boolean {
   return /^[0-9]+$/.test(message);
 }
 
+function getOpaqueRuntimeCode(error: unknown): string | null {
+  const message = getErrorMessage(error).trim();
+  return /^[0-9]+$/.test(message) ? message : null;
+}
+
 function isExecutionProviderError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   return (
@@ -865,6 +870,104 @@ export function getBackgroundRemovalErrorMessage(error: unknown): string {
 export function getBackgroundRemovalRawErrorMessage(error: unknown): string {
   const message = getErrorMessage(error).trim();
   return message || "Unknown background removal error.";
+}
+
+interface OpaqueWasmFailureDiagnostics {
+  code: string;
+  modelKey: BackgroundRemovalModel;
+  modelLabel: string;
+  originalWidth: number;
+  originalHeight: number;
+  probeWidth: number;
+  probeHeight: number;
+  probeSucceeded: boolean;
+  probeErrorMessage?: string;
+}
+
+async function diagnoseOpaqueWasmFailure(
+  code: string,
+  modelKey: BackgroundRemovalModel,
+  image: RawImage,
+  activeModel: Awaited<ReturnType<typeof AutoModel.from_pretrained>>,
+  activeProcessor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>,
+): Promise<OpaqueWasmFailureDiagnostics> {
+  const modelLabel = BACKGROUND_REMOVAL_MODELS[modelKey].label;
+  const originalWidth = image.width;
+  const originalHeight = image.height;
+  const probeWidth = Math.max(32, Math.min(originalWidth, 128));
+  const probeHeight = Math.max(32, Math.min(originalHeight, 128));
+
+  // If input is already tiny, probing adds no additional signal.
+  if (probeWidth === originalWidth && probeHeight === originalHeight) {
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      probeSucceeded: false,
+      probeErrorMessage: "Probe skipped: input already small.",
+    };
+  }
+
+  try {
+    const probeImage = await image.resize(probeWidth, probeHeight);
+    const probeProcessed = await activeProcessor(probeImage) as ModelInputFeeds;
+    await runModelWithCompatibleInputs(activeModel, probeProcessed);
+
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      probeSucceeded: true,
+    };
+  } catch (probeError) {
+    return {
+      code,
+      modelKey,
+      modelLabel,
+      originalWidth,
+      originalHeight,
+      probeWidth,
+      probeHeight,
+      probeSucceeded: false,
+      probeErrorMessage: getBackgroundRemovalRawErrorMessage(probeError),
+    };
+  }
+}
+
+function buildOpaqueWasmFailureMessage(diagnostics: OpaqueWasmFailureDiagnostics): string {
+  const {
+    code,
+    modelLabel,
+    originalWidth,
+    originalHeight,
+    probeWidth,
+    probeHeight,
+    probeSucceeded,
+    probeErrorMessage,
+  } = diagnostics;
+
+  if (probeSucceeded) {
+    return [
+      `WASM execution failed with numeric code ${code} on ${originalWidth}x${originalHeight} (${modelLabel}).`,
+      `A ${probeWidth}x${probeHeight} probe succeeded with the same model.`,
+      "Conclusion: likely memory pressure/input-size limit, not feed-key mismatch.",
+    ].join(" ");
+  }
+
+  const probeDetail = probeErrorMessage ? ` Probe error: ${probeErrorMessage}` : "";
+  return [
+    `WASM execution failed with numeric code ${code} on ${originalWidth}x${originalHeight} (${modelLabel}).`,
+    `A ${probeWidth}x${probeHeight} probe also failed.${probeDetail}`,
+    "Conclusion: likely runtime/model compatibility issue (or severe memory constraint), not just input size.",
+  ].join(" ");
 }
 
 function resolvePrimaryInputTensor(processed: ModelInputFeeds): unknown {
@@ -1078,8 +1181,24 @@ export async function removeBackground(
     activeModel = model as NonNullable<typeof model>;
     activeProcessor = processor as NonNullable<typeof processor>;
 
-    const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
-    modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+    try {
+      const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
+      modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
+    } catch (wasmError) {
+      const opaqueCode = getOpaqueRuntimeCode(wasmError);
+      if (!opaqueCode) {
+        throw wasmError;
+      }
+
+      const diagnostics = await diagnoseOpaqueWasmFailure(
+        opaqueCode,
+        modelKey,
+        image,
+        activeModel,
+        activeProcessor,
+      );
+      throw new Error(buildOpaqueWasmFailureMessage(diagnostics));
+    }
   }
 
   const selectedMask = pickMaskTensor(modelOutput);
