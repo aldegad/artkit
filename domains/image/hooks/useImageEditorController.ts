@@ -436,9 +436,12 @@ export function useImageEditorController() {
   });
 
   const applyMagicWandSelection = useMagicWandSelectionAction({
+    activeLayerId,
     editCanvasRef,
     activeLayerPosition,
     magicWandTolerance,
+    selection,
+    selectionMask,
     floatingLayerRef,
     setSelection,
     setSelectionMask,
