@@ -240,6 +240,7 @@ export function useImageEditorController() {
     mergeLayerDown,
     duplicateLayer,
     rotateAllLayerCanvases,
+    resizeSelectedLayersToSmallest,
     selectLayerWithModifier,
     clearLayerSelection,
     alignLayers,
@@ -286,6 +287,7 @@ export function useImageEditorController() {
     mergeLayerDown,
     duplicateLayer,
     rotateAllLayerCanvases,
+    resizeSelectedLayersToSmallest,
     selectLayerWithModifier,
     clearLayerSelection,
     alignLayers,
@@ -564,6 +566,11 @@ export function useImageEditorController() {
     requestRender();
   }, [redo, requestRender]);
 
+  const handleResizeSelectedLayersToSmallest = useCallback(() => {
+    resizeSelectedLayersToSmallest();
+    requestRender();
+  }, [resizeSelectedLayersToSmallest, requestRender]);
+
   const { loadImageFile, loadImageFiles, handleFileSelect, handleDrop, handleDragOver } = useImageImport({
     layersCount: layers.length,
     addImageLayer,
@@ -821,6 +828,7 @@ export function useImageEditorController() {
   const canUndoNow = canUndo();
   const canRedoNow = canRedo();
   const canResample = hasLayers && canvasSize.width > 0 && canvasSize.height > 0;
+  const canResizeSelectedLayersToSmallest = selectedLayerIds.length > 1;
 
   const {
     isResampling,
@@ -912,6 +920,9 @@ export function useImageEditorController() {
     actionToolbarConfig: {
       toolMode,
       onToolModeChange: handleToolModeChange,
+      onActivateMagicWand: () => handleToolModeChange("magicWand"),
+      onResizeSelectedLayersToSmallest: handleResizeSelectedLayersToSmallest,
+      canResizeSelectedLayersToSmallest,
       onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
       isRemovingBackground,
       onUndo: handleUndo,

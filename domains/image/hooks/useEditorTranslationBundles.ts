@@ -24,6 +24,11 @@ interface EditorTranslationSource {
   snapToGuides: string;
   clearGuides: string;
   panelHeaders: string;
+  magicWand: string;
+  magicWandToolTip: string;
+  matchSmallestLayerSize: string;
+  matchSmallestLayerSizeToolTip: string;
+  aiNoModelRequired: string;
   removeBackground: string;
   rotate: string;
   rotateLeft: string;
@@ -78,6 +83,11 @@ interface EditorTranslationBundles {
     panelHeaders: string;
   };
   actionToolbar: {
+    magicWand: string;
+    magicWandToolTip: string;
+    matchSmallestLayerSize: string;
+    matchSmallestLayerSizeToolTip: string;
+    aiNoModelRequired: string;
     removeBackground: string;
     undo: string;
     redo: string;
@@ -158,6 +168,11 @@ export function useEditorTranslationBundles(
         panelHeaders: source.panelHeaders,
       },
       actionToolbar: {
+        magicWand: source.magicWand,
+        magicWandToolTip: source.magicWandToolTip,
+        matchSmallestLayerSize: source.matchSmallestLayerSize,
+        matchSmallestLayerSizeToolTip: source.matchSmallestLayerSizeToolTip,
+        aiNoModelRequired: source.aiNoModelRequired,
         removeBackground: source.removeBackground,
         undo: source.undo,
         redo: source.redo,

@@ -4,6 +4,8 @@ import { ReactNode } from "react";
 import { Tooltip, Scrollbar, NumberScrubber, Popover } from "@/shared/components";
 import {
   BackgroundRemovalIcon,
+  MagicWandIcon,
+  SquareFitIcon,
   UndoIcon,
   RedoIcon,
   RotateIcon,
@@ -23,6 +25,9 @@ export interface EditorActionToolbarProps {
   toolButtons: ToolButton[];
   toolMode: EditorToolMode;
   onToolModeChange: (mode: EditorToolMode) => void;
+  onActivateMagicWand: () => void;
+  onResizeSelectedLayersToSmallest: () => void;
+  canResizeSelectedLayersToSmallest: boolean;
   onOpenBackgroundRemoval: () => void;
   isRemovingBackground: boolean;
   onUndo: () => void;
@@ -35,6 +40,11 @@ export interface EditorActionToolbarProps {
   setZoom: (zoom: number | ((z: number) => number)) => void;
   onFitToScreen: () => void;
   translations: {
+    magicWand: string;
+    magicWandToolTip: string;
+    matchSmallestLayerSize: string;
+    matchSmallestLayerSizeToolTip: string;
+    aiNoModelRequired: string;
     removeBackground: string;
     undo: string;
     redo: string;
@@ -49,6 +59,9 @@ export function EditorActionToolbar({
   toolButtons,
   toolMode,
   onToolModeChange,
+  onActivateMagicWand,
+  onResizeSelectedLayersToSmallest,
+  canResizeSelectedLayersToSmallest,
   onOpenBackgroundRemoval,
   isRemovingBackground,
   onUndo,
@@ -107,6 +120,45 @@ export function EditorActionToolbar({
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.magicWand}</span>
+                <span className="text-text-tertiary text-[11px]">{t.magicWandToolTip}</span>
+              </div>
+            }
+            shortcut="W"
+          >
+            <button
+              onClick={onActivateMagicWand}
+              className={`p-1.5 rounded transition-colors ${
+                toolMode === "magicWand"
+                  ? "bg-accent-primary text-white"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <MagicWandIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.matchSmallestLayerSize}</span>
+                <span className="text-text-tertiary text-[11px]">{t.matchSmallestLayerSizeToolTip}</span>
+                <span className="text-[10px] text-text-tertiary">{t.aiNoModelRequired}</span>
+              </div>
+            }
+          >
+            <button
+              onClick={onResizeSelectedLayersToSmallest}
+              disabled={!canResizeSelectedLayersToSmallest}
+              className="p-1.5 rounded transition-colors hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <SquareFitIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
                 <span className="font-medium">{t.removeBackground}</span>
                 <span className="text-text-tertiary text-[11px]">
                   AI 모델을 사용해 이미지 배경을 제거합니다
@@ -120,7 +172,7 @@ export function EditorActionToolbar({
             <button
               onClick={onOpenBackgroundRemoval}
               disabled={isRemovingBackground}
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                 isRemovingBackground
                   ? "bg-accent-primary text-white cursor-wait"
                   : "hover:bg-interactive-hover"
