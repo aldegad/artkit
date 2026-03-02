@@ -42,7 +42,7 @@ export interface EditorToolOptionsProps {
   aspectRatio: AspectRatio;
   setAspectRatio: React.Dispatch<React.SetStateAction<AspectRatio>>;
   cropArea: CropArea | null;
-  activeLayerBounds: CropArea | null;
+  canObjectFit: boolean;
   selectAll: () => void;
   clearCrop: () => void;
   // Extended crop props
@@ -51,7 +51,7 @@ export interface EditorToolOptionsProps {
   setCropSize: (width: number, height: number) => void;
   expandToSquare: () => void;
   fitToSquare: () => void;
-  fitToObjectBounds: (bounds: CropArea | null) => void;
+  onObjectFit: () => void;
   onApplyCrop: () => void;
   // Tool name for default display
   currentToolName?: string;
@@ -113,7 +113,7 @@ export function EditorToolOptions({
   aspectRatio,
   setAspectRatio,
   cropArea,
-  activeLayerBounds,
+  canObjectFit,
   selectAll,
   clearCrop,
   lockAspect,
@@ -121,7 +121,7 @@ export function EditorToolOptions({
   setCropSize,
   expandToSquare,
   fitToSquare,
-  fitToObjectBounds,
+  onObjectFit,
   onApplyCrop,
   currentToolName,
   isTransformActive,
@@ -384,8 +384,8 @@ export function EditorToolOptions({
             </>
           )}
           <button
-            onClick={() => fitToObjectBounds(activeLayerBounds)}
-            disabled={!activeLayerBounds}
+            onClick={onObjectFit}
+            disabled={!canObjectFit}
             className="px-1.5 py-0.5 text-xs hover:bg-interactive-hover rounded transition-colors flex items-center gap-0.5 disabled:opacity-30 disabled:cursor-not-allowed"
             title="Contain using active layer bounds"
           >

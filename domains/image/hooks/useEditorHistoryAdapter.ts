@@ -50,10 +50,11 @@ interface UseEditorHistoryAdapterReturn {
 }
 
 function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
+  const rest = { ...layer };
+  delete rest.originalSize;
   return {
-    ...layer,
-    position: layer.position ? { ...layer.position } : undefined,
-    originalSize: layer.originalSize ? { ...layer.originalSize } : undefined,
+    ...rest,
+    position: rest.position ? { ...rest.position } : undefined,
   };
 }
 
@@ -159,8 +160,8 @@ export function useEditorHistoryAdapter(
         if (canvasMap.has(layer.id)) return;
 
         const fallbackCanvas = document.createElement("canvas");
-        fallbackCanvas.width = Math.max(1, layer.originalSize?.width || canvasSize.width || 1);
-        fallbackCanvas.height = Math.max(1, layer.originalSize?.height || canvasSize.height || 1);
+        fallbackCanvas.width = Math.max(1, canvasSize.width || 1);
+        fallbackCanvas.height = Math.max(1, canvasSize.height || 1);
         clearLayerAlphaMask(fallbackCanvas);
         canvasMap.set(layer.id, fallbackCanvas);
       });
