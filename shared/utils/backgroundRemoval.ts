@@ -855,7 +855,7 @@ export function getBackgroundRemovalErrorMessage(error: unknown): string {
   }
 
   if (isOpaqueRuntimeCodeError(error)) {
-    return "Model execution failed with opaque runtime code. Retrying with WASM may help.";
+    return "Opaque runtime failure (numeric code only). Likely WASM memory pressure or runtime compatibility issue.";
   }
 
   const message = getErrorMessage(error).trim();
