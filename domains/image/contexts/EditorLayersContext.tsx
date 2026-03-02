@@ -57,6 +57,7 @@ export interface EditorLayersContextValue {
 
   // Multi-select actions
   selectLayerWithModifier: (layerId: string, shiftKey: boolean) => void;
+  selectLayerPixelsToSelection: (layerId: string) => void;
   clearLayerSelection: () => void;
 
   // Alignment actions

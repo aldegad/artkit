@@ -391,7 +391,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         isMarqueeCreateDragRef.current = nextDragType === "create";
         if (selectionResult.dragStart) dragStartRef.current = selectionResult.dragStart;
         marqueeCreateLastPosRef.current = selectionResult.dragStart ?? null;
-        setIsDragging(true);
+        setIsDragging(nextDragType !== null);
         return;
       }
 
