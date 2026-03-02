@@ -5,7 +5,6 @@ import { SyncDialog } from "@/shared/components/app/auth";
 import { CropArea, OutputFormat, SavedImageProject } from "../types";
 import type { ImageExportMode } from "../hooks/useImageExport";
 import type {
-  BackgroundRemovalModel,
   BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { BackgroundRemovalModals } from "./BackgroundRemovalModals";
@@ -51,8 +50,6 @@ export interface EditorOverlaysProps {
   hasSelection: boolean;
   bgRemovalQuality: BackgroundRemovalQuality;
   setBgRemovalQuality: (quality: BackgroundRemovalQuality) => void;
-  bgRemovalModel: BackgroundRemovalModel;
-  setBgRemovalModel: (model: BackgroundRemovalModel) => void;
   isRemovingBackground: boolean;
   bgRemovalProgress: number;
   bgRemovalStatus: string;
@@ -160,8 +157,6 @@ export function EditorOverlays({
   hasSelection,
   bgRemovalQuality,
   setBgRemovalQuality,
-  bgRemovalModel,
-  setBgRemovalModel,
   isRemovingBackground,
   bgRemovalProgress,
   bgRemovalStatus,
@@ -238,8 +233,6 @@ export function EditorOverlays({
         hasSelection={hasSelection}
         quality={bgRemovalQuality}
         onQualityChange={setBgRemovalQuality}
-        model={bgRemovalModel}
-        onModelChange={setBgRemovalModel}
         isRemoving={isRemovingBackground}
         progress={bgRemovalProgress}
         status={bgRemovalStatus}

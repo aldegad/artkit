@@ -3,11 +3,12 @@
 import { useState, useCallback, Dispatch, SetStateAction } from "react";
 import { SpriteFrame } from "../types";
 import {
+  getBackgroundRemovalErrorMessage,
+  getBackgroundRemovalRawErrorMessage,
   removeBackground,
-  type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
-import { showErrorToast, showInfoToast } from "@/shared/components";
+import { confirmDialog, showInfoToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -21,7 +22,6 @@ interface UseFrameBackgroundRemovalOptions {
   setFrames: Dispatch<SetStateAction<SpriteFrame[]>>;
   pushHistory: () => void;
   quality?: BackgroundRemovalQuality;
-  model?: BackgroundRemovalModel;
   translations: {
     backgroundRemovalFailed?: string;
     selectFrameForBgRemoval?: string;
@@ -52,7 +52,6 @@ export function useFrameBackgroundRemoval(
     setFrames,
     pushHistory,
     quality,
-    model,
     translations: t,
   } = options;
 
@@ -104,12 +103,7 @@ export function useFrameBackgroundRemoval(
     try {
       pushHistory();
 
-      const backgroundRemovalOptions = (quality || model)
-        ? {
-            ...(quality ? { quality } : {}),
-            ...(model ? { model } : {}),
-          }
-        : undefined;
+      const backgroundRemovalOptions = quality ? { quality } : undefined;
 
       const totalFrames = framesToProcess.length;
       const updatedFrameData = new Map<number, string>();
@@ -143,8 +137,17 @@ export function useFrameBackgroundRemoval(
       setBgRemovalStatus("Done!");
     } catch (error) {
       console.error("Background removal failed:", error);
-      setBgRemovalStatus("Failed");
-      showErrorToast(t.backgroundRemovalFailed || "Background removal failed. Please try again.");
+      const rawReason = getBackgroundRemovalRawErrorMessage(error);
+      const reason = getBackgroundRemovalErrorMessage(error);
+      setBgRemovalStatus(`Failed: ${rawReason}`);
+      const baseMessage = t.backgroundRemovalFailed || "Background removal failed. Please try again.";
+      const message = rawReason === reason ? rawReason : `${rawReason}\n\nSummary: ${reason}`;
+      void confirmDialog({
+        title: baseMessage,
+        message,
+        confirmLabel: "Close",
+        hideCancel: true,
+      });
     } finally {
       setIsRemovingBackground(false);
       setTimeout(() => {
@@ -152,7 +155,7 @@ export function useFrameBackgroundRemoval(
         setBgRemovalStatus("");
       }, 2000);
     }
-  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, model, t]);
+  }, [isRemovingBackground, frames, currentFrameIndex, getCurrentFrameIndex, selectedFrameIds, setFrames, pushHistory, quality, t]);
 
   return {
     isRemovingBackground,
