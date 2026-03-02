@@ -24,13 +24,14 @@ export interface EditorToolOptionsProps {
   setBrushColor: React.Dispatch<React.SetStateAction<string>>;
   stampSource: Point | null;
   selection: CropArea | null;
-  selectionFeather: number;
-  setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
+  selectionOffset: number;
+  setSelectionOffset: React.Dispatch<React.SetStateAction<number>>;
   marqueeSubTool: MarqueeSubTool;
   setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   onClearSelectionPixels: () => void;
+  onInvertSelection: () => void;
   // Preset props
   activePreset: BrushPreset;
   presets: BrushPreset[];
@@ -97,13 +98,14 @@ export function EditorToolOptions({
   setBrushColor,
   stampSource,
   selection,
-  selectionFeather,
-  setSelectionFeather,
+  selectionOffset,
+  setSelectionOffset,
   marqueeSubTool,
   setMarqueeSubTool,
   magicWandTolerance,
   setMagicWandTolerance,
   onClearSelectionPixels,
+  onInvertSelection,
   activePreset,
   presets,
   onSelectPreset,
@@ -265,15 +267,23 @@ export function EditorToolOptions({
           </div>
           <div className="w-px h-4 bg-border-default" />
           <NumberScrubber
-            value={selectionFeather}
-            onChange={(v) => setSelectionFeather(Math.max(0, Math.round(v)))}
-            min={0}
-            max={200}
-            step={1}
-            label={`${t.feather}:`}
-            format={(v) => `${Math.round(v)}px`}
+            value={selectionOffset}
+            onChange={(v) => setSelectionOffset(Math.max(-64, Math.min(64, Math.round(v * 2) / 2)))}
+            min={-64}
+            max={64}
+            step={0.5}
+            label="Offset:"
+            format={(v) => `${v > 0 ? "+" : ""}${Number.isInteger(v) ? Math.round(v) : v.toFixed(1)}px`}
             size="sm"
           />
+          <button
+            onClick={onInvertSelection}
+            disabled={!selection}
+            className="px-2 py-0.5 text-xs rounded transition-colors hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
+            title="반전"
+          >
+            반전
+          </button>
           <button
             onClick={onClearSelectionPixels}
             disabled={!selection}

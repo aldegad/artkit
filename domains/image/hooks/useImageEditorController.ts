@@ -291,6 +291,8 @@ export function useImageEditorController() {
     setSelection,
     selectionFeather,
     setSelectionFeather,
+    selectionOffset,
+    setSelectionOffset,
     marqueeSubTool,
     setMarqueeSubTool,
     lassoPath,
@@ -439,6 +441,7 @@ export function useImageEditorController() {
     setSelectionMask,
     selection,
     selectionFeather,
+    selectionOffset,
     setSelection,
     isMovingSelection,
     setIsMovingSelection,
@@ -516,6 +519,111 @@ export function useImageEditorController() {
     saveToHistory,
     requestRender,
   });
+
+  const invertSelection = useCallback(() => {
+    const { width, height } = getDisplayDimensions();
+    if (width <= 0 || height <= 0) return;
+
+    const fullMask = new Uint8Array(width * height);
+    const writeMaskPixel = (x: number, y: number, alpha: number) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return;
+      const idx = y * width + x;
+      if (alpha > fullMask[idx]) {
+        fullMask[idx] = alpha;
+      }
+    };
+
+    if (selection) {
+      if (selectionMask) {
+        for (let y = 0; y < selectionMask.height; y += 1) {
+          for (let x = 0; x < selectionMask.width; x += 1) {
+            const alpha = selectionMask.mask[y * selectionMask.width + x];
+            if (alpha <= 0) continue;
+            writeMaskPixel(selectionMask.x + x, selectionMask.y + y, alpha);
+          }
+        }
+      } else {
+        const minX = Math.max(0, Math.floor(selection.x));
+        const minY = Math.max(0, Math.floor(selection.y));
+        const maxX = Math.min(width, Math.ceil(selection.x + selection.width));
+        const maxY = Math.min(height, Math.ceil(selection.y + selection.height));
+        for (let y = minY; y < maxY; y += 1) {
+          for (let x = minX; x < maxX; x += 1) {
+            writeMaskPixel(x, y, 255);
+          }
+        }
+      }
+    } else {
+      fullMask.fill(255);
+    }
+
+    for (let i = 0; i < fullMask.length; i += 1) {
+      fullMask[i] = 255 - fullMask[i];
+    }
+
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (fullMask[y * width + x] === 0) continue;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+
+    if (maxX < minX || maxY < minY) {
+      setSelection(null);
+      setSelectionMask(null);
+      setLassoPath(null);
+      setIsMovingSelection(false);
+      setIsDuplicating(false);
+      floatingLayerRef.current = null;
+      requestRender();
+      return;
+    }
+
+    const maskWidth = maxX - minX + 1;
+    const maskHeight = maxY - minY + 1;
+    const nextMask = new Uint8Array(maskWidth * maskHeight);
+    for (let y = 0; y < maskHeight; y += 1) {
+      const srcStart = (minY + y) * width + minX;
+      nextMask.set(fullMask.subarray(srcStart, srcStart + maskWidth), y * maskWidth);
+    }
+
+    setSelection({
+      x: minX,
+      y: minY,
+      width: maskWidth,
+      height: maskHeight,
+    });
+    setSelectionMask({
+      x: minX,
+      y: minY,
+      width: maskWidth,
+      height: maskHeight,
+      mask: nextMask,
+    });
+    setLassoPath(null);
+    setIsMovingSelection(false);
+    setIsDuplicating(false);
+    floatingLayerRef.current = null;
+    requestRender();
+  }, [
+    getDisplayDimensions,
+    selection,
+    selectionMask,
+    setSelection,
+    setSelectionMask,
+    setLassoPath,
+    setIsMovingSelection,
+    setIsDuplicating,
+    floatingLayerRef,
+    requestRender,
+  ]);
 
   const selectLayerPixelsToSelection = useCallback((layerId: string) => {
     const clearSelectionState = () => {
@@ -1049,13 +1157,14 @@ export function useImageEditorController() {
       setBrushColor,
       stampSource,
       selection,
-      selectionFeather,
-      setSelectionFeather,
+      selectionOffset,
+      setSelectionOffset,
       marqueeSubTool,
       setMarqueeSubTool,
       magicWandTolerance,
       setMagicWandTolerance,
       onClearSelectionPixels: clearSelectionPixels,
+      onInvertSelection: invertSelection,
       activePreset,
       presets,
       onSelectPreset: setActivePreset,

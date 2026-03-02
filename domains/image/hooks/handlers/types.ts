@@ -118,6 +118,7 @@ export interface SelectionHandlerOptions extends BaseHandlerOptions {
   setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
   selection: CropArea | null;
   selectionFeather: number;
+  selectionOffset: number;
   setSelection: (selection: CropArea | null) => void;
   isMovingSelection: boolean;
   setIsMovingSelection: (value: boolean) => void;
