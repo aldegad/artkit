@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type RefObject } from "react";
+import type { ImageExportMode } from "./useImageExport";
 
 interface UseImageEditorUiActionsOptions {
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -13,10 +14,10 @@ interface UseImageEditorUiActionsOptions {
 interface UseImageEditorUiActionsReturn {
   showExportModal: boolean;
   setShowExportModal: (show: boolean) => void;
-  exportMode: "single" | "layers";
+  exportMode: ImageExportMode;
+  setExportMode: (mode: ImageExportMode) => void;
   openProjectList: () => void;
-  openExportSingle: () => void;
-  openExportLayers: () => void;
+  openExport: () => void;
   openImportImage: () => void;
   openBackgroundRemovalConfirm: () => void;
   togglePanLock: () => void;
@@ -34,19 +35,14 @@ export function useImageEditorUiActions(
   } = options;
 
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportMode, setExportMode] = useState<"single" | "layers">("single");
+  const [exportMode, setExportMode] = useState<ImageExportMode>("single");
 
   const openProjectList = useCallback(() => {
     setIsProjectListOpen(true);
   }, [setIsProjectListOpen]);
 
-  const openExportSingle = useCallback(() => {
+  const openExport = useCallback(() => {
     setExportMode("single");
-    setShowExportModal(true);
-  }, []);
-
-  const openExportLayers = useCallback(() => {
-    setExportMode("layers");
     setShowExportModal(true);
   }, []);
 
@@ -66,9 +62,9 @@ export function useImageEditorUiActions(
     showExportModal,
     setShowExportModal,
     exportMode,
+    setExportMode,
     openProjectList,
-    openExportSingle,
-    openExportLayers,
+    openExport,
     openImportImage,
     openBackgroundRemovalConfirm,
     togglePanLock,

@@ -826,7 +826,6 @@ export function useImageEditorController() {
   });
 
   const hasLayers = layers.length > 0;
-  const hasSelectedLayers = selectedLayerIds.length > 0 || activeLayerId !== null;
   const canUndoNow = canUndo();
   const canRedoNow = canRedo();
   const canResample = hasLayers && canvasSize.width > 0 && canvasSize.height > 0;
@@ -880,9 +879,9 @@ export function useImageEditorController() {
     showExportModal,
     setShowExportModal,
     exportMode,
+    setExportMode,
     openProjectList,
-    openExportSingle,
-    openExportLayers,
+    openExport,
     openImportImage,
     openBackgroundRemovalConfirm,
     togglePanLock,
@@ -905,13 +904,11 @@ export function useImageEditorController() {
     onSave: handleSaveProjectAction,
     onSaveAs: handleSaveAsProjectAction,
     onImportImage: openImportImage,
-    onExport: openExportSingle,
-    onExportLayers: openExportLayers,
+    onExport: openExport,
     onResampleAllResolution: openResampleModal,
     onToggleLayers: handleToggleLayers,
     isLayersOpen,
     canSave: hasLayers,
-    hasSelectedLayers,
     canResample,
     isLoading: isLoading || isSaving || isResampling,
     onUndo: handleUndo,
@@ -1011,6 +1008,7 @@ export function useImageEditorController() {
     setShowExportModal,
     handleExportFromModal,
     exportMode,
+    setExportMode,
     projectName,
     exportTranslations: uiText.exportModal,
     showBgRemovalConfirm,

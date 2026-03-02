@@ -19,12 +19,10 @@ interface MenuBarProps {
   onSaveAs: () => void;
   onImportImage: () => void;
   onExport: () => void;
-  onExportLayers: () => void;
   onResampleAllResolution: () => void;
   onToggleLayers: () => void;
   isLayersOpen: boolean;
   canSave: boolean;
-  hasSelectedLayers: boolean;
   canResample: boolean;
   isLoading?: boolean;
   // Edit menu props
@@ -55,7 +53,6 @@ interface MenuBarProps {
     saveAs: string;
     importImage: string;
     export: string;
-    exportLayers: string;
     resampleAllResolution: string;
     undo: string;
     redo: string;
@@ -80,12 +77,10 @@ export default function EditorMenuBar({
   onSaveAs,
   onImportImage,
   onExport,
-  onExportLayers,
   onResampleAllResolution,
   onToggleLayers,
   isLayersOpen,
   canSave,
-  hasSelectedLayers,
   canResample,
   isLoading,
   onUndo,
@@ -119,7 +114,6 @@ export default function EditorMenuBar({
     { label: t.importImage, onClick: onImportImage },
     { divider: true },
     { label: t.export, onClick: onExport, disabled: !canSave, shortcut: d({ code: "KeyE", ctrlOrMeta: true, shift: true }) },
-    { label: t.exportLayers, onClick: onExportLayers, disabled: !hasSelectedLayers },
     { label: `${t.resampleAllResolution}...`, onClick: onResampleAllResolution, disabled: !canResample },
   ];
 

@@ -14,6 +14,9 @@ interface EditorTranslationSource {
   importImage: string;
   export: string;
   exportLayers: string;
+  exportMode: string;
+  exportSingleImage: string;
+  exportSpriteSheet: string;
   resampleAllResolution: string;
   undo: string;
   redo: string;
@@ -112,6 +115,10 @@ interface EditorTranslationBundles {
   };
   exportModal: {
     export: string;
+    exportMode: string;
+    exportSingleImage: string;
+    exportLayers: string;
+    exportSpriteSheet: string;
     cancel: string;
     fileName: string;
     format: string;
@@ -197,6 +204,10 @@ export function useEditorTranslationBundles(
       },
       exportModal: {
         export: source.export,
+        exportMode: source.exportMode,
+        exportSingleImage: source.exportSingleImage,
+        exportLayers: source.exportLayers,
+        exportSpriteSheet: source.exportSpriteSheet,
         cancel: source.cancel,
         fileName: source.projectName,
         format: source.format,
