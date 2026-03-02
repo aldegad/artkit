@@ -4,7 +4,7 @@
   "description": "A web-based graphics editor for sprites, pixel art, and SVG",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3005",
+    "dev": "node scripts/dev-with-fallback-port.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
