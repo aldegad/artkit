@@ -126,6 +126,7 @@ export interface CollectSnapSourcesOptions {
   includeCanvasEdges?: boolean;
   includeLayerEdges?: boolean;
   layers?: UnifiedLayer[];
+  layerBoundsById?: Map<string, { x: number; y: number; width: number; height: number }>;
   activeLayerId?: string; // Exclude active layer from sources
 }
 
@@ -171,10 +172,13 @@ export function collectSnapSources(options: CollectSnapSourcesOptions): SnapSour
     for (const layer of options.layers) {
       if (layer.id === options.activeLayerId) continue;
       if (!layer.visible) continue;
-      if (!layer.position || !layer.originalSize) continue;
-
-      const { x, y } = layer.position;
-      const { width, height } = layer.originalSize;
+      const bounds = options.layerBoundsById?.get(layer.id);
+      const x = bounds?.x ?? layer.position?.x;
+      const y = bounds?.y ?? layer.position?.y;
+      const width = bounds?.width;
+      const height = bounds?.height;
+      if (x === undefined || y === undefined || width === undefined || height === undefined) continue;
+      if (width <= 0 || height <= 0) continue;
 
       // Vertical edges
       sources.push(

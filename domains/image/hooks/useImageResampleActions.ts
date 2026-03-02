@@ -167,8 +167,8 @@ export function useImageResampleActions(
 
       for (const layer of layers) {
         const sourceCanvas = sourceCanvases.get(layer.id);
-        const fallbackWidth = layer.originalSize?.width || currentCanvasSize.width;
-        const fallbackHeight = layer.originalSize?.height || currentCanvasSize.height;
+        const fallbackWidth = currentCanvasSize.width;
+        const fallbackHeight = currentCanvasSize.height;
 
         const resizedCanvas = sourceCanvas
           ? resampleCanvasByScale(sourceCanvas, scaleX, scaleY)
@@ -198,22 +198,17 @@ export function useImageResampleActions(
 
       setLayers((prev) =>
         prev.map((layer) => {
-          const canvas = sourceCanvases.get(layer.id);
           const sourcePosition = layer.position || { x: 0, y: 0 };
           const scaledPosition = {
             x: Math.round(sourcePosition.x * scaleX),
             y: Math.round(sourcePosition.y * scaleY),
           };
+          const rest = { ...layer };
+          delete rest.originalSize;
 
           return {
-            ...layer,
+            ...rest,
             position: scaledPosition,
-            originalSize: canvas
-              ? {
-                  width: canvas.width,
-                  height: canvas.height,
-                }
-              : layer.originalSize,
           };
         }),
       );

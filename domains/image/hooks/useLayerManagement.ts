@@ -7,9 +7,12 @@ import {
   clearLayerAlphaMask,
   copyLayerAlphaMask,
   drawLayerWithOptionalAlphaMask,
+  getLayerAlphaMaskImageData,
   loadLayerAlphaMaskFromDataURL,
   rotateLayerAlphaMask,
+  setLayerAlphaMaskImageData,
 } from "@/shared/utils/layerAlphaMask";
+import { getLayerContentBounds } from "../utils/layerContentBounds";
 
 // ============================================
 // Types
@@ -121,23 +124,28 @@ export function useLayerManagement(
       layerCanvasesRef.current.clear();
 
       if (existingLayers && existingLayers.length > 0) {
-        setLayers(existingLayers);
-        const firstPaintLayer = existingLayers.find(l => l.type === "paint");
-        setActiveLayerId(firstPaintLayer?.id || existingLayers[0].id);
+        const normalizedLayers = existingLayers.map((layer) => {
+          const rest = { ...layer };
+          delete rest.originalSize;
+          return rest;
+        });
+        setLayers(normalizedLayers);
+        const firstPaintLayer = normalizedLayers.find(l => l.type === "paint");
+        setActiveLayerId(firstPaintLayer?.id || normalizedLayers[0].id);
 
         // Load all layer images in parallel and wait for completion
-        const loadPromises = existingLayers.map((layer) => {
+        const loadPromises = normalizedLayers.map((layer) => {
           return new Promise<void>((resolve) => {
-            const layerWidth = layer.originalSize?.width || width;
-            const layerHeight = layer.originalSize?.height || height;
             const canvas = document.createElement("canvas");
-            canvas.width = layerWidth;
-            canvas.height = layerHeight;
+            canvas.width = width;
+            canvas.height = height;
             layerCanvasesRef.current.set(layer.id, canvas);
 
             if (layer.paintData) {
               const img = new Image();
               img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
                 const ctx = canvas.getContext("2d");
                 if (ctx) ctx.drawImage(img, 0, 0);
                 if (layer.alphaMaskData) {
@@ -166,7 +174,7 @@ export function useLayerManagement(
 
         // Force re-render by setting layers again with a new array reference
         // This ensures useCanvasRendering's useEffect runs after images are loaded
-        setLayers([...existingLayers]);
+        setLayers([...normalizedLayers]);
 
         if (firstPaintLayer) {
           editCanvasRef.current = layerCanvasesRef.current.get(firstPaintLayer.id) || null;
@@ -218,7 +226,6 @@ export function useLayerManagement(
     newLayer.opacity = 32;
     newLayer.blendMode = "soft-light";
     newLayer.locked = true;
-    newLayer.originalSize = { width, height };
 
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -247,7 +254,6 @@ export function useLayerManagement(
         name || t.layer,
         0
       );
-      newLayer.originalSize = { width: img.width, height: img.height };
 
       // Create canvas and draw the image
       const layerCanvas = document.createElement("canvas");
@@ -483,15 +489,18 @@ export function useLayerManagement(
           .filter((layer) => layer.id !== upperLayer.id)
           .map((layer) =>
             layer.id === lowerLayer.id
-              ? {
-                  ...layer,
-                  position: { x: minX, y: minY },
-                  opacity: 100,
-                  blendMode: "source-over",
-                  visible: lowerLayer.visible || upperLayer.visible,
-                  alphaMaskData: undefined,
-                  originalSize: { width: mergedWidth, height: mergedHeight },
-                }
+              ? (() => {
+                  const rest = { ...layer };
+                  delete rest.originalSize;
+                  return {
+                    ...rest,
+                    position: { x: minX, y: minY },
+                    opacity: 100,
+                    blendMode: "source-over",
+                    visible: lowerLayer.visible || upperLayer.visible,
+                    alphaMaskData: undefined,
+                  };
+                })()
               : layer
           )
       );
@@ -538,18 +547,8 @@ export function useLayerManagement(
       }
 
       rotateLayerAlphaMask(canvas, normalizedDeg);
-
-      // Update layer originalSize if exists
-      const layer = layers.find(l => l.id === layerId);
-      if (layer?.originalSize && isSwapDimensions) {
-        setLayers(prev => prev.map(l =>
-          l.id === layerId
-            ? { ...l, originalSize: { width: l.originalSize!.height, height: l.originalSize!.width } }
-            : l
-        ));
-      }
     });
-  }, [layers]);
+  }, []);
 
   // Resize selected layers to the smallest selected layer dimensions.
   const resizeSelectedLayersToSmallest = useCallback(() => {
@@ -557,52 +556,132 @@ export function useLayerManagement(
 
     const selectedTargets = selectedLayerIds
       .map((id) => {
+        const layer = layers.find((item) => item.id === id);
         const canvas = layerCanvasesRef.current.get(id);
-        return canvas ? { id, canvas } : null;
+        if (!layer || !canvas) return null;
+
+        const bounds = getLayerContentBounds(layer, canvas);
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+
+        return { id, canvas, bounds };
       })
-      .filter((item): item is { id: string; canvas: HTMLCanvasElement } => item !== null);
+      .filter((item): item is {
+        id: string;
+        canvas: HTMLCanvasElement;
+        bounds: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          localX: number;
+          localY: number;
+        };
+      } => item !== null);
 
     if (selectedTargets.length < 2) return;
 
-    const targetWidth = Math.max(1, Math.min(...selectedTargets.map(({ canvas }) => canvas.width)));
-    const targetHeight = Math.max(1, Math.min(...selectedTargets.map(({ canvas }) => canvas.height)));
+    const targetWidth = Math.max(1, Math.min(...selectedTargets.map(({ bounds }) => bounds.width)));
+    const targetHeight = Math.max(1, Math.min(...selectedTargets.map(({ bounds }) => bounds.height)));
 
-    const hasResizeTarget = selectedTargets.some(({ canvas }) => (
-      canvas.width !== targetWidth || canvas.height !== targetHeight
+    const hasResizeTarget = selectedTargets.some(({ bounds }) => (
+      bounds.width !== targetWidth || bounds.height !== targetHeight
     ));
     if (!hasResizeTarget) return;
 
     saveToHistory?.();
 
-    for (const { id, canvas } of selectedTargets) {
-      if (canvas.width === targetWidth && canvas.height === targetHeight) continue;
+    for (const { id, canvas, bounds } of selectedTargets) {
+      const sourceCanvas = document.createElement("canvas");
+      sourceCanvas.width = bounds.width;
+      sourceCanvas.height = bounds.height;
+      const sourceCtx = sourceCanvas.getContext("2d");
+      if (!sourceCtx) continue;
+      sourceCtx.drawImage(
+        canvas,
+        bounds.localX,
+        bounds.localY,
+        bounds.width,
+        bounds.height,
+        0,
+        0,
+        bounds.width,
+        bounds.height
+      );
 
       const resizedCanvas = document.createElement("canvas");
       resizedCanvas.width = targetWidth;
       resizedCanvas.height = targetHeight;
-      const ctx = resizedCanvas.getContext("2d");
-      if (!ctx) continue;
+      const resizedCtx = resizedCanvas.getContext("2d");
+      if (!resizedCtx) continue;
 
-      ctx.clearRect(0, 0, targetWidth, targetHeight);
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
-      copyLayerAlphaMask(canvas, resizedCanvas);
+      resizedCtx.clearRect(0, 0, targetWidth, targetHeight);
+      resizedCtx.imageSmoothingEnabled = true;
+      resizedCtx.imageSmoothingQuality = "high";
+      resizedCtx.drawImage(sourceCanvas, 0, 0, targetWidth, targetHeight);
+
+      const sourceMaskImageData = getLayerAlphaMaskImageData(canvas);
+      if (sourceMaskImageData) {
+        const sourceMaskCanvas = document.createElement("canvas");
+        sourceMaskCanvas.width = sourceMaskImageData.width;
+        sourceMaskCanvas.height = sourceMaskImageData.height;
+        const sourceMaskCtx = sourceMaskCanvas.getContext("2d");
+        if (sourceMaskCtx) {
+          sourceMaskCtx.putImageData(sourceMaskImageData, 0, 0);
+
+          const trimmedMaskCanvas = document.createElement("canvas");
+          trimmedMaskCanvas.width = bounds.width;
+          trimmedMaskCanvas.height = bounds.height;
+          const trimmedMaskCtx = trimmedMaskCanvas.getContext("2d");
+          if (trimmedMaskCtx) {
+            trimmedMaskCtx.drawImage(
+              sourceMaskCanvas,
+              bounds.localX,
+              bounds.localY,
+              bounds.width,
+              bounds.height,
+              0,
+              0,
+              bounds.width,
+              bounds.height
+            );
+
+            const resizedMaskCanvas = document.createElement("canvas");
+            resizedMaskCanvas.width = targetWidth;
+            resizedMaskCanvas.height = targetHeight;
+            const resizedMaskCtx = resizedMaskCanvas.getContext("2d");
+            if (resizedMaskCtx) {
+              resizedMaskCtx.clearRect(0, 0, targetWidth, targetHeight);
+              resizedMaskCtx.imageSmoothingEnabled = true;
+              resizedMaskCtx.imageSmoothingQuality = "high";
+              resizedMaskCtx.drawImage(trimmedMaskCanvas, 0, 0, targetWidth, targetHeight);
+              const resizedMaskImageData = resizedMaskCtx.getImageData(0, 0, targetWidth, targetHeight);
+              setLayerAlphaMaskImageData(resizedCanvas, resizedMaskImageData);
+            }
+          }
+        }
+      }
+
       clearLayerAlphaMask(canvas);
       layerCanvasesRef.current.set(id, resizedCanvas);
     }
 
-    const selectedSet = new Set(selectedLayerIds);
+    const selectedTargetMap = new Map(selectedTargets.map((target) => [target.id, target]));
     setLayers((prev) => prev.map((layer) => (
-      selectedSet.has(layer.id)
-        ? { ...layer, originalSize: { width: targetWidth, height: targetHeight } }
+      selectedTargetMap.has(layer.id)
+        ? {
+            ...layer,
+            position: {
+              x: selectedTargetMap.get(layer.id)!.bounds.x,
+              y: selectedTargetMap.get(layer.id)!.bounds.y,
+            },
+          }
         : layer
     )));
 
     if (activeLayerId) {
       editCanvasRef.current = layerCanvasesRef.current.get(activeLayerId) || null;
     }
-  }, [selectedLayerIds, saveToHistory, activeLayerId]);
+  }, [selectedLayerIds, saveToHistory, activeLayerId, layers]);
 
   // Duplicate layer (all layers are paint layers now)
   const duplicateLayer = useCallback((layerId: string) => {
@@ -612,8 +691,10 @@ export function useLayerManagement(
     saveToHistory?.();
 
     const maxZIndex = Math.max(...layers.map(l => l.zIndex)) + 1;
+    const layerWithoutLegacySize = { ...layer };
+    delete layerWithoutLegacySize.originalSize;
     const newLayer: UnifiedLayer = {
-      ...layer,
+      ...layerWithoutLegacySize,
       id: crypto.randomUUID(),
       name: `${layer.name} (copy)`,
       zIndex: maxZIndex,
@@ -632,8 +713,8 @@ export function useLayerManagement(
     } else {
       // Fallback: create empty canvas with display dimensions
       const { width, height } = getDisplayDimensions();
-      newCanvas.width = layer.originalSize?.width || width;
-      newCanvas.height = layer.originalSize?.height || height;
+      newCanvas.width = width;
+      newCanvas.height = height;
     }
     layerCanvasesRef.current.set(newLayer.id, newCanvas);
     editCanvasRef.current = newCanvas;
@@ -686,65 +767,13 @@ export function useLayerManagement(
     if (!layer) return null;
 
     const canvas = layerCanvasesRef.current.get(layerId);
-    if (!canvas) {
-      // Fallback to originalSize if no canvas
-      const width = layer.originalSize?.width || 0;
-      const height = layer.originalSize?.height || 0;
-      const x = layer.position?.x || 0;
-      const y = layer.position?.y || 0;
-      return { x, y, width, height };
-    }
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      const width = canvas.width;
-      const height = canvas.height;
-      const x = layer.position?.x || 0;
-      const y = layer.position?.y || 0;
-      return { x, y, width, height };
-    }
-
-    // Scan for actual content bounds (non-transparent pixels)
-    const maskAwareCanvas = document.createElement("canvas");
-    maskAwareCanvas.width = canvas.width;
-    maskAwareCanvas.height = canvas.height;
-    const maskAwareCtx = maskAwareCanvas.getContext("2d");
-    if (!maskAwareCtx) return null;
-    drawLayerWithOptionalAlphaMask(maskAwareCtx, canvas, 0, 0);
-    const imageData = maskAwareCtx.getImageData(0, 0, canvas.width, canvas.height);
-    let minX = canvas.width;
-    let minY = canvas.height;
-    let maxX = 0;
-    let maxY = 0;
-    let hasContent = false;
-
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
-        if (alpha > 0) {
-          hasContent = true;
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-        }
-      }
-    }
-
-    if (!hasContent) {
-      // No content, return zero-size bounds at position
-      return { x: layer.position?.x || 0, y: layer.position?.y || 0, width: 0, height: 0 };
-    }
-
-    // Return content bounds in image coordinates (layer position + content offset)
-    const layerPosX = layer.position?.x || 0;
-    const layerPosY = layer.position?.y || 0;
-
+    const bounds = getLayerContentBounds(layer, canvas);
+    if (!bounds) return null;
     return {
-      x: layerPosX + minX,
-      y: layerPosY + minY,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
     };
   }, [layers]);
 

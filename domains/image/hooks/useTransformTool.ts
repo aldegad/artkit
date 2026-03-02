@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { Point, UnifiedLayer, AspectRatio, ASPECT_RATIO_VALUES, Guide, SnapSource, DEFAULT_SNAP_CONFIG, CropArea, SelectionMask } from "../types";
 import { collectSnapSources, snapBounds, rectToBoundingBox, boundingBoxToRect, getActiveSnapSources } from "../utils/snapSystem";
+import { getLayerContentBounds } from "../utils/layerContentBounds";
 import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
 import { HANDLE_SIZE as HANDLE_SIZE_CONST, ROTATE_HANDLE, FLIP_HANDLE } from "../constants";
 import { applySelectionMaskToImageData, clearSelectionFromLayer } from "../utils/selectionRegion";
@@ -296,36 +297,6 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
     [transformState.bounds, transformState.rotation, zoom]
   );
 
-  // Helper function to find content bounds in a canvas
-  const findContentBounds = useCallback((canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let minX = canvas.width;
-    let minY = canvas.height;
-    let maxX = 0;
-    let maxY = 0;
-    let hasContent = false;
-
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
-        if (alpha > 0) {
-          hasContent = true;
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-        }
-      }
-    }
-
-    if (!hasContent) return null;
-
-    return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
-  }, []);
-
   // Start transform mode
   const startTransform = useCallback(() => {
     // Determine target layers: selectedLayerIds or just activeLayerId
@@ -431,8 +402,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const layer = layers.find((l) => l.id === layerId);
       if (!layer || layer.locked) continue;
 
-      const contentBounds = findContentBounds(layerCanvas);
-      if (!contentBounds) continue; // No content
+      const contentBounds = getLayerContentBounds(layer, layerCanvas);
+      if (!contentBounds || contentBounds.width <= 0 || contentBounds.height <= 0) continue; // No content
 
       const ctx = layerCanvas.getContext("2d");
       if (!ctx) continue;
@@ -442,8 +413,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
       // Convert content bounds to image coordinates
       const imageBounds = {
-        x: contentBounds.minX + layerPosX,
-        y: contentBounds.minY + layerPosY,
+        x: contentBounds.x,
+        y: contentBounds.y,
         width: contentBounds.width,
         height: contentBounds.height,
       };
@@ -456,8 +427,8 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
       // Extract content image data for this layer
       const contentImageData = ctx.getImageData(
-        contentBounds.minX,
-        contentBounds.minY,
+        contentBounds.localX,
+        contentBounds.localY,
         contentBounds.width,
         contentBounds.height
       );
@@ -467,7 +438,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
         originalImageData: contentImageData,
         originalBounds: imageBounds,
         layerPosition: { x: layerPosX, y: layerPosY },
-        contentOffset: { x: contentBounds.minX, y: contentBounds.minY },
+        contentOffset: { x: contentBounds.localX, y: contentBounds.localY },
       });
 
       transformableLayers.push(layerId);
@@ -502,7 +473,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       perLayerData: perLayerData,
       isSelectionBased: false,
     });
-  }, [activeLayerId, selectedLayerIds, selection, selectionMask, layerCanvasesRef, layers, saveToHistory, findContentBounds]);
+  }, [activeLayerId, selectedLayerIds, selection, selectionMask, layerCanvasesRef, layers, saveToHistory]);
 
   // Cancel transform
   const cancelTransform = useCallback(() => {
