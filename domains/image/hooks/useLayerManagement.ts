@@ -66,6 +66,7 @@ interface UseLayerManagementReturn {
   mergeLayerDown: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
   rotateAllLayerCanvases: (degrees: number) => void;
+  resizeSelectedLayersToSmallest: () => void;
 
   // Multi-select actions
   selectLayerWithModifier: (layerId: string, shiftKey: boolean) => void;
@@ -550,6 +551,59 @@ export function useLayerManagement(
     });
   }, [layers]);
 
+  // Resize selected layers to the smallest selected layer dimensions.
+  const resizeSelectedLayersToSmallest = useCallback(() => {
+    if (selectedLayerIds.length < 2) return;
+
+    const selectedTargets = selectedLayerIds
+      .map((id) => {
+        const canvas = layerCanvasesRef.current.get(id);
+        return canvas ? { id, canvas } : null;
+      })
+      .filter((item): item is { id: string; canvas: HTMLCanvasElement } => item !== null);
+
+    if (selectedTargets.length < 2) return;
+
+    const targetWidth = Math.max(1, Math.min(...selectedTargets.map(({ canvas }) => canvas.width)));
+    const targetHeight = Math.max(1, Math.min(...selectedTargets.map(({ canvas }) => canvas.height)));
+
+    const hasResizeTarget = selectedTargets.some(({ canvas }) => (
+      canvas.width !== targetWidth || canvas.height !== targetHeight
+    ));
+    if (!hasResizeTarget) return;
+
+    saveToHistory?.();
+
+    for (const { id, canvas } of selectedTargets) {
+      if (canvas.width === targetWidth && canvas.height === targetHeight) continue;
+
+      const resizedCanvas = document.createElement("canvas");
+      resizedCanvas.width = targetWidth;
+      resizedCanvas.height = targetHeight;
+      const ctx = resizedCanvas.getContext("2d");
+      if (!ctx) continue;
+
+      ctx.clearRect(0, 0, targetWidth, targetHeight);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+      copyLayerAlphaMask(canvas, resizedCanvas);
+      clearLayerAlphaMask(canvas);
+      layerCanvasesRef.current.set(id, resizedCanvas);
+    }
+
+    const selectedSet = new Set(selectedLayerIds);
+    setLayers((prev) => prev.map((layer) => (
+      selectedSet.has(layer.id)
+        ? { ...layer, originalSize: { width: targetWidth, height: targetHeight } }
+        : layer
+    )));
+
+    if (activeLayerId) {
+      editCanvasRef.current = layerCanvasesRef.current.get(activeLayerId) || null;
+    }
+  }, [selectedLayerIds, saveToHistory, activeLayerId]);
+
   // Duplicate layer (all layers are paint layers now)
   const duplicateLayer = useCallback((layerId: string) => {
     const layer = layers.find(l => l.id === layerId);
@@ -878,6 +932,7 @@ export function useLayerManagement(
     mergeLayerDown,
     duplicateLayer,
     rotateAllLayerCanvases,
+    resizeSelectedLayersToSmallest,
 
     // Multi-select actions
     selectLayerWithModifier,

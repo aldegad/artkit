@@ -8,7 +8,6 @@ import {
   TransformIcon,
   BrushIcon,
   EraserIcon,
-  MagicWandIcon,
   FillBucketIcon,
   EyedropperIcon,
   CloneStampIcon,
@@ -127,14 +126,6 @@ export function createEditorToolButtons(
       keys: ["[ ]: Size -/+"],
       shortcut: "E",
       icon: <EraserIcon className="w-4 h-4" />,
-    },
-    {
-      mode: "magicWand",
-      name: t.magicWand,
-      description: t.magicWandToolTip,
-      keys: ["Click: Select connected colors"],
-      shortcut: "W",
-      icon: <MagicWandIcon className="w-4 h-4" />,
     },
     {
       mode: "fill",
