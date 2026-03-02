@@ -130,7 +130,7 @@ interface UseMouseHandlersReturn {
 export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHandlersReturn {
   // Get state and setters from EditorStateContext
   const {
-    state: { zoom, pan, rotation, canvasSize, isPanLocked },
+    state: { zoom, pan, rotation, canvasSize, isPanLocked, isSpacePressed },
     setZoom,
     setPan,
   } = useEditorState();
@@ -197,6 +197,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<Point | null>(null);
   const activeTouchPointerIdsRef = useRef<Set<number>>(new Set());
+  const isMarqueeCreateDragRef = useRef(false);
+  const marqueeCreateLastPosRef = useRef<Point | null>(null);
 
   // Base handler options
   const baseOptions = {
@@ -335,6 +337,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       if (isTouchPanOnlyInput) {
         const panZoomResult = panZoomHandler.handleMouseDown(ctx);
         if (panZoomResult.handled) {
+          isMarqueeCreateDragRef.current = false;
+          marqueeCreateLastPosRef.current = null;
           setDragType(panZoomResult.dragType || null);
           if (panZoomResult.dragStart) dragStartRef.current = panZoomResult.dragStart;
           if (panZoomResult.dragType) setIsDragging(true);
@@ -346,6 +350,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // 1. Guide handler (highest priority when clicking on guide)
       const guideResult = guideHandler.handleMouseDown(ctx);
       if (guideResult.handled) {
+        isMarqueeCreateDragRef.current = false;
+        marqueeCreateLastPosRef.current = null;
         setDragType(guideResult.dragType || null);
         if (guideResult.dragStart) dragStartRef.current = guideResult.dragStart;
         setIsDragging(true);
@@ -355,6 +361,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // 2. Pan/Zoom handler
       const panZoomResult = panZoomHandler.handleMouseDown(ctx);
       if (panZoomResult.handled) {
+        isMarqueeCreateDragRef.current = false;
+        marqueeCreateLastPosRef.current = null;
         setDragType(panZoomResult.dragType || null);
         if (panZoomResult.dragStart) dragStartRef.current = panZoomResult.dragStart;
         if (panZoomResult.dragType) setIsDragging(true);
@@ -368,6 +376,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // 4. Brush handler (brush, eraser, stamp)
       const brushResult = brushHandler.handleMouseDown(ctx);
       if (brushResult.handled) {
+        isMarqueeCreateDragRef.current = false;
+        marqueeCreateLastPosRef.current = null;
         setDragType(brushResult.dragType || null);
         setIsDragging(true);
         return;
@@ -376,8 +386,11 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // 5. Selection handler (marquee)
       const selectionResult = selectionHandler.handleMouseDown(ctx);
       if (selectionResult.handled) {
-        setDragType(selectionResult.dragType || null);
+        const nextDragType = selectionResult.dragType || null;
+        setDragType(nextDragType);
+        isMarqueeCreateDragRef.current = nextDragType === "create";
         if (selectionResult.dragStart) dragStartRef.current = selectionResult.dragStart;
+        marqueeCreateLastPosRef.current = selectionResult.dragStart ?? null;
         setIsDragging(true);
         return;
       }
@@ -385,6 +398,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // 6. Move handler
       const moveResult = moveHandler.handleMouseDown(ctx);
       if (moveResult.handled) {
+        isMarqueeCreateDragRef.current = false;
+        marqueeCreateLastPosRef.current = null;
         setDragType(moveResult.dragType || null);
         if (moveResult.dragStart) dragStartRef.current = moveResult.dragStart;
         setIsDragging(true);
@@ -395,6 +410,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       if (activeMode === "transform" && isTransformActive?.() && handleTransformMouseDown) {
         const handle = handleTransformMouseDown(imagePos, { shift: e.shiftKey, alt: e.altKey });
         if (handle) {
+          isMarqueeCreateDragRef.current = false;
+          marqueeCreateLastPosRef.current = null;
           setDragType("move");
           setIsDragging(true);
           return;
@@ -404,6 +421,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // 8. Crop handler
       const cropResult = cropHandler.handleMouseDown(ctx);
       if (cropResult.handled) {
+        isMarqueeCreateDragRef.current = false;
+        marqueeCreateLastPosRef.current = null;
         setDragType(cropResult.dragType || null);
         setResizeHandle(cropResult.dragType === "resize" ? getResizeHandleName(imagePos, cropArea) : null);
         if (cropResult.dragStart) dragStartRef.current = cropResult.dragStart;
@@ -493,6 +512,28 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
 
       if (dragType === "draw") {
         brushHandler.handleMouseMove(ctx);
+        return;
+      }
+
+      if (dragType === "create" && isMarqueeCreateDragRef.current) {
+        const clampedImagePos = clampPointToDisplay(imagePos, displayDimensions.width, displayDimensions.height);
+        const previousPos = marqueeCreateLastPosRef.current;
+        if (isSpacePressed && previousPos) {
+          const dx = clampedImagePos.x - previousPos.x;
+          const dy = clampedImagePos.y - previousPos.y;
+          if (dx !== 0 || dy !== 0) {
+            dragStartRef.current = clampPointToDisplay(
+              {
+                x: dragStartRef.current.x + dx,
+                y: dragStartRef.current.y + dy,
+              },
+              displayDimensions.width,
+              displayDimensions.height,
+            );
+          }
+        }
+        marqueeCreateLastPosRef.current = clampedImagePos;
+        selectionHandler.handleMouseMove(ctx, dragStartRef.current);
         return;
       }
 
@@ -586,6 +627,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       cropArea,
       isTransformActive,
       handleTransformMouseMove,
+      isSpacePressed,
     ]
   );
 
@@ -653,6 +695,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     moveHandler.handleMouseUp();
 
     // Reset state
+    isMarqueeCreateDragRef.current = false;
+    marqueeCreateLastPosRef.current = null;
     setIsDragging(false);
     setDragType(null);
     setResizeHandle(null);
@@ -700,6 +744,13 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     handleMouseMove,
     handleMouseUp,
     handleMouseLeave,
+  };
+}
+
+function clampPointToDisplay(point: Point, width: number, height: number): Point {
+  return {
+    x: Math.max(0, Math.min(Math.round(point.x), width)),
+    y: Math.max(0, Math.min(Math.round(point.y), height)),
   };
 }
 
