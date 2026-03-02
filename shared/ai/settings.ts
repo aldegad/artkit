@@ -25,7 +25,7 @@ function sanitizeQuality(value: unknown): BackgroundRemovalQuality {
 }
 
 function sanitizeModel(value: unknown): BackgroundRemovalModel {
-  if (value === "rmbg-1.4" || value === "birefnet-lite" || value === "birefnet") return value;
+  if (value === "rmbg-1.4") return value;
   return DEFAULT_AI_SETTINGS.backgroundRemovalModel;
 }
 
