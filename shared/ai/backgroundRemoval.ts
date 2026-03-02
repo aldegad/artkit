@@ -1,6 +1,7 @@
 import {
   BACKGROUND_REMOVAL_MODELS,
   DEFAULT_BACKGROUND_REMOVAL_MODEL,
+  getBackgroundRemovalErrorMessage,
   removeBackground as removeBackgroundWithModel,
   removeBackgroundFromCanvas as removeBackgroundFromCanvasWithModel,
   type BackgroundRemovalModel,
@@ -41,5 +42,6 @@ export async function removeBackgroundFromCanvas(
 export {
   BACKGROUND_REMOVAL_MODELS,
   DEFAULT_BACKGROUND_REMOVAL_MODEL,
+  getBackgroundRemovalErrorMessage,
 };
 export type { BackgroundRemovalModel, BackgroundRemovalOptions, BackgroundRemovalQuality };
