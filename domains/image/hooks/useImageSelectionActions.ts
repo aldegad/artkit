@@ -3,7 +3,10 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { CropArea, Point, SelectionMask } from "../types";
 import { clearSelectionFromLayer } from "../utils/selectionRegion";
-import { computeMagicWandSelection } from "@/shared/utils/magicWand";
+import {
+  computeMagicWandColorSelection,
+  toMagicWandBoundsMask,
+} from "@/shared/utils/magicWand";
 
 interface FloatingLayer {
   imageData: ImageData;
@@ -52,6 +55,7 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     const ctx = editCanvas?.getContext("2d", { willReadFrequently: true });
     if (!editCanvas || !ctx) {
       setSelection(null);
+      setSelectionMask(null);
       floatingLayerRef.current = null;
       return;
     }
@@ -63,31 +67,37 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
 
     if (localX < 0 || localY < 0 || localX >= editCanvas.width || localY >= editCanvas.height) {
       setSelection(null);
+      setSelectionMask(null);
       floatingLayerRef.current = null;
       return;
     }
 
     const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    const wandSelection = computeMagicWandSelection(imageData, localX, localY, {
+    const wandSelection = computeMagicWandColorSelection(imageData, localX, localY, {
       tolerance: magicWandTolerance,
-      connectedOnly: true,
-      ignoreAlpha: true,
-      colorMetric: "hsv",
     });
 
     if (!wandSelection) {
       setSelection(null);
+      setSelectionMask(null);
       floatingLayerRef.current = null;
       return;
     }
 
+    const mask = toMagicWandBoundsMask(wandSelection);
     setSelection({
       x: wandSelection.bounds.x + layerPosX,
       y: wandSelection.bounds.y + layerPosY,
       width: wandSelection.bounds.width,
       height: wandSelection.bounds.height,
     });
-    setSelectionMask(null);
+    setSelectionMask({
+      x: mask.x + layerPosX,
+      y: mask.y + layerPosY,
+      width: mask.width,
+      height: mask.height,
+      mask: mask.mask,
+    });
     setIsMovingSelection(false);
     setIsDuplicating(false);
     floatingLayerRef.current = null;

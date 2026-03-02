@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { removeBackgroundFromCanvas } from "@/shared/ai/backgroundRemoval";
 import {
-  computeMagicWandSelection,
+  computeMagicWandColorSelection,
   computeMagicWandSelectionFromAlphaMask,
   createMagicWandMaskCanvas,
   type MagicWandSelection,
@@ -139,11 +139,8 @@ export function useSpriteMagicWandSelection({
     }
 
     const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-    const selection = computeMagicWandSelection(imageData, x, y, {
+    const selection = computeMagicWandColorSelection(imageData, x, y, {
       tolerance,
-      connectedOnly: true,
-      ignoreAlpha: true,
-      colorMetric: "hsv",
     });
     setSelection(selection, { x, y });
   }, [clearMagicWandSelection, frameCanvasRef, frameCtxRef, getAiCacheKey, mode, setSelection, tolerance]);
@@ -183,11 +180,8 @@ export function useSpriteMagicWandSelection({
     }
 
     const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
-    const selection = computeMagicWandSelection(imageData, seed.x, seed.y, {
+    const selection = computeMagicWandColorSelection(imageData, seed.x, seed.y, {
       tolerance,
-      connectedOnly: true,
-      ignoreAlpha: true,
-      colorMetric: "hsv",
     });
     setSelection(selection, seed);
   }, [clearMagicWandSelection, feather, frameCanvasRef, frameCtxRef, mode, setSelection, tolerance]);

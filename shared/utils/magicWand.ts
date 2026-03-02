@@ -20,6 +20,10 @@ export interface MagicWandSelectionOptions {
   colorMetric?: "rgba" | "hsv";
 }
 
+export interface MagicWandColorSelectionOptions {
+  tolerance?: number;
+}
+
 export interface MagicWandAlphaSelectionOptions {
   alphaThreshold?: number;
   connectedOnly?: boolean;
@@ -27,6 +31,14 @@ export interface MagicWandAlphaSelectionOptions {
 
 export interface MagicWandMaskCanvasOptions {
   feather?: number;
+}
+
+export interface MagicWandBoundsMask {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  mask: Uint8Array;
 }
 
 export interface MagicWandOutlineOptions {
@@ -55,6 +67,12 @@ interface HsvPixel {
 const DEFAULT_TOLERANCE = 24;
 const DEFAULT_ALPHA_THRESHOLD = 16;
 const MAX_FEATHER = 32;
+
+const DEFAULT_COLOR_SELECTION_OPTIONS: Omit<MagicWandSelectionOptions, "tolerance"> = {
+  connectedOnly: true,
+  ignoreAlpha: true,
+  colorMetric: "hsv",
+};
 
 function clampTolerance(value: number | undefined): number {
   if (!Number.isFinite(value)) return DEFAULT_TOLERANCE;
@@ -168,6 +186,15 @@ function toBounds(minX: number, minY: number, maxX: number, maxY: number): Magic
     y: minY,
     width: maxX - minX + 1,
     height: maxY - minY + 1,
+  };
+}
+
+export function getDefaultMagicWandColorSelectionOptions(
+  options?: MagicWandColorSelectionOptions,
+): MagicWandSelectionOptions {
+  return {
+    ...DEFAULT_COLOR_SELECTION_OPTIONS,
+    tolerance: options?.tolerance,
   };
 }
 
@@ -289,6 +316,20 @@ export function computeMagicWandSelection(
     selectedCount,
     bounds: toBounds(minX, minY, maxX, maxY),
   };
+}
+
+export function computeMagicWandColorSelection(
+  imageData: ImageData,
+  seedX: number,
+  seedY: number,
+  options?: MagicWandColorSelectionOptions,
+): MagicWandSelection | null {
+  return computeMagicWandSelection(
+    imageData,
+    seedX,
+    seedY,
+    getDefaultMagicWandColorSelectionOptions(options),
+  );
 }
 
 export function computeMagicWandSelectionFromAlphaMask(
@@ -454,6 +495,25 @@ export function createMagicWandMaskCanvas(
   outputCtx.drawImage(baseCanvas, 0, 0);
   outputCtx.filter = "none";
   return outputCanvas;
+}
+
+export function toMagicWandBoundsMask(selection: MagicWandSelection): MagicWandBoundsMask {
+  const { bounds } = selection;
+  const localMask = new Uint8Array(bounds.width * bounds.height);
+
+  for (let y = 0; y < bounds.height; y += 1) {
+    const srcStart = (bounds.y + y) * selection.width + bounds.x;
+    const srcEnd = srcStart + bounds.width;
+    localMask.set(selection.mask.subarray(srcStart, srcEnd), y * bounds.width);
+  }
+
+  return {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    mask: localMask,
+  };
 }
 
 export function drawMagicWandSelectionOutline(
