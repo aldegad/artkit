@@ -1,10 +1,11 @@
 "use client";
 
-import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool } from "../../types";
+import { useState } from "react";
+import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool, CropSizePivot } from "../../types";
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
-import { Select, Scrollbar, NumberScrubber } from "../../../../shared/components";
-import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon } from "@/shared/components/icons";
+import { Select, Scrollbar, NumberScrubber, Popover } from "../../../../shared/components";
+import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon } from "@/shared/components/icons";
 import { DeleteIcon } from "@/shared/components/icons";
 
 // ============================================
@@ -49,6 +50,8 @@ export interface EditorToolOptionsProps {
   // Extended crop props
   lockAspect: boolean;
   setLockAspect: React.Dispatch<React.SetStateAction<boolean>>;
+  cropSizePivot: CropSizePivot;
+  setCropSizePivot: React.Dispatch<React.SetStateAction<CropSizePivot>>;
   setCropSize: (width: number, height: number) => void;
   expandToSquare: () => void;
   fitToSquare: () => void;
@@ -120,6 +123,8 @@ export function EditorToolOptions({
   clearCrop,
   lockAspect,
   setLockAspect,
+  cropSizePivot,
+  setCropSizePivot,
   setCropSize,
   expandToSquare,
   fitToSquare,
@@ -144,6 +149,19 @@ export function EditorToolOptions({
     { value: "ratio4x3", label: "4:3" },
     { value: "ratio16x9", label: "16:9" },
   ];
+  const cropPivotOptions: Array<{ value: CropSizePivot; label: string; fx: number; fy: number }> = [
+    { value: "topLeft", label: "Top Left", fx: 0, fy: 0 },
+    { value: "topCenter", label: "Top Center", fx: 0.5, fy: 0 },
+    { value: "topRight", label: "Top Right", fx: 1, fy: 0 },
+    { value: "middleLeft", label: "Middle Left", fx: 0, fy: 0.5 },
+    { value: "center", label: "Center", fx: 0.5, fy: 0.5 },
+    { value: "middleRight", label: "Middle Right", fx: 1, fy: 0.5 },
+    { value: "bottomLeft", label: "Bottom Left", fx: 0, fy: 1 },
+    { value: "bottomCenter", label: "Bottom Center", fx: 0.5, fy: 1 },
+    { value: "bottomRight", label: "Bottom Right", fx: 1, fy: 1 },
+  ];
+  const [isPivotPopoverOpen, setIsPivotPopoverOpen] = useState(false);
+  const pivotLabel = cropPivotOptions.find((option) => option.value === cropSizePivot)?.label || "Center";
 
   // Handle width/height input changes with aspect ratio lock
   const handleWidthChange = (newWidth: number) => {
@@ -362,6 +380,54 @@ export function EditorToolOptions({
                 <UnlockAspectIcon />
               )}
             </button>
+            <Popover
+              trigger={(
+                <button
+                  className={`w-6 h-6 flex items-center justify-center rounded text-xs transition-colors ${
+                    isPivotPopoverOpen
+                      ? "bg-accent-primary text-white"
+                      : "hover:bg-interactive-hover text-text-secondary"
+                  }`}
+                  title={`Pivot: ${pivotLabel}`}
+                >
+                  <PivotIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
+              open={isPivotPopoverOpen}
+              onOpenChange={setIsPivotPopoverOpen}
+              align="start"
+              side="bottom"
+              sideOffset={4}
+              closeOnScroll={false}
+              className="p-1"
+            >
+              <div className="grid grid-cols-3 gap-1">
+                {cropPivotOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setCropSizePivot(option.value);
+                      setIsPivotPopoverOpen(false);
+                    }}
+                    className={`w-7 h-7 rounded border transition-colors flex items-center justify-center ${
+                      cropSizePivot === option.value
+                        ? "bg-accent-primary text-white border-accent-primary"
+                        : "hover:bg-interactive-hover border-border-default text-text-secondary"
+                    }`}
+                    title={option.label}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        cropSizePivot === option.value ? "bg-white" : "bg-current"
+                      }`}
+                      style={{
+                        transform: `translate(${(option.fx - 0.5) * 6}px, ${(option.fy - 0.5) * 6}px)`,
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            </Popover>
           </div>
 
           {/* Divider */}
