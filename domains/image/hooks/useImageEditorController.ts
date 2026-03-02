@@ -520,6 +520,7 @@ export function useImageEditorController() {
     stampSource,
     activeLayerPosition,
     selection,
+    selectionMask,
     marqueeSubTool,
     lassoPath,
     isDuplicating,
