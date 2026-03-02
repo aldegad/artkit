@@ -12,7 +12,7 @@ import {
 import { readAISettings } from "./settings";
 
 function resolveOptions(options?: BackgroundRemovalOptions): BackgroundRemovalOptions {
-  if (options?.quality && options?.model) {
+  if (options?.quality) {
     return options;
   }
 
@@ -20,7 +20,6 @@ function resolveOptions(options?: BackgroundRemovalOptions): BackgroundRemovalOp
   return {
     ...options,
     quality: options?.quality ?? settings.backgroundRemovalQuality,
-    model: options?.model ?? settings.backgroundRemovalModel,
   };
 }
 
