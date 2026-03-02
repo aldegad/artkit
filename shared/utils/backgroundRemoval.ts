@@ -862,6 +862,11 @@ export function getBackgroundRemovalErrorMessage(error: unknown): string {
   return message || "Unknown background removal error.";
 }
 
+export function getBackgroundRemovalRawErrorMessage(error: unknown): string {
+  const message = getErrorMessage(error).trim();
+  return message || "Unknown background removal error.";
+}
+
 function resolvePrimaryInputTensor(processed: ModelInputFeeds): unknown {
   const preferredKeys = ["pixel_values", "input", "input_image", "image"];
   for (const key of preferredKeys) {
@@ -1073,43 +1078,8 @@ export async function removeBackground(
     activeModel = model as NonNullable<typeof model>;
     activeProcessor = processor as NonNullable<typeof processor>;
 
-    try {
-      const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
-      modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
-    } catch (wasmError) {
-      const canDowngradeModel = modelKey !== DEFAULT_BACKGROUND_REMOVAL_MODEL
-        && (isExecutionProviderError(wasmError) || isOpaqueRuntimeCodeError(wasmError) || isOutOfMemoryError(wasmError));
-
-      if (!canDowngradeModel) {
-        throw wasmError;
-      }
-
-      const fallbackModelKey = DEFAULT_BACKGROUND_REMOVAL_MODEL;
-      const fallbackModelLabel = BACKGROUND_REMOVAL_MODELS[fallbackModelKey].label;
-      console.warn(
-        `[Background Removal] ${BACKGROUND_REMOVAL_MODELS[modelKey].label} failed on WASM. Retrying with ${fallbackModelLabel}.`,
-        wasmError,
-      );
-      onProgress?.(66, `Retrying with ${fallbackModelLabel}...`);
-
-      model = null;
-      processor = null;
-      loadedModelKey = null;
-      loadedModelDevice = null;
-
-      await loadModel(fallbackModelKey, "wasm", (progress, status) => {
-        onProgress?.(66 + progress * 0.08, `${status} (${fallbackModelLabel})`);
-      });
-
-      if (!model || !processor) {
-        throw wasmError;
-      }
-      activeModel = model as NonNullable<typeof model>;
-      activeProcessor = processor as NonNullable<typeof processor>;
-
-      const fallbackProcessed = await activeProcessor(image) as ModelInputFeeds;
-      modelOutput = await runModelWithCompatibleInputs(activeModel, fallbackProcessed);
-    }
+    const wasmProcessed = await activeProcessor(image) as ModelInputFeeds;
+    modelOutput = await runModelWithCompatibleInputs(activeModel, wasmProcessed);
   }
 
   const selectedMask = pickMaskTensor(modelOutput);

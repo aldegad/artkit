@@ -4,11 +4,12 @@ import { useState, useCallback, RefObject } from "react";
 import { UnifiedLayer } from "../types";
 import {
   getBackgroundRemovalErrorMessage,
+  getBackgroundRemovalRawErrorMessage,
   removeBackground,
   type BackgroundRemovalModel,
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
-import { showErrorToast, showInfoToast } from "@/shared/components";
+import { confirmDialog, showInfoToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -164,10 +165,17 @@ export function useBackgroundRemoval(
       setBgRemovalStatus("Done!");
     } catch (error) {
       console.error("Background removal failed:", error);
+      const rawReason = getBackgroundRemovalRawErrorMessage(error);
       const reason = getBackgroundRemovalErrorMessage(error);
-      setBgRemovalStatus(`Failed: ${reason}`);
+      setBgRemovalStatus(`Failed: ${rawReason}`);
       const baseMessage = t.backgroundRemovalFailed || "Background removal failed. Please try again.";
-      showErrorToast(`${baseMessage} (${reason})`);
+      const message = rawReason === reason ? rawReason : `${rawReason}\n\nSummary: ${reason}`;
+      void confirmDialog({
+        title: baseMessage,
+        message,
+        confirmLabel: "Close",
+        hideCancel: true,
+      });
     } finally {
       setIsRemovingBackground(false);
       // Clear status after a delay
