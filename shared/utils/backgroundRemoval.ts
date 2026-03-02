@@ -288,7 +288,24 @@ async function loadModel(
           const adapter = await (navigator as Navigator & {
             gpu: { requestAdapter: () => Promise<unknown> };
           }).gpu.requestAdapter();
-          canUseWebGPU = adapter !== null;
+          if (adapter) {
+            const maxStorageBuffersPerStage = Number((adapter as {
+              limits?: { maxStorageBuffersPerShaderStage?: unknown };
+            }).limits?.maxStorageBuffersPerShaderStage);
+
+            // Some adapters expose the minimum guaranteed value (8), which is too low
+            // for large concat kernels emitted by certain ONNX graphs.
+            if (Number.isFinite(maxStorageBuffersPerStage) && maxStorageBuffersPerStage <= 8) {
+              canUseWebGPU = false;
+              console.warn(
+                `[Background Removal] WebGPU adapter limit is low (maxStorageBuffersPerShaderStage=${maxStorageBuffersPerStage}). Using WASM.`,
+              );
+            } else {
+              canUseWebGPU = true;
+            }
+          } else {
+            canUseWebGPU = false;
+          }
         } catch {
           canUseWebGPU = false;
         }
@@ -791,11 +808,22 @@ function isWebGpuRuntimeLimitError(error: unknown): boolean {
   return (
     message.includes("webgpu validation error")
     || (message.includes("storage buffers") && message.includes("compute stage"))
+    || message.includes("error while parsing wgsl")
+    || message.includes("statement nesting depth")
+    || message.includes("no matching constructor for 'i32(vec4<u32>)'")
+    || message.includes("invalid shadermodule")
     || message.includes("invalid computepipeline")
     || message.includes("invalid bindgrouplayout")
+    || message.includes("invalid commandbuffer")
+    || message.includes("queue].submit")
     || message.includes("createcomputepipeline")
     || message.includes("createbindgroup")
   );
+}
+
+function isOpaqueRuntimeCodeError(error: unknown): boolean {
+  const message = getErrorMessage(error).trim();
+  return /^[0-9]+$/.test(message);
 }
 
 function isExecutionProviderError(error: unknown): boolean {
@@ -819,6 +847,10 @@ export function getBackgroundRemovalErrorMessage(error: unknown): string {
 
   if (isExecutionProviderError(error)) {
     return "Execution provider limit hit (WebGPU/WASM).";
+  }
+
+  if (isOpaqueRuntimeCodeError(error)) {
+    return "Model execution failed with opaque runtime code. Retrying with WASM may help.";
   }
 
   const message = getErrorMessage(error).trim();
@@ -1010,7 +1042,10 @@ export async function removeBackground(
   try {
     modelOutput = await runModelWithCompatibleInputs(activeModel, processed);
   } catch (error) {
-    if (loadedModelDevice !== "webgpu" || !isWebGpuRuntimeLimitError(error)) {
+    const shouldRetryWithWasm = loadedModelDevice === "webgpu"
+      && !isModelInputMismatchError(error);
+
+    if (!shouldRetryWithWasm) {
       throw error;
     }
 
