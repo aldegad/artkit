@@ -100,7 +100,6 @@ export function useImageImport(options: UseImageImportOptions): UseImageImportRe
             setCanvasSize({ width: img.width, height: img.height });
 
             const imageLayer = createPaintLayer(fileName || "Layer 1", 0);
-            imageLayer.originalSize = { width: img.width, height: img.height };
 
             const canvas = document.createElement("canvas");
             canvas.width = img.width;
