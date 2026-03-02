@@ -14,8 +14,10 @@ import {
 } from "@/shared/utils/magicWand";
 import {
   applySelectionMaskToImageData,
+  createSelectionMaskFromRect,
   createSelectionMaskFromPath,
   isPointInsideSelection,
+  offsetSelectionMask,
 } from "../../utils/selectionRegion";
 
 export interface UseSelectionHandlerReturn {
@@ -79,6 +81,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
     setSelectionMask,
     selection,
     selectionFeather,
+    selectionOffset,
     setSelection,
     setIsMovingSelection,
     setIsDuplicating,
@@ -147,19 +150,28 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
         }
 
         const objectMask = toMagicWandBoundsMask(objectSelection);
-        setSelection({
-          x: objectMask.x + layerPosX,
-          y: objectMask.y + layerPosY,
-          width: objectMask.width,
-          height: objectMask.height,
-        });
-        setSelectionMask({
+        const baseSelectionMask = {
           x: objectMask.x + layerPosX,
           y: objectMask.y + layerPosY,
           width: objectMask.width,
           height: objectMask.height,
           mask: objectMask.mask,
+        };
+        const nextSelectionMask = selectionOffset !== 0
+          ? offsetSelectionMask(baseSelectionMask, selectionOffset)
+          : baseSelectionMask;
+        if (!nextSelectionMask) {
+          setSelectionMask(null);
+          setSelection(null);
+          return { handled: true };
+        }
+        setSelection({
+          x: nextSelectionMask.x,
+          y: nextSelectionMask.y,
+          width: nextSelectionMask.width,
+          height: nextSelectionMask.height,
         });
+        setSelectionMask(nextSelectionMask);
         return { handled: true };
       }
 
@@ -251,6 +263,7 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
     [
       selection,
       selectionFeather,
+      selectionOffset,
       setSelection,
       editCanvasRef,
       activeLayerPosition,
@@ -316,7 +329,10 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
 
   const handleMouseUp = useCallback(() => {
     if (marqueeSubTool === "lasso" && lassoPath) {
-      const lassoMask = createSelectionMaskFromPath(lassoPath);
+      const rawLassoMask = createSelectionMaskFromPath(lassoPath);
+      const lassoMask = rawLassoMask && selectionOffset !== 0
+        ? offsetSelectionMask(rawLassoMask, selectionOffset)
+        : rawLassoMask;
       const nextBounds = lassoMask
         ? {
             x: lassoMask.x,
@@ -336,11 +352,31 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       return;
     }
 
+    if (selection && marqueeSubTool !== "object" && selectionOffset !== 0) {
+      const baseMask = createSelectionMaskFromRect(selection);
+      const shiftedMask = baseMask
+        ? offsetSelectionMask(baseMask, selectionOffset)
+        : null;
+      if (!shiftedMask) {
+        setSelectionMask(null);
+        setSelection(null);
+        return;
+      }
+      setSelectionMask(shiftedMask);
+      setSelection({
+        x: shiftedMask.x,
+        y: shiftedMask.y,
+        width: shiftedMask.width,
+        height: shiftedMask.height,
+      });
+      return;
+    }
+
     if (marqueeSubTool !== "object" && selection && (selection.width < 5 || selection.height < 5)) {
       setSelectionMask(null);
       setSelection(null);
     }
-  }, [marqueeSubTool, lassoPath, selection, setLassoPath, setSelection, setSelectionMask]);
+  }, [marqueeSubTool, lassoPath, selection, selectionOffset, setLassoPath, setSelection, setSelectionMask]);
 
   return {
     handleMouseDown,

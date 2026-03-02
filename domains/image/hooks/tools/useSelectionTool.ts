@@ -30,6 +30,8 @@ interface UseSelectionToolReturn {
   setSelection: React.Dispatch<React.SetStateAction<CropArea | null>>;
   selectionFeather: number;
   setSelectionFeather: React.Dispatch<React.SetStateAction<number>>;
+  selectionOffset: number;
+  setSelectionOffset: React.Dispatch<React.SetStateAction<number>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   marqueeSubTool: MarqueeSubTool;
@@ -98,6 +100,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [selectionFeather, setSelectionFeather] = useState(0);
+  const [selectionOffset, setSelectionOffset] = useState(0);
   const [magicWandTolerance, setMagicWandTolerance] = useState(24);
 
   useEffect(() => {
@@ -334,6 +337,8 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setSelection,
     selectionFeather,
     setSelectionFeather,
+    selectionOffset,
+    setSelectionOffset,
     magicWandTolerance,
     setMagicWandTolerance,
     marqueeSubTool,

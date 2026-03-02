@@ -56,6 +56,7 @@ interface UseMouseHandlersOptions {
   setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
   selection: CropArea | null;
   selectionFeather: number;
+  selectionOffset: number;
   setSelection: (selection: CropArea | null) => void;
   isMovingSelection: boolean;
   setIsMovingSelection: (value: boolean) => void;
@@ -158,6 +159,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setSelectionMask,
     selection,
     selectionFeather,
+    selectionOffset,
     setSelection,
     isMovingSelection,
     setIsMovingSelection,
@@ -256,6 +258,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setSelectionMask,
     selection,
     selectionFeather,
+    selectionOffset,
     setSelection,
     isMovingSelection,
     setIsMovingSelection,
