@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type MutableRefObject, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import type { CropArea, Point, SelectionMask } from "../types";
 import { clearSelectionFromLayer } from "../utils/selectionRegion";
 import {
@@ -17,9 +17,12 @@ interface FloatingLayer {
 }
 
 interface UseMagicWandSelectionActionOptions {
+  activeLayerId: string | null;
   editCanvasRef: RefObject<HTMLCanvasElement | null>;
   activeLayerPosition: Point | null;
   magicWandTolerance: number;
+  selection: CropArea | null;
+  selectionMask: SelectionMask | null;
   floatingLayerRef: MutableRefObject<FloatingLayer | null>;
   setSelection: React.Dispatch<React.SetStateAction<CropArea | null>>;
   setSelectionMask: React.Dispatch<React.SetStateAction<SelectionMask | null>>;
@@ -40,9 +43,12 @@ interface UseClearSelectionPixelsActionOptions {
 
 export function useMagicWandSelectionAction(options: UseMagicWandSelectionActionOptions) {
   const {
+    activeLayerId,
     editCanvasRef,
     activeLayerPosition,
     magicWandTolerance,
+    selection,
+    selectionMask,
     floatingLayerRef,
     setSelection,
     setSelectionMask,
@@ -50,30 +56,42 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     setIsDuplicating,
   } = options;
 
-  return useCallback((imageX: number, imageY: number) => {
+  const magicWandSeedRef = useRef<{ x: number; y: number } | null>(null);
+  const magicWandLayerIdRef = useRef<string | null>(null);
+  const magicWandSelectionRef = useRef<{
+    selection: CropArea;
+    selectionMask: Pick<SelectionMask, "x" | "y" | "width" | "height">;
+  } | null>(null);
+
+  const clearMagicWandTracking = useCallback(() => {
+    magicWandSeedRef.current = null;
+    magicWandLayerIdRef.current = null;
+    magicWandSelectionRef.current = null;
+  }, []);
+
+  const applyMagicWandSelectionAtSeed = useCallback((seedX: number, seedY: number) => {
     const editCanvas = editCanvasRef.current;
     const ctx = editCanvas?.getContext("2d", { willReadFrequently: true });
     if (!editCanvas || !ctx) {
       setSelection(null);
       setSelectionMask(null);
       floatingLayerRef.current = null;
+      clearMagicWandTracking();
+      return;
+    }
+
+    if (seedX < 0 || seedY < 0 || seedX >= editCanvas.width || seedY >= editCanvas.height) {
+      setSelection(null);
+      setSelectionMask(null);
+      floatingLayerRef.current = null;
+      clearMagicWandTracking();
       return;
     }
 
     const layerPosX = activeLayerPosition?.x || 0;
     const layerPosY = activeLayerPosition?.y || 0;
-    const localX = Math.floor(imageX - layerPosX);
-    const localY = Math.floor(imageY - layerPosY);
-
-    if (localX < 0 || localY < 0 || localX >= editCanvas.width || localY >= editCanvas.height) {
-      setSelection(null);
-      setSelectionMask(null);
-      floatingLayerRef.current = null;
-      return;
-    }
-
     const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    const wandSelection = computeMagicWandColorSelection(imageData, localX, localY, {
+    const wandSelection = computeMagicWandColorSelection(imageData, seedX, seedY, {
       tolerance: magicWandTolerance,
     });
 
@@ -81,23 +99,37 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
       setSelection(null);
       setSelectionMask(null);
       floatingLayerRef.current = null;
+      clearMagicWandTracking();
       return;
     }
 
     const mask = toMagicWandBoundsMask(wandSelection);
-    setSelection({
+    const nextSelection: CropArea = {
       x: wandSelection.bounds.x + layerPosX,
       y: wandSelection.bounds.y + layerPosY,
       width: wandSelection.bounds.width,
       height: wandSelection.bounds.height,
-    });
-    setSelectionMask({
+    };
+    const nextSelectionMask: SelectionMask = {
       x: mask.x + layerPosX,
       y: mask.y + layerPosY,
       width: mask.width,
       height: mask.height,
       mask: mask.mask,
-    });
+    };
+
+    magicWandSelectionRef.current = {
+      selection: nextSelection,
+      selectionMask: {
+        x: nextSelectionMask.x,
+        y: nextSelectionMask.y,
+        width: nextSelectionMask.width,
+        height: nextSelectionMask.height,
+      },
+    };
+
+    setSelection(nextSelection);
+    setSelectionMask(nextSelectionMask);
     setIsMovingSelection(false);
     setIsDuplicating(false);
     floatingLayerRef.current = null;
@@ -110,6 +142,56 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     setSelectionMask,
     setIsMovingSelection,
     setIsDuplicating,
+    clearMagicWandTracking,
+  ]);
+
+  useEffect(() => {
+    const trackedSelection = magicWandSelectionRef.current;
+    if (!trackedSelection) return;
+
+    const matchesSelection = (
+      !!selection
+      && selection.x === trackedSelection.selection.x
+      && selection.y === trackedSelection.selection.y
+      && selection.width === trackedSelection.selection.width
+      && selection.height === trackedSelection.selection.height
+    );
+    const matchesSelectionMask = (
+      !!selectionMask
+      && selectionMask.x === trackedSelection.selectionMask.x
+      && selectionMask.y === trackedSelection.selectionMask.y
+      && selectionMask.width === trackedSelection.selectionMask.width
+      && selectionMask.height === trackedSelection.selectionMask.height
+    );
+
+    if (!matchesSelection || !matchesSelectionMask) {
+      clearMagicWandTracking();
+    }
+  }, [selection, selectionMask, clearMagicWandTracking]);
+
+  useEffect(() => {
+    const seed = magicWandSeedRef.current;
+    if (!seed) return;
+    if (magicWandLayerIdRef.current !== activeLayerId) {
+      clearMagicWandTracking();
+      return;
+    }
+    applyMagicWandSelectionAtSeed(seed.x, seed.y);
+  }, [activeLayerId, magicWandTolerance, applyMagicWandSelectionAtSeed, clearMagicWandTracking]);
+
+  return useCallback((imageX: number, imageY: number) => {
+    const layerPosX = activeLayerPosition?.x || 0;
+    const layerPosY = activeLayerPosition?.y || 0;
+    const localX = Math.floor(imageX - layerPosX);
+    const localY = Math.floor(imageY - layerPosY);
+
+    magicWandSeedRef.current = { x: localX, y: localY };
+    magicWandLayerIdRef.current = activeLayerId;
+    applyMagicWandSelectionAtSeed(localX, localY);
+  }, [
+    activeLayerId,
+    activeLayerPosition,
+    applyMagicWandSelectionAtSeed,
   ]);
 }
 
