@@ -42,7 +42,9 @@ interface FirestoreLayerMeta {
   originalSize?: { width: number; height: number };
   blendMode?: UnifiedLayer["blendMode"];
   storageRef: string; // Path to Storage file
+  imageFingerprint?: string;
   alphaMaskStorageRef?: string; // Optional path to layer alpha mask PNG
+  alphaMaskFingerprint?: string;
 }
 
 interface FirestoreImageProject {
@@ -55,6 +57,7 @@ interface FirestoreImageProject {
   layers: FirestoreLayerMeta[];
   activeLayerId: string | null;
   thumbnailUrl?: string;
+  thumbnailFingerprint?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -69,6 +72,111 @@ function resolveProjectSavedAt(data: {
 
 const IMAGE_LOAD_CONCURRENCY = 8;
 const IMAGE_DELETE_CONCURRENCY = 8;
+const IMAGE_SAVE_CONCURRENCY = 4;
+
+function buildLegacyDataFingerprint(dataUrl: string): string {
+  const len = dataUrl.length;
+  const head = dataUrl.slice(0, 64);
+  const middleStart = Math.max(0, Math.floor(len / 2) - 32);
+  const middle = dataUrl.slice(middleStart, middleStart + 64);
+  const tail = dataUrl.slice(-64);
+  return `${len}:${head}:${middle}:${tail}`;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function getHashBytesFromDataUrl(dataUrl: string): Uint8Array {
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx <= 0 || commaIdx >= dataUrl.length - 1) {
+    return new TextEncoder().encode(dataUrl);
+  }
+
+  const header = dataUrl.slice(0, commaIdx);
+  const payload = dataUrl.slice(commaIdx + 1);
+  const isBase64 = /;base64/i.test(header);
+
+  if (!isBase64 || typeof atob === "undefined") {
+    return new TextEncoder().encode(payload);
+  }
+
+  try {
+    const binary = atob(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    return new TextEncoder().encode(dataUrl);
+  }
+}
+
+async function buildDataFingerprint(dataUrl: string): Promise<string> {
+  if (typeof globalThis.crypto?.subtle === "undefined") {
+    return `legacy:${buildLegacyDataFingerprint(dataUrl)}`;
+  }
+
+  const bytes = getHashBytesFromDataUrl(dataUrl);
+  const normalizedBuffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(normalizedBuffer).set(bytes);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", normalizedBuffer);
+  return `sha256:${bytesToHex(new Uint8Array(digest))}`;
+}
+
+function isSameDataFingerprint(
+  existingFingerprint: string | undefined,
+  nextFingerprint: string,
+  legacyFingerprint: string
+): boolean {
+  if (!existingFingerprint) return false;
+  return (
+    existingFingerprint === nextFingerprint
+    || existingFingerprint === legacyFingerprint
+    || existingFingerprint === `legacy:${legacyFingerprint}`
+  );
+}
+
+function collectLayerMediaRefs(layers: FirestoreLayerMeta[] | undefined): Set<string> {
+  const refs = new Set<string>();
+  for (const layer of layers || []) {
+    if (layer.storageRef) {
+      refs.add(layer.storageRef.startsWith("/") ? layer.storageRef.slice(1) : layer.storageRef);
+    }
+    if (layer.alphaMaskStorageRef) {
+      refs.add(
+        layer.alphaMaskStorageRef.startsWith("/")
+          ? layer.alphaMaskStorageRef.slice(1)
+          : layer.alphaMaskStorageRef
+      );
+    }
+  }
+  return refs;
+}
+
+async function cleanupRemovedLayerMediaByRefDiff(
+  existingRefs: Set<string>,
+  nextRefs: Set<string>
+): Promise<void> {
+  const staleRefs = Array.from(existingRefs).filter((path) => !nextRefs.has(path));
+  if (staleRefs.length === 0) return;
+
+  await mapWithConcurrency(staleRefs, IMAGE_DELETE_CONCURRENCY, async (path) => {
+    try {
+      await deleteObject(ref(storage, path));
+    } catch (error) {
+      const maybeCode = (error as { code?: string }).code;
+      if (maybeCode !== "storage/object-not-found") {
+        console.warn(`[ImageStorage] Failed to delete stale media: ${path}`, error);
+      }
+    }
+  });
+}
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -226,40 +334,52 @@ export async function saveImageProjectToFirebase(
   const existingLayerMap = new Map(
     (existingProject?.layers || []).map((layerMeta) => [layerMeta.id, layerMeta] as const)
   );
+  const existingLayerRefs = collectLayerMediaRefs(existingProject?.layers);
 
-  // 1. Upload all layer images to Storage
-  const layerMetas: FirestoreLayerMeta[] = [];
-
-  if (project.unifiedLayers) {
-    for (const layer of project.unifiedLayers) {
-      let storageRef = "";
+  // 1. Upload only changed layer images/masks to Storage (reuse unchanged refs by fingerprint)
+  const layerMetas: FirestoreLayerMeta[] = await mapWithConcurrency(
+    project.unifiedLayers || [],
+    IMAGE_SAVE_CONCURRENCY,
+    async (layer) => {
+      const existingLayer = existingLayerMap.get(layer.id);
+      let storageRef = existingLayer?.storageRef || "";
+      let imageFingerprint = existingLayer?.imageFingerprint;
       let alphaMaskStorageRef: string | undefined;
+      let alphaMaskFingerprint = existingLayer?.alphaMaskFingerprint;
 
       if (layer.paintData) {
-        storageRef = await uploadLayerImage(
-          userId,
-          project.id,
-          layer.id,
-          layer.paintData
-        );
-      } else {
-        // Keep previous storage reference when layer bitmap is temporarily unavailable.
-        storageRef = existingLayerMap.get(layer.id)?.storageRef || "";
+        const nextFingerprint = await buildDataFingerprint(layer.paintData);
+        const legacyFingerprint = buildLegacyDataFingerprint(layer.paintData);
+        const canReuseExistingImage =
+          !!existingLayer?.storageRef
+          && isSameDataFingerprint(existingLayer.imageFingerprint, nextFingerprint, legacyFingerprint);
+
+        storageRef = canReuseExistingImage
+          ? existingLayer.storageRef
+          : await uploadLayerImage(userId, project.id, layer.id, layer.paintData);
+        imageFingerprint = nextFingerprint;
       }
 
       if (layer.alphaMaskData) {
-        alphaMaskStorageRef = await uploadLayerAlphaMask(
-          userId,
-          project.id,
-          layer.id,
-          layer.alphaMaskData
-        );
+        const nextMaskFingerprint = await buildDataFingerprint(layer.alphaMaskData);
+        const legacyMaskFingerprint = buildLegacyDataFingerprint(layer.alphaMaskData);
+        const canReuseExistingMask =
+          !!existingLayer?.alphaMaskStorageRef
+          && isSameDataFingerprint(
+            existingLayer.alphaMaskFingerprint,
+            nextMaskFingerprint,
+            legacyMaskFingerprint
+          );
+
+        alphaMaskStorageRef = canReuseExistingMask
+          ? existingLayer.alphaMaskStorageRef
+          : await uploadLayerAlphaMask(userId, project.id, layer.id, layer.alphaMaskData);
+        alphaMaskFingerprint = nextMaskFingerprint;
       } else if (!layer.paintData) {
         // Preserve mask path only for metadata-only fallbacks.
-        alphaMaskStorageRef = existingLayerMap.get(layer.id)?.alphaMaskStorageRef;
+        alphaMaskStorageRef = existingLayer?.alphaMaskStorageRef;
       }
 
-      // Filter out undefined values (Firestore doesn't accept undefined)
       const layerMeta: FirestoreLayerMeta = {
         id: layer.id,
         name: layer.name,
@@ -271,27 +391,42 @@ export async function saveImageProjectToFirebase(
         storageRef,
       };
 
-      // Only add optional fields if they exist
       if (layer.position) layerMeta.position = layer.position;
       if (layer.scale !== undefined) layerMeta.scale = layer.scale;
       if (layer.rotation !== undefined) layerMeta.rotation = layer.rotation;
       if (layer.originalSize) layerMeta.originalSize = layer.originalSize;
       if (layer.blendMode) layerMeta.blendMode = layer.blendMode;
+      if (imageFingerprint) layerMeta.imageFingerprint = imageFingerprint;
       if (alphaMaskStorageRef) layerMeta.alphaMaskStorageRef = alphaMaskStorageRef;
+      if (alphaMaskFingerprint) layerMeta.alphaMaskFingerprint = alphaMaskFingerprint;
 
-      layerMetas.push(layerMeta);
+      return layerMeta;
     }
-  }
+  );
 
-  // 2. Generate and upload optimized thumbnail (144x144, all layers merged)
+  // 2. Generate and upload optimized thumbnail (skip upload if unchanged)
   let thumbnailUrl: string | undefined = existingProject?.thumbnailUrl;
+  let thumbnailFingerprint: string | undefined = existingProject?.thumbnailFingerprint;
   if (project.unifiedLayers && project.unifiedLayers.length > 0 && project.canvasSize) {
     try {
       const thumbnailData = await generateThumbnailFromLayers(
         project.unifiedLayers,
         project.canvasSize
       );
-      thumbnailUrl = await uploadThumbnail(userId, project.id, thumbnailData);
+      const nextThumbnailFingerprint = await buildDataFingerprint(thumbnailData);
+      const legacyThumbnailFingerprint = buildLegacyDataFingerprint(thumbnailData);
+      const canReuseThumbnail =
+        !!existingProject?.thumbnailUrl
+        && isSameDataFingerprint(
+          existingProject.thumbnailFingerprint,
+          nextThumbnailFingerprint,
+          legacyThumbnailFingerprint
+        );
+
+      thumbnailUrl = canReuseThumbnail
+        ? existingProject.thumbnailUrl
+        : await uploadThumbnail(userId, project.id, thumbnailData);
+      thumbnailFingerprint = nextThumbnailFingerprint;
     } catch (error) {
       console.warn("Failed to generate/upload thumbnail:", error);
     }
@@ -308,11 +443,19 @@ export async function saveImageProjectToFirebase(
     layers: layerMetas,
     activeLayerId: project.activeLayerId ?? null,
     thumbnailUrl,
+    thumbnailFingerprint,
     createdAt,
     updatedAt: Timestamp.now(),
   };
 
   await setDoc(docRef, removeUndefinedValues(firestoreProject));
+
+  try {
+    const nextLayerRefs = collectLayerMediaRefs(layerMetas);
+    await cleanupRemovedLayerMediaByRefDiff(existingLayerRefs, nextLayerRefs);
+  } catch (error) {
+    console.warn("[ImageStorage] Layer media cleanup failed after save:", error);
+  }
 }
 
 /**
