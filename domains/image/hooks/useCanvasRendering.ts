@@ -31,6 +31,11 @@ interface TransformBounds {
   height: number;
 }
 
+interface TransformPreviewLayerData {
+  originalImageData: ImageData;
+  originalBounds: TransformBounds;
+}
+
 interface UseCanvasRenderingOptions {
   // Refs from other hooks (not in context)
   layerCanvasesRef: RefObject<Map<string, HTMLCanvasElement>>;
@@ -57,7 +62,10 @@ interface UseCanvasRenderingOptions {
   transformBounds?: TransformBounds | null;
   isTransformActive?: boolean;
   transformLayerId?: string | null;
+  transformLayerIds?: string[];
+  transformOriginalBounds?: TransformBounds | null;
   transformOriginalImageData?: ImageData | null;
+  transformPerLayerData?: Map<string, TransformPreviewLayerData> | null;
   transformRotation?: number;
   transformFlipX?: boolean;
   isSelectionBasedTransform?: boolean;
@@ -119,7 +127,10 @@ export function useCanvasRendering(
     transformBounds,
     isTransformActive,
     transformLayerId,
+    transformLayerIds,
+    transformOriginalBounds,
     transformOriginalImageData,
+    transformPerLayerData,
     transformRotation = 0,
     transformFlipX = false,
     isSelectionBasedTransform,
@@ -278,6 +289,15 @@ export function useCanvasRendering(
     // Pixel-accurate editing: disable smoothing for zoom >= 1
     // (keep smoothing only when downscaling).
     const previewScalePolicy = resolvePixelPreviewScalePolicy(zoom);
+    const layerById = new Map(layers.map((layer) => [layer.id, layer]));
+    const activeTransformLayerIds = isTransformActive
+      ? (
+          transformLayerIds && transformLayerIds.length > 0
+            ? transformLayerIds
+            : (transformLayerId ? [transformLayerId] : [])
+        )
+      : [];
+    const activeTransformLayerIdSet = new Set(activeTransformLayerIds);
 
     // Draw all layers sorted by zIndex (lower first = background)
     // Unified layer system renders both image and paint layers in correct order
@@ -285,8 +305,8 @@ export function useCanvasRendering(
 
     for (const layer of sortedLayers) {
       if (!layer.visible) continue;
-      // Skip layer being transformed - it will be rendered in transform overlay
-      if (isTransformActive && transformLayerId === layer.id && !isSelectionBasedTransform) continue;
+      // Skip full-layer transform targets - they are rendered in transform overlay.
+      if (isTransformActive && !isSelectionBasedTransform && activeTransformLayerIdSet.has(layer.id)) continue;
 
       ctx.save();
       ctx.globalAlpha = layer.opacity / 100;
@@ -755,26 +775,89 @@ export function useCanvasRendering(
 
       ctx.save();
 
-      // Apply layer opacity to transform preview
-      const transformLayer = transformLayerId ? layers.find(l => l.id === transformLayerId) : null;
-      if (transformLayer) {
-        ctx.globalAlpha = transformLayer.opacity / 100;
-      }
+      ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
+      ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
+      ctx.clip();
 
-      // Draw the transformed image from originalImageData
-      if (transformOriginalImageData) {
+      if (
+        transformPerLayerData
+        && transformPerLayerData.size > 0
+        && transformOriginalBounds
+        && transformOriginalBounds.width > 0
+        && transformOriginalBounds.height > 0
+      ) {
+        const scaleX = bounds.width / transformOriginalBounds.width;
+        const scaleY = bounds.height / transformOriginalBounds.height;
+        const targetCenter = {
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+        };
+
+        transformPerLayerData.forEach((data, layerId) => {
+          const layer = layerById.get(layerId);
+          if (!layer) return;
+
+          const newWidth = Math.max(1, Math.round(data.originalBounds.width * scaleX));
+          const newHeight = Math.max(1, Math.round(data.originalBounds.height * scaleY));
+          const relativeX = data.originalBounds.x - transformOriginalBounds.x;
+          const relativeY = data.originalBounds.y - transformOriginalBounds.y;
+          const scaledX = bounds.x + relativeX * scaleX;
+          const scaledY = bounds.y + relativeY * scaleY;
+          const scaledCenter = {
+            x: transformFlipX
+              ? bounds.x + bounds.width - (relativeX * scaleX + newWidth / 2)
+              : scaledX + newWidth / 2,
+            y: scaledY + newHeight / 2,
+          };
+
+          const dx = scaledCenter.x - targetCenter.x;
+          const dy = scaledCenter.y - targetCenter.y;
+          const rotatedCenter = transformRotation === 0
+            ? scaledCenter
+            : {
+                x: targetCenter.x + dx * Math.cos(rotationRadians) - dy * Math.sin(rotationRadians),
+                y: targetCenter.y + dx * Math.sin(rotationRadians) + dy * Math.cos(rotationRadians),
+              };
+
+          const { canvas: transformCanvas, ctx: transformCtx } = canvasCache.getTemporary(
+            data.originalImageData.width,
+            data.originalImageData.height,
+            `transform-preview-${layerId}`
+          );
+          transformCtx.putImageData(data.originalImageData, 0, 0);
+
+          ctx.save();
+          ctx.globalAlpha = layer.opacity / 100;
+          ctx.translate(offsetX + rotatedCenter.x * zoom, offsetY + rotatedCenter.y * zoom);
+          ctx.rotate(rotationRadians);
+          if (transformFlipX) {
+            ctx.scale(-1, 1);
+          }
+          ctx.drawImage(
+            transformCanvas,
+            -(newWidth * zoom) / 2,
+            -(newHeight * zoom) / 2,
+            newWidth * zoom,
+            newHeight * zoom
+          );
+          ctx.restore();
+        });
+      } else if (transformOriginalImageData) {
         const { canvas: transformCanvas, ctx: transformCtx } = canvasCache.getTemporary(
           transformOriginalImageData.width,
           transformOriginalImageData.height,
           "transform-preview"
         );
         transformCtx.putImageData(transformOriginalImageData, 0, 0);
-        ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
-        ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
+
+        const transformLayer = transformLayerId ? layerById.get(transformLayerId) : null;
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(offsetX, offsetY, scaledWidth, scaledHeight);
-        ctx.clip();
+        if (transformLayer) {
+          ctx.globalAlpha = transformLayer.opacity / 100;
+        }
         ctx.translate(centerX, centerY);
         ctx.rotate(rotationRadians);
         if (transformFlipX) {
@@ -789,6 +872,7 @@ export function useCanvasRendering(
         );
         ctx.restore();
       }
+      ctx.restore();
 
       // Reset alpha for handles and border
       ctx.globalAlpha = 1;
@@ -931,7 +1015,10 @@ export function useCanvasRendering(
     transformBounds,
     isTransformActive,
     transformLayerId,
+    transformLayerIds,
+    transformOriginalBounds,
     transformOriginalImageData,
+    transformPerLayerData,
     transformRotation,
     transformFlipX,
     isSelectionBasedTransform,
