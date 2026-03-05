@@ -7,6 +7,7 @@ import { getLayerContentBounds } from "../utils/layerContentBounds";
 import { getRectHandleAtPosition, resizeRectByHandle, type RectHandle } from "@/shared/utils/rectTransform";
 import { HANDLE_SIZE as HANDLE_SIZE_CONST, ROTATE_HANDLE, FLIP_HANDLE } from "../constants";
 import { applySelectionMaskToImageData, clearSelectionFromLayer } from "../utils/selectionRegion";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
 // ============================================
 // Types
@@ -318,8 +319,15 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const layer = layers.find((l) => l.id === targetLayerId);
       if (!layerCanvas || !layer || layer.locked) return;
 
-      const ctx = layerCanvas.getContext("2d");
-      if (!ctx) return;
+      const layerCtx = layerCanvas.getContext("2d");
+      if (!layerCtx) return;
+
+      const sampledCanvas = document.createElement("canvas");
+      sampledCanvas.width = layerCanvas.width;
+      sampledCanvas.height = layerCanvas.height;
+      const sampledCtx = sampledCanvas.getContext("2d");
+      if (!sampledCtx) return;
+      drawLayerWithOptionalAlphaMask(sampledCtx, layerCanvas, 0, 0);
 
       const layerPosX = layer.position?.x || 0;
       const layerPosY = layer.position?.y || 0;
@@ -336,7 +344,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
 
       if (clampedW <= 0 || clampedH <= 0) return;
 
-      let contentImageData = ctx.getImageData(clampedX, clampedY, clampedW, clampedH);
+      let contentImageData = sampledCtx.getImageData(clampedX, clampedY, clampedW, clampedH);
       contentImageData = applySelectionMaskToImageData(contentImageData, selection!, selectionMask || null);
       let hasContent = false;
       for (let i = 3; i < contentImageData.data.length; i += 4) {
@@ -348,7 +356,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       if (!hasContent) return;
 
       saveToHistory();
-      clearSelectionFromLayer(ctx, selection!, {
+      clearSelectionFromLayer(layerCtx, selection!, {
         selectionMask: selectionMask || null,
         selectionFeather: 0,
         layerOffset: { x: layerPosX, y: layerPosY },
@@ -405,8 +413,12 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       const contentBounds = getLayerContentBounds(layer, layerCanvas);
       if (!contentBounds || contentBounds.width <= 0 || contentBounds.height <= 0) continue; // No content
 
-      const ctx = layerCanvas.getContext("2d");
-      if (!ctx) continue;
+      const sampledCanvas = document.createElement("canvas");
+      sampledCanvas.width = layerCanvas.width;
+      sampledCanvas.height = layerCanvas.height;
+      const sampledCtx = sampledCanvas.getContext("2d");
+      if (!sampledCtx) continue;
+      drawLayerWithOptionalAlphaMask(sampledCtx, layerCanvas, 0, 0);
 
       const layerPosX = layer.position?.x || 0;
       const layerPosY = layer.position?.y || 0;
@@ -426,7 +438,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       combinedMaxY = Math.max(combinedMaxY, imageBounds.y + imageBounds.height);
 
       // Extract content image data for this layer
-      const contentImageData = ctx.getImageData(
+      const contentImageData = sampledCtx.getImageData(
         contentBounds.localX,
         contentBounds.localY,
         contentBounds.width,
