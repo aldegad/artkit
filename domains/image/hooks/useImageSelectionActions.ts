@@ -5,6 +5,7 @@ import type { CropArea, Point, SelectionMask } from "../types";
 import { clearSelectionFromLayer } from "../utils/selectionRegion";
 import {
   computeMagicWandColorSelection,
+  computeMagicWandColorComponentSelection,
   toMagicWandBoundsMask,
 } from "@/shared/utils/magicWand";
 
@@ -21,6 +22,7 @@ interface UseMagicWandSelectionActionOptions {
   editCanvasRef: RefObject<HTMLCanvasElement | null>;
   activeLayerPosition: Point | null;
   magicWandTolerance: number;
+  magicWandAllowAlpha: boolean;
   selection: CropArea | null;
   selectionMask: SelectionMask | null;
   floatingLayerRef: MutableRefObject<FloatingLayer | null>;
@@ -69,6 +71,7 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     editCanvasRef,
     activeLayerPosition,
     magicWandTolerance,
+    magicWandAllowAlpha,
     selection,
     selectionMask,
     floatingLayerRef,
@@ -120,9 +123,13 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     }
 
     const imageData = ctx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-    const wandSelection = computeMagicWandColorSelection(imageData, seedX, seedY, {
-      tolerance: magicWandTolerance,
-    });
+    const wandSelection = magicWandAllowAlpha
+      ? computeMagicWandColorComponentSelection(imageData, seedX, seedY, {
+        tolerance: magicWandTolerance,
+      })
+      : computeMagicWandColorSelection(imageData, seedX, seedY, {
+        tolerance: magicWandTolerance,
+      });
 
     if (!wandSelection) {
       if (selectionRef.current) setSelection(null);
@@ -169,6 +176,7 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
     layerPosX,
     layerPosY,
     magicWandTolerance,
+    magicWandAllowAlpha,
     selectionRef,
     selectionMaskRef,
     floatingLayerRef,
@@ -214,6 +222,7 @@ export function useMagicWandSelectionAction(options: UseMagicWandSelectionAction
   }, [
     activeLayerId,
     magicWandTolerance,
+    magicWandAllowAlpha,
     layerPosX,
     layerPosY,
     applyMagicWandSelectionAtSeed,

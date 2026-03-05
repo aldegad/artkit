@@ -34,6 +34,8 @@ interface UseSelectionToolReturn {
   setSelectionOffset: React.Dispatch<React.SetStateAction<number>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
+  magicWandAllowAlpha: boolean;
+  setMagicWandAllowAlpha: React.Dispatch<React.SetStateAction<boolean>>;
   marqueeSubTool: MarqueeSubTool;
   setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
   lassoPath: Point[] | null;
@@ -102,6 +104,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const [selectionFeather, setSelectionFeather] = useState(0);
   const [selectionOffset, setSelectionOffset] = useState(0);
   const [magicWandTolerance, setMagicWandTolerance] = useState(24);
+  const [magicWandAllowAlpha, setMagicWandAllowAlpha] = useState(false);
 
   useEffect(() => {
     if (marqueeSubTool !== "lasso" && lassoPath) {
@@ -341,6 +344,8 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setSelectionOffset,
     magicWandTolerance,
     setMagicWandTolerance,
+    magicWandAllowAlpha,
+    setMagicWandAllowAlpha,
     marqueeSubTool,
     setMarqueeSubTool,
     lassoPath,
