@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, RefObject } from "react";
 import { useEditorLayers, useEditorState } from "../contexts";
 import { useLanguage } from "../../../shared/contexts";
 import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
+import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 import { Scrollbar, Select } from "@/shared/components";
 import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
 import type { LayerBlendMode } from "@/shared/types";
@@ -50,7 +51,11 @@ const LayerThumbnail = React.memo(function LayerThumbnail({
       const scale = Math.min(THUMB_SIZE / src.width, THUMB_SIZE / src.height);
       const w = src.width * scale;
       const h = src.height * scale;
-      ctx.drawImage(src, (THUMB_SIZE - w) / 2, (THUMB_SIZE - h) / 2, w, h);
+      ctx.save();
+      ctx.translate((THUMB_SIZE - w) / 2, (THUMB_SIZE - h) / 2);
+      ctx.scale(scale, scale);
+      drawLayerWithOptionalAlphaMask(ctx, src, 0, 0);
+      ctx.restore();
     };
 
     updateThumbnail();
