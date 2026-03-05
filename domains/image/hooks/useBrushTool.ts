@@ -26,6 +26,7 @@ import {
 } from "@/shared/utils/brushEngine";
 import {
   getLayerAlphaMaskContext,
+  cleanupLayerPixelsWhereAlphaMaskIsZero,
   drawLayerWithOptionalAlphaMask,
 } from "@/shared/utils/layerAlphaMask";
 
@@ -413,11 +414,12 @@ export function useBrushTool(): UseBrushToolReturn {
 
       const strokeAlpha = (brushOpacity / 100) * params.opacity * params.flow;
       const lineSpacing = Math.max(1, params.size * (activePreset.spacing / 100));
+      const radius = params.size / 2;
+      const cleanupPad = 2;
 
       if (toolMode === "brush") {
         ctx.globalCompositeOperation = "source-over";
         const maskCtx = getLayerAlphaMaskContext(editCanvas);
-        const radius = params.size / 2;
         const hardness01 = brushHardness / 100;
         const startDabAlpha = strokeAlpha;
 
@@ -469,7 +471,6 @@ export function useBrushTool(): UseBrushToolReturn {
       } else if (toolMode === "eraser") {
         const maskCtx = getLayerAlphaMaskContext(editCanvas, true);
         if (!maskCtx) return;
-        const radius = params.size / 2;
         const hardness01 = brushHardness / 100;
         const startDabAlpha = strokeAlpha;
 
@@ -493,6 +494,18 @@ export function useBrushTool(): UseBrushToolReturn {
             baseSpacing: lineSpacing,
           });
         }
+
+        const from = lastDrawPoint.current ?? { x, y };
+        const minX = Math.min(from.x, x) - radius - cleanupPad;
+        const minY = Math.min(from.y, y) - radius - cleanupPad;
+        const maxX = Math.max(from.x, x) + radius + cleanupPad;
+        const maxY = Math.max(from.y, y) + radius + cleanupPad;
+        cleanupLayerPixelsWhereAlphaMaskIsZero(editCanvas, {
+          x: minX,
+          y: minY,
+          width: maxX - minX,
+          height: maxY - minY,
+        });
       } else if (toolMode === "stamp" && stampSource) {
         // Clone stamp - sample from current layer snapshot and paint to destination.
         if (isStart || !lastDrawPoint.current || !stampOffset.current) {

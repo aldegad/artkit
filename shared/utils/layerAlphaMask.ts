@@ -1,8 +1,8 @@
 // ============================================
 // Layer Alpha Mask Utilities
-// Non-destructive eraser support:
-// - Keep source RGB in layer canvas
+// Alpha-mask eraser support:
 // - Accumulate alpha changes in a sidecar mask canvas
+// - Optionally prune fully transparent source pixels for cleanup
 // ============================================
 
 const layerMaskByCanvas = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
@@ -57,6 +57,13 @@ function ensureMaskDrawScratch(width: number, height: number): CanvasRenderingCo
   return maskDrawScratch.ctx;
 }
 
+export interface AlphaMaskCleanupRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export function getLayerAlphaMask(layerCanvas: HTMLCanvasElement): HTMLCanvasElement | null {
   const existing = layerMaskByCanvas.get(layerCanvas);
   if (!existing) return null;
@@ -107,6 +114,58 @@ export function drawIntoLayerAlphaMask(
   const maskCtx = getLayerAlphaMaskContext(layerCanvas);
   if (!maskCtx) return;
   maskCtx.drawImage(source, x, y);
+}
+
+export function cleanupLayerPixelsWhereAlphaMaskIsZero(
+  layerCanvas: HTMLCanvasElement,
+  region?: AlphaMaskCleanupRegion
+): void {
+  const mask = getLayerAlphaMask(layerCanvas);
+  if (!mask) return;
+
+  const layerCtx = layerCanvas.getContext("2d");
+  const maskCtx = mask.getContext("2d");
+  if (!layerCtx || !maskCtx) return;
+
+  const rawX = region?.x ?? 0;
+  const rawY = region?.y ?? 0;
+  const rawW = region?.width ?? layerCanvas.width;
+  const rawH = region?.height ?? layerCanvas.height;
+
+  const clampedX = Math.max(0, Math.min(layerCanvas.width, Math.floor(rawX)));
+  const clampedY = Math.max(0, Math.min(layerCanvas.height, Math.floor(rawY)));
+  const clampedMaxX = Math.max(clampedX, Math.min(layerCanvas.width, Math.ceil(rawX + rawW)));
+  const clampedMaxY = Math.max(clampedY, Math.min(layerCanvas.height, Math.ceil(rawY + rawH)));
+  const width = clampedMaxX - clampedX;
+  const height = clampedMaxY - clampedY;
+  if (width <= 0 || height <= 0) return;
+
+  const layerImage = layerCtx.getImageData(clampedX, clampedY, width, height);
+  const maskImage = maskCtx.getImageData(clampedX, clampedY, width, height);
+  const layerData = layerImage.data;
+  const maskData = maskImage.data;
+  let dirty = false;
+
+  for (let i = 0; i < layerData.length; i += 4) {
+    if (maskData[i + 3] !== 0) continue;
+    if (
+      layerData[i] === 0
+      && layerData[i + 1] === 0
+      && layerData[i + 2] === 0
+      && layerData[i + 3] === 0
+    ) {
+      continue;
+    }
+    layerData[i] = 0;
+    layerData[i + 1] = 0;
+    layerData[i + 2] = 0;
+    layerData[i + 3] = 0;
+    dirty = true;
+  }
+
+  if (dirty) {
+    layerCtx.putImageData(layerImage, clampedX, clampedY);
+  }
 }
 
 export function clearLayerAlphaMask(layerCanvas: HTMLCanvasElement): void {
