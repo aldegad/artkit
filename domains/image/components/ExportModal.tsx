@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ExportModal as ExportModalBase, Select } from "@/shared/components";
-import type { ImageExportMode } from "../hooks/useImageExport";
+import type { ImageExportMode, ImageExportObjectFit } from "../hooks/useImageExport";
 import type { OutputFormat } from "../types";
 
 // ============================================
@@ -17,7 +17,8 @@ interface ExportModalProps {
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: ImageExportMode
+    mode: ImageExportMode,
+    objectFit: ImageExportObjectFit
   ) => void;
   defaultFileName: string;
   mode: ImageExportMode;
@@ -34,6 +35,7 @@ interface ExportModalProps {
     quality: string;
     backgroundColor: string;
     transparent: string;
+    objectFit: string;
   };
 }
 
@@ -55,19 +57,21 @@ export function ExportModal({
   const [quality, setQuality] = useState(0.9);
   const [useBgColor, setUseBgColor] = useState(false);
   const [bgColor, setBgColor] = useState("#ffffff");
+  const [fitToObject, setFitToObject] = useState<ImageExportObjectFit>(false);
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setFileName(defaultFileName);
+      setFitToObject(false);
     }
   }, [isOpen, defaultFileName]);
 
   const handleExport = useCallback(() => {
     if (!fileName.trim()) return;
-    onExport(fileName.trim(), format, quality, useBgColor ? bgColor : null, mode);
+    onExport(fileName.trim(), format, quality, useBgColor ? bgColor : null, mode, fitToObject);
     onClose();
-  }, [fileName, format, quality, useBgColor, bgColor, mode, onExport, onClose]);
+  }, [fileName, format, quality, useBgColor, bgColor, mode, fitToObject, onExport, onClose]);
 
   const ext = format === "jpeg" ? "jpg" : format;
   const fileSuffix = mode === "layers" ? ".zip" : `.${ext}`;
@@ -107,6 +111,20 @@ export function ExportModal({
           size="sm"
         />
       </div>
+
+      {mode !== "single" && (
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={fitToObject}
+              onChange={(e) => setFitToObject(e.target.checked)}
+              className="accent-accent-primary"
+            />
+            <span className="text-sm text-text-primary">{t.objectFit}</span>
+          </label>
+        </div>
+      )}
 
       {/* Quality (lossy formats only) */}
       {(format === "webp" || format === "jpeg") && (
