@@ -3,7 +3,7 @@
 import { ChangeEventHandler, RefObject } from "react";
 import { SyncDialog } from "@/shared/components/app/auth";
 import { CropArea, OutputFormat, SavedImageProject } from "../types";
-import type { ImageExportMode } from "../hooks/useImageExport";
+import type { ImageExportMode, ImageExportObjectFit } from "../hooks/useImageExport";
 import type {
   BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
@@ -24,7 +24,8 @@ export interface EditorOverlaysProps {
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: ImageExportMode
+    mode: ImageExportMode,
+    objectFit: ImageExportObjectFit
   ) => void;
   exportMode: ImageExportMode;
   setExportMode: (mode: ImageExportMode) => void;
@@ -41,6 +42,11 @@ export interface EditorOverlaysProps {
     quality: string;
     backgroundColor: string;
     transparent: string;
+    objectFit: string;
+    objectFitNone: string;
+    objectFitContain: string;
+    objectFitCover: string;
+    objectFitFill: string;
   };
 
   // Background removal
@@ -214,8 +220,8 @@ export function EditorOverlays({
       <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
-        onExport={(fileName, format, quality, backgroundColor, mode) =>
-          handleExportFromModal(fileName, format, quality, backgroundColor, mode)
+        onExport={(fileName, format, quality, backgroundColor, mode, objectFit) =>
+          handleExportFromModal(fileName, format, quality, backgroundColor, mode, objectFit)
         }
         defaultFileName={projectName || "Untitled"}
         mode={exportMode}

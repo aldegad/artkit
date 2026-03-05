@@ -85,6 +85,11 @@ interface Translations {
   exportMode: string;
   exportSingleImage: string;
   exportSpriteSheet: string;
+  objectFit: string;
+  objectFitNone: string;
+  objectFitContain: string;
+  objectFitCover: string;
+  objectFitFill: string;
   import: string;
   importComplete: string;
   added: string;
@@ -493,6 +498,11 @@ const translations: Record<Language, Translations> = {
     exportMode: "내보내기 모드",
     exportSingleImage: "단일 이미지",
     exportSpriteSheet: "스프라이트 시트",
+    objectFit: "오브젝트 크기로 내보내기 (캔버스 무시)",
+    objectFitNone: "원본 (none)",
+    objectFitContain: "맞춤 (contain)",
+    objectFitCover: "채움 (cover)",
+    objectFitFill: "늘이기 (fill)",
     import: "가져오기",
     importComplete: "가져오기 완료!",
     added: "추가됨",
@@ -899,6 +909,11 @@ const translations: Record<Language, Translations> = {
     exportMode: "Export Mode",
     exportSingleImage: "Single Image",
     exportSpriteSheet: "Sprite Sheet",
+    objectFit: "Export by object bounds (ignore canvas)",
+    objectFitNone: "None (original)",
+    objectFitContain: "Contain",
+    objectFitCover: "Cover",
+    objectFitFill: "Fill",
     import: "Import",
     importComplete: "Import complete!",
     added: "added",

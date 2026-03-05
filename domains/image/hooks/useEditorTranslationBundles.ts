@@ -17,6 +17,11 @@ interface EditorTranslationSource {
   exportMode: string;
   exportSingleImage: string;
   exportSpriteSheet: string;
+  objectFit: string;
+  objectFitNone: string;
+  objectFitContain: string;
+  objectFitCover: string;
+  objectFitFill: string;
   resampleAllResolution: string;
   undo: string;
   redo: string;
@@ -127,6 +132,11 @@ interface EditorTranslationBundles {
     quality: string;
     backgroundColor: string;
     transparent: string;
+    objectFit: string;
+    objectFitNone: string;
+    objectFitContain: string;
+    objectFitCover: string;
+    objectFitFill: string;
   };
   backgroundRemoval: {
     removeBackground: string;
@@ -217,6 +227,11 @@ export function useEditorTranslationBundles(
         quality: source.quality,
         backgroundColor: source.background,
         transparent: source.transparent,
+        objectFit: source.objectFit,
+        objectFitNone: source.objectFitNone,
+        objectFitContain: source.objectFitContain,
+        objectFitCover: source.objectFitCover,
+        objectFitFill: source.objectFitFill,
       },
       backgroundRemoval: {
         removeBackground: source.removeBackground,

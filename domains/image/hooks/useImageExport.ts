@@ -7,6 +7,7 @@ import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
 
 export type ImageExportMode = "single" | "layers" | "sprite";
+export type ImageExportObjectFit = boolean;
 
 interface UseImageExportOptions {
   layers: UnifiedLayer[];
@@ -23,14 +24,16 @@ interface UseImageExportReturn {
     fileName: string,
     format: OutputFormat,
     quality: number,
-    backgroundColor: string | null
+    backgroundColor: string | null,
+    objectFit: ImageExportObjectFit
   ) => Promise<void>;
   handleExportFromModal: (
     fileName: string,
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: ImageExportMode
+    mode: ImageExportMode,
+    objectFit: ImageExportObjectFit
   ) => void;
 }
 
@@ -173,7 +176,8 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     fileName: string,
     format: OutputFormat,
     quality: number,
-    backgroundColor: string | null
+    backgroundColor: string | null,
+    fitToObject: ImageExportObjectFit
   ) => {
     const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
     if (targetIds.length === 0) return;
@@ -185,32 +189,66 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     const JSZip = (await import("jszip")).default;
     const zip = new JSZip();
 
-    const blobPromises = targetIds.map((layerId) => {
-      const layer = layers.find((entry) => entry.id === layerId);
-      if (!layer) return null;
+    const targetLayers = [...layers]
+      .filter((layer) => targetIds.includes(layer.id))
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
 
-      const layerCanvas = layerCanvasesRef.current?.get(layerId);
-      if (!layerCanvas) return null;
+    const layerEntries = targetLayers
+      .map((layer) => {
+        const layerCanvas = layerCanvasesRef.current?.get(layer.id);
+        if (!layerCanvas) return null;
+        return { layer, layerCanvas };
+      })
+      .filter((entry): entry is { layer: UnifiedLayer; layerCanvas: HTMLCanvasElement } => !!entry);
+
+    if (layerEntries.length === 0) return;
+
+    const blobPromises = layerEntries.map(({ layer, layerCanvas }) => {
+      const layerBounds = fitToObject ? getLayerContentBounds(layer, layerCanvas) : null;
+      const hasObjectBounds = !!layerBounds && layerBounds.width > 0 && layerBounds.height > 0;
 
       const exportCanvas = document.createElement("canvas");
-      exportCanvas.width = displayWidth;
-      exportCanvas.height = displayHeight;
+      exportCanvas.width = hasObjectBounds ? layerBounds.width : displayWidth;
+      exportCanvas.height = hasObjectBounds ? layerBounds.height : displayHeight;
       const ctx = exportCanvas.getContext("2d");
       if (!ctx) return null;
 
       if (backgroundColor) {
         ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, displayWidth, displayHeight);
+        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
       } else if (format === "jpeg") {
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, displayWidth, displayHeight);
+        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
       }
 
-      const posX = layer.position?.x || 0;
-      const posY = layer.position?.y || 0;
       ctx.globalAlpha = layer.opacity / 100;
       ctx.globalCompositeOperation = layer.blendMode || "source-over";
-      drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
+
+      if (hasObjectBounds && layerBounds) {
+        const maskedCanvas = document.createElement("canvas");
+        maskedCanvas.width = layerCanvas.width;
+        maskedCanvas.height = layerCanvas.height;
+        const maskedCtx = maskedCanvas.getContext("2d");
+        if (!maskedCtx) return null;
+        drawLayerWithOptionalAlphaMask(maskedCtx, layerCanvas, 0, 0);
+
+        ctx.drawImage(
+          maskedCanvas,
+          layerBounds.localX,
+          layerBounds.localY,
+          layerBounds.width,
+          layerBounds.height,
+          0,
+          0,
+          layerBounds.width,
+          layerBounds.height,
+        );
+      } else {
+        const posX = layer.position?.x || 0;
+        const posY = layer.position?.y || 0;
+        drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
+      }
+
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
 
@@ -249,10 +287,12 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     fileName: string,
     format: OutputFormat,
     quality: number,
-    backgroundColor: string | null
+    backgroundColor: string | null,
+    fitToObject: ImageExportObjectFit
   ) => {
     const targetIds = selectedLayerIds.length > 0 ? selectedLayerIds : (activeLayerId ? [activeLayerId] : []);
     if (targetIds.length === 0) return;
+    const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
 
     const targetLayers = [...layers]
       .filter((layer) => targetIds.includes(layer.id))
@@ -260,8 +300,9 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
 
     type SpriteFrameEntry = {
       layer: UnifiedLayer;
-      maskedCanvas: HTMLCanvasElement;
-      bounds: NonNullable<ReturnType<typeof getLayerContentBounds>>;
+      layerCanvas: HTMLCanvasElement;
+      maskedCanvas: HTMLCanvasElement | null;
+      bounds: NonNullable<ReturnType<typeof getLayerContentBounds>> | null;
     };
 
     const frameEntries: SpriteFrameEntry[] = [];
@@ -269,23 +310,32 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       const layerCanvas = layerCanvasesRef.current?.get(layer.id);
       if (!layerCanvas) continue;
 
-      const bounds = getLayerContentBounds(layer, layerCanvas);
-      if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
+      if (fitToObject) {
+        const bounds = getLayerContentBounds(layer, layerCanvas);
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
 
-      const maskedCanvas = document.createElement("canvas");
-      maskedCanvas.width = layerCanvas.width;
-      maskedCanvas.height = layerCanvas.height;
-      const maskedCtx = maskedCanvas.getContext("2d");
-      if (!maskedCtx) continue;
-      drawLayerWithOptionalAlphaMask(maskedCtx, layerCanvas, 0, 0);
+        const maskedCanvas = document.createElement("canvas");
+        maskedCanvas.width = layerCanvas.width;
+        maskedCanvas.height = layerCanvas.height;
+        const maskedCtx = maskedCanvas.getContext("2d");
+        if (!maskedCtx) continue;
+        drawLayerWithOptionalAlphaMask(maskedCtx, layerCanvas, 0, 0);
 
-      frameEntries.push({ layer, maskedCanvas, bounds });
+        frameEntries.push({ layer, layerCanvas, maskedCanvas, bounds });
+        continue;
+      }
+
+      frameEntries.push({ layer, layerCanvas, maskedCanvas: null, bounds: null });
     }
 
     if (frameEntries.length === 0) return;
 
-    const frameWidth = Math.max(...frameEntries.map((entry) => entry.bounds.width));
-    const frameHeight = Math.max(...frameEntries.map((entry) => entry.bounds.height));
+    const frameWidth = fitToObject
+      ? Math.max(...frameEntries.map((entry) => entry.bounds?.width || 0))
+      : displayWidth;
+    const frameHeight = fitToObject
+      ? Math.max(...frameEntries.map((entry) => entry.bounds?.height || 0))
+      : displayHeight;
     if (frameWidth <= 0 || frameHeight <= 0) return;
 
     const columns = Math.max(1, Math.ceil(Math.sqrt(frameEntries.length)));
@@ -310,24 +360,30 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       const row = Math.floor(index / columns);
       const cellX = col * frameWidth;
       const cellY = row * frameHeight;
-      const bounds = entry.bounds;
-
-      const destX = cellX + Math.floor((frameWidth - bounds.width) / 2);
-      const destY = cellY + Math.floor((frameHeight - bounds.height) / 2);
 
       exportCtx.globalAlpha = entry.layer.opacity / 100;
       exportCtx.globalCompositeOperation = entry.layer.blendMode || "source-over";
-      exportCtx.drawImage(
-        entry.maskedCanvas,
-        bounds.localX,
-        bounds.localY,
-        bounds.width,
-        bounds.height,
-        destX,
-        destY,
-        bounds.width,
-        bounds.height,
-      );
+
+      if (fitToObject && entry.maskedCanvas && entry.bounds) {
+        const destX = cellX + Math.floor((frameWidth - entry.bounds.width) / 2);
+        const destY = cellY + Math.floor((frameHeight - entry.bounds.height) / 2);
+        exportCtx.drawImage(
+          entry.maskedCanvas,
+          entry.bounds.localX,
+          entry.bounds.localY,
+          entry.bounds.width,
+          entry.bounds.height,
+          destX,
+          destY,
+          entry.bounds.width,
+          entry.bounds.height,
+        );
+      } else {
+        const posX = entry.layer.position?.x || 0;
+        const posY = entry.layer.position?.y || 0;
+        drawLayerWithOptionalAlphaMask(exportCtx, entry.layerCanvas, cellX + posX, cellY + posY);
+      }
+
       exportCtx.globalAlpha = 1;
       exportCtx.globalCompositeOperation = "source-over";
     });
@@ -360,24 +416,25 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       mimeType,
       quality,
     );
-  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef]);
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
 
   const handleExportFromModal = useCallback((
     fileName: string,
     format: OutputFormat,
     quality: number,
     backgroundColor: string | null,
-    mode: ImageExportMode
+    mode: ImageExportMode,
+    fitToObject: ImageExportObjectFit
   ) => {
     if (mode === "single") {
       exportImage(fileName, format, quality);
       return;
     }
     if (mode === "layers") {
-      void exportSelectedLayers(fileName, format, quality, backgroundColor);
+      void exportSelectedLayers(fileName, format, quality, backgroundColor, fitToObject);
       return;
     }
-    exportSelectedLayersAsSprite(fileName, format, quality, backgroundColor);
+    exportSelectedLayersAsSprite(fileName, format, quality, backgroundColor, fitToObject);
   }, [exportImage, exportSelectedLayers, exportSelectedLayersAsSprite]);
 
   return {
