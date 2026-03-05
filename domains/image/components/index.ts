@@ -6,6 +6,7 @@ export { default as ProjectListModal } from "./ProjectListModal";
 export { EditorHeader } from "./EditorHeader";
 export { EditorOverlays } from "./EditorOverlays";
 export { BackgroundRemovalModals } from "./BackgroundRemovalModals";
+export { UpscaleModal } from "./UpscaleModal";
 export { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
 export { default as EditorMenuBar } from "./EditorMenuBar";
 export { default as LayersPanelContent } from "./LayersPanelContent";

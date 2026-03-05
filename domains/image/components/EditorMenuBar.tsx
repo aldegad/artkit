@@ -20,6 +20,8 @@ interface MenuBarProps {
   onImportImage: () => void;
   onExport: () => void;
   onResampleAllResolution: () => void;
+  onAIUpscale: () => void;
+  canAIUpscale: boolean;
   onToggleLayers: () => void;
   isLayersOpen: boolean;
   canSave: boolean;
@@ -54,6 +56,7 @@ interface MenuBarProps {
     importImage: string;
     export: string;
     resampleAllResolution: string;
+    aiUpscale: string;
     undo: string;
     redo: string;
     layers: string;
@@ -78,6 +81,8 @@ export default function EditorMenuBar({
   onImportImage,
   onExport,
   onResampleAllResolution,
+  onAIUpscale,
+  canAIUpscale,
   onToggleLayers,
   isLayersOpen,
   canSave,
@@ -115,6 +120,7 @@ export default function EditorMenuBar({
     { divider: true },
     { label: t.export, onClick: onExport, disabled: !canSave, shortcut: d({ code: "KeyE", ctrlOrMeta: true, shift: true }) },
     { label: `${t.resampleAllResolution}...`, onClick: onResampleAllResolution, disabled: !canResample },
+    { label: `${t.aiUpscale}...`, onClick: onAIUpscale, disabled: !canAIUpscale },
   ];
 
   const editMenuItems: MenuItem[] = [

@@ -51,6 +51,7 @@ import { useEditorOverlayModel } from "./useEditorOverlayModel";
 import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { useImageResampleActions } from "./useImageResampleActions";
+import { useImageUpscaleActions } from "./useImageUpscaleActions";
 import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
@@ -1077,6 +1078,25 @@ export function useImageEditorController() {
   });
 
   const {
+    isUpscaling,
+    upscaleProgress,
+    upscaleStatus,
+    showUpscaleConfirm,
+    upscaleScale,
+    setUpscaleScale,
+    openUpscaleConfirm,
+    closeUpscaleConfirm,
+    applyUpscale,
+  } = useImageUpscaleActions({
+    layers,
+    activeLayerId,
+    layerCanvasesRef,
+    editCanvasRef,
+    saveToHistory,
+    setLayers,
+  });
+
+  const {
     showExportModal,
     setShowExportModal,
     exportMode,
@@ -1107,11 +1127,13 @@ export function useImageEditorController() {
     onImportImage: openImportImage,
     onExport: openExport,
     onResampleAllResolution: openResampleModal,
+    onAIUpscale: openUpscaleConfirm,
+    canAIUpscale: canResample && !isUpscaling,
     onToggleLayers: handleToggleLayers,
     isLayersOpen,
     canSave: hasLayers,
     canResample,
-    isLoading: isLoading || isSaving || isResampling,
+    isLoading: isLoading || isSaving || isResampling || isUpscaling,
     onUndo: handleUndo,
     onRedo: handleRedo,
     canUndo: canUndoNow,
@@ -1142,6 +1164,8 @@ export function useImageEditorController() {
       canResizeSelectedLayersToSmallest,
       onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
       isRemovingBackground,
+      onOpenUpscale: openUpscaleConfirm,
+      isUpscaling,
       onUndo: handleUndo,
       onRedo: handleRedo,
       showRotateMenu,
@@ -1245,6 +1269,24 @@ export function useImageEditorController() {
       cancel: t.cancel,
       apply: t.confirm,
       applying: t.resampling,
+    },
+    showUpscaleConfirm,
+    closeUpscaleConfirm,
+    applyUpscale,
+    upscaleScale,
+    setUpscaleScale,
+    isUpscaling,
+    upscaleProgress,
+    upscaleStatus,
+    upscaleCurrentSize: (() => {
+      if (!activeLayerId) return canvasSize;
+      const c = layerCanvasesRef.current.get(activeLayerId);
+      return c ? { width: c.width, height: c.height } : canvasSize;
+    })(),
+    upscaleTranslations: {
+      title: "AI Upscale",
+      cancel: t.cancel,
+      confirm: t.confirm,
     },
     showTransformDiscardConfirm,
     handleTransformDiscardCancel,
