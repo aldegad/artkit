@@ -2,7 +2,7 @@
 // Image Converter Domain Types
 // ============================================
 
-export type OutputFormat = "webp" | "jpeg" | "png";
+export type OutputFormat = "webp" | "jpeg" | "png" | "svg";
 
 export interface ImageFile {
   id: string;

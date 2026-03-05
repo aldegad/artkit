@@ -5,6 +5,7 @@ import { useLanguage } from "@/shared/contexts";
 import { ImageDropZone, Select, HeaderContent, Scrollbar } from "@/shared/components";
 import { PlusIcon, FlipIcon, RotateIcon } from "@/shared/components/icons";
 import { downloadBlob } from "@/shared/utils/download";
+import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
 
 export default function ImageConverter() {
@@ -168,6 +169,20 @@ export default function ImageConverter() {
                 ? "image/jpeg"
                 : "image/png";
 
+          if (outputFormat === "svg") {
+            const blob = createSvgBlobFromCanvas(canvas);
+            const convertedUrl = URL.createObjectURL(blob);
+            resolve({
+              ...image,
+              convertedUrl,
+              convertedSize: blob.size,
+              convertedWidth: targetSize.width,
+              convertedHeight: targetSize.height,
+              convertedBlob: blob,
+            });
+            return;
+          }
+
           canvas.toBlob(
             (blob) => {
               if (blob) {
@@ -324,13 +339,14 @@ export default function ImageConverter() {
               { value: "webp", label: "WebP" },
               { value: "jpeg", label: "JPEG" },
               { value: "png", label: "PNG" },
+              { value: "svg", label: "SVG" },
             ]}
             size="md"
           />
         </div>
 
         {/* Quality slider */}
-        {outputFormat !== "png" && (
+        {(outputFormat === "webp" || outputFormat === "jpeg") && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-text-secondary">{t.quality}:</span>
             <input
