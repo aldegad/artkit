@@ -24,6 +24,11 @@ export interface MagicWandColorSelectionOptions {
   tolerance?: number;
 }
 
+export interface MagicWandColorComponentSelectionOptions {
+  tolerance?: number;
+  connectedOnly?: boolean;
+}
+
 export interface MagicWandAlphaSelectionOptions {
   alphaThreshold?: number;
   connectedOnly?: boolean;
@@ -180,6 +185,57 @@ function isWithinTolerance(
   );
 }
 
+function computeColorComponentMaskAlpha(
+  data: Uint8ClampedArray,
+  index: number,
+  seed: RgbaPixel,
+  tolerance: number,
+  skipThreshold: boolean = false,
+): number {
+  const offset = index * 4;
+  const pixelAlpha = data[offset + 3];
+  if (pixelAlpha <= 0) return 0;
+
+  let activeChannelCount = 0;
+  let minComponentRatio = 1;
+
+  if (seed.r > 0) {
+    activeChannelCount += 1;
+    minComponentRatio = Math.min(minComponentRatio, data[offset] / seed.r);
+  }
+  if (seed.g > 0) {
+    activeChannelCount += 1;
+    minComponentRatio = Math.min(minComponentRatio, data[offset + 1] / seed.g);
+  }
+  if (seed.b > 0) {
+    activeChannelCount += 1;
+    minComponentRatio = Math.min(minComponentRatio, data[offset + 2] / seed.b);
+  }
+
+  if (activeChannelCount <= 0 || minComponentRatio <= 0) {
+    return 0;
+  }
+
+  let impuritySum = 0;
+  const inactiveChannelCount = 3 - activeChannelCount;
+  if (seed.r <= 0) impuritySum += data[offset] / 255;
+  if (seed.g <= 0) impuritySum += data[offset + 1] / 255;
+  if (seed.b <= 0) impuritySum += data[offset + 2] / 255;
+
+  const impurityRatio = inactiveChannelCount > 0
+    ? impuritySum / inactiveChannelCount
+    : 0;
+  const purity = Math.max(0, 1 - impurityRatio);
+  const componentRatio = Math.max(0, Math.min(1, minComponentRatio)) * purity;
+  if (componentRatio <= 0) return 0;
+
+  const maskAlpha = Math.max(1, Math.min(255, Math.round(componentRatio * pixelAlpha)));
+  if (skipThreshold) return maskAlpha;
+
+  const minMaskAlpha = Math.max(8, Math.round((255 - tolerance) * 0.2));
+  return maskAlpha >= minMaskAlpha ? maskAlpha : 0;
+}
+
 function toBounds(minX: number, minY: number, maxX: number, maxY: number): MagicWandSelectionBounds {
   return {
     x: minX,
@@ -330,6 +386,141 @@ export function computeMagicWandColorSelection(
     seedY,
     getDefaultMagicWandColorSelectionOptions(options),
   );
+}
+
+export function computeMagicWandColorComponentSelection(
+  imageData: ImageData,
+  seedX: number,
+  seedY: number,
+  options?: MagicWandColorComponentSelectionOptions,
+): MagicWandSelection | null {
+  const width = imageData.width;
+  const height = imageData.height;
+  const total = width * height;
+
+  if (width <= 0 || height <= 0 || total <= 0) {
+    return null;
+  }
+
+  const x = Math.floor(seedX);
+  const y = Math.floor(seedY);
+  if (x < 0 || y < 0 || x >= width || y >= height) {
+    return null;
+  }
+
+  const tolerance = clampTolerance(options?.tolerance);
+  const connectedOnly = options?.connectedOnly !== false;
+  const data = imageData.data;
+  const seedIndex = y * width + x;
+  const seedPixel = getPixel(data, seedIndex);
+  const isNearBlackSeed = seedPixel.r <= 2 && seedPixel.g <= 2 && seedPixel.b <= 2;
+
+  if (isNearBlackSeed) {
+    return computeMagicWandColorSelection(imageData, seedX, seedY, { tolerance: options?.tolerance });
+  }
+
+  const mask = new Uint8Array(total);
+  let selectedCount = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  if (connectedOnly) {
+    const visited = new Uint8Array(total);
+    const queue = new Int32Array(total);
+    let head = 0;
+    let tail = 0;
+
+    visited[seedIndex] = 1;
+    queue[tail++] = seedIndex;
+
+    while (head < tail) {
+      const index = queue[head++];
+      const maskAlpha = computeColorComponentMaskAlpha(
+        data,
+        index,
+        seedPixel,
+        tolerance,
+        index === seedIndex,
+      );
+
+      if (maskAlpha <= 0) {
+        continue;
+      }
+
+      if (mask[index] > 0) {
+        continue;
+      }
+
+      mask[index] = maskAlpha;
+      selectedCount += 1;
+
+      const px = index % width;
+      const py = Math.floor(index / width);
+
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+
+      const left = index - 1;
+      const right = index + 1;
+      const top = index - width;
+      const bottom = index + width;
+
+      if (px > 0 && visited[left] === 0) {
+        visited[left] = 1;
+        queue[tail++] = left;
+      }
+      if (px < width - 1 && visited[right] === 0) {
+        visited[right] = 1;
+        queue[tail++] = right;
+      }
+      if (py > 0 && visited[top] === 0) {
+        visited[top] = 1;
+        queue[tail++] = top;
+      }
+      if (py < height - 1 && visited[bottom] === 0) {
+        visited[bottom] = 1;
+        queue[tail++] = bottom;
+      }
+    }
+  } else {
+    for (let index = 0; index < total; index += 1) {
+      const maskAlpha = computeColorComponentMaskAlpha(
+        data,
+        index,
+        seedPixel,
+        tolerance,
+        index === seedIndex,
+      );
+      if (maskAlpha <= 0) continue;
+
+      mask[index] = maskAlpha;
+      selectedCount += 1;
+
+      const px = index % width;
+      const py = Math.floor(index / width);
+
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+    }
+  }
+
+  if (selectedCount <= 0 || maxX < minX || maxY < minY) {
+    return null;
+  }
+
+  return {
+    width,
+    height,
+    mask,
+    selectedCount,
+    bounds: toBounds(minX, minY, maxX, maxY),
+  };
 }
 
 export function computeMagicWandSelectionFromAlphaMask(
@@ -544,14 +735,14 @@ export function drawMagicWandSelectionOutline(
     const rowOffset = y * width;
     for (let x = minX; x <= maxX; x++) {
       const index = rowOffset + x;
-      if (mask[index] !== 255) {
+      if (mask[index] <= 0) {
         continue;
       }
 
-      const hasLeft = x > 0 && mask[index - 1] === 255;
-      const hasRight = x < width - 1 && mask[index + 1] === 255;
-      const hasTop = y > 0 && mask[index - width] === 255;
-      const hasBottom = y < height - 1 && mask[index + width] === 255;
+      const hasLeft = x > 0 && mask[index - 1] > 0;
+      const hasRight = x < width - 1 && mask[index + 1] > 0;
+      const hasTop = y > 0 && mask[index - width] > 0;
+      const hasBottom = y < height - 1 && mask[index + width] > 0;
 
       const px = offsetX + x * zoom;
       const py = offsetY + y * zoom;
@@ -601,5 +792,5 @@ export function isMagicWandPixelSelected(selection: MagicWandSelection, x: numbe
   if (px < 0 || py < 0 || px >= selection.width || py >= selection.height) {
     return false;
   }
-  return selection.mask[py * selection.width + px] === 255;
+  return selection.mask[py * selection.width + px] > 0;
 }

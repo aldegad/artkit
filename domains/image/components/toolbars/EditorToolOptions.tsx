@@ -31,6 +31,8 @@ export interface EditorToolOptionsProps {
   setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
+  magicWandAllowAlpha: boolean;
+  setMagicWandAllowAlpha: React.Dispatch<React.SetStateAction<boolean>>;
   onClearSelectionPixels: () => void;
   onInvertSelection: () => void;
   // Preset props
@@ -78,6 +80,7 @@ export interface EditorToolOptionsProps {
     altClickToSetSource: string;
     feather: string;
     tolerance: string;
+    allowAlpha: string;
     delete: string;
     presets: string;
     pressure: string;
@@ -107,6 +110,8 @@ export function EditorToolOptions({
   setMarqueeSubTool,
   magicWandTolerance,
   setMagicWandTolerance,
+  magicWandAllowAlpha,
+  setMagicWandAllowAlpha,
   onClearSelectionPixels,
   onInvertSelection,
   activePreset,
@@ -325,6 +330,15 @@ export function EditorToolOptions({
             label={`${t.tolerance}:`}
             size="sm"
           />
+          <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={magicWandAllowAlpha}
+              onChange={(event) => setMagicWandAllowAlpha(event.target.checked)}
+              className="w-3.5 h-3.5 rounded accent-accent-primary"
+            />
+            {t.allowAlpha}
+          </label>
           <span className="text-xs text-text-tertiary">Click to auto-select similar connected color</span>
         </div>
       )}

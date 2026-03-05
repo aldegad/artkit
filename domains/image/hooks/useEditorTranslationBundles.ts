@@ -41,6 +41,7 @@ interface EditorTranslationSource {
   hardness: string;
   feather: string;
   tolerance: string;
+  allowAlpha: string;
   opacity: string;
   presets: string;
   pressure: string;
@@ -108,6 +109,7 @@ interface EditorTranslationBundles {
     altClickToSetSource: string;
     feather: string;
     tolerance: string;
+    allowAlpha: string;
     delete: string;
     presets: string;
     pressure: string;
@@ -197,6 +199,7 @@ export function useEditorTranslationBundles(
         altClickToSetSource: source.altClickToSetSource,
         feather: source.feather,
         tolerance: source.tolerance,
+        allowAlpha: source.allowAlpha,
         delete: source.delete,
         presets: source.presets,
         pressure: source.pressure,

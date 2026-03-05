@@ -266,6 +266,7 @@ interface Translations {
   brushDraw: string;
   colorPickerTip: string;
   tolerance: string;
+  allowAlpha: string;
   selectFrame: string;
   previous: string;
   next: string;
@@ -673,6 +674,7 @@ const translations: Record<Language, Translations> = {
     brushDraw: "브러시 (그리기)",
     colorPickerTip: "스포이드 (색상 추출)",
     tolerance: "허용치",
+    allowAlpha: "알파 허용",
     selectFrame: "프레임을 선택하세요",
     previous: "이전",
     next: "다음",
@@ -1078,6 +1080,7 @@ const translations: Record<Language, Translations> = {
     brushDraw: "Brush (draw)",
     colorPickerTip: "Eyedropper (pick color)",
     tolerance: "Tolerance",
+    allowAlpha: "Allow alpha",
     selectFrame: "Select a frame",
     previous: "Prev",
     next: "Next",
