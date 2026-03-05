@@ -86,7 +86,7 @@ export type CropSizePivot =
 export type { AspectRatio, AspectRatioOption } from "../../../shared/types/aspectRatio";
 export { ASPECT_RATIOS, ASPECT_RATIO_VALUES } from "../../../shared/types/aspectRatio";
 
-export type OutputFormat = "webp" | "jpeg" | "png";
+export type OutputFormat = "webp" | "jpeg" | "png" | "svg";
 
 export type DragType = "create" | "move" | "resize" | "pan" | "draw" | "guide" | null;
 

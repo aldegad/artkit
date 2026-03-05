@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { ExportModal as ExportModalBase, Select } from "@/shared/components";
 import type { ImageExportMode } from "../hooks/useImageExport";
+import type { OutputFormat } from "../types";
 
 // ============================================
 // Types
 // ============================================
-
-type OutputFormat = "png" | "webp" | "jpeg";
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -88,6 +87,7 @@ export function ExportModal({
         { value: "png", label: "PNG" },
         { value: "webp", label: "WebP" },
         { value: "jpeg", label: "JPEG" },
+        { value: "svg", label: "SVG" },
       ]}
       formatValue={format}
       onFormatChange={(v) => setFormat(v as OutputFormat)}
@@ -108,8 +108,8 @@ export function ExportModal({
         />
       </div>
 
-      {/* Quality (non-PNG only) */}
-      {format !== "png" && (
+      {/* Quality (lossy formats only) */}
+      {(format === "webp" || format === "jpeg") && (
         <div className="flex flex-col gap-1">
           <label className="text-xs text-text-secondary">
             {t.quality}: {Math.round(quality * 100)}%

@@ -3,6 +3,7 @@
 import { useCallback, RefObject } from "react";
 import { UnifiedLayer, OutputFormat, CropArea } from "../types";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
 
 export type ImageExportMode = "single" | "layers" | "sprite";
@@ -138,8 +139,20 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       exportCtx.drawImage(compositeCanvas, 0, 0);
     }
 
-    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
     const extension = format === "jpeg" ? "jpg" : format;
+
+    if (format === "svg") {
+      const blob = createSvgBlobFromCanvas(exportCanvas);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName}.${extension}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
 
     exportCanvas.toBlob(
       (blob) => {
@@ -166,8 +179,8 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     if (targetIds.length === 0) return;
 
     const { width: displayWidth, height: displayHeight } = getDisplayDimensions();
-    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
     const extension = format === "jpeg" ? "jpg" : format;
+    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
 
     const JSZip = (await import("jszip")).default;
     const zip = new JSZip();
@@ -200,6 +213,12 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
+
+      if (format === "svg") {
+        const blob = createSvgBlobFromCanvas(exportCanvas);
+        zip.file(`${layer.name || "layer"}.${extension}`, blob);
+        return Promise.resolve();
+      }
 
       return new Promise<void>((resolve) => {
         exportCanvas.toBlob(
@@ -313,8 +332,20 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       exportCtx.globalCompositeOperation = "source-over";
     });
 
-    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
     const extension = format === "jpeg" ? "jpg" : format;
+
+    if (format === "svg") {
+      const blob = createSvgBlobFromCanvas(exportCanvas);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName}.${extension}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const mimeType = format === "webp" ? "image/webp" : format === "jpeg" ? "image/jpeg" : "image/png";
 
     exportCanvas.toBlob(
       (blob) => {
