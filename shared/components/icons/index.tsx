@@ -96,6 +96,7 @@ export {
   ImageIcon,
   PersonIcon,
   BackgroundRemovalIcon,
+  UpscaleIcon,
 } from "./fileActions";
 
 // Theme

@@ -51,3 +51,11 @@ export const BackgroundRemovalIcon: React.FC<IconProps> = ({ className = "w-4 h-
     <path strokeLinecap="round" strokeWidth={2} strokeDasharray="2 2" d="M3 21L21 3" />
   </svg>
 );
+
+export const UpscaleIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="3" y="13" width="8" height="8" rx="1" strokeWidth={2} />
+    <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} strokeDasharray="3 2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 10V7h-3m3 0l-4 4" />
+  </svg>
+);

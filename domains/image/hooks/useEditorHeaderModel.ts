@@ -16,6 +16,8 @@ interface UseEditorHeaderModelOptions {
   onImportImage: () => void;
   onExport: () => void;
   onResampleAllResolution: () => void;
+  onAIUpscale: () => void;
+  canAIUpscale: boolean;
   onToggleLayers: () => void;
   isLayersOpen: boolean;
   canSave: boolean;
@@ -55,6 +57,8 @@ export function useEditorHeaderModel(
     onImportImage,
     onExport,
     onResampleAllResolution,
+    onAIUpscale,
+    canAIUpscale,
     onToggleLayers,
     isLayersOpen,
     canSave,
@@ -108,6 +112,8 @@ export function useEditorHeaderModel(
       onImportImage,
       onExport,
       onResampleAllResolution,
+      onAIUpscale,
+      canAIUpscale,
       onToggleLayers,
       isLayersOpen,
       canSave,
@@ -143,6 +149,8 @@ export function useEditorHeaderModel(
       onImportImage,
       onExport,
       onResampleAllResolution,
+      onAIUpscale,
+      canAIUpscale,
       onToggleLayers,
       isLayersOpen,
       canSave,

@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { Tooltip, Scrollbar, NumberScrubber, Popover } from "@/shared/components";
 import {
   BackgroundRemovalIcon,
+  UpscaleIcon,
   MagicWandIcon,
   SquareFitIcon,
   UndoIcon,
@@ -30,6 +31,8 @@ export interface EditorActionToolbarProps {
   canResizeSelectedLayersToSmallest: boolean;
   onOpenBackgroundRemoval: () => void;
   isRemovingBackground: boolean;
+  onOpenUpscale: () => void;
+  isUpscaling: boolean;
   onUndo: () => void;
   onRedo: () => void;
   showRotateMenu: boolean;
@@ -46,6 +49,7 @@ export interface EditorActionToolbarProps {
     matchSmallestLayerSizeToolTip: string;
     aiNoModelRequired: string;
     removeBackground: string;
+    aiUpscale: string;
     undo: string;
     redo: string;
     rotate: string;
@@ -64,6 +68,8 @@ export function EditorActionToolbar({
   canResizeSelectedLayersToSmallest,
   onOpenBackgroundRemoval,
   isRemovingBackground,
+  onOpenUpscale,
+  isUpscaling,
   onUndo,
   onRedo,
   showRotateMenu,
@@ -161,6 +167,32 @@ export function EditorActionToolbar({
               }`}
             >
               <BackgroundRemovalIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.aiUpscale}</span>
+                <span className="text-text-tertiary text-[11px]">
+                  AI 모델을 사용해 선택된 레이어를 고해상도로 업스케일합니다
+                </span>
+                <span className="text-[10px] text-text-tertiary">
+                  첫 실행 시 모델 다운로드 (~17MB)
+                </span>
+              </div>
+            }
+          >
+            <button
+              onClick={onOpenUpscale}
+              disabled={isUpscaling}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                isUpscaling
+                  ? "bg-accent-primary text-white cursor-wait"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <UpscaleIcon className="w-4 h-4" />
             </button>
           </Tooltip>
 

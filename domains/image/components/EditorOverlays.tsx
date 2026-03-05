@@ -7,10 +7,12 @@ import type { ImageExportMode, ImageExportObjectFit } from "../hooks/useImageExp
 import type {
   BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
+import type { UpscaleScale } from "@/shared/ai/upscale";
 import { BackgroundRemovalModals } from "./BackgroundRemovalModals";
 import { EditorStatusBar } from "./toolbars/EditorStatusBar";
 import { ExportModal } from "./ExportModal";
 import { ImageResampleModal } from "./ImageResampleModal";
+import { UpscaleModal } from "./UpscaleModal";
 import ProjectListModal from "./ProjectListModal";
 import { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
 import { SaveProjectModal, type SaveProjectModalTranslations, type SaveProjectModalValue } from "@/shared/components";
@@ -84,6 +86,22 @@ export interface EditorOverlaysProps {
     cancel: string;
     apply: string;
     applying: string;
+  };
+
+  // AI Upscale
+  showUpscaleConfirm: boolean;
+  closeUpscaleConfirm: () => void;
+  applyUpscale: () => void;
+  upscaleScale: UpscaleScale;
+  setUpscaleScale: (scale: UpscaleScale) => void;
+  isUpscaling: boolean;
+  upscaleProgress: number;
+  upscaleStatus: string;
+  upscaleCurrentSize: { width: number; height: number };
+  upscaleTranslations: {
+    title: string;
+    cancel: string;
+    confirm: string;
   };
 
   // Transform discard
@@ -178,6 +196,16 @@ export function EditorOverlays({
   toggleResampleKeepAspect,
   isResampling,
   resampleTranslations,
+  showUpscaleConfirm,
+  closeUpscaleConfirm,
+  applyUpscale,
+  upscaleScale,
+  setUpscaleScale,
+  isUpscaling,
+  upscaleProgress,
+  upscaleStatus,
+  upscaleCurrentSize,
+  upscaleTranslations,
   showTransformDiscardConfirm,
   handleTransformDiscardCancel,
   handleTransformDiscardConfirm,
@@ -257,6 +285,21 @@ export function EditorOverlays({
         onClose={closeResampleModal}
         onApply={applyResample}
         translations={resampleTranslations}
+      />
+
+      <UpscaleModal
+        showConfirm={showUpscaleConfirm}
+        onCloseConfirm={closeUpscaleConfirm}
+        onConfirm={() => {
+          applyUpscale();
+        }}
+        scale={upscaleScale}
+        onScaleChange={setUpscaleScale}
+        isUpscaling={isUpscaling}
+        progress={upscaleProgress}
+        status={upscaleStatus}
+        currentSize={upscaleCurrentSize}
+        translations={upscaleTranslations}
       />
 
       <TransformDiscardConfirmModal

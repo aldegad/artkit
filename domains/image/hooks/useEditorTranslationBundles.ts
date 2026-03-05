@@ -81,6 +81,7 @@ interface EditorTranslationBundles {
     export: string;
     exportLayers: string;
     resampleAllResolution: string;
+    aiUpscale: string;
     undo: string;
     redo: string;
     layers: string;
@@ -98,6 +99,7 @@ interface EditorTranslationBundles {
     matchSmallestLayerSizeToolTip: string;
     aiNoModelRequired: string;
     removeBackground: string;
+    aiUpscale: string;
     undo: string;
     redo: string;
     rotate: string;
@@ -176,6 +178,7 @@ export function useEditorTranslationBundles(
         export: source.export,
         exportLayers: source.exportLayers,
         resampleAllResolution: source.resampleAllResolution,
+        aiUpscale: "AI Upscale",
         undo: source.undo,
         redo: source.redo,
         layers: source.layers,
@@ -193,6 +196,7 @@ export function useEditorTranslationBundles(
         matchSmallestLayerSizeToolTip: source.matchSmallestLayerSizeToolTip,
         aiNoModelRequired: source.aiNoModelRequired,
         removeBackground: source.removeBackground,
+        aiUpscale: "AI Upscale",
         undo: source.undo,
         redo: source.redo,
         rotate: source.rotate,
