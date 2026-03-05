@@ -12,6 +12,10 @@ export interface LayerContentBounds {
   localY: number;
 }
 
+// Ignore near-zero alpha noise when computing transform/content bounds.
+// This keeps bounds tight after heavy erasing without affecting actual render alpha.
+const CONTENT_BOUNDS_ALPHA_THRESHOLD = 8;
+
 function getCanvasContentBounds(canvas: HTMLCanvasElement): LayerContentBounds | null {
   const maskAwareCanvas = document.createElement("canvas");
   maskAwareCanvas.width = canvas.width;
@@ -30,7 +34,7 @@ function getCanvasContentBounds(canvas: HTMLCanvasElement): LayerContentBounds |
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
       const alpha = imageData.data[(y * canvas.width + x) * 4 + 3];
-      if (alpha > 0) {
+      if (alpha >= CONTENT_BOUNDS_ALPHA_THRESHOLD) {
         hasContent = true;
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);
