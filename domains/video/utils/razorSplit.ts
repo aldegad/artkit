@@ -1,4 +1,7 @@
-import type { Clip } from "../types";
+import {
+  type Clip,
+  getSourceTimeAtClipLocalTime,
+} from "../types";
 import { TIMELINE } from "../constants";
 import { sliceClipPositionKeyframes } from "./clipTransformKeyframes";
 
@@ -64,7 +67,7 @@ export function buildRazorSplitClips({
     ...clip,
     id: generateId(),
     duration: firstDuration,
-    trimOut: clip.trimIn + firstDuration,
+    trimOut: getSourceTimeAtClipLocalTime(clip, firstDuration),
     sourceSize: { ...clip.sourceSize },
     position: { ...firstPosition },
     transformKeyframes: firstTransformKeyframes,
@@ -76,7 +79,7 @@ export function buildRazorSplitClips({
     name: `${clip.name} (2)`,
     startTime: splitTime,
     duration: secondDuration,
-    trimIn: clip.trimIn + splitOffset,
+    trimIn: getSourceTimeAtClipLocalTime(clip, splitOffset),
     sourceSize: { ...clip.sourceSize },
     position: { ...secondPosition },
     transformKeyframes: secondTransformKeyframes,

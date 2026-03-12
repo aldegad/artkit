@@ -6,6 +6,7 @@ import { inpaintFrameWithMiGan, warmupMiGanModel } from "@/shared/ai/miganInpain
 import {
   getClipScaleX,
   getClipScaleY,
+  getSourceTimeAtClipLocalTime,
   type Clip,
   type VideoClip,
 } from "../types";
@@ -448,7 +449,7 @@ export function useVideoInpaintActions(
           Math.max(0, clip.duration - 0.5 / Math.max(1, frameRate)),
           frameIndex / Math.max(1, frameRate),
         );
-        const sourceTime = clip.trimIn + localTime;
+        const sourceTime = getSourceTimeAtClipLocalTime(clip, localTime);
         const seekOk = await seekVideoFrame(sourceVideoElement, sourceTime);
         if (!seekOk) {
           throw new Error(`Failed to seek source video at ${sourceTime.toFixed(3)}s.`);
@@ -560,13 +561,7 @@ export function useVideoInpaintActions(
       await saveMediaBlob(clip.id, outputBlob);
       const outputMetadata = await loadVideoMetadataFromBlob(outputBlob);
       const outputUrl = URL.createObjectURL(outputBlob);
-      const outputDuration = Math.max(0.001, outputMetadata.duration || clip.sourceDuration || clip.duration);
-
-      const minimumDuration = Math.max(1 / Math.max(1, frameRate), 0.001);
-      const nextTrimIn = Math.max(0, Math.min(clip.trimIn, Math.max(0, outputDuration - minimumDuration)));
-      const nextTrimOutBase = Math.max(nextTrimIn + minimumDuration, Math.min(outputDuration, clip.trimOut));
-      const nextDuration = Math.min(clip.duration, Math.max(minimumDuration, nextTrimOutBase - nextTrimIn));
-      const nextTrimOut = Math.min(outputDuration, nextTrimIn + nextDuration);
+      const outputDuration = Math.max(0.001, outputMetadata.duration || clip.duration || clip.sourceDuration);
 
       saveToHistory();
       updateClip(clip.id, {
@@ -576,9 +571,10 @@ export function useVideoInpaintActions(
           width: Math.max(1, Math.floor(outputMetadata.width || sourceWidth)),
           height: Math.max(1, Math.floor(outputMetadata.height || sourceHeight)),
         },
-        trimIn: nextTrimIn,
-        trimOut: nextTrimOut,
-        duration: nextDuration,
+        trimIn: 0,
+        trimOut: outputDuration,
+        duration: outputDuration,
+        playbackSpeed: 1,
         hasAudio: encodedWithAudio && clip.hasAudio,
         audioMuted: encodedWithAudio ? clip.audioMuted : true,
       });

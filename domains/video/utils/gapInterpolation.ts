@@ -1,6 +1,10 @@
 "use client";
 
-import { createImageClip, type Clip } from "../types";
+import {
+  createImageClip,
+  getSourceTimeAtClipLocalTime,
+  type Clip,
+} from "../types";
 import { saveMediaBlob } from "./mediaStorage";
 
 export const VIDEO_GAP_INTERPOLATION_MAX_STEPS = 180;
@@ -284,7 +288,7 @@ export async function captureClipBoundaryFrame(
   const sourceStart = clip.trimIn;
   const sourceEnd = Math.max(sourceStart, clip.trimOut - VIDEO_SEEK_EPSILON);
   const sourceTime = boundary === "end"
-    ? clamp(sourceStart + clip.duration - frameStep, sourceStart, sourceEnd)
+    ? clamp(getSourceTimeAtClipLocalTime(clip, Math.max(0, clip.duration - frameStep)), sourceStart, sourceEnd)
     : clamp(sourceStart, sourceStart, sourceEnd);
 
   return captureVideoFrame(clip.sourceUrl, sourceTime);

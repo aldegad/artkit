@@ -6,8 +6,14 @@ import { useVideoElements } from "./useVideoElements";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { applyPixelPreviewScalePolicy, drawScaledImage, resizeCanvasForDpr } from "@/shared/utils";
 import { PREVIEW } from "../constants";
-import { getClipScaleX, getClipScaleY } from "../types";
-import { Clip, VideoClip, ImageClip } from "../types";
+import {
+  getClipScaleX,
+  getClipScaleY,
+  getSourceTime,
+  Clip,
+  VideoClip,
+  ImageClip,
+} from "../types";
 import { resolveClipPositionAtTimelineTime } from "../utils/clipTransformKeyframes";
 
 /**
@@ -67,8 +73,7 @@ export function usePreviewRendering() {
   // Get frame source for a clip at the given time
   const getClipFrame = useCallback(
     async (clip: Clip, time: number): Promise<CanvasImageSource | null> => {
-      const clipTime = time - clip.startTime;
-      const sourceTime = clip.trimIn + clipTime;
+      const sourceTime = getSourceTime(clip, time);
 
       if (clip.type === "video") {
         const videoClip = clip as VideoClip;

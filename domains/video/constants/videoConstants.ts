@@ -58,6 +58,13 @@ export const PLAYBACK = {
   TIME_DISPLAY_THROTTLE_MS: 100, // throttle for time display updates
 } as const;
 
+export const CLIP_PLAYBACK = {
+  MIN_SPEED: 1,
+  MAX_SPEED: 4,
+  DEFAULT_SPEED: 1,
+  PRESETS: [1, 1.25, 1.5, 2, 3, 4],
+} as const;
+
 // UI constants
 export const UI = {
   HANDLE_SIZE: 8,

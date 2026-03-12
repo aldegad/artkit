@@ -19,8 +19,11 @@ import {
   createVideoClip,
   createAudioClip,
   createImageClip,
+  getClipPlaybackSpeed,
+  getClipSourceSpan,
+  getTimelineDurationForSourceDuration,
 } from "../types";
-import { TIMELINE } from "../constants";
+import { PLAYBACK, TIMELINE } from "../constants";
 import { useVideoState } from "./VideoStateContext";
 import { Size } from "@/shared/types";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
@@ -29,7 +32,11 @@ import {
   type VideoAutosaveData,
 } from "../utils/videoAutosave";
 import { copyMediaBlob } from "../utils/mediaStorage";
-import { normalizeClipTransformKeyframes, sliceClipPositionKeyframes } from "../utils/clipTransformKeyframes";
+import {
+  normalizeClipTransformKeyframes,
+  scaleClipPositionKeyframesDuration,
+  sliceClipPositionKeyframes,
+} from "../utils/clipTransformKeyframes";
 import {
   cloneTrack,
   cloneClip,
@@ -100,6 +107,7 @@ interface TimelineContextValue {
   ) => string;
   removeClip: (clipId: string) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
+  setClipPlaybackSpeed: (clipId: string, playbackSpeed: number) => void;
   moveClip: (clipId: string, trackId: string, startTime: number, ignoreClipIds?: string[]) => void;
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
@@ -580,15 +588,59 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     updateClipsWithDuration((prev) =>
       prev.map((c) => {
         if (c.id !== clipId) return c;
-        const next = { ...c, ...updates } as Clip;
+        const next = normalizeClip({ ...c, ...updates } as Clip);
         const normalizedTransformKeyframes = normalizeClipTransformKeyframes(next);
-        return {
+        return normalizeClip({
           ...next,
           transformKeyframes: normalizedTransformKeyframes,
-        } as Clip;
+        } as Clip);
       })
     );
   }, [updateClipsWithDuration]);
+
+  const setClipPlaybackSpeed = useCallback((clipId: string, playbackSpeed: number) => {
+    const sourceClip = clips.find((candidate) => candidate.id === clipId);
+    if (!sourceClip || sourceClip.type === "image") return;
+
+    const sourceSpan = getClipSourceSpan(sourceClip);
+    if (sourceSpan <= SOURCE_TRIM_EPSILON) return;
+
+    const minDuration = getMinClipDuration();
+    const requestedSpeed = Math.max(1, Math.min(PLAYBACK.MAX_RATE, playbackSpeed));
+    const idealDuration = getTimelineDurationForSourceDuration(
+      { playbackSpeed: requestedSpeed },
+      sourceSpan
+    );
+    const nextDuration = Math.max(minDuration, idealDuration);
+    const appliedSpeed = Math.max(
+      1,
+      Math.min(PLAYBACK.MAX_RATE, sourceSpan / Math.max(nextDuration, SOURCE_TRIM_EPSILON))
+    );
+
+    const currentSpeed = getClipPlaybackSpeed(sourceClip);
+    if (
+      Math.abs(appliedSpeed - currentSpeed) <= SOURCE_TRIM_EPSILON
+      && Math.abs(nextDuration - sourceClip.duration) <= SOURCE_TRIM_EPSILON
+    ) {
+      return;
+    }
+
+    saveToHistory();
+    updateClipsWithDuration((prev) =>
+      prev.map((clip) => {
+        if (clip.id !== clipId || clip.type === "image") return clip;
+        const transformKeyframes = scaleClipPositionKeyframesDuration(clip, nextDuration);
+        const nextPosition = transformKeyframes?.position?.[0]?.value || clip.position;
+        return normalizeClip({
+          ...clip,
+          playbackSpeed: appliedSpeed,
+          duration: nextDuration,
+          position: { ...nextPosition },
+          transformKeyframes,
+        } as Clip);
+      })
+    );
+  }, [clips, getMinClipDuration, saveToHistory, updateClipsWithDuration]);
 
   const moveClip = useCallback((clipId: string, trackId: string, startTime: number, ignoreClipIds: string[] = []) => {
     const targetTrack = tracks.find((t) => t.id === trackId) || null;
@@ -621,7 +673,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         const minDuration = getMinClipDuration();
         const frameAlignedStart = snapTimeToFrame(newStartTime);
         const deltaTime = frameAlignedStart - c.startTime;
-        const newTrimIn = c.trimIn + deltaTime;
+        const newTrimIn = c.trimIn + (deltaTime * getClipPlaybackSpeed(c));
         const newDuration = c.duration - deltaTime;
 
         // Validate
@@ -643,14 +695,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         );
         const nextPosition = transformKeyframes?.position?.[0]?.value || c.position;
 
-        return {
+        return normalizeClip({
           ...c,
           startTime: frameAlignedStart,
           trimIn: newTrimIn,
           duration: newDuration,
           position: { ...nextPosition },
           transformKeyframes,
-        };
+        } as Clip);
       })
     );
   }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
@@ -664,7 +716,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         const minDuration = getMinClipDuration();
         const frameAlignedEnd = snapTimeToFrame(newEndTime);
         const newDuration = frameAlignedEnd - c.startTime;
-        const newTrimOut = c.trimIn + newDuration;
+        const newTrimOut = c.trimIn + (newDuration * getClipPlaybackSpeed(c));
 
         // Validate
         if (newDuration < minDuration) return c;
@@ -694,13 +746,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         );
         const nextPosition = transformKeyframes?.position?.[0]?.value || c.position;
 
-        return {
+        return normalizeClip({
           ...c,
           duration: newDuration,
           trimOut: safeTrimOut,
           position: { ...nextPosition },
           transformKeyframes,
-        };
+        } as Clip);
       })
     );
   }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
@@ -877,6 +929,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     addImageClip,
     removeClip,
     updateClip,
+    setClipPlaybackSpeed,
     moveClip,
     trimClipStart,
     trimClipEnd,

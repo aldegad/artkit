@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { VideoTrack, Clip } from "../types";
+import {
+  VideoTrack,
+  Clip,
+  getClipPlaybackSpeed,
+  getSourceDurationForTimelineDuration,
+  getSourceTime,
+} from "../types";
 import { WEB_AUDIO } from "../constants";
 import {
   getAudioBuffer,
@@ -189,13 +195,13 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       }
 
       const clipTime = ct - clip.startTime;
-      const sourceTime = clip.trimIn + clipTime;
+      const sourceTime = getSourceTime(clip, ct);
       const clipRemaining = clip.duration - clipTime;
 
       shouldBeActive.set(clip.id, {
         clip,
         sourceTimeOffset: sourceTime,
-        clipRemaining,
+        clipRemaining: getSourceDurationForTimelineDuration(clip, clipRemaining),
       });
     }
 
@@ -241,7 +247,8 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
 
       const sourceNode = ctx.createBufferSource();
       sourceNode.buffer = audioBuffer;
-      sourceNode.playbackRate.setValueAtTime(rate, ctx.currentTime);
+      const clipSpeed = getClipPlaybackSpeed(clip);
+      sourceNode.playbackRate.setValueAtTime(rate * clipSpeed, ctx.currentTime);
 
       const gainNode = ctx.createGain();
       const volume =
@@ -425,10 +432,12 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   // Update playbackRate on all active source nodes
   useEffect(() => {
     const ctx = getSharedAudioContext();
-    for (const [, node] of activeNodesRef.current) {
-      node.sourceNode.playbackRate.setValueAtTime(playbackRate, ctx.currentTime);
+    for (const [clipId, node] of activeNodesRef.current) {
+      const clip = clipsRef.current.find((candidate) => candidate.id === clipId);
+      const clipSpeed = clip ? getClipPlaybackSpeed(clip) : 1;
+      node.sourceNode.playbackRate.setValueAtTime(playbackRate * clipSpeed, ctx.currentTime);
     }
-  }, [playbackRate]);
+  }, [playbackRate, clips]);
 
   // Cleanup on unmount
   useEffect(() => {

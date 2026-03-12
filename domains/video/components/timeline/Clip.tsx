@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clip as ClipType } from "../../types";
+import { Clip as ClipType, getClipPlaybackSpeed } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useVideoState } from "../../contexts";
 import { cn } from "@/shared/utils/cn";
@@ -89,6 +89,8 @@ export function Clip({
   );
 
   const isSelected = selectedClipIds.includes(clip.id);
+  const clipPlaybackSpeed = getClipPlaybackSpeed(clip);
+  const showSpeedBadge = clip.type !== "image" && clipPlaybackSpeed > 1.001;
   const frameRate = normalizeTimelineFrameRate(project.frameRate);
   const frameRange = getTimelineFrameRange(clip.startTime, clip.duration, frameRate);
   const rawLeft = timeToPixel(frameRange.startTime);
@@ -164,9 +166,15 @@ export function Clip({
       }}
     >
       {/* Clip name */}
-      <div className="px-2 py-1 text-xs text-clip-text truncate">
+      <div className="px-2 py-1 pr-12 text-xs text-clip-text truncate">
         {clip.name}
       </div>
+
+      {showSpeedBadge && (
+        <div className="absolute top-1 right-1 rounded bg-black/25 px-1.5 py-0.5 text-[10px] font-medium text-white/90 pointer-events-none">
+          {clipPlaybackSpeed.toFixed(2)}x
+        </div>
+      )}
 
       {/* Waveform preview */}
       {clip.type !== "image" && clipHasAudio && visibleWaveform && (

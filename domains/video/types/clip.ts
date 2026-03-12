@@ -30,6 +30,7 @@ export interface BaseClip {
   // Source trimming
   trimIn: number; // Start offset in source (seconds)
   trimOut: number; // End offset in source (seconds)
+  playbackSpeed: number; // 1 = normal speed, >1 = faster
 
   // Visual properties
   opacity: number; // 0-100
@@ -127,6 +128,7 @@ export function createVideoClip(
     duration: sourceDuration,
     trimIn: 0,
     trimOut: sourceDuration,
+    playbackSpeed: 1,
     opacity: 100,
     visible: true,
     locked: false,
@@ -164,6 +166,7 @@ export function createAudioClip(
     duration: sourceDuration,
     trimIn: 0,
     trimOut: sourceDuration,
+    playbackSpeed: 1,
     opacity: 100,
     visible: true,
     locked: false,
@@ -200,6 +203,7 @@ export function createImageClip(
     duration,
     trimIn: 0,
     trimOut: duration,
+    playbackSpeed: 1,
     opacity: 100,
     visible: true,
     locked: false,
@@ -217,9 +221,52 @@ export function createImageClip(
 /**
  * Get the source time for a given timeline time
  */
+export function getClipPlaybackSpeed(
+  clip: Pick<BaseClip, "playbackSpeed">
+): number {
+  const speed = clip.playbackSpeed;
+  return Number.isFinite(speed) && speed > 0 ? speed : 1;
+}
+
+export function getClipSourceSpan(
+  clip: Pick<BaseClip, "trimIn" | "trimOut">
+): number {
+  const trimIn = Number.isFinite(clip.trimIn) ? clip.trimIn : 0;
+  const trimOut = Number.isFinite(clip.trimOut) ? clip.trimOut : trimIn;
+  return Math.max(0, trimOut - trimIn);
+}
+
+export function getSourceDurationForTimelineDuration(
+  clip: Pick<BaseClip, "playbackSpeed">,
+  timelineDuration: number
+): number {
+  const safeDuration = Number.isFinite(timelineDuration) ? Math.max(0, timelineDuration) : 0;
+  return safeDuration * getClipPlaybackSpeed(clip);
+}
+
+export function getTimelineDurationForSourceDuration(
+  clip: Pick<BaseClip, "playbackSpeed">,
+  sourceDuration: number
+): number {
+  const safeDuration = Number.isFinite(sourceDuration) ? Math.max(0, sourceDuration) : 0;
+  return safeDuration / getClipPlaybackSpeed(clip);
+}
+
+export function getSourceTimeAtClipLocalTime(
+  clip: Pick<BaseClip, "trimIn" | "trimOut" | "duration" | "playbackSpeed">,
+  clipLocalTime: number
+): number {
+  const safeDuration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration) : 0;
+  const safeLocalTime = Number.isFinite(clipLocalTime)
+    ? Math.max(0, Math.min(clipLocalTime, safeDuration))
+    : 0;
+  const sourceTime = clip.trimIn + (safeLocalTime * getClipPlaybackSpeed(clip));
+  return Math.max(clip.trimIn, Math.min(sourceTime, Math.max(clip.trimIn, clip.trimOut)));
+}
+
 export function getSourceTime(clip: Clip, timelineTime: number): number {
   const clipTime = timelineTime - clip.startTime;
-  return clip.trimIn + clipTime;
+  return getSourceTimeAtClipLocalTime(clip, clipTime);
 }
 
 /**

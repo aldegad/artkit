@@ -1,4 +1,10 @@
-import { VideoTrack, Clip, getClipScaleX, getClipScaleY } from "../types";
+import {
+  VideoTrack,
+  Clip,
+  getClipScaleX,
+  getClipScaleY,
+  getSourceTime,
+} from "../types";
 import { Size } from "@/shared/types";
 import { resolveClipPositionAtTimelineTime } from "./clipTransformKeyframes";
 import { drawScaledImage } from "@/shared/utils";
@@ -73,8 +79,7 @@ export function renderCompositeFrame(
         continue;
       }
       if (!isPlaying && !preSeekVerified) {
-        const clipTime = time - clip.startTime;
-        const sourceTime = clip.trimIn + clipTime;
+        const sourceTime = getSourceTime(clip, time);
         if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
           videoElement.currentTime = sourceTime;
           allRendered = false;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
-import { VideoTrack, Clip, MaskData } from "../types";
+import { VideoTrack, Clip, MaskData, getSourceTime } from "../types";
 import { Size } from "@/shared/types";
 import { PRE_RENDER } from "../constants";
 import { renderCompositeFrame } from "../utils/compositeRenderer";
@@ -145,7 +145,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   const clipFingerprint = useMemo(() => {
     return clips.map(c =>
-      `${c.id}:${c.trackId}:${c.startTime}:${c.duration}:${c.trimIn}:${c.trimOut}:${c.sourceUrl}:${c.position.x}:${c.position.y}:${c.scale}:${c.scaleX ?? 1}:${c.scaleY ?? 1}:${c.opacity}:${c.visible}`
+      `${c.id}:${c.trackId}:${c.startTime}:${c.duration}:${c.trimIn}:${c.trimOut}:${c.playbackSpeed}:${c.sourceUrl}:${c.position.x}:${c.position.y}:${c.scale}:${c.scaleX ?? 1}:${c.scaleY ?? 1}:${c.opacity}:${c.visible}`
     ).join("|");
   }, [clips]);
 
@@ -261,7 +261,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         const videoEl = videoElementsRef.current.get(clip.id);
         if (!videoEl || videoEl.readyState < 1) continue;
 
-        const sourceTime = clip.trimIn + (time - clip.startTime);
+        const sourceTime = getSourceTime(clip, time);
         seekPromises.push(waitForSeek(videoEl, sourceTime));
       }
 

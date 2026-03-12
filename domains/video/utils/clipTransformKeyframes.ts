@@ -407,3 +407,31 @@ export function sliceClipPositionKeyframes(
   const normalized = normalizePositionKeyframes(next, safeDuration);
   return buildTransformKeyframes(clip, normalized.length > 0 ? normalized : undefined);
 }
+
+export function scaleClipPositionKeyframesDuration(
+  clip: Clip,
+  nextDuration: number
+): ClipTransformKeyframes | undefined {
+  const current = getClipPositionKeyframes(clip);
+  if (current.length === 0) {
+    return buildTransformKeyframes(clip, undefined);
+  }
+
+  const safeNextDuration = sanitizeDuration(nextDuration);
+  if (safeNextDuration <= POSITION_KEYFRAME_EPSILON) {
+    return buildTransformKeyframes(clip, undefined);
+  }
+
+  const safeCurrentDuration = Math.max(POSITION_KEYFRAME_EPSILON, sanitizeDuration(clip.duration));
+  const scaleRatio = safeNextDuration / safeCurrentDuration;
+  const scaled = current.map((keyframe) =>
+    createPositionKeyframe(
+      sanitizeLocalTime(keyframe.time * scaleRatio, safeNextDuration),
+      keyframe.value,
+      keyframe.id
+    )
+  );
+
+  const normalized = normalizePositionKeyframes(scaled, safeNextDuration);
+  return buildTransformKeyframes(clip, normalized.length > 0 ? normalized : undefined);
+}
