@@ -19,7 +19,7 @@ import {
 } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PREVIEW, PRE_RENDER } from "../../constants";
-import { getClipScaleX, getClipScaleY } from "../../types";
+import { getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
@@ -564,8 +564,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             continue;
           }
           if (!playback.isPlaying) {
-            const clipTime = renderTime - clip.startTime;
-            const sourceTime = clip.trimIn + clipTime;
+            const sourceTime = getSourceTime(clip, renderTime);
             if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
               videoElement.currentTime = sourceTime;
               // Keep rendering the currently available frame while seek settles.

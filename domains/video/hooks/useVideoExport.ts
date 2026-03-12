@@ -6,6 +6,9 @@ import { downloadBlob } from "@/shared/utils";
 import {
   getClipScaleX,
   getClipScaleY,
+  getClipPlaybackSpeed,
+  getSourceDurationForTimelineDuration,
+  getSourceTime,
   type Clip,
   type MaskData,
   type PlaybackState,
@@ -191,18 +194,22 @@ async function renderTimelineAudioBuffer(
 
       if (!sourceBuffer) continue;
 
-      const trimIn = Math.max(0, clip.trimIn + (clipStartTimeInTimeline - clip.startTime));
+      const clipSpeed = getClipPlaybackSpeed(clip);
+      const trimIn = getSourceTime(clip, clipStartTimeInTimeline);
       const trimmedWindow = Math.max(0, clip.trimOut - trimIn);
       const sourceRemaining = Math.max(0, sourceBuffer.duration - trimIn);
       const playbackDuration = Math.min(
-        timelineDuration,
-        trimmedWindow > 0 ? trimmedWindow : timelineDuration,
+        getSourceDurationForTimelineDuration(clip, timelineDuration),
+        trimmedWindow > 0
+          ? trimmedWindow
+          : getSourceDurationForTimelineDuration(clip, timelineDuration),
         sourceRemaining
       );
       if (playbackDuration <= 0) continue;
 
       const sourceNode = offlineContext.createBufferSource();
       sourceNode.buffer = sourceBuffer;
+      sourceNode.playbackRate.value = clipSpeed;
       const gainNode = offlineContext.createGain();
       gainNode.gain.value = Math.max(0, Math.min(1, clipVolume / 100));
 
@@ -477,7 +484,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
           if (clip.type === "video") {
             const video = exportVideoCache.get(clip.id);
             if (!video) continue;
-            const sourceTime = clip.trimIn + (frameTime - clip.startTime);
+            const sourceTime = getSourceTime(clip, frameTime);
             const seekOk = await seekExportVideoFrame(video, sourceTime);
             if (!seekOk) continue;
             sourceEl = video;

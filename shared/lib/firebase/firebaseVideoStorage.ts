@@ -49,6 +49,7 @@ interface FirestoreClipMeta {
   duration: number;
   trimIn: number;
   trimOut: number;
+  playbackSpeed?: number;
   opacity: number;
   visible: boolean;
   locked: boolean;
@@ -280,6 +281,7 @@ function clipToMeta(clip: Clip, storageRef: string): FirestoreClipMeta {
     duration: clip.duration,
     trimIn: clip.trimIn,
     trimOut: clip.trimOut,
+    playbackSpeed: clip.playbackSpeed,
     opacity: clip.opacity,
     visible: clip.visible,
     locked: clip.locked,
@@ -325,6 +327,7 @@ function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
     duration: meta.duration,
     trimIn: meta.trimIn,
     trimOut: meta.trimOut,
+    playbackSpeed: typeof meta.playbackSpeed === "number" ? meta.playbackSpeed : 1,
     opacity: meta.opacity,
     visible: meta.visible,
     locked: meta.locked,

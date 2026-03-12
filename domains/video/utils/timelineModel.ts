@@ -1,6 +1,12 @@
 import { Size } from "@/shared/types";
 import { TIMELINE } from "../constants";
-import { Clip, INITIAL_TIMELINE_VIEW, TimelineViewState, VideoTrack } from "../types";
+import {
+  Clip,
+  INITIAL_TIMELINE_VIEW,
+  TimelineViewState,
+  VideoTrack,
+  getClipPlaybackSpeed,
+} from "../types";
 import { loadMediaBlob } from "./mediaStorage";
 import { normalizeClipTransformKeyframes } from "./clipTransformKeyframes";
 import {
@@ -17,8 +23,10 @@ export function cloneTrack(track: VideoTrack): VideoTrack {
 
 export function cloneClip(clip: Clip): Clip {
   const transformKeyframes = normalizeClipTransformKeyframes(clip);
+  const playbackSpeed = getClipPlaybackSpeed(clip);
   const base = {
     ...clip,
+    playbackSpeed,
     position: { ...clip.position },
     transformKeyframes,
   };
@@ -62,6 +70,7 @@ export function normalizeClip(clip: Clip): Clip {
   const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
   const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
   const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+  const playbackSpeed = getClipPlaybackSpeed(clip);
   const transformKeyframes = normalizeClipTransformKeyframes(clip);
 
   if (clip.type === "video") {
@@ -70,6 +79,7 @@ export function normalizeClip(clip: Clip): Clip {
       scale: baseScale,
       scaleX,
       scaleY,
+      playbackSpeed,
       transformKeyframes,
       hasAudio: clip.hasAudio ?? true,
       audioMuted: clip.audioMuted ?? false,
@@ -83,6 +93,7 @@ export function normalizeClip(clip: Clip): Clip {
       scale: baseScale,
       scaleX,
       scaleY,
+      playbackSpeed,
       transformKeyframes,
       sourceSize: clip.sourceSize || { width: 0, height: 0 },
       audioMuted: clip.audioMuted ?? false,
@@ -95,6 +106,7 @@ export function normalizeClip(clip: Clip): Clip {
     scale: baseScale,
     scaleX,
     scaleY,
+    playbackSpeed,
     transformKeyframes,
   };
 }

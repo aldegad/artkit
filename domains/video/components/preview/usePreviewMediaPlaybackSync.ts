@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, MutableRefObject, RefObject } from "react";
 import { PLAYBACK } from "../../constants";
-import { AudioClip, Clip, PlaybackState, VideoClip, VideoTrack } from "../../types";
+import {
+  AudioClip,
+  Clip,
+  PlaybackState,
+  VideoClip,
+  VideoTrack,
+  getClipPlaybackSpeed,
+  getSourceTime,
+} from "../../types";
 import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
 
 interface UsePreviewMediaPlaybackSyncOptions {
@@ -119,12 +127,12 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
           continue;
         }
 
-        const sourceTime = clip.trimIn + clipTime;
+        const sourceTime = getSourceTime(clip, ct);
         if (Math.abs(video.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
           video.currentTime = sourceTime;
         }
 
-        video.playbackRate = playback.playbackRate;
+        video.playbackRate = playback.playbackRate * getClipPlaybackSpeed(clip);
 
         // Web Audio handles audio when buffer is ready — mute HTMLVideoElement
         if (isWebAudioReadyRef.current(clip.sourceUrl)) {
@@ -161,12 +169,12 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
           continue;
         }
 
-        const sourceTime = clip.trimIn + clipTime;
+        const sourceTime = getSourceTime(clip, ct);
         if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.AUDIO_SEEK_DRIFT_THRESHOLD) {
           audio.currentTime = sourceTime;
         }
 
-        audio.playbackRate = playback.playbackRate;
+        audio.playbackRate = playback.playbackRate * getClipPlaybackSpeed(clip);
         audio.muted = false;
         audio.volume = Math.max(0, Math.min(1, (clip.audioVolume ?? 100) / 100));
 
