@@ -19,6 +19,10 @@ import type {
   VideoExportOptions,
 } from "../utils/videoExportTypes";
 
+const FFMPEG_CORE_VERSION = "0.12.10";
+const FFMPEG_SINGLE_THREAD_BASE_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/umd`;
+const FFMPEG_MULTI_THREAD_BASE_URL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@${FFMPEG_CORE_VERSION}/dist/umd`;
+
 interface UseVideoExportOptions {
   project: VideoProject;
   projectName: string;
@@ -65,10 +69,25 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       ]);
 
       const ffmpeg = new FFmpeg();
-      const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+      const canUseMultiThread =
+        typeof window !== "undefined" &&
+        window.crossOriginIsolated &&
+        typeof SharedArrayBuffer !== "undefined";
+      const baseURL = canUseMultiThread
+        ? FFMPEG_MULTI_THREAD_BASE_URL
+        : FFMPEG_SINGLE_THREAD_BASE_URL;
+
       await ffmpeg.load({
         coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+        ...(canUseMultiThread
+          ? {
+              workerURL: await toBlobURL(
+                `${baseURL}/ffmpeg-core.worker.js`,
+                "text/javascript"
+              ),
+            }
+          : {}),
       });
 
       ffmpegRef.current = ffmpeg;
