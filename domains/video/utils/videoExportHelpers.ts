@@ -220,7 +220,8 @@ export function findActiveMaskAtTime(
   return null;
 }
 
-export function resolveSourceExtension(input: string): string {
+export function resolveSourceExtension(input?: string): string {
+  if (!input) return "mp4";
   const lower = input.toLowerCase();
   if (lower.includes("webm")) return "webm";
   if (lower.includes("quicktime") || lower.includes("mov")) return "mov";

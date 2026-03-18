@@ -18,7 +18,10 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   const link = document.createElement("a");
   link.download = filename;
   link.href = dataUrl;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
+  link.remove();
 }
 
 /**
@@ -36,8 +39,13 @@ export function downloadBlob(blob: Blob, filename: string): void {
   const link = document.createElement("a");
   link.download = filename;
   link.href = url;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+    link.remove();
+  }, 1000);
 }
 
 /**

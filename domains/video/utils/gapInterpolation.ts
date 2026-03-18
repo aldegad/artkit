@@ -181,6 +181,10 @@ export async function buildGapInterpolationClips(
 }
 
 async function captureVideoFrame(sourceUrl: string, sourceTime: number): Promise<FrameSnapshot> {
+  if (!sourceUrl) {
+    throw new Error("Missing source URL for interpolation.");
+  }
+
   const video = document.createElement("video");
   video.preload = "auto";
   video.muted = true;

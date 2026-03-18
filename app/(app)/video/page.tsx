@@ -347,8 +347,10 @@ function VideoEditorContent() {
     isInitialized: isAutosaveInitialized,
   });
 
-  const handleExportSettled = useCallback(() => {
-    setShowExportModal(false);
+  const handleExportSettled = useCallback((result: { ok: boolean }) => {
+    if (result.ok) {
+      setShowExportModal(false);
+    }
   }, []);
 
   const { isExporting, exportProgress, exportVideo: handleExport } = useVideoExport({

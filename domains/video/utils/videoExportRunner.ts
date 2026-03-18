@@ -24,9 +24,11 @@ import {
   cloneToArrayBuffer,
   encodeOutputFile,
   loadExportVideoElement,
+  mountBlobToFfmpegFile,
   readBinaryOutputFile,
   resolveClipSourceBlob,
   seekExportVideoFrame,
+  unmountFfmpegMountPoint,
   writeBlobToFfmpegFile,
 } from "./videoExportIO";
 import type {
@@ -47,6 +49,7 @@ interface VideoExportSession {
   outputFileName: string;
   wavFileName: string;
   cleanupFileNames: string[];
+  cleanupMountPoints: string[];
   exportVideoCache: Map<string, HTMLVideoElement>;
 }
 
@@ -74,6 +77,7 @@ function createVideoExportSession(
     outputFileName,
     wavFileName: `${filePrefix}.wav`,
     cleanupFileNames: [outputFileName],
+    cleanupMountPoints: [],
     exportVideoCache: new Map<string, HTMLVideoElement>(),
   };
 }
@@ -222,8 +226,8 @@ async function runDirectVideoExport(params: {
   const sourceFileName = `${session.filePrefix}-source.${resolveSourceExtension(
     sourceBlob.type || plan.clip.sourceUrl
   )}`;
-  session.cleanupFileNames.push(sourceFileName);
-  await writeBlobToFfmpegFile(session.ffmpeg, sourceFileName, sourceBlob);
+  const sourceInput = await mountBlobToFfmpegFile(session.ffmpeg, sourceFileName, sourceBlob);
+  session.cleanupMountPoints.push(sourceInput.mountPoint);
 
   const seekTime = plan.sourceStart.toFixed(6);
   const seekDuration = plan.sourceDuration.toFixed(6);
@@ -244,8 +248,12 @@ async function runDirectVideoExport(params: {
     seekTime,
     "-t",
     seekDuration,
+    "-probesize",
+    "1048576",
+    "-analyzeduration",
+    "1000000",
     "-i",
-    sourceFileName,
+    sourceInput.filePath,
     "-map",
     "0:v:0",
     "-vf",
@@ -274,6 +282,12 @@ async function runDirectVideoExport(params: {
     compressionSettings: config.compressionSettings,
     hasAudioInput,
     outputFileName: session.outputFileName,
+    outputSize: {
+      width: plan.cropWidth,
+      height: plan.cropHeight,
+    },
+    videoTune: "fastdecode",
+    preferFastEncoding: true,
     encodeBase: 70,
     encodeWeight: 28,
     setExportProgress,
@@ -418,6 +432,11 @@ async function runFrameSequenceExport(params: {
     compressionSettings: config.compressionSettings,
     hasAudioInput,
     outputFileName: session.outputFileName,
+    outputSize: {
+      width: project.canvasSize.width,
+      height: project.canvasSize.height,
+    },
+    videoTune: "animation",
     encodeBase,
     encodeWeight,
     setExportProgress,
@@ -431,7 +450,9 @@ async function cleanupVideoExportSession(session: VideoExportSession): Promise<v
   await Promise.all(
     session.cleanupFileNames.map((fileName) => session.ffmpeg.deleteFile(fileName).catch(() => {}))
   );
-
+  await Promise.all(
+    session.cleanupMountPoints.map((mountPoint) => unmountFfmpegMountPoint(session.ffmpeg, mountPoint))
+  );
   for (const video of session.exportVideoCache.values()) {
     video.pause();
     video.removeAttribute("src");
@@ -454,7 +475,6 @@ export async function runVideoExport(params: RunVideoExportParams): Promise<Comp
       ? `Range ${config.exportStart.toFixed(2)}s - ${config.exportEnd.toFixed(2)}s`
       : "Loading encoder...",
   });
-
   try {
     const directResult = await runDirectVideoExport({
       session,
