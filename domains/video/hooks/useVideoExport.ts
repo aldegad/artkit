@@ -14,9 +14,11 @@ import {
   type MaskData,
   type PlaybackState,
   type VideoProject,
+  type VideoClip,
   type VideoTrack,
 } from "../types";
 import { resolveClipPositionAtTimelineTime } from "../utils/clipTransformKeyframes";
+import { loadMediaBlob } from "../utils/mediaStorage";
 
 export type VideoExportFormat = "mp4" | "mov";
 export type VideoExportCompression = "high" | "balanced" | "small";
@@ -63,6 +65,20 @@ interface TimedTrackMask {
   endTime: number;
   maskData: string;
 }
+
+interface DirectVideoExportPlan {
+  clip: VideoClip;
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+  sourceStart: number;
+  sourceDuration: number;
+  includeAudio: boolean;
+  audioVolume: number;
+}
+
+const EXPORT_EPSILON = 1e-3;
 
 function sanitizeFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -213,6 +229,123 @@ function findActiveMaskAtTime(trackMasks: TimedTrackMask[], time: number): strin
   }
 
   return null;
+}
+
+function resolveSourceExtension(input: string): string {
+  const lower = input.toLowerCase();
+  if (lower.includes("webm")) return "webm";
+  if (lower.includes("quicktime") || lower.includes("mov")) return "mov";
+  if (lower.includes("ogg")) return "ogv";
+  return "mp4";
+}
+
+function roundIfNearInteger(value: number): number | null {
+  if (!Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  return Math.abs(value - rounded) <= EXPORT_EPSILON ? rounded : null;
+}
+
+function buildAtempoFilters(playbackSpeed: number): string[] {
+  const filters: string[] = [];
+  let remaining = playbackSpeed;
+
+  while (remaining > 2 + EXPORT_EPSILON) {
+    filters.push("atempo=2");
+    remaining /= 2;
+  }
+
+  while (remaining < 0.5 - EXPORT_EPSILON) {
+    filters.push("atempo=0.5");
+    remaining /= 0.5;
+  }
+
+  if (Math.abs(remaining - 1) > EXPORT_EPSILON) {
+    filters.push(`atempo=${remaining.toFixed(6)}`);
+  }
+
+  return filters;
+}
+
+function resolveDirectVideoExportPlan(params: {
+  clips: Clip[];
+  tracks: VideoTrack[];
+  masksMap: Map<string, MaskData>;
+  project: VideoProject;
+  exportStart: number;
+  exportEnd: number;
+  includeAudio: boolean;
+}): DirectVideoExportPlan | null {
+  const { clips, tracks, masksMap, project, exportStart, exportEnd, includeAudio } = params;
+  if (clips.length !== 1) return null;
+
+  const clip = clips[0];
+  if (clip.type !== "video" || !clip.visible) return null;
+
+  const track = tracks.find((candidate) => candidate.id === clip.trackId);
+  if (!track || !track.visible) return null;
+
+  const hasMask = Array.from(masksMap.values()).some((mask) => Boolean(mask.maskData));
+  if (hasMask) return null;
+
+  if ((clip.transformKeyframes?.position?.length ?? 0) > 0) return null;
+  if (Math.abs(clip.rotation) > EXPORT_EPSILON) return null;
+  if (Math.abs(clip.opacity - 100) > EXPORT_EPSILON) return null;
+
+  const scaleX = getClipScaleX(clip);
+  const scaleY = getClipScaleY(clip);
+  if (Math.abs(scaleX - 1) > EXPORT_EPSILON || Math.abs(scaleY - 1) > EXPORT_EPSILON) {
+    return null;
+  }
+
+  const clipEnd = clip.startTime + clip.duration;
+  if (exportStart < clip.startTime - EXPORT_EPSILON || exportEnd > clipEnd + EXPORT_EPSILON) {
+    return null;
+  }
+
+  const cropX = roundIfNearInteger(-clip.position.x);
+  const cropY = roundIfNearInteger(-clip.position.y);
+  const cropWidth = roundIfNearInteger(project.canvasSize.width);
+  const cropHeight = roundIfNearInteger(project.canvasSize.height);
+  if (
+    cropX === null ||
+    cropY === null ||
+    cropWidth === null ||
+    cropHeight === null ||
+    cropX < 0 ||
+    cropY < 0 ||
+    cropWidth <= 0 ||
+    cropHeight <= 0
+  ) {
+    return null;
+  }
+
+  if (cropX + cropWidth > clip.sourceSize.width || cropY + cropHeight > clip.sourceSize.height) {
+    return null;
+  }
+
+  const sourceStart = getSourceTime(clip, exportStart);
+  const sourceDuration = getSourceDurationForTimelineDuration(clip, exportEnd - exportStart);
+  if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+    return null;
+  }
+
+  const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+
+  return {
+    clip,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    sourceStart,
+    sourceDuration,
+    includeAudio:
+      includeAudio &&
+      clip.hasAudio !== false &&
+      !(clip.audioMuted ?? false) &&
+      audioVolume > 0,
+    audioVolume,
+  };
 }
 
 async function renderTimelineAudioBuffer(
@@ -373,6 +506,217 @@ async function seekExportVideoFrame(
   });
 }
 
+function getContainerAudioArgs(
+  format: VideoExportFormat,
+  hasAudioInput: boolean
+): string[] {
+  if (!hasAudioInput) return ["-an"];
+  return format === "mov"
+    ? ["-c:a", "aac", "-b:a", "256k", "-shortest"]
+    : ["-c:a", "aac", "-b:a", "192k", "-shortest"];
+}
+
+function buildEncodeArgs(params: {
+  format: VideoExportFormat;
+  baseArgs: string[];
+  compressionSettings: ReturnType<typeof resolveCompression>;
+  hasAudioInput: boolean;
+  outputFileName: string;
+  fallback?: boolean;
+}): string[] {
+  const { format, baseArgs, compressionSettings, hasAudioInput, outputFileName, fallback = false } = params;
+  const audioArgs = getContainerAudioArgs(format, hasAudioInput);
+
+  if (fallback) {
+    return [
+      ...baseArgs,
+      "-c:v",
+      "mpeg4",
+      "-q:v",
+      String(compressionSettings.fallbackQ),
+      "-pix_fmt",
+      "yuv420p",
+      ...(format === "mov" ? ["-movflags", "+faststart"] : []),
+      ...audioArgs,
+      outputFileName,
+    ];
+  }
+
+  return [
+    ...baseArgs,
+    "-c:v",
+    "libx264",
+    "-preset",
+    compressionSettings.preset,
+    "-crf",
+    String(compressionSettings.crf),
+    "-tune",
+    "animation",
+    "-profile:v",
+    "high",
+    "-pix_fmt",
+    "yuv420p",
+    ...(format === "mov" || format === "mp4" ? ["-movflags", "+faststart"] : []),
+    ...audioArgs,
+    outputFileName,
+  ];
+}
+
+async function runEncodeWithProgress(params: {
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg;
+  args: string[];
+  stage: string;
+  encodeBase: number;
+  encodeWeight: number;
+  setExportProgress: (value: ExportProgressState) => void;
+}): Promise<void> {
+  const { ffmpeg, args, stage, encodeBase, encodeWeight, setExportProgress } = params;
+  const onFfmpegProgress = ({ progress }: { progress: number }) => {
+    const ratio = Math.max(0, Math.min(1, progress || 0));
+    setExportProgress({
+      stage,
+      percent: Math.min(98, encodeBase + (ratio * encodeWeight)),
+      detail: `${Math.round(ratio * 100)}%`,
+    });
+  };
+
+  ffmpeg.on("progress", onFfmpegProgress);
+  try {
+    setExportProgress({
+      stage,
+      percent: 72,
+      detail: "Starting encoder...",
+    });
+    const exitCode = await ffmpeg.exec(args);
+    if (exitCode !== 0) {
+      throw new Error(`ffmpeg exited with code ${exitCode}`);
+    }
+  } finally {
+    ffmpeg.off("progress", onFfmpegProgress);
+  }
+}
+
+async function encodeOutputFile(params: {
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg;
+  format: VideoExportFormat;
+  baseArgs: string[];
+  compressionSettings: ReturnType<typeof resolveCompression>;
+  hasAudioInput: boolean;
+  outputFileName: string;
+  encodeBase: number;
+  encodeWeight: number;
+  setExportProgress: (value: ExportProgressState) => void;
+}): Promise<void> {
+  const {
+    ffmpeg,
+    format,
+    baseArgs,
+    compressionSettings,
+    hasAudioInput,
+    outputFileName,
+    encodeBase,
+    encodeWeight,
+    setExportProgress,
+  } = params;
+  const stage = `Encoding ${format.toUpperCase()}`;
+  const primaryArgs = buildEncodeArgs({
+    format,
+    baseArgs,
+    compressionSettings,
+    hasAudioInput,
+    outputFileName,
+  });
+
+  try {
+    await runEncodeWithProgress({
+      ffmpeg,
+      args: primaryArgs,
+      stage,
+      encodeBase,
+      encodeWeight,
+      setExportProgress,
+    });
+  } catch (primaryError) {
+    await ffmpeg.deleteFile(outputFileName).catch(() => {});
+    const fallbackArgs = buildEncodeArgs({
+      format,
+      baseArgs,
+      compressionSettings,
+      hasAudioInput,
+      outputFileName,
+      fallback: true,
+    });
+
+    try {
+      await runEncodeWithProgress({
+        ffmpeg,
+        args: fallbackArgs,
+        stage,
+        encodeBase,
+        encodeWeight,
+        setExportProgress,
+      });
+    } catch {
+      throw primaryError;
+    }
+  }
+}
+
+async function writeBlobToFfmpegFile(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  fileName: string,
+  blob: Blob
+): Promise<void> {
+  await ffmpeg.writeFile(fileName, new Uint8Array(await blob.arrayBuffer()));
+}
+
+async function readBinaryOutputFile(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  fileName: string
+): Promise<Uint8Array> {
+  const outputData = await ffmpeg.readFile(fileName);
+  if (typeof outputData === "string") {
+    throw new Error("export output was not binary data");
+  }
+  const outputBytes = outputData instanceof Uint8Array ? outputData : new Uint8Array(outputData);
+  return new Uint8Array(outputBytes);
+}
+
+function cloneToArrayBuffer(data: Uint8Array): ArrayBuffer {
+  const cloned = new Uint8Array(data.byteLength);
+  cloned.set(data);
+  return cloned.buffer;
+}
+
+async function resolveClipSourceBlob(clip: VideoClip): Promise<Blob> {
+  const shouldTrySourceUrlFirst =
+    clip.sourceUrl.startsWith("blob:") ||
+    clip.sourceUrl.startsWith("data:") ||
+    /^https?:/i.test(clip.sourceUrl);
+
+  if (shouldTrySourceUrlFirst) {
+    try {
+      const response = await fetch(clip.sourceUrl);
+      if (response.ok) {
+        return await response.blob();
+      }
+    } catch {
+      // Fall through to persisted media lookup.
+    }
+  }
+
+  const storedBlob = await loadMediaBlob(clip.id).catch(() => null);
+  if (storedBlob) {
+    return storedBlob;
+  }
+
+  const response = await fetch(clip.sourceUrl);
+  if (!response.ok) {
+    throw new Error(`failed to load source media (${response.status})`);
+  }
+  return response.blob();
+}
+
 export function useVideoExport(options: UseVideoExportOptions): UseVideoExportReturn {
   const { project, projectName, playback, clips, tracks, masksMap, exportFailedLabel, onSettled } = options;
   const ffmpegRef = useRef<import("@ffmpeg/ffmpeg").FFmpeg | null>(null);
@@ -438,30 +782,9 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
     const outputFileName = `${filePrefix}.${format}`;
     const wavFileName = `${filePrefix}.wav`;
     const frameNames: string[] = [];
+    const cleanupFileNames: string[] = [outputFileName];
     const exportVideoCache = new Map<string, HTMLVideoElement>();
     let hasAudioInput = false;
-
-    const exportCanvas = document.createElement("canvas");
-    exportCanvas.width = project.canvasSize.width;
-    exportCanvas.height = project.canvasSize.height;
-    const exportCtx = exportCanvas.getContext("2d");
-    if (!exportCtx) {
-      showErrorToast(`${exportFailedLabel}: export canvas unavailable`);
-      return;
-    }
-    exportCtx.imageSmoothingEnabled = true;
-    exportCtx.imageSmoothingQuality = "high";
-
-    const exportImageCache = new Map<string, HTMLImageElement>();
-    const exportMaskImgCache = new Map<string, HTMLImageElement>();
-    const exportMaskTmpCanvas = document.createElement("canvas");
-    exportMaskTmpCanvas.width = project.canvasSize.width;
-    exportMaskTmpCanvas.height = project.canvasSize.height;
-    const exportMaskTmpCtx = exportMaskTmpCanvas.getContext("2d");
-    if (exportMaskTmpCtx) {
-      exportMaskTmpCtx.imageSmoothingEnabled = true;
-      exportMaskTmpCtx.imageSmoothingQuality = "high";
-    }
 
     try {
       setIsExporting(true);
@@ -478,7 +801,125 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       const captureWeight = 65;
       const encodeBase = 70;
       const encodeWeight = 28;
+
+      const directPlan = resolveDirectVideoExportPlan({
+        clips,
+        tracks,
+        masksMap,
+        project,
+        exportStart,
+        exportEnd,
+        includeAudio,
+      });
+
+      if (directPlan) {
+        setExportProgress({
+          stage: "Preparing direct export",
+          percent: 8,
+          detail: "Loading source media...",
+        });
+
+        const sourceBlob = await resolveClipSourceBlob(directPlan.clip);
+        const sourceFileName = `${filePrefix}-source.${resolveSourceExtension(
+          sourceBlob.type || directPlan.clip.sourceUrl
+        )}`;
+        cleanupFileNames.push(sourceFileName);
+        await writeBlobToFfmpegFile(ffmpeg, sourceFileName, sourceBlob);
+
+        const videoFilters = [
+          `trim=start=${directPlan.sourceStart.toFixed(6)}:duration=${directPlan.sourceDuration.toFixed(6)}`,
+          `setpts=(PTS-STARTPTS)/${getClipPlaybackSpeed(directPlan.clip).toFixed(6)}`,
+        ];
+        const needsCrop =
+          directPlan.cropX !== 0 ||
+          directPlan.cropY !== 0 ||
+          directPlan.cropWidth !== directPlan.clip.sourceSize.width ||
+          directPlan.cropHeight !== directPlan.clip.sourceSize.height;
+        if (needsCrop) {
+          videoFilters.push(
+            `crop=${directPlan.cropWidth}:${directPlan.cropHeight}:${directPlan.cropX}:${directPlan.cropY}`
+          );
+        }
+
+        const baseArgs = [
+          "-i",
+          sourceFileName,
+          "-map",
+          "0:v:0",
+          "-vf",
+          videoFilters.join(","),
+          "-r",
+          String(frameRate),
+        ];
+
+        if (directPlan.includeAudio) {
+          const audioFilters = [
+            `atrim=start=${directPlan.sourceStart.toFixed(6)}:duration=${directPlan.sourceDuration.toFixed(6)}`,
+            "asetpts=N/SR/TB",
+            ...buildAtempoFilters(getClipPlaybackSpeed(directPlan.clip)),
+          ];
+          if (Math.abs(directPlan.audioVolume - 100) > EXPORT_EPSILON) {
+            audioFilters.push(`volume=${(directPlan.audioVolume / 100).toFixed(6)}`);
+          }
+          baseArgs.push("-map", "0:a:0?", "-af", audioFilters.join(","));
+          hasAudioInput = true;
+        }
+
+        await encodeOutputFile({
+          ffmpeg,
+          format,
+          baseArgs,
+          compressionSettings,
+          hasAudioInput,
+          outputFileName,
+          encodeBase,
+          encodeWeight,
+          setExportProgress,
+        });
+
+        const outputBytes = await readBinaryOutputFile(ffmpeg, outputFileName);
+        downloadBlob(
+          new Blob([cloneToArrayBuffer(outputBytes)], { type: isMov ? "video/quicktime" : "video/mp4" }),
+          `${sanitizeFileName(exportFileName || projectName)}.${format}`
+        );
+        trackEvent("file_export", {
+          tool: "video",
+          output_format: format,
+          include_audio: hasAudioInput,
+          compression,
+          has_custom_range: hasCustomRange,
+          duration_seconds: Number(duration.toFixed(2)),
+        });
+        setExportProgress({
+          stage: "Finalizing",
+          percent: 100,
+          detail: "Download ready",
+        });
+        return;
+      }
+
       const sortedTracks = [...tracks].reverse();
+      const exportCanvas = document.createElement("canvas");
+      exportCanvas.width = project.canvasSize.width;
+      exportCanvas.height = project.canvasSize.height;
+      const exportCtx = exportCanvas.getContext("2d");
+      if (!exportCtx) {
+        showErrorToast(`${exportFailedLabel}: export canvas unavailable`);
+        return;
+      }
+      exportCtx.imageSmoothingEnabled = true;
+      exportCtx.imageSmoothingQuality = "high";
+
+      const exportImageCache = new Map<string, HTMLImageElement>();
+      const exportMaskImgCache = new Map<string, HTMLImageElement>();
+      const exportMaskTmpCanvas = document.createElement("canvas");
+      exportMaskTmpCanvas.width = project.canvasSize.width;
+      exportMaskTmpCanvas.height = project.canvasSize.height;
+      const exportMaskTmpCtx = exportMaskTmpCanvas.getContext("2d");
+      if (exportMaskTmpCtx) {
+        exportMaskTmpCtx.imageSmoothingEnabled = true;
+        exportMaskTmpCtx.imageSmoothingQuality = "high";
+      }
 
       const clipsByTrack = new Map<string, Clip[]>();
       for (const clip of clips) {
@@ -649,7 +1090,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         const frameBlob = await canvasToBlob(exportCanvas, "image/png");
         const frameName = `${filePrefix}-frame-${String(frameIndex).padStart(6, "0")}.png`;
         frameNames.push(frameName);
-        await ffmpeg.writeFile(frameName, new Uint8Array(await frameBlob.arrayBuffer()));
+        cleanupFileNames.push(frameName);
+        await writeBlobToFfmpegFile(ffmpeg, frameName, frameBlob);
 
         if (frameIndex % 3 === 0 || frameIndex === totalFrames - 1) {
           const ratio = (frameIndex + 1) / totalFrames;
@@ -678,7 +1120,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         );
         if (mixedAudio) {
           const wavBlob = audioBufferToWavBlob(mixedAudio);
-          await ffmpeg.writeFile(wavFileName, new Uint8Array(await wavBlob.arrayBuffer()));
+          cleanupFileNames.push(wavFileName);
+          await writeBlobToFfmpegFile(ffmpeg, wavFileName, wavBlob);
           hasAudioInput = true;
         }
       }
@@ -693,141 +1136,22 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         baseArgs.push("-i", wavFileName);
       }
 
-      const runEncode = async (args: string[], stage: string) => {
-        const onFfmpegProgress = ({ progress }: { progress: number }) => {
-          const ratio = Math.max(0, Math.min(1, progress || 0));
-          setExportProgress({
-            stage,
-            percent: Math.min(98, encodeBase + (ratio * encodeWeight)),
-            detail: `${Math.round(ratio * 100)}%`,
-          });
-        };
+      await encodeOutputFile({
+        ffmpeg,
+        format,
+        baseArgs,
+        compressionSettings,
+        hasAudioInput,
+        outputFileName,
+        encodeBase,
+        encodeWeight,
+        setExportProgress,
+      });
 
-        ffmpeg.on("progress", onFfmpegProgress);
-        try {
-          setExportProgress({
-            stage,
-            percent: 72,
-            detail: "Starting encoder...",
-          });
-          const exitCode = await ffmpeg.exec(args);
-          if (exitCode !== 0) {
-            throw new Error(`ffmpeg exited with code ${exitCode}`);
-          }
-        } finally {
-          ffmpeg.off("progress", onFfmpegProgress);
-        }
-      };
-
-      if (isMov) {
-        const movAudioArgs = hasAudioInput
-          ? ["-c:a", "aac", "-b:a", "256k", "-shortest"]
-          : ["-an"];
-
-        const primaryMovArgs = [
-          ...baseArgs,
-          "-c:v",
-          "libx264",
-          "-preset",
-          compressionSettings.preset,
-          "-crf",
-          String(compressionSettings.crf),
-          "-tune",
-          "animation",
-          "-profile:v",
-          "high",
-          "-pix_fmt",
-          "yuv420p",
-          "-movflags",
-          "+faststart",
-          ...movAudioArgs,
-          outputFileName,
-        ];
-
-        try {
-          await runEncode(primaryMovArgs, "Encoding MOV");
-        } catch (primaryError) {
-          await ffmpeg.deleteFile(outputFileName).catch(() => {});
-
-          const fallbackMovArgs = [
-            ...baseArgs,
-            "-c:v",
-            "mpeg4",
-            "-q:v",
-            String(compressionSettings.fallbackQ),
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            ...movAudioArgs,
-            outputFileName,
-          ];
-
-          try {
-            await runEncode(fallbackMovArgs, "Encoding MOV");
-          } catch {
-            throw primaryError;
-          }
-        }
-      } else {
-        const mp4AudioArgs = hasAudioInput
-          ? ["-c:a", "aac", "-b:a", "192k", "-shortest"]
-          : ["-an"];
-
-        const primaryMp4Args = [
-          ...baseArgs,
-          "-c:v",
-          "libx264",
-          "-preset",
-          compressionSettings.preset,
-          "-crf",
-          String(compressionSettings.crf),
-          "-tune",
-          "animation",
-          "-profile:v",
-          "high",
-          "-pix_fmt",
-          "yuv420p",
-          "-movflags",
-          "+faststart",
-          ...mp4AudioArgs,
-          outputFileName,
-        ];
-
-        try {
-          await runEncode(primaryMp4Args, "Encoding MP4");
-        } catch (primaryError) {
-          await ffmpeg.deleteFile(outputFileName).catch(() => {});
-
-          const fallbackMp4Args = [
-            ...baseArgs,
-            "-c:v",
-            "mpeg4",
-            "-q:v",
-            String(compressionSettings.fallbackQ),
-            "-pix_fmt",
-            "yuv420p",
-            ...mp4AudioArgs,
-            outputFileName,
-          ];
-
-          try {
-            await runEncode(fallbackMp4Args, "Encoding MP4");
-          } catch {
-            throw primaryError;
-          }
-        }
-      }
-
-      const outputData = await ffmpeg.readFile(outputFileName);
-      if (typeof outputData === "string") {
-        throw new Error("export output was not binary data");
-      }
-      const outputBytes = outputData instanceof Uint8Array ? outputData : new Uint8Array(outputData);
-      const outputCopy = new Uint8Array(outputBytes);
+      const outputBytes = await readBinaryOutputFile(ffmpeg, outputFileName);
 
       downloadBlob(
-        new Blob([outputCopy.buffer], { type: isMov ? "video/quicktime" : "video/mp4" }),
+        new Blob([cloneToArrayBuffer(outputBytes)], { type: isMov ? "video/quicktime" : "video/mp4" }),
         `${sanitizeFileName(exportFileName || projectName)}.${format}`
       );
       trackEvent("file_export", {
@@ -850,13 +1174,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       try {
         const ffmpeg = ffmpegRef.current;
         if (ffmpeg) {
-          const cleanupTargets = [
-            outputFileName,
-            ...(hasAudioInput ? [wavFileName] : []),
-            ...frameNames,
-          ];
           await Promise.all(
-            cleanupTargets.map((fileName) => ffmpeg.deleteFile(fileName).catch(() => {}))
+            cleanupFileNames.map((fileName) => ffmpeg.deleteFile(fileName).catch(() => {}))
           );
         }
       } catch {
