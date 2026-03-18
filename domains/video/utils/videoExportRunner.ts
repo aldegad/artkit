@@ -225,8 +225,9 @@ async function runDirectVideoExport(params: {
   session.cleanupFileNames.push(sourceFileName);
   await writeBlobToFfmpegFile(session.ffmpeg, sourceFileName, sourceBlob);
 
+  const seekTime = plan.sourceStart.toFixed(6);
+  const seekDuration = plan.sourceDuration.toFixed(6);
   const videoFilters = [
-    `trim=start=${plan.sourceStart.toFixed(6)}:duration=${plan.sourceDuration.toFixed(6)}`,
     `setpts=(PTS-STARTPTS)/${plan.clip.playbackSpeed.toFixed(6)}`,
   ];
   const needsCrop =
@@ -239,6 +240,10 @@ async function runDirectVideoExport(params: {
   }
 
   const baseArgs = [
+    "-ss",
+    seekTime,
+    "-t",
+    seekDuration,
     "-i",
     sourceFileName,
     "-map",
@@ -252,7 +257,6 @@ async function runDirectVideoExport(params: {
   let hasAudioInput = false;
   if (plan.includeAudio) {
     const audioFilters = [
-      `atrim=start=${plan.sourceStart.toFixed(6)}:duration=${plan.sourceDuration.toFixed(6)}`,
       "asetpts=N/SR/TB",
       ...buildAtempoFilters(plan.clip.playbackSpeed),
     ];
