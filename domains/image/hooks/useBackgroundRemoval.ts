@@ -9,6 +9,7 @@ import {
   type BackgroundRemovalQuality,
 } from "@/shared/ai/backgroundRemoval";
 import { confirmDialog, showInfoToast } from "@/shared/components";
+import { trackEvent } from "@/shared/utils/analytics";
 
 // ============================================
 // Types
@@ -155,6 +156,12 @@ export function useBackgroundRemoval(
       }
 
       setBgRemovalStatus("Done!");
+      trackEvent("feature_use", {
+        tool: "image",
+        feature: "background_removal",
+        selection_only: Boolean(selection),
+        quality: quality || "default",
+      });
     } catch (error) {
       console.error("Background removal failed:", error);
       const rawReason = getBackgroundRemovalRawErrorMessage(error);

@@ -6,6 +6,7 @@ import { ImageDropZone, Select, HeaderContent, Scrollbar } from "@/shared/compon
 import { PlusIcon, FlipIcon, RotateIcon } from "@/shared/components/icons";
 import { downloadBlob } from "@/shared/utils/download";
 import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
+import { trackEvent } from "@/shared/utils/analytics";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
 
 export default function ImageConverter() {
@@ -26,15 +27,15 @@ export default function ImageConverter() {
     fileInputRef.current.click();
   }, []);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    addFiles(files);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+  const addFiles = useCallback((files: File[], source: "picker" | "drop") => {
+    if (files.length > 0) {
+      trackEvent("file_import", {
+        tool: "converter",
+        source,
+        file_count: files.length,
+      });
     }
-  }, []);
 
-  const addFiles = useCallback((files: File[]) => {
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -58,6 +59,14 @@ export default function ImageConverter() {
       reader.readAsDataURL(file);
     });
   }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    addFiles(files, "picker");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [addFiles]);
 
   const normalizeRotation = useCallback((rotation: number) => {
     return ((Math.round(rotation) % 360) + 360) % 360;
@@ -92,6 +101,10 @@ export default function ImageConverter() {
 
   const handleFlipImage = useCallback(
     (id: string) => {
+      trackEvent("feature_use", {
+        tool: "converter",
+        feature: "flip_horizontal",
+      });
       updateImageTransform(id, (image) => ({
         ...image,
         flipX: !image.flipX,
@@ -102,6 +115,10 @@ export default function ImageConverter() {
 
   const handleRotateImage = useCallback(
     (id: string) => {
+      trackEvent("feature_use", {
+        tool: "converter",
+        feature: "rotate_90",
+      });
       updateImageTransform(id, (image) => ({
         ...image,
         rotation: normalizeRotation(image.rotation + 90),
@@ -210,6 +227,13 @@ export default function ImageConverter() {
   );
 
   const convertAll = useCallback(async () => {
+    trackEvent("feature_use", {
+      tool: "converter",
+      feature: "convert_all",
+      file_count: images.length,
+      output_format: outputFormat,
+      resize_enabled: resizeEnabled,
+    });
     setIsConverting(true);
     const converted = await Promise.all(images.map(convertImage));
     images.forEach((image) => {
@@ -217,11 +241,17 @@ export default function ImageConverter() {
     });
     setImages(converted);
     setIsConverting(false);
-  }, [images, convertImage]);
+  }, [images, convertImage, outputFormat, resizeEnabled]);
 
   const downloadImage = useCallback(
     (image: ImageFile) => {
       if (!image.convertedBlob) return;
+
+      trackEvent("file_export", {
+        tool: "converter",
+        feature: "single_download",
+        output_format: outputFormat,
+      });
 
       const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
       const originalName = image.file.name.replace(/\.[^/.]+$/, "");
@@ -239,6 +269,13 @@ export default function ImageConverter() {
 
     const convertedImages = images.filter((image) => Boolean(image.convertedBlob));
     if (convertedImages.length === 0) return;
+
+    trackEvent("file_export", {
+      tool: "converter",
+      feature: "download_all",
+      output_format: outputFormat,
+      file_count: convertedImages.length,
+    });
 
     setIsDownloadingAll(true);
     try {
@@ -302,7 +339,7 @@ export default function ImageConverter() {
         file.type.startsWith("image/"),
       );
       if (droppedFiles.length > 0) {
-        addFiles(droppedFiles);
+        addFiles(droppedFiles, "drop");
       }
     },
     [addFiles],
@@ -467,7 +504,10 @@ export default function ImageConverter() {
           overflow={{ x: "hidden", y: "scroll" }}
         >
           {images.length === 0 ? (
-            <ImageDropZone variant="converter" onFileSelect={addFiles} />
+            <ImageDropZone
+              variant="converter"
+              onFileSelect={(files) => addFiles(files, "picker")}
+            />
           ) : (
             /* Image grid */
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

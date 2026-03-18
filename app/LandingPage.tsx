@@ -18,6 +18,7 @@ import {
 } from "../shared/components/icons";
 import InteractiveDotGrid from "@/shared/components/app/landing/InteractiveDotGrid";
 import { Scrollbar } from "@/shared/components";
+import { trackEvent } from "@/shared/utils/analytics";
 
 const tools = [
   {
@@ -83,6 +84,18 @@ export default function LandingPage() {
   const isDark = resolvedTheme === "dark";
 
   const scrollToTools = () => {
+    trackEvent("landing_cta_click", {
+      location: "hero",
+      target: "tools_section",
+    });
+    toolsRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleNavCtaClick = () => {
+    trackEvent("landing_cta_click", {
+      location: "nav",
+      target: "tools_section",
+    });
     toolsRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -121,7 +134,7 @@ export default function LandingPage() {
               )}
             </button>
             <button
-              onClick={scrollToTools}
+              onClick={handleNavCtaClick}
               className="ml-2 px-4 py-2 rounded-xl text-sm font-medium bg-accent-primary text-white hover:bg-accent-primary-hover transition-all duration-200 hover:-translate-y-0.5 shadow-sm"
             >
               {t.landingCTA}
@@ -233,6 +246,11 @@ export default function LandingPage() {
               <Link
                 key={tool.id}
                 href={tool.path}
+                onClick={() =>
+                  trackEvent("landing_tool_click", {
+                    tool: tool.id,
+                    location: "tools_grid",
+                  })}
                 className="group landing-tool-card animate-landing-card"
                 style={{ animationDelay: `${0.08 * i}s` }}
               >

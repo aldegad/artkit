@@ -13,6 +13,7 @@ import {
   getLayerAlphaMask,
   clearLayerAlphaMask,
 } from "@/shared/utils/layerAlphaMask";
+import { trackEvent } from "@/shared/utils/analytics";
 
 interface UseImageUpscaleActionsOptions {
   layers: UnifiedLayer[];
@@ -128,6 +129,11 @@ export function useImageUpscaleActions(
 
       setShowUpscaleConfirmState(false);
       setUpscaleStatus("Done!");
+      trackEvent("feature_use", {
+        tool: "image",
+        feature: "ai_upscale",
+        scale,
+      });
     } catch (error) {
       console.error("AI upscale failed:", error);
       showErrorToast(getUpscaleErrorMessage(error));

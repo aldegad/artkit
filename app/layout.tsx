@@ -1,8 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { ThemeProvider, LanguageProvider, AuthProvider } from "../shared/contexts";
 import { ToastProvider } from "../shared/components/ToastProvider";
 import { ConfirmDialogProvider } from "../shared/components/ConfirmDialogProvider";
+import AnalyticsTracker from "@/shared/components/app/layout/AnalyticsTracker";
 import "./globals.css";
+
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 
 export const viewport: Viewport = {
   themeColor: "#FF8C00",
@@ -36,6 +40,12 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        {gaMeasurementId && (
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
+            strategy="afterInteractive"
+          />
+        )}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -55,6 +65,7 @@ export default function RootLayout({
             <AuthProvider>
               <ToastProvider>
                 <ConfirmDialogProvider>
+                  <AnalyticsTracker />
                   {children}
                 </ConfirmDialogProvider>
               </ToastProvider>

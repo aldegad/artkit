@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import type { IconMeta } from "../types";
 import { iconToSvgString, copyToClipboard, downloadSvg, getImportStatement } from "../utils/svgExport";
+import { trackEvent } from "@/shared/utils/analytics";
 
 interface IconCardProps {
   icon: IconMeta;
@@ -15,21 +16,37 @@ export function IconCard({ icon }: IconCardProps) {
     const svgString = iconToSvgString(icon.component);
     const ok = await copyToClipboard(svgString);
     if (ok) {
+      trackEvent("feature_use", {
+        tool: "icons",
+        feature: "copy_svg",
+        icon_name: icon.name,
+      });
       setCopied("svg");
       setTimeout(() => setCopied(null), 1500);
     }
-  }, [icon.component]);
+  }, [icon.component, icon.name]);
 
   const handleCopyImport = useCallback(async () => {
     const importStr = getImportStatement(icon.name);
     const ok = await copyToClipboard(importStr);
     if (ok) {
+      trackEvent("feature_use", {
+        tool: "icons",
+        feature: "copy_import",
+        icon_name: icon.name,
+      });
       setCopied("import");
       setTimeout(() => setCopied(null), 1500);
     }
   }, [icon.name]);
 
   const handleDownload = useCallback(() => {
+    trackEvent("file_export", {
+      tool: "icons",
+      feature: "download_svg",
+      icon_name: icon.name,
+      output_format: "svg",
+    });
     const svgString = iconToSvgString(icon.component);
     downloadSvg(svgString, icon.name);
   }, [icon.component, icon.name]);
