@@ -31,7 +31,7 @@ export type {
   VideoExportFormat,
   VideoExportCompression,
   VideoExportOptions,
-} from "./useVideoExport";
+} from "../utils/videoExportTypes";
 export type {
   GapInterpolationAnalysis,
   GapInterpolationIssue,
