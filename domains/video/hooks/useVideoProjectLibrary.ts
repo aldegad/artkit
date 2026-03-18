@@ -160,7 +160,7 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
     }
 
     // Skip stale blob: URLs that cannot be restored.
-    if (!clip.sourceUrl.startsWith("blob:")) {
+    if (!clip.sourceUrl?.startsWith("blob:")) {
       restoredClips.push(clip);
     }
   }

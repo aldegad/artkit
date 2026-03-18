@@ -6,6 +6,9 @@ import type {
   VideoExportFormat,
 } from "./videoExportTypes";
 
+const FFMPEG_WORKER_FS_TYPE = "WORKERFS" as const;
+const LARGE_EXPORT_PIXEL_THRESHOLD = 6_000_000;
+
 export async function loadExportVideoElement(sourceUrl: string): Promise<HTMLVideoElement | null> {
   return new Promise((resolve) => {
     const video = document.createElement("video");
@@ -83,14 +86,15 @@ export async function seekExportVideoFrame(
 }
 
 export async function resolveClipSourceBlob(clip: VideoClip): Promise<Blob> {
+  const sourceUrl = typeof clip.sourceUrl === "string" ? clip.sourceUrl : "";
   const shouldTrySourceUrlFirst =
-    clip.sourceUrl.startsWith("blob:") ||
-    clip.sourceUrl.startsWith("data:") ||
-    /^https?:/i.test(clip.sourceUrl);
+    sourceUrl.startsWith("blob:") ||
+    sourceUrl.startsWith("data:") ||
+    /^https?:/i.test(sourceUrl);
 
   if (shouldTrySourceUrlFirst) {
     try {
-      const response = await fetch(clip.sourceUrl);
+      const response = await fetch(sourceUrl);
       if (response.ok) return response.blob();
     } catch {
       // Fall through to persisted media lookup.
@@ -100,11 +104,39 @@ export async function resolveClipSourceBlob(clip: VideoClip): Promise<Blob> {
   const storedBlob = await loadMediaBlob(clip.id).catch(() => null);
   if (storedBlob) return storedBlob;
 
-  const response = await fetch(clip.sourceUrl);
+  if (!sourceUrl) {
+    throw new Error("clip source URL is missing");
+  }
+
+  const response = await fetch(sourceUrl);
   if (!response.ok) {
     throw new Error(`failed to load source media (${response.status})`);
   }
   return response.blob();
+}
+
+export async function mountBlobToFfmpegFile(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  fileName: string,
+  blob: Blob
+): Promise<{ mountPoint: string; filePath: string }> {
+  const mountPoint = `/mnt-${Date.now()}-${Math.round(Math.random() * 10000)}`;
+  await ffmpeg.createDir(mountPoint);
+  await ffmpeg.mount(FFMPEG_WORKER_FS_TYPE as Parameters<typeof ffmpeg.mount>[0], {
+    blobs: [{ name: fileName, data: blob }],
+  }, mountPoint);
+  return {
+    mountPoint,
+    filePath: `${mountPoint}/${fileName}`,
+  };
+}
+
+export async function unmountFfmpegMountPoint(
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg,
+  mountPoint: string
+): Promise<void> {
+  await ffmpeg.unmount(mountPoint).catch(() => {});
+  await ffmpeg.deleteDir(mountPoint).catch(() => {});
 }
 
 function getContainerAudioArgs(
@@ -130,6 +162,17 @@ async function runEncodeWithProgress(params: {
   let lastProgressAt = startedAt;
   let latestPhasePercent = 0;
   let monitorTimer: number | null = null;
+  const recentLogs: string[] = [];
+  let latestEncodeLog = "";
+
+  const summarizeEncodeLog = (message: string): string => {
+    const normalized = message.replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    if (normalized.startsWith("frame=") || normalized.includes(" time=")) {
+      return normalized.slice(0, 120);
+    }
+    return "";
+  };
 
   const updateEncodeStatus = () => {
     const now = Date.now();
@@ -142,10 +185,10 @@ async function runEncodeWithProgress(params: {
 
     const detail = waitingForFirstProgress
       ? isStalled
-        ? `인코더 첫 응답 지연 중... ${elapsedSeconds}s`
-        : `인코더 시작 중... ${elapsedSeconds}s`
+        ? `인코더 첫 응답 지연 중... ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
+        : `인코더 시작 중... ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
       : isStalled
-        ? `인코딩 지연 중... ${latestPhasePercent}% · ${elapsedSeconds}s`
+        ? `인코딩 지연 중... ${latestPhasePercent}% · ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
         : `인코딩 ${latestPhasePercent}% · ${elapsedSeconds}s`;
 
     setExportProgress({
@@ -178,20 +221,39 @@ async function runEncodeWithProgress(params: {
       isStalled: false,
     });
   };
+  const onFfmpegLog = ({ message }: { type: string; message: string }) => {
+    const normalized = message.trim();
+    if (!normalized) return;
+    recentLogs.push(normalized);
+    if (recentLogs.length > 12) {
+      recentLogs.splice(0, recentLogs.length - 12);
+    }
+    const summarized = summarizeEncodeLog(normalized);
+    if (summarized) {
+      latestEncodeLog = summarized;
+    }
+  };
 
   ffmpeg.on("progress", onFfmpegProgress);
+  ffmpeg.on("log", onFfmpegLog);
   try {
     updateEncodeStatus();
     monitorTimer = window.setInterval(updateEncodeStatus, 1000);
     const exitCode = await ffmpeg.exec(args);
     if (exitCode !== 0) {
-      throw new Error(`ffmpeg exited with code ${exitCode}`);
+      const errorDetail = recentLogs.slice(-4).join(" | ");
+      throw new Error(
+        errorDetail
+          ? `ffmpeg exited with code ${exitCode}: ${errorDetail}`
+          : `ffmpeg exited with code ${exitCode}`
+      );
     }
   } finally {
     if (monitorTimer !== null) {
       window.clearInterval(monitorTimer);
     }
     ffmpeg.off("progress", onFfmpegProgress);
+    ffmpeg.off("log", onFfmpegLog);
   }
 }
 
@@ -202,25 +264,50 @@ export async function encodeOutputFile(params: {
   compressionSettings: VideoExportCompressionSettings;
   hasAudioInput: boolean;
   outputFileName: string;
+  outputSize: { width: number; height: number };
+  videoTune?: "animation" | "fastdecode";
+  preferFastEncoding?: boolean;
   encodeBase: number;
   encodeWeight: number;
   setExportProgress: (value: ExportProgressState) => void;
 }): Promise<void> {
-  const { ffmpeg, format, baseArgs, compressionSettings, hasAudioInput, outputFileName, encodeBase, encodeWeight, setExportProgress } = params;
+  const {
+    ffmpeg,
+    format,
+    baseArgs,
+    compressionSettings,
+    hasAudioInput,
+    outputFileName,
+    outputSize,
+    videoTune,
+    preferFastEncoding,
+    encodeBase,
+    encodeWeight,
+    setExportProgress,
+  } = params;
+  const outputPixelCount = outputSize.width * outputSize.height;
+  const shouldUseLowMemoryX264 = outputPixelCount >= LARGE_EXPORT_PIXEL_THRESHOLD;
+  const videoPreset = shouldUseLowMemoryX264
+    ? (preferFastEncoding ? "ultrafast" : "veryfast")
+    : compressionSettings.preset;
   const args = [
     ...baseArgs,
     "-c:v",
     "libx264",
+    "-threads",
+    "1",
     "-preset",
-    compressionSettings.preset,
+    videoPreset,
     "-crf",
     String(compressionSettings.crf),
-    "-tune",
-    "animation",
+    ...(videoTune ? ["-tune", videoTune] : []),
     "-profile:v",
     "high",
     "-pix_fmt",
     "yuv420p",
+    ...(shouldUseLowMemoryX264
+      ? ["-x264-params", "rc-lookahead=0:sync-lookahead=0:ref=1:bframes=0"]
+      : []),
     ...(format === "mov" || format === "mp4" ? ["-movflags", "+faststart"] : []),
     ...getContainerAudioArgs(format, hasAudioInput),
     outputFileName,

@@ -123,15 +123,15 @@ export async function clearAllMediaBlobs(): Promise<void> {
 /**
  * Check if a sourceUrl is stored in IndexedDB (uses idb:// protocol)
  */
-export function isStoredMedia(sourceUrl: string): boolean {
-  return sourceUrl.startsWith("idb://");
+export function isStoredMedia(sourceUrl?: string | null): boolean {
+  return typeof sourceUrl === "string" && sourceUrl.startsWith("idb://");
 }
 
 /**
  * Get clip ID from stored media URL
  */
-export function getClipIdFromStoredUrl(sourceUrl: string): string {
-  return sourceUrl.replace("idb://", "");
+export function getClipIdFromStoredUrl(sourceUrl?: string | null): string {
+  return typeof sourceUrl === "string" ? sourceUrl.replace("idb://", "") : "";
 }
 
 /**

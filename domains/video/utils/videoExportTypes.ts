@@ -20,7 +20,7 @@ export interface ExportProgressState {
 
 export interface VideoExportCompressionSettings {
   crf: number;
-  preset: "medium" | "slow";
+  preset: "ultrafast" | "veryfast" | "medium" | "slow";
 }
 
 export interface ResolvedVideoExportConfig {
