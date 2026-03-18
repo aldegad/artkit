@@ -8,6 +8,15 @@ const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+async function normalizeBlobForStorage(blob: Blob): Promise<Blob> {
+  if (!(blob instanceof File)) {
+    return blob;
+  }
+
+  const buffer = await blob.arrayBuffer();
+  return new Blob([buffer], { type: blob.type });
+}
+
 /**
  * Get or create the IndexedDB database
  */
@@ -38,10 +47,11 @@ function getDB(): Promise<IDBDatabase> {
  */
 export async function saveMediaBlob(clipId: string, blob: Blob): Promise<void> {
   const db = await getDB();
+  const storedBlob = await normalizeBlobForStorage(blob);
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readwrite");
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(blob, clipId);
+    const request = store.put(storedBlob, clipId);
 
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve();
