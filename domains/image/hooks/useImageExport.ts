@@ -4,6 +4,7 @@ import { useCallback, RefObject } from "react";
 import { UnifiedLayer, OutputFormat, CropArea } from "../types";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
+import { trackEvent } from "@/shared/utils/analytics";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
 
 export type ImageExportMode = "single" | "layers" | "sprite";
@@ -46,6 +47,13 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     activeLayerId,
     getDisplayDimensions,
   } = options;
+
+  const emitImageExportEvent = useCallback((params: Record<string, string | number | boolean>) => {
+    trackEvent("file_export", {
+      tool: "image",
+      ...params,
+    });
+  }, []);
 
   const exportImage = useCallback((fileName: string, format: OutputFormat, quality: number) => {
     if (layers.length === 0) return;
@@ -152,6 +160,11 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       link.download = `${fileName}.${extension}`;
       link.click();
       URL.revokeObjectURL(url);
+      emitImageExportEvent({
+        export_mode: "single",
+        output_format: format,
+        has_crop: Boolean(cropArea),
+      });
       return;
     }
 
@@ -166,11 +179,16 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
         link.download = `${fileName}.${extension}`;
         link.click();
         URL.revokeObjectURL(url);
+        emitImageExportEvent({
+          export_mode: "single",
+          output_format: format,
+          has_crop: Boolean(cropArea),
+        });
       },
       mimeType,
       quality,
     );
-  }, [layers, layerCanvasesRef, cropArea, getDisplayDimensions]);
+  }, [layers, layerCanvasesRef, cropArea, getDisplayDimensions, emitImageExportEvent]);
 
   const exportSelectedLayers = useCallback(async (
     fileName: string,
@@ -281,7 +299,14 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     link.download = `${fileName}.zip`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
+    emitImageExportEvent({
+      export_mode: "layers",
+      output_format: format,
+      layer_count: layerEntries.length,
+      object_fit: fitToObject,
+      background_applied: Boolean(backgroundColor),
+    });
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions, emitImageExportEvent]);
 
   const exportSelectedLayersAsSprite = useCallback((
     fileName: string,
@@ -398,6 +423,13 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       link.download = `${fileName}.${extension}`;
       link.click();
       URL.revokeObjectURL(url);
+      emitImageExportEvent({
+        export_mode: "sprite",
+        output_format: format,
+        layer_count: frameEntries.length,
+        object_fit: fitToObject,
+        background_applied: Boolean(backgroundColor),
+      });
       return;
     }
 
@@ -412,11 +444,18 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
         link.download = `${fileName}.${extension}`;
         link.click();
         URL.revokeObjectURL(url);
+        emitImageExportEvent({
+          export_mode: "sprite",
+          output_format: format,
+          layer_count: frameEntries.length,
+          object_fit: fitToObject,
+          background_applied: Boolean(backgroundColor),
+        });
       },
       mimeType,
       quality,
     );
-  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions]);
+  }, [layers, selectedLayerIds, activeLayerId, layerCanvasesRef, getDisplayDimensions, emitImageExportEvent]);
 
   const handleExportFromModal = useCallback((
     fileName: string,

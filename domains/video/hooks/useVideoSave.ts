@@ -22,6 +22,7 @@ import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorag
 import { TIMELINE } from "../constants";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
+import { trackEvent } from "@/shared/utils/analytics";
 
 // ============================================
 // Types
@@ -217,6 +218,12 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
       setProjectName(savedProject.name);
       setProjectGroup(normalizeProjectGroupName(savedProject.projectGroup));
       await refreshProjectList();
+      trackEvent("project_save", {
+        tool: "video",
+        save_mode: "save",
+        track_count: tracks.length,
+        clip_count: clips.length,
+      });
     } catch (error) {
       console.error("Failed to save video project:", error);
       throw error;
@@ -255,6 +262,12 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         setProjectName(savedProject.name);
         setProjectGroup(normalizeProjectGroupName(savedProject.projectGroup));
         await refreshProjectList();
+        trackEvent("project_save", {
+          tool: "video",
+          save_mode: "save_as",
+          track_count: tracks.length,
+          clip_count: clips.length,
+        });
       } catch (error) {
         console.error("Failed to save video project:", error);
         throw error;

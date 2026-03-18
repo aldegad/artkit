@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { showErrorToast } from "@/shared/components";
+import { trackEvent } from "@/shared/utils/analytics";
 
 interface UseEditorSaveActionsOptions {
   saveProject: () => Promise<boolean>;
@@ -26,6 +27,10 @@ export function useEditorSaveActions(
     const saved = await saveProject();
     if (saved) {
       setSaveCount((count) => count + 1);
+      trackEvent("project_save", {
+        tool: "image",
+        save_mode: "save",
+      });
     }
   }, [saveProject]);
 
@@ -33,6 +38,10 @@ export function useEditorSaveActions(
     const saved = await saveAsProject();
     if (saved) {
       setSaveCount((count) => count + 1);
+      trackEvent("project_save", {
+        tool: "image",
+        save_mode: "save_as",
+      });
     }
   }, [saveAsProject]);
 

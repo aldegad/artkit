@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useSoundEditor } from "../contexts/SoundEditorContext";
 import { useLanguage } from "@/shared/contexts/LanguageContext";
 import { AudioOutputFormat, AUDIO_FORMATS } from "../types";
+import { trackEvent } from "@/shared/utils/analytics";
 
 export function FormatConverter() {
   const { t } = useLanguage();
@@ -18,6 +19,13 @@ export function FormatConverter() {
     try {
       const blob = await exportTrimmed(selectedFormat);
       if (blob) {
+        trackEvent("file_export", {
+          tool: "sound",
+          feature: "trim_export",
+          output_format: selectedFormat,
+          trimmed: Boolean(trimRegion),
+        });
+
         // Create download link
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");

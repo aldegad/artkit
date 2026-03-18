@@ -7,6 +7,7 @@ import { SettingsMenu } from "@/shared/components";
 import ArtkitLogo from "@/shared/components/app/icons/ArtkitLogo";
 import { LandingImageIcon, LandingVideoIcon, LandingSpriteIcon, SidebarConverterIcon, SidebarSoundIcon, SidebarIconsIcon } from "@/shared/components/icons";
 import { emitImmediatePlaybackStop } from "@/domains/video/utils/playbackStopSignal";
+import { trackEvent } from "@/shared/utils/analytics";
 
 interface Tool {
   id: string;
@@ -62,8 +63,13 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const { t } = useLanguage();
   const isMobile = !!onNavigate;
-  const handleNavigate = () => {
+  const handleNavigate = (target?: string) => {
     emitImmediatePlaybackStop();
+    if (target) {
+      trackEvent("sidebar_navigation_click", {
+        target,
+      });
+    }
     onNavigate?.();
   };
 
@@ -75,7 +81,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
       {!isMobile && (
         <Link
           href="/"
-          onClick={handleNavigate}
+          onClick={() => handleNavigate("home")}
           className="h-10 w-full flex items-center justify-center shrink-0 text-accent-primary hover:text-accent-primary/80 transition-colors"
           aria-label="Home"
         >
@@ -90,7 +96,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           <Link
             key={tool.id}
             href={tool.path}
-            onClick={handleNavigate}
+            onClick={() => handleNavigate(tool.id)}
             className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
               isActive
                 ? "bg-accent-primary text-white"
