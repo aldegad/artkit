@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { showErrorToast } from "@/shared/components";
 import { downloadBlob } from "@/shared/utils";
+import { trackEvent } from "@/shared/utils/analytics";
 import {
   getClipScaleX,
   getClipScaleY,
@@ -51,6 +52,16 @@ interface UseVideoExportReturn {
     exportFileName?: string,
     options?: VideoExportOptions
   ) => Promise<void>;
+}
+
+interface TrackRenderEntry {
+  clip: Clip;
+}
+
+interface TimedTrackMask {
+  startTime: number;
+  endTime: number;
+  maskData: string;
 }
 
 function sanitizeFileName(name: string): string {
@@ -144,11 +155,72 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   return new Blob([wavBuffer], { type: "audio/wav" });
 }
 
+function findActiveClipAtTime(trackClips: Clip[], time: number): Clip | null {
+  if (trackClips.length === 0) return null;
+
+  let lo = 0;
+  let hi = trackClips.length - 1;
+  let candidate = -1;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (trackClips[mid].startTime <= time) {
+      candidate = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (candidate < 0) return null;
+
+  for (let index = candidate; index >= 0; index -= 1) {
+    const clip = trackClips[index];
+    if (clip.startTime + clip.duration <= time) break;
+    if (time >= clip.startTime && time < clip.startTime + clip.duration) {
+      return clip;
+    }
+  }
+
+  return null;
+}
+
+function findActiveMaskAtTime(trackMasks: TimedTrackMask[], time: number): string | null {
+  if (trackMasks.length === 0) return null;
+
+  let lo = 0;
+  let hi = trackMasks.length - 1;
+  let candidate = -1;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (trackMasks[mid].startTime <= time) {
+      candidate = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (candidate < 0) return null;
+
+  for (let index = candidate; index >= 0; index -= 1) {
+    const mask = trackMasks[index];
+    if (mask.endTime <= time) break;
+    if (time >= mask.startTime && time < mask.endTime) {
+      return mask.maskData;
+    }
+  }
+
+  return null;
+}
+
 async function renderTimelineAudioBuffer(
   clips: Clip[],
   tracks: VideoTrack[],
   timelineStart: number,
-  projectDuration: number
+  projectDuration: number,
+  sourceBufferCache: Map<string, AudioBuffer | null>
 ): Promise<AudioBuffer | null> {
   if (typeof OfflineAudioContext === "undefined" || typeof AudioContext === "undefined") {
     throw new Error("browser does not support offline audio rendering");
@@ -160,7 +232,6 @@ async function renderTimelineAudioBuffer(
   const frameCount = Math.max(1, Math.ceil(duration * sampleRate));
   const offlineContext = new OfflineAudioContext(2, frameCount, sampleRate);
   const decodeContext = new AudioContext();
-  const sourceBufferCache = new Map<string, AudioBuffer | null>();
   let hasScheduledAudio = false;
 
   try {
@@ -306,6 +377,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
   const { project, projectName, playback, clips, tracks, masksMap, exportFailedLabel, onSettled } = options;
   const ffmpegRef = useRef<import("@ffmpeg/ffmpeg").FFmpeg | null>(null);
   const ffmpegLoadingPromiseRef = useRef<Promise<import("@ffmpeg/ffmpeg").FFmpeg> | null>(null);
+  const audioBufferCacheRef = useRef<Map<string, AudioBuffer | null>>(new Map());
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgressState | null>(null);
 
@@ -391,18 +463,6 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       exportMaskTmpCtx.imageSmoothingQuality = "high";
     }
 
-    const getClipForExport = (trackId: string, time: number) =>
-      clips.find((c) => c.trackId === trackId && time >= c.startTime && time < c.startTime + c.duration) || null;
-
-    const getMaskForExport = (trackId: string, time: number): string | null => {
-      for (const mask of masksMap.values()) {
-        if (mask.trackId !== trackId) continue;
-        if (time < mask.startTime || time >= mask.startTime + mask.duration) continue;
-        return mask.maskData;
-      }
-      return null;
-    };
-
     try {
       setIsExporting(true);
       setExportProgress({
@@ -418,6 +478,39 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       const captureWeight = 65;
       const encodeBase = 70;
       const encodeWeight = 28;
+      const sortedTracks = [...tracks].reverse();
+
+      const clipsByTrack = new Map<string, Clip[]>();
+      for (const clip of clips) {
+        const list = clipsByTrack.get(clip.trackId);
+        if (list) {
+          list.push(clip);
+        } else {
+          clipsByTrack.set(clip.trackId, [clip]);
+        }
+      }
+      for (const trackClips of clipsByTrack.values()) {
+        trackClips.sort((a, b) => a.startTime - b.startTime);
+      }
+
+      const masksByTrack = new Map<string, TimedTrackMask[]>();
+      for (const mask of masksMap.values()) {
+        if (!mask.maskData) continue;
+        const list = masksByTrack.get(mask.trackId);
+        const timedMask = {
+          startTime: mask.startTime,
+          endTime: mask.startTime + mask.duration,
+          maskData: mask.maskData,
+        };
+        if (list) {
+          list.push(timedMask);
+        } else {
+          masksByTrack.set(mask.trackId, [timedMask]);
+        }
+      }
+      for (const trackMasks of masksByTrack.values()) {
+        trackMasks.sort((a, b) => a.startTime - b.startTime);
+      }
 
       const imageClips = clips.filter((c) => c.type === "image");
       await Promise.all(
@@ -474,30 +567,51 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         exportCtx.fillStyle = backgroundColor;
         exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
-        const sortedTracks = [...tracks].reverse();
+        const activeEntries: TrackRenderEntry[] = [];
+        const pendingVideoSeeks: Promise<boolean>[] = [];
+
         for (const track of sortedTracks) {
           if (!track.visible) continue;
-          const clip = getClipForExport(track.id, frameTime);
+          const trackClips = clipsByTrack.get(track.id);
+          if (!trackClips) continue;
+          const clip = findActiveClipAtTime(trackClips, frameTime);
           if (!clip || !clip.visible || clip.type === "audio") continue;
+          activeEntries.push({ clip });
 
-          let sourceEl: CanvasImageSource | null = null;
           if (clip.type === "video") {
             const video = exportVideoCache.get(clip.id);
             if (!video) continue;
             const sourceTime = getSourceTime(clip, frameTime);
-            const seekOk = await seekExportVideoFrame(video, sourceTime);
-            if (!seekOk) continue;
+            pendingVideoSeeks.push(seekExportVideoFrame(video, sourceTime));
+          }
+        }
+
+        if (pendingVideoSeeks.length > 0) {
+          await Promise.all(pendingVideoSeeks);
+        }
+
+        for (const { clip } of activeEntries) {
+          let sourceEl: CanvasImageSource | null = null;
+          if (clip.type === "video") {
+            const video = exportVideoCache.get(clip.id);
+            if (!video || video.readyState < 2) continue;
+            const sourceTime = getSourceTime(clip, frameTime);
+            if (Math.abs(video.currentTime - sourceTime) > 0.05) continue;
             sourceEl = video;
           } else if (clip.type === "image") {
             const img = exportImageCache.get(clip.sourceUrl);
-            if (img && img.complete && img.naturalWidth > 0) sourceEl = img;
+            if (img && img.complete && img.naturalWidth > 0) {
+              sourceEl = img;
+            }
           }
           if (!sourceEl) continue;
+
           const clipScaleX = getClipScaleX(clip);
           const clipScaleY = getClipScaleY(clip);
           const clipPosition = resolveClipPositionAtTimelineTime(clip, frameTime);
 
-          const maskData = getMaskForExport(clip.trackId, frameTime);
+          const trackMasks = masksByTrack.get(clip.trackId) ?? [];
+          const maskData = findActiveMaskAtTime(trackMasks, frameTime);
           if (maskData && exportMaskTmpCtx) {
             const maskImg = exportMaskImgCache.get(maskData);
             if (maskImg && maskImg.complete && maskImg.naturalWidth > 0) {
@@ -554,7 +668,14 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
           percent: 70,
           detail: "Mixing timeline audio...",
         });
-        const mixedAudio = await renderTimelineAudioBuffer(clips, tracks, exportStart, duration);
+        const sourceBufferCache = audioBufferCacheRef.current;
+        const mixedAudio = await renderTimelineAudioBuffer(
+          clips,
+          tracks,
+          exportStart,
+          duration,
+          sourceBufferCache
+        );
         if (mixedAudio) {
           const wavBlob = audioBufferToWavBlob(mixedAudio);
           await ffmpeg.writeFile(wavFileName, new Uint8Array(await wavBlob.arrayBuffer()));
@@ -709,6 +830,14 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         new Blob([outputCopy.buffer], { type: isMov ? "video/quicktime" : "video/mp4" }),
         `${sanitizeFileName(exportFileName || projectName)}.${format}`
       );
+      trackEvent("file_export", {
+        tool: "video",
+        output_format: format,
+        include_audio: hasAudioInput,
+        compression,
+        has_custom_range: hasCustomRange,
+        duration_seconds: Number(duration.toFixed(2)),
+      });
       setExportProgress({
         stage: "Finalizing",
         percent: 100,
@@ -721,13 +850,14 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
       try {
         const ffmpeg = ffmpegRef.current;
         if (ffmpeg) {
-          await ffmpeg.deleteFile(outputFileName).catch(() => {});
-          if (hasAudioInput) {
-            await ffmpeg.deleteFile(wavFileName).catch(() => {});
-          }
-          for (const frameName of frameNames) {
-            await ffmpeg.deleteFile(frameName).catch(() => {});
-          }
+          const cleanupTargets = [
+            outputFileName,
+            ...(hasAudioInput ? [wavFileName] : []),
+            ...frameNames,
+          ];
+          await Promise.all(
+            cleanupTargets.map((fileName) => ffmpeg.deleteFile(fileName).catch(() => {}))
+          );
         }
       } catch {
         // Best-effort cleanup.
