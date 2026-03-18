@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { ExportModal, Select } from "@/shared/components";
+import type {
+  ExportProgressState,
+  VideoExportCompression,
+  VideoExportFormat,
+  VideoExportOptions,
+} from "../utils/videoExportTypes";
 
 // ============================================
 // Types
@@ -13,11 +19,7 @@ interface VideoExportModalProps {
   onExport: (fileName: string, options: VideoExportOptions) => void;
   defaultFileName: string;
   isExporting: boolean;
-  exportProgress?: {
-    stage: string;
-    percent: number;
-    detail?: string;
-  } | null;
+  exportProgress?: ExportProgressState | null;
   translations: {
     export: string;
     cancel: string;
@@ -30,16 +32,6 @@ interface VideoExportModalProps {
     compressionBalanced: string;
     compressionSmallFile: string;
   };
-}
-
-export type VideoExportFormat = "mp4" | "mov";
-export type VideoExportCompression = "high" | "balanced" | "small";
-
-export interface VideoExportOptions {
-  format: VideoExportFormat;
-  includeAudio: boolean;
-  compression: VideoExportCompression;
-  backgroundColor: string;
 }
 
 // ============================================

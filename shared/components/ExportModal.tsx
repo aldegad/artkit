@@ -13,6 +13,10 @@ export interface ExportProgress {
   stage: string;
   percent: number;
   detail?: string;
+  phasePercent?: number;
+  elapsedSeconds?: number;
+  isIndeterminate?: boolean;
+  isStalled?: boolean;
 }
 
 export interface ExportModalProps {
@@ -68,6 +72,24 @@ export function ExportModal({
   children,
 }: ExportModalProps) {
   const canExport = !!fileName.trim() && !isExporting && !exportDisabled;
+
+  const overallPercent = exportProgress
+    ? Math.round(Math.max(0, Math.min(100, exportProgress.percent)))
+    : 0;
+  const phasePercent = exportProgress?.phasePercent;
+  const phaseStatusLabel = exportProgress
+    ? exportProgress.isIndeterminate
+      ? exportProgress.isStalled
+        ? "현재 단계 응답 지연"
+        : "현재 단계 진행률 계산 중"
+      : typeof phasePercent === "number"
+        ? `현재 단계 ${Math.round(Math.max(0, Math.min(100, phasePercent)))}%`
+        : null
+    : null;
+  const elapsedLabel =
+    typeof exportProgress?.elapsedSeconds === "number"
+      ? `${Math.max(0, exportProgress.elapsedSeconds)}s 경과`
+      : null;
 
   const handleExport = useCallback(() => {
     if (!canExport) return;
@@ -132,11 +154,19 @@ export function ExportModal({
               {exportProgress.detail}
             </div>
           )}
+          {(phaseStatusLabel || elapsedLabel || exportProgress) && (
+            <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-text-tertiary">
+              <div className="min-w-0 truncate">
+                {[phaseStatusLabel, elapsedLabel].filter(Boolean).join(" · ") || "진행 상태 확인 중"}
+              </div>
+              <div className="shrink-0">전체 {overallPercent}%</div>
+            </div>
+          )}
           {exportProgress && (
             <div className="mt-1 w-full h-1 bg-surface-tertiary rounded-full overflow-hidden">
               <div
                 className="h-full bg-accent-primary rounded-full transition-all"
-                style={{ width: `${Math.max(0, Math.min(100, exportProgress.percent))}%` }}
+                style={{ width: `${overallPercent}%` }}
               />
             </div>
           )}
