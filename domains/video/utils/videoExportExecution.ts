@@ -16,12 +16,14 @@ import {
   renderTimelineAudioBuffer,
   resolveSourceExtension,
   resolveVideoExportConfig,
+  VIDEO_EXPORT_EPSILON,
 } from "./videoExportHelpers";
 import {
   encodeOutputFile,
   loadExportVideoElement,
   mountBlobToFfmpegFile,
   readBinaryOutputFile,
+  resolveClipSourceBlob,
   seekExportVideoFrame,
   unmountFfmpegMountPoint,
   writeBlobToFfmpegFile,
@@ -268,13 +270,60 @@ export async function runDirectVideoExport(params: {
     "1000000",
     "-i",
     sourceInput.filePath,
-    "-map",
-    "0:v:0",
-    "-vf",
-    videoFilters.join(","),
-    "-r",
-    String(config.frameRate),
   ];
+
+  if (plan.overlays.length > 0) {
+    for (const [index, overlay] of plan.overlays.entries()) {
+      const overlayBlob = await resolveClipSourceBlob(overlay.clip, new Map<string, Blob>());
+      const overlayInput = await mountBlobToFfmpegFile(
+        session.ffmpeg,
+        `${session.filePrefix}-overlay-${index}.${resolveSourceExtension(overlayBlob.type || overlay.clip.sourceUrl)}`,
+        overlayBlob
+      );
+      session.cleanupMountPoints.push(overlayInput.mountPoint);
+      baseArgs.push("-loop", "1", "-i", overlayInput.filePath);
+    }
+  }
+
+  if (plan.overlays.length > 0) {
+    const baseVideoLabel = "basev0";
+    const filterSections = [`[0:v]${videoFilters.join(",")},format=rgba[${baseVideoLabel}]`];
+    let currentLabel = baseVideoLabel;
+
+    plan.overlays.forEach((overlay, index) => {
+      const overlayInputIndex = index + 1;
+      const overlayLabel = `overlayv${index}`;
+      const outputLabel = `compv${index}`;
+      const opacityFilters = Math.abs(overlay.opacity - 100) > VIDEO_EXPORT_EPSILON
+        ? `format=rgba,colorchannelmixer=aa=${(overlay.opacity / 100).toFixed(6)}`
+        : "format=rgba";
+      const enableExpr = `between(t\\,${overlay.startTime.toFixed(6)}\\,${overlay.endTime.toFixed(6)})`;
+
+      filterSections.push(`[${overlayInputIndex}:v]${opacityFilters}[${overlayLabel}]`);
+      filterSections.push(
+        `[${currentLabel}][${overlayLabel}]overlay=${overlay.offsetX}:${overlay.offsetY}:enable='${enableExpr}':eof_action=pass[${outputLabel}]`
+      );
+      currentLabel = outputLabel;
+    });
+
+    baseArgs.push(
+      "-filter_complex",
+      filterSections.join(";"),
+      "-map",
+      `[${currentLabel}]`,
+      "-r",
+      String(config.frameRate)
+    );
+  } else {
+    baseArgs.push(
+      "-map",
+      "0:v:0",
+      "-vf",
+      videoFilters.join(","),
+      "-r",
+      String(config.frameRate)
+    );
+  }
 
   let hasAudioInput = false;
   if (plan.includeAudio) {
@@ -311,6 +360,7 @@ export async function runDirectVideoExport(params: {
   metrics.outputReadMs = performance.now() - outputReadStartedAt;
   console.info("[VideoExport] direct export metrics", {
     subStrategy: decision.subStrategy,
+    overlays: plan.overlays.length,
     ...metrics,
   });
   return finalizeVideoExport({ outputBytes, config, hasAudioInput });

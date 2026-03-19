@@ -85,12 +85,14 @@ export async function seekExportVideoFrame(
   });
 }
 
-function getSourceBlobCacheKey(clip: VideoClip): string {
+type ClipSourceReference = Pick<VideoClip, "id" | "sourceUrl">;
+
+function getSourceBlobCacheKey(clip: ClipSourceReference): string {
   return `${clip.id}:${clip.sourceUrl ?? ""}`;
 }
 
 export async function resolveClipSourceBlob(
-  clip: VideoClip,
+  clip: ClipSourceReference,
   sourceBlobCache?: Map<string, Blob>
 ): Promise<Blob> {
   const cacheKey = getSourceBlobCacheKey(clip);

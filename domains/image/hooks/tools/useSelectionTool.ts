@@ -91,7 +91,12 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const [marqueeSubTool, setMarqueeSubTool] = useState<MarqueeSubTool>("freeRect");
   const [selectionCombineMode, setSelectionCombineMode] = useState<SelectionCombineMode>("new");
   const [lassoPath, setLassoPath] = useState<Point[] | null>(null);
-  const setSelectionMask = setContextSelectionMask;
+  const setSelectionMask = useCallback((newMask: SetStateAction<SelectionMask | null>) => {
+    const value = typeof newMask === "function"
+      ? newMask(selectionMask)
+      : newMask;
+    setContextSelectionMask(value);
+  }, [selectionMask, setContextSelectionMask]);
 
   const setSelection = useCallback((newSelection: SetStateAction<CropArea | null>) => {
     const value = typeof newSelection === "function"

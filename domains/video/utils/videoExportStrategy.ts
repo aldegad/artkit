@@ -66,12 +66,14 @@ function resolveDirectSubStrategy(params: {
     plan.includeAudio &&
     Math.abs(plan.audioVolume - 100) > VIDEO_EXPORT_EPSILON;
   const hasAudioTempoChange = config.includeAudio && plan.includeAudio && hasSpeedChange;
+  const hasOverlays = plan.overlays.length > 0;
   const formatCompatible = isFormatCompatibleForDirectCopy(sourceExtension, config.format);
 
   const canCopy =
     !hasSpeedChange &&
     !hasCrop &&
     !hasTrim &&
+    !hasOverlays &&
     !hasAudioAdjustments &&
     !hasAudioTempoChange &&
     formatCompatible;
@@ -88,6 +90,7 @@ function resolveDirectSubStrategy(params: {
   if (hasSpeedChange) reasons.push("속도 변경");
   if (hasCrop) reasons.push("crop");
   if (hasTrim) reasons.push("trim");
+  if (hasOverlays) reasons.push(`오버레이 ${plan.overlays.length}개`);
   if (hasAudioAdjustments) reasons.push("오디오 볼륨 변경");
   if (hasAudioTempoChange) reasons.push("오디오 tempo 변경");
   if (!formatCompatible) reasons.push("출력 포맷 비호환");
@@ -111,6 +114,13 @@ async function resolveDirectEngine(params: {
     return {
       engine: "ffmpeg",
       reason: "원본 스트림 복사를 위해 ffmpeg 직접 경로를 사용합니다.",
+    };
+  }
+
+  if (plan.overlays.length > 0) {
+    return {
+      engine: "ffmpeg",
+      reason: `오버레이 ${plan.overlays.length}개를 필터 합성하기 위해 ffmpeg 직접 경로를 사용합니다.`,
     };
   }
 
