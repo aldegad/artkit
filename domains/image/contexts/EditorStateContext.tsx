@@ -7,7 +7,7 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { EditorToolMode, OutputFormat, SavedImageProject, Point, CropArea } from "../types";
+import { EditorToolMode, OutputFormat, SavedImageProject, Point, CropArea, SelectionMask } from "../types";
 
 // ============================================
 // State Types
@@ -27,8 +27,9 @@ export interface EditorState {
   outputFormat: OutputFormat;
   quality: number;
 
-  // Selection (marquee)
+  // Selection (marquee) — selectionMask 있으면 여러 영역 점선, 없으면 bbox만
   selection: CropArea | null;
+  selectionMask: SelectionMask | null;
 
   // Rulers & Guides
   showRulers: boolean;
@@ -70,6 +71,7 @@ export interface EditorStateContextValue {
 
   // Selection setters
   setSelection: (selection: CropArea | null) => void;
+  setSelectionMask: (mask: SelectionMask | null) => void;
 
   // Rulers & Guides setters
   setShowRulers: (show: boolean) => void;
@@ -112,6 +114,7 @@ const initialState: EditorState = {
 
   // Selection (marquee)
   selection: null,
+  selectionMask: null,
 
   // Rulers & Guides
   showRulers: true,
@@ -195,9 +198,12 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setState((prev) => ({ ...prev, quality }));
   }, []);
 
-  // Selection setter
+  // Selection setters (selectionMask를 컨텍스트에 두어 리마운트 시에도 여러 영역 점선 유지)
   const setSelection = useCallback((selection: CropArea | null) => {
     setState((prev) => ({ ...prev, selection }));
+  }, []);
+  const setSelectionMask = useCallback((selectionMask: SelectionMask | null) => {
+    setState((prev) => ({ ...prev, selectionMask }));
   }, []);
 
   // Rulers & Guides setters
@@ -267,6 +273,7 @@ export function EditorStateProvider({ children }: EditorStateProviderProps) {
     setOutputFormat,
     setQuality,
     setSelection,
+    setSelectionMask,
     setShowRulers,
     setShowGuides,
     setLockGuides,

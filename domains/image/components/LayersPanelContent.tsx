@@ -194,6 +194,8 @@ export default function LayersPanelContent() {
     toggleLayerLock,
     duplicateLayer,
     mergeLayerDown,
+    createClippingMask,
+    releaseClippingMask,
     deleteLayer,
     renameLayer,
     updateLayer,
@@ -326,6 +328,8 @@ export default function LayersPanelContent() {
                 const isSelected = isLayerSelected(layer.id);
                 const isActive = activeLayerId === layer.id;
                 const canMergeDown = index < sortedLayers.length - 1;
+                const canCreateClippingMask = index < sortedLayers.length - 1;
+                const hasClippingMask = !!layer.clippingMaskLayerId;
 
                 return (
                   <div
@@ -472,6 +476,30 @@ export default function LayersPanelContent() {
                       >
                         <MergeDownIcon className="w-3.5 h-3.5" />
                       </button>
+                      {hasClippingMask ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            releaseClippingMask(layer.id);
+                          }}
+                          className="px-1 py-0.5 rounded text-[10px] text-text-quaternary hover:text-text-primary"
+                          title="Release Clipping Mask"
+                        >
+                          Unclip
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            createClippingMask(layer.id);
+                          }}
+                          disabled={!canCreateClippingMask}
+                          className="px-1 py-0.5 rounded text-[10px] text-text-quaternary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Create Clipping Mask (clip to layer below)"
+                        >
+                          Clip
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

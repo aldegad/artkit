@@ -50,6 +50,8 @@ interface UseMouseHandlersOptions {
 
   // Selection functions (from useSelectionTool)
   marqueeSubTool: MarqueeSubTool;
+  selectionCombineMode: import("../types").SelectionCombineMode;
+  previousCombineRef: RefObject<{ selection: CropArea; mask: SelectionMask | null } | null>;
   lassoPath: Point[] | null;
   setLassoPath: React.Dispatch<React.SetStateAction<Point[] | null>>;
   selectionMask: SelectionMask | null;
@@ -153,6 +155,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     stampSource,
     setStampSource,
     marqueeSubTool,
+    selectionCombineMode,
+    previousCombineRef,
     lassoPath,
     setLassoPath,
     selectionMask,
@@ -252,6 +256,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     ...baseOptions,
     activeLayerPosition,
     marqueeSubTool,
+    selectionCombineMode,
+    previousCombineRef,
     lassoPath,
     setLassoPath,
     selectionMask,
@@ -691,8 +697,12 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     // Handle crop mouse up
     cropHandler.handleMouseUp();
 
-    // Handle selection mouse up
-    selectionHandler.handleMouseUp();
+    // Handle selection mouse up only for selection creation.
+    // Re-running this on non-create mouseup can rebuild the selection from its bbox
+    // and collapse a multi-region mask into one large rectangle.
+    if (dragType === "create") {
+      selectionHandler.handleMouseUp();
+    }
 
     // Handle move mouse up
     moveHandler.handleMouseUp();

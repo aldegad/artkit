@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool, CropSizePivot } from "../../types";
+import { useState, useEffect } from "react";
+import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool, CropSizePivot, SelectionCombineMode } from "../../types";
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
 import { Select, Scrollbar, NumberScrubber, Popover } from "../../../../shared/components";
-import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon } from "@/shared/components/icons";
+import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon, CloseIcon } from "@/shared/components/icons";
 import { DeleteIcon } from "@/shared/components/icons";
+import { INTERACTION } from "../../constants";
 
 // ============================================
 // Types
@@ -29,10 +30,13 @@ export interface EditorToolOptionsProps {
   setSelectionOffset: React.Dispatch<React.SetStateAction<number>>;
   marqueeSubTool: MarqueeSubTool;
   setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
+  selectionCombineMode: SelectionCombineMode;
+  setSelectionCombineMode: React.Dispatch<React.SetStateAction<SelectionCombineMode>>;
   magicWandTolerance: number;
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   magicWandAllowAlpha: boolean;
   setMagicWandAllowAlpha: React.Dispatch<React.SetStateAction<boolean>>;
+  onClearSelection: () => void;
   onClearSelectionPixels: () => void;
   onInvertSelection: () => void;
   // Preset props
@@ -108,10 +112,13 @@ export function EditorToolOptions({
   setSelectionOffset,
   marqueeSubTool,
   setMarqueeSubTool,
+  selectionCombineMode,
+  setSelectionCombineMode,
   magicWandTolerance,
   setMagicWandTolerance,
   magicWandAllowAlpha,
   setMagicWandAllowAlpha,
+  onClearSelection,
   onClearSelectionPixels,
   onInvertSelection,
   activePreset,
@@ -168,22 +175,63 @@ export function EditorToolOptions({
   const [isPivotPopoverOpen, setIsPivotPopoverOpen] = useState(false);
   const pivotLabel = cropPivotOptions.find((option) => option.value === cropSizePivot)?.label || "Center";
 
-  // Handle width/height input changes with aspect ratio lock
+  // 자르기/변형 수치 입력: 입력 중에는 빈 칸·부분 입력 허용, blur 시에만 적용
+  const [cropWidthInput, setCropWidthInput] = useState<string | null>(null);
+  const [cropHeightInput, setCropHeightInput] = useState<string | null>(null);
+  const [transformWidthInput, setTransformWidthInput] = useState<string | null>(null);
+  const [transformHeightInput, setTransformHeightInput] = useState<string | null>(null);
+  // 둘 다 빈값일 때 한쪽만 입력해도 반대쪽에 아무 값도 넣지 않음. 입력한 쪽만 pending에 보관 후 둘 다 있을 때 setCropSize 호출
+  const [pendingCropWidth, setPendingCropWidth] = useState<number | null>(null);
+  const [pendingCropHeight, setPendingCropHeight] = useState<number | null>(null);
+
+  const MIN_SIZE = INTERACTION.MIN_CROP_SIZE;
+  const hasValidWidth = cropArea && cropArea.width >= MIN_SIZE;
+  const hasValidHeight = cropArea && cropArea.height >= MIN_SIZE;
+  const effectiveCropWidth = hasValidWidth ? cropArea!.width : pendingCropWidth;
+  const effectiveCropHeight = hasValidHeight ? cropArea!.height : pendingCropHeight;
+
+  useEffect(() => {
+    if (!cropArea) {
+      setPendingCropWidth(null);
+      setPendingCropHeight(null);
+    }
+  }, [cropArea]);
+
   const handleWidthChange = (newWidth: number) => {
-    if (lockAspect && cropArea && cropArea.width > 0) {
-      const ratio = cropArea.height / cropArea.width;
-      setCropSize(newWidth, Math.round(newWidth * ratio));
+    const w = Math.max(MIN_SIZE, newWidth);
+    if (lockAspect && hasValidWidth && hasValidHeight) {
+      const ratio = cropArea!.height / cropArea!.width;
+      setCropSize(w, Math.round(w * ratio));
+      setPendingCropWidth(null);
+      setPendingCropHeight(null);
     } else {
-      setCropSize(newWidth, cropArea?.height || newWidth);
+      const height = hasValidHeight ? cropArea!.height : pendingCropHeight;
+      if (height != null && height >= MIN_SIZE) {
+        setCropSize(w, height);
+        setPendingCropWidth(null);
+        setPendingCropHeight(null);
+      } else {
+        setPendingCropWidth(w);
+      }
     }
   };
 
   const handleHeightChange = (newHeight: number) => {
-    if (lockAspect && cropArea && cropArea.height > 0) {
-      const ratio = cropArea.width / cropArea.height;
-      setCropSize(Math.round(newHeight * ratio), newHeight);
+    const h = Math.max(MIN_SIZE, newHeight);
+    if (lockAspect && hasValidWidth && hasValidHeight) {
+      const ratio = cropArea!.width / cropArea!.height;
+      setCropSize(Math.round(h * ratio), h);
+      setPendingCropWidth(null);
+      setPendingCropHeight(null);
     } else {
-      setCropSize(cropArea?.width || newHeight, newHeight);
+      const width = hasValidWidth ? cropArea!.width : pendingCropWidth;
+      if (width != null && width >= MIN_SIZE) {
+        setCropSize(width, h);
+        setPendingCropWidth(null);
+        setPendingCropHeight(null);
+      } else {
+        setPendingCropHeight(h);
+      }
     }
   };
 
@@ -280,13 +328,37 @@ export function EditorToolOptions({
       {toolMode === "marquee" && (
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            <span className="text-xs text-text-secondary">Mode:</span>
+            <span className="text-xs text-text-secondary">Shape:</span>
             <Select
               value={marqueeSubTool}
               onChange={(value) => setMarqueeSubTool(value as MarqueeSubTool)}
               options={marqueeModeOptions}
               size="sm"
             />
+          </div>
+          <div className="flex items-center gap-0.5" title="선택 영역 결합 모드 (새로/추가/제거/교차)">
+            {(
+              [
+                { value: "new" as const, label: "새로", title: "새 선택 (기존 제거)" },
+                { value: "add" as const, label: "+", title: "추가 영역 선택" },
+                { value: "subtract" as const, label: "−", title: "선택 영역 제거" },
+                { value: "intersect" as const, label: "∩", title: "선택 영역 교차" },
+              ] as const
+            ).map(({ value, label, title }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setSelectionCombineMode(value)}
+                title={title}
+                className={`min-w-[28px] h-7 px-1.5 text-xs rounded border transition-colors ${
+                  selectionCombineMode === value
+                    ? "bg-accent-primary text-white border-accent-primary"
+                    : "bg-surface-primary border-border-default text-text-secondary hover:bg-interactive-hover hover:text-text-primary"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <div className="w-px h-4 bg-border-default" />
           <NumberScrubber
@@ -302,10 +374,19 @@ export function EditorToolOptions({
           <button
             onClick={onInvertSelection}
             disabled={!selection}
-            className="px-2 py-0.5 text-xs rounded transition-colors hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
-            title="반전"
+            className="px-3 py-1.5 text-xs font-medium rounded border border-border-default bg-surface-primary text-text-primary hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="선택 영역 반전"
           >
-            반전
+            선택 반전
+          </button>
+          <button
+            onClick={onClearSelection}
+            disabled={!selection}
+            className="px-2 py-0.5 text-xs rounded transition-colors flex items-center gap-1 hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
+            title="선택 해제"
+          >
+            <CloseIcon className="w-3.5 h-3.5" />
+            <span>선택 해제</span>
           </button>
           <button
             onClick={onClearSelectionPixels}
@@ -362,21 +443,37 @@ export function EditorToolOptions({
             <span className="text-xs text-text-secondary">W:</span>
             <input
               type="number"
-              value={cropArea?.width ? Math.round(cropArea.width) : ""}
-              onChange={(e) => handleWidthChange(Math.max(10, parseInt(e.target.value) || 10))}
+              value={cropWidthInput !== null ? cropWidthInput : (effectiveCropWidth != null ? String(Math.round(effectiveCropWidth)) : "")}
+              onFocus={() => setCropWidthInput(effectiveCropWidth != null ? String(Math.round(effectiveCropWidth)) : "")}
+              onChange={(e) => setCropWidthInput(e.target.value)}
+              onBlur={() => {
+                const parsed = parseInt(cropWidthInput ?? "", 10);
+                if (!Number.isNaN(parsed)) {
+                  handleWidthChange(Math.max(MIN_SIZE, parsed));
+                }
+                setCropWidthInput(null);
+              }}
               placeholder="---"
               className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-              min={10}
+              min={MIN_SIZE}
             />
             <span className="text-xs text-text-tertiary">×</span>
             <span className="text-xs text-text-secondary">H:</span>
             <input
               type="number"
-              value={cropArea?.height ? Math.round(cropArea.height) : ""}
-              onChange={(e) => handleHeightChange(Math.max(10, parseInt(e.target.value) || 10))}
+              value={cropHeightInput !== null ? cropHeightInput : (effectiveCropHeight != null ? String(Math.round(effectiveCropHeight)) : "")}
+              onFocus={() => setCropHeightInput(effectiveCropHeight != null ? String(Math.round(effectiveCropHeight)) : "")}
+              onChange={(e) => setCropHeightInput(e.target.value)}
+              onBlur={() => {
+                const parsed = parseInt(cropHeightInput ?? "", 10);
+                if (!Number.isNaN(parsed)) {
+                  handleHeightChange(Math.max(MIN_SIZE, parsed));
+                }
+                setCropHeightInput(null);
+              }}
               placeholder="---"
               className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-              min={10}
+              min={MIN_SIZE}
             />
             {/* Lock aspect ratio button */}
             <button
@@ -522,27 +619,37 @@ export function EditorToolOptions({
                 <span className="text-xs text-text-secondary">W:</span>
                 <input
                   type="number"
-                  value={transformBounds?.width ? Math.round(transformBounds.width) : ""}
-                  onChange={(e) => {
-                    const value = Math.max(10, parseInt(e.target.value, 10) || 10);
-                    setTransformSizeByWidth?.(value);
+                  value={transformWidthInput !== null ? transformWidthInput : (transformBounds?.width ? String(Math.round(transformBounds.width)) : "")}
+                  onFocus={() => setTransformWidthInput(transformBounds?.width != null ? String(Math.round(transformBounds.width)) : "")}
+                  onChange={(e) => setTransformWidthInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(transformWidthInput ?? "", 10);
+                    if (!Number.isNaN(parsed)) {
+                      setTransformSizeByWidth?.(Math.max(MIN_SIZE, parsed));
+                    }
+                    setTransformWidthInput(null);
                   }}
                   placeholder="---"
                   className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                  min={10}
+                  min={MIN_SIZE}
                 />
                 <span className="text-xs text-text-tertiary">×</span>
                 <span className="text-xs text-text-secondary">H:</span>
                 <input
                   type="number"
-                  value={transformBounds?.height ? Math.round(transformBounds.height) : ""}
-                  onChange={(e) => {
-                    const value = Math.max(10, parseInt(e.target.value, 10) || 10);
-                    setTransformSizeByHeight?.(value);
+                  value={transformHeightInput !== null ? transformHeightInput : (transformBounds?.height ? String(Math.round(transformBounds.height)) : "")}
+                  onFocus={() => setTransformHeightInput(transformBounds?.height != null ? String(Math.round(transformBounds.height)) : "")}
+                  onChange={(e) => setTransformHeightInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(transformHeightInput ?? "", 10);
+                    if (!Number.isNaN(parsed)) {
+                      setTransformSizeByHeight?.(Math.max(MIN_SIZE, parsed));
+                    }
+                    setTransformHeightInput(null);
                   }}
                   placeholder="---"
                   className="w-14 px-1 py-0.5 bg-surface-primary border border-border-default rounded text-xs text-center focus:outline-none focus:border-accent-primary"
-                  min={10}
+                  min={MIN_SIZE}
                 />
                 <button
                   onClick={() =>

@@ -707,6 +707,93 @@ export function toMagicWandBoundsMask(selection: MagicWandSelection): MagicWandB
   };
 }
 
+/**
+ * 4-connected 컴포넌트로 마스크를 나누어 각 영역의 바운드 + 서브마스크 반환.
+ * 여러 선택(추가 모드)이 하나의 bbox로 합쳐져도 영역별로 점선을 그리기 위함.
+ */
+function getConnectedComponents(
+  width: number,
+  height: number,
+  mask: Uint8Array,
+): Array<{ x: number; y: number; width: number; height: number; mask: Uint8Array }> {
+  const visited = new Uint8Array(mask.length);
+  const components: Array<{ minX: number; minY: number; maxX: number; maxY: number; pixels: number[] }> = [];
+
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] <= 0 || visited[i]) continue;
+    const pixels: number[] = [];
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    const stack: number[] = [i];
+    visited[i] = 1;
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const x = idx % width;
+      const y = Math.floor(idx / width);
+      pixels.push(idx);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      const left = idx - 1;
+      const right = idx + 1;
+      const top = idx - width;
+      const bottom = idx + width;
+      if (x > 0 && mask[left] > 0 && !visited[left]) { visited[left] = 1; stack.push(left); }
+      if (x < width - 1 && mask[right] > 0 && !visited[right]) { visited[right] = 1; stack.push(right); }
+      if (y > 0 && mask[top] > 0 && !visited[top]) { visited[top] = 1; stack.push(top); }
+      if (y < height - 1 && mask[bottom] > 0 && !visited[bottom]) { visited[bottom] = 1; stack.push(bottom); }
+    }
+    if (pixels.length > 0) {
+      components.push({ minX, minY, maxX, maxY, pixels });
+    }
+  }
+
+  return components.map((c) => {
+    const cw = c.maxX - c.minX + 1;
+    const ch = c.maxY - c.minY + 1;
+    const sub = new Uint8Array(cw * ch);
+    for (const idx of c.pixels) {
+      const x = idx % width - c.minX;
+      const y = Math.floor(idx / width) - c.minY;
+      sub[y * cw + x] = 255;
+    }
+    return { x: c.minX, y: c.minY, width: cw, height: ch, mask: sub };
+  });
+}
+
+/**
+ * 마스크를 연결 요소별로 나누어 각 영역만 점선으로 그림.
+ * 여러 선택이 하나의 bbox로 합쳐진 경우에도 각 영역이 따로 점선으로 보이게 함.
+ */
+export function drawMagicWandSelectionOutlineByComponents(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  mask: Uint8Array,
+  options?: MagicWandOutlineOptions & { offsetX?: number; offsetY?: number },
+): void {
+  const components = getConnectedComponents(width, height, mask);
+  const offsetX = options?.offsetX ?? 0;
+  const offsetY = options?.offsetY ?? 0;
+  for (const comp of components) {
+    const selection: MagicWandSelection = {
+      width: comp.width,
+      height: comp.height,
+      mask: comp.mask,
+      selectedCount: 0,
+      bounds: { x: 0, y: 0, width: comp.width, height: comp.height },
+    };
+    drawMagicWandSelectionOutline(ctx, selection, {
+      ...options,
+      offsetX: offsetX + comp.x * (options?.zoom ?? 1),
+      offsetY: offsetY + comp.y * (options?.zoom ?? 1),
+    });
+  }
+}
+
 export function drawMagicWandSelectionOutline(
   ctx: CanvasRenderingContext2D,
   selection: MagicWandSelection,
@@ -728,9 +815,51 @@ export function drawMagicWandSelectionOutline(
     return;
   }
 
-  const path = new Path2D();
+  const dash = options?.dash ?? [4, 4];
+  const dashLength = dash.length > 0 ? Math.max(1, dash[0]) : 4;
+  const dashGap = dash.length > 1 ? Math.max(1, dash[1]) : dashLength;
+  const dashCycle = dashLength + dashGap;
+  const dashOffset = Number.isFinite(options?.dashOffset) ? (options?.dashOffset as number) : 0;
+  const strokeColor = options?.color ?? "rgba(34, 197, 94, 0.95)";
+  const paintedPixels = new Set<string>();
   let hasSegments = false;
 
+  const positiveModulo = (value: number, mod: number) => ((value % mod) + mod) % mod;
+
+  const paintHorizontalSegment = (startX: number, endX: number, y: number) => {
+    const minScreenX = Math.floor(Math.min(startX, endX));
+    const maxScreenX = Math.ceil(Math.max(startX, endX));
+    const screenY = Math.round(y);
+
+    for (let screenX = minScreenX; screenX < maxScreenX; screenX += 1) {
+      const phase = positiveModulo(screenX + dashOffset, dashCycle);
+      if (phase >= dashLength) continue;
+      const key = `${screenX}:${screenY}`;
+      if (paintedPixels.has(key)) continue;
+      paintedPixels.add(key);
+      ctx.fillRect(screenX, screenY, 1, 1);
+      hasSegments = true;
+    }
+  };
+
+  const paintVerticalSegment = (x: number, startY: number, endY: number) => {
+    const minScreenY = Math.floor(Math.min(startY, endY));
+    const maxScreenY = Math.ceil(Math.max(startY, endY));
+    const screenX = Math.round(x);
+
+    for (let screenY = minScreenY; screenY < maxScreenY; screenY += 1) {
+      const phase = positiveModulo(screenY + dashOffset, dashCycle);
+      if (phase >= dashLength) continue;
+      const key = `${screenX}:${screenY}`;
+      if (paintedPixels.has(key)) continue;
+      paintedPixels.add(key);
+      ctx.fillRect(screenX, screenY, 1, 1);
+      hasSegments = true;
+    }
+  };
+
+  ctx.save();
+  ctx.fillStyle = strokeColor;
   for (let y = minY; y <= maxY; y++) {
     const rowOffset = y * width;
     for (let x = minX; x <= maxX; x++) {
@@ -750,40 +879,24 @@ export function drawMagicWandSelectionOutline(
       const pyNext = py + zoom;
 
       if (!hasTop) {
-        path.moveTo(px, py);
-        path.lineTo(pxNext, py);
-        hasSegments = true;
+        paintHorizontalSegment(px, pxNext, py);
       }
       if (!hasRight) {
-        path.moveTo(pxNext, py);
-        path.lineTo(pxNext, pyNext);
-        hasSegments = true;
+        paintVerticalSegment(pxNext, py, pyNext);
       }
       if (!hasBottom) {
-        path.moveTo(px, pyNext);
-        path.lineTo(pxNext, pyNext);
-        hasSegments = true;
+        paintHorizontalSegment(px, pxNext, pyNext);
       }
       if (!hasLeft) {
-        path.moveTo(px, py);
-        path.lineTo(px, pyNext);
-        hasSegments = true;
+        paintVerticalSegment(px, py, pyNext);
       }
     }
   }
+  ctx.restore();
 
   if (!hasSegments) {
     return;
   }
-
-  ctx.save();
-  ctx.strokeStyle = options?.color ?? "rgba(34, 197, 94, 0.95)";
-  ctx.lineWidth = options?.lineWidth ?? Math.max(1, Math.min(2, zoom * 0.15));
-  const dash = options?.dash ?? [4, 4];
-  ctx.setLineDash(dash.length > 0 ? dash : []);
-  ctx.lineDashOffset = Number.isFinite(options?.dashOffset) ? (options?.dashOffset as number) : 0;
-  ctx.stroke(path);
-  ctx.restore();
 }
 
 export function isMagicWandPixelSelected(selection: MagicWandSelection, x: number, y: number): boolean {

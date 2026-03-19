@@ -18,6 +18,7 @@ import {
   createSelectionMaskFromPath,
   isPointInsideSelection,
   offsetSelectionMask,
+  combineSelectionMasks,
 } from "../../utils/selectionRegion";
 
 export interface UseSelectionHandlerReturn {
@@ -75,6 +76,8 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
     editCanvasRef,
     activeLayerPosition,
     marqueeSubTool,
+    selectionCombineMode,
+    previousCombineRef,
     lassoPath,
     setLassoPath,
     selectionMask,
@@ -107,6 +110,14 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
         (floatingLayerRef as { current: FloatingLayer | null }).current = null;
         setIsMovingSelection(false);
         setIsDuplicating(false);
+        if (selectionCombineMode !== "new" && selection) {
+          (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = {
+            selection,
+            mask: selectionMask,
+          };
+        } else {
+          (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
+        }
 
         if (
           !editCanvas
@@ -163,15 +174,25 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
         if (!nextSelectionMask) {
           setSelectionMask(null);
           setSelection(null);
+          (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
           return { handled: true };
         }
-        setSelection({
+        const nextBounds = {
           x: nextSelectionMask.x,
           y: nextSelectionMask.y,
           width: nextSelectionMask.width,
           height: nextSelectionMask.height,
-        });
-        setSelectionMask(nextSelectionMask);
+        };
+        const prev = (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current;
+        const combined = combineSelectionMasks(
+          selectionCombineMode,
+          prev ? { selection: prev.selection, mask: prev.mask } : null,
+          nextBounds,
+          nextSelectionMask
+        );
+        (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
+        setSelection(combined.selection);
+        setSelectionMask(combined.selectionMask);
         return { handled: true };
       }
 
@@ -240,10 +261,22 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       }
 
       // Click outside selection (or outside image bounds) starts a new selection.
-      // Start point is clamped so dragging from canvas-outside to inside can select edge-to-edge.
-      setSelection(null);
+      // Lasso keeps the current selection visible while tracing, then commits on mouse up.
+      // For add/subtract/intersect, keep current selection in ref and do not clear (combine on mouse up).
+      if (selectionCombineMode !== "new" && selection) {
+        (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = {
+          selection,
+          mask: selectionMask,
+        };
+      } else {
+        (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
+      }
+
+      if (marqueeSubTool !== "lasso" && (selectionCombineMode === "new" || !selection)) {
+        setSelection(null);
+        setSelectionMask(null);
+      }
       (floatingLayerRef as { current: FloatingLayer | null }).current = null;
-      setSelectionMask(null);
       setIsMovingSelection(false);
       setIsDuplicating(false);
       const clampedStart = clampPointToDisplay(imagePos, displayWidth, displayHeight);
@@ -264,6 +297,8 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       selection,
       selectionFeather,
       selectionOffset,
+      selectionCombineMode,
+      previousCombineRef,
       setSelection,
       editCanvasRef,
       activeLayerPosition,
@@ -297,11 +332,6 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
 
         const nextPath = [...basePath, clampedPos];
         setLassoPath(nextPath);
-
-        const nextBounds = getLassoBounds(nextPath);
-        if (nextBounds) {
-          setSelection(nextBounds);
-        }
         return;
       }
 
@@ -328,6 +358,8 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
   );
 
   const handleMouseUp = useCallback(() => {
+    const prev = (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current;
+
     if (marqueeSubTool === "lasso" && lassoPath) {
       const rawLassoMask = createSelectionMaskFromPath(lassoPath);
       const lassoMask = rawLassoMask && selectionOffset !== 0
@@ -342,13 +374,22 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
           }
         : null;
       setLassoPath(null);
+      (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
       if (!nextBounds || nextBounds.width < 5 || nextBounds.height < 5) {
-        setSelectionMask(null);
-        setSelection(null);
+        if (selectionCombineMode === "new") {
+          setSelectionMask(null);
+          setSelection(null);
+        }
         return;
       }
-      setSelectionMask(lassoMask);
-      setSelection(nextBounds);
+      const combined = combineSelectionMasks(
+        selectionCombineMode,
+        prev ? { selection: prev.selection, mask: prev.mask } : null,
+        nextBounds,
+        lassoMask
+      );
+      setSelectionMask(combined.selectionMask);
+      setSelection(combined.selection);
       return;
     }
 
@@ -357,26 +398,52 @@ export function useSelectionHandler(options: SelectionHandlerOptions): UseSelect
       const shiftedMask = baseMask
         ? offsetSelectionMask(baseMask, selectionOffset)
         : null;
+      (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
       if (!shiftedMask) {
-        setSelectionMask(null);
-        setSelection(null);
+        if (selectionCombineMode === "new") {
+          setSelectionMask(null);
+          setSelection(null);
+        }
         return;
       }
-      setSelectionMask(shiftedMask);
-      setSelection({
+      const nextBounds = {
         x: shiftedMask.x,
         y: shiftedMask.y,
         width: shiftedMask.width,
         height: shiftedMask.height,
-      });
+      };
+      const combined = combineSelectionMasks(
+        selectionCombineMode,
+        prev ? { selection: prev.selection, mask: prev.mask } : null,
+        nextBounds,
+        shiftedMask
+      );
+      setSelectionMask(combined.selectionMask);
+      setSelection(combined.selection);
       return;
     }
 
-    if (marqueeSubTool !== "object" && selection && (selection.width < 5 || selection.height < 5)) {
-      setSelectionMask(null);
-      setSelection(null);
+    if (selection && marqueeSubTool !== "object" && marqueeSubTool !== "lasso" && selectionOffset === 0 && (selection.width >= 5 && selection.height >= 5)) {
+      const rectMask = createSelectionMaskFromRect(selection);
+      const combined = combineSelectionMasks(
+        selectionCombineMode,
+        prev ? { selection: prev.selection, mask: prev.mask } : null,
+        selection,
+        rectMask
+      );
+      setSelectionMask(combined.selectionMask);
+      setSelection(combined.selection);
     }
-  }, [marqueeSubTool, lassoPath, selection, selectionOffset, setLassoPath, setSelection, setSelectionMask]);
+
+    (previousCombineRef as { current: { selection: CropArea; mask: SelectionMask | null } | null }).current = null;
+
+    if (marqueeSubTool !== "object" && selection && (selection.width < 5 || selection.height < 5)) {
+      if (selectionCombineMode === "new") {
+        setSelectionMask(null);
+        setSelection(null);
+      }
+    }
+  }, [marqueeSubTool, lassoPath, selection, selectionOffset, selectionCombineMode, previousCombineRef, setLassoPath, setSelection, setSelectionMask]);
 
   return {
     handleMouseDown,
