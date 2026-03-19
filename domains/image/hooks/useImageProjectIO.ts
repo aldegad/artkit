@@ -14,6 +14,7 @@ import {
 } from "../services/projectStorage";
 import { loadEditorAutosaveData, clearEditorAutosaveData } from "../utils/autosave";
 import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
+import { pushBlankCanvasSizeHistory } from "../utils/blankCanvasHistory";
 import { confirmDialog, showErrorToast } from "@/shared/components";
 import { DEFAULT_PROJECT_GROUP, normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
@@ -77,6 +78,13 @@ interface UseImageProjectIOReturn {
   handleKeepCloud: () => Promise<void>;
   handleKeepLocal: () => Promise<void>;
   handleCancelSync: () => void;
+  showNewCanvasChoiceModal: boolean;
+  setShowNewCanvasChoiceModal: (show: boolean) => void;
+  showBlankCanvasSizeModal: boolean;
+  setShowBlankCanvasSizeModal: (show: boolean) => void;
+  handleStartWithImage: () => void;
+  handleOpenBlankCanvasSize: () => void;
+  createBlankCanvas: (width: number, height: number) => Promise<void>;
 }
 
 export function useImageProjectIO(options: UseImageProjectIOOptions): UseImageProjectIOReturn {
@@ -125,6 +133,8 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [localProjectCount, setLocalProjectCount] = useState(0);
   const [cloudProjectCount, setCloudProjectCount] = useState(0);
+  const [showNewCanvasChoiceModal, setShowNewCanvasChoiceModal] = useState(false);
+  const [showBlankCanvasSizeModal, setShowBlankCanvasSizeModal] = useState(false);
 
   const refreshProjects = useCallback(async () => {
     const projects = await storageProvider.getAllProjects();
@@ -313,14 +323,8 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     }
   }, [t.deleteConfirm, t.deleteFailed, storageProvider, refreshProjects, currentProjectId, setCurrentProjectId]);
 
-  const handleNewCanvas = useCallback(async () => {
-    if (layers.length > 0) {
-      const shouldReset = await confirmDialog(t.unsavedChangesConfirm);
-      if (!shouldReset) return;
-    }
-
+  const doResetToEmpty = useCallback(() => {
     clearEditorAutosaveData();
-
     setCanvasSize({ width: 0, height: 0 });
     setProjectName("Untitled");
     setProjectGroup(DEFAULT_PROJECT_GROUP);
@@ -332,17 +336,13 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     setPan({ x: 0, y: 0 });
     setIsPanLocked(false);
     setStampSource(null);
-
     setLayers([]);
     setActiveLayerId(null);
     layerCanvasesRef.current?.clear();
-
     imageRef.current = null;
     editCanvasRef.current = null;
     clearHistory();
   }, [
-    layers.length,
-    t.unsavedChangesConfirm,
     setCanvasSize,
     setProjectName,
     setProjectGroup,
@@ -361,6 +361,34 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     editCanvasRef,
     clearHistory,
   ]);
+
+  const handleNewCanvas = useCallback(async () => {
+    if (layers.length > 0) {
+      const shouldReset = await confirmDialog(t.unsavedChangesConfirm);
+      if (!shouldReset) return;
+    }
+    setShowNewCanvasChoiceModal(true);
+  }, [layers.length, t.unsavedChangesConfirm]);
+
+  const handleStartWithImage = useCallback(() => {
+    doResetToEmpty();
+  }, [doResetToEmpty]);
+
+  const handleOpenBlankCanvasSize = useCallback(() => {
+    setShowNewCanvasChoiceModal(false);
+    setShowBlankCanvasSizeModal(true);
+  }, []);
+
+  const createBlankCanvas = useCallback(
+    async (width: number, height: number) => {
+      pushBlankCanvasSizeHistory(width, height);
+      doResetToEmpty();
+      setCanvasSize({ width, height });
+      await initLayers(width, height);
+      setShowBlankCanvasSizeModal(false);
+    },
+    [doResetToEmpty, setCanvasSize, initLayers]
+  );
 
   const handleKeepCloud = useCallback(async () => {
     await clearLocalProjects();
@@ -393,5 +421,12 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     handleKeepCloud,
     handleKeepLocal,
     handleCancelSync,
+    showNewCanvasChoiceModal,
+    setShowNewCanvasChoiceModal,
+    showBlankCanvasSizeModal,
+    setShowBlankCanvasSizeModal,
+    handleStartWithImage,
+    handleOpenBlankCanvasSize,
+    createBlankCanvas,
   };
 }

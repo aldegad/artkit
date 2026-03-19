@@ -38,6 +38,9 @@ export interface UnifiedLayer {
   scale?: number; // 1 = 100%
   rotation?: number; // degrees (per-layer rotation)
   originalSize?: Size; // original dimensions before any transforms
+
+  /** If set, this layer is clipped by the layer with this id (the layer below in z-order). */
+  clippingMaskLayerId?: string | null;
 }
 
 /**

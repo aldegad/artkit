@@ -40,10 +40,11 @@ export const TOOL_SHORTCUTS: ToolShortcutMap<EditorToolMode> = {
 };
 
 /**
- * Transform tool shortcuts (with Cmd/Ctrl modifier)
+ * Transform tool shortcuts.
+ * Ctrl+T는 Chrome에서 보호되어 막을 수 없어, Ctrl+Alt+T / Cmd+Option+T 사용.
  */
 export const TRANSFORM_SHORTCUTS = {
-  enterTransform: { code: "KeyT", ctrlOrMeta: true } as const,
+  enterTransform: { code: "KeyT", ctrlOrMeta: true, alt: true } as const,
   applyTransform: COMMON_SHORTCUTS.confirm,
   cancelTransform: COMMON_SHORTCUTS.cancel,
 } as const;

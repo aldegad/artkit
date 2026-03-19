@@ -83,6 +83,15 @@ export function useEditorOverlayModel(
     handleKeepCloud,
     handleKeepLocal,
     handleCancelSync,
+    showNewCanvasChoiceModal,
+    setShowNewCanvasChoiceModal,
+    showBlankCanvasSizeModal,
+    setShowBlankCanvasSizeModal,
+    onStartWithImage,
+    onOpenBlankCanvasSize,
+    onCreateBlankCanvas,
+    newCanvasChoiceTranslations,
+    blankCanvasSizeTranslations,
   } = options;
 
   return useMemo(
@@ -161,6 +170,15 @@ export function useEditorOverlayModel(
       handleKeepCloud,
       handleKeepLocal,
       handleCancelSync,
+      showNewCanvasChoiceModal,
+      setShowNewCanvasChoiceModal,
+      showBlankCanvasSizeModal,
+      setShowBlankCanvasSizeModal,
+      onStartWithImage,
+      onOpenBlankCanvasSize,
+      onCreateBlankCanvas,
+      newCanvasChoiceTranslations,
+      blankCanvasSizeTranslations,
     }),
     [
       showExportModal,
@@ -237,6 +255,15 @@ export function useEditorOverlayModel(
       handleKeepCloud,
       handleKeepLocal,
       handleCancelSync,
+      showNewCanvasChoiceModal,
+      setShowNewCanvasChoiceModal,
+      showBlankCanvasSizeModal,
+      setShowBlankCanvasSizeModal,
+      onStartWithImage,
+      onOpenBlankCanvasSize,
+      onCreateBlankCanvas,
+      newCanvasChoiceTranslations,
+      blankCanvasSizeTranslations,
     ]
   );
 }

@@ -71,6 +71,9 @@ export type MarqueeSubTool =
   | "ratio4x3"
   | "ratio16x9";
 
+/** 영역 선택 결합 모드 (포토샵 스타일: 새로/추가/제거/교차) */
+export type SelectionCombineMode = "new" | "add" | "subtract" | "intersect";
+
 export type CropSizePivot =
   | "topLeft"
   | "topCenter"

@@ -14,6 +14,8 @@ import { ExportModal } from "./ExportModal";
 import { ImageResampleModal } from "./ImageResampleModal";
 import { UpscaleModal } from "./UpscaleModal";
 import ProjectListModal from "./ProjectListModal";
+import NewCanvasChoiceModal from "./NewCanvasChoiceModal";
+import BlankCanvasSizeModal from "./BlankCanvasSizeModal";
 import { TransformDiscardConfirmModal } from "./TransformDiscardConfirmModal";
 import { SaveProjectModal, type SaveProjectModalTranslations, type SaveProjectModalValue } from "@/shared/components";
 
@@ -165,6 +167,26 @@ export interface EditorOverlaysProps {
   handleKeepCloud: () => Promise<void>;
   handleKeepLocal: () => Promise<void>;
   handleCancelSync: () => void;
+
+  // New canvas choice & blank canvas size
+  showNewCanvasChoiceModal: boolean;
+  setShowNewCanvasChoiceModal: (show: boolean) => void;
+  showBlankCanvasSizeModal: boolean;
+  setShowBlankCanvasSizeModal: (show: boolean) => void;
+  onStartWithImage: () => void;
+  onOpenBlankCanvasSize: () => void;
+  onCreateBlankCanvas: (width: number, height: number) => Promise<void>;
+  newCanvasChoiceTranslations: { title: string; importImage: string; blankCanvas: string; cancel: string };
+  blankCanvasSizeTranslations: {
+    title: string;
+    recommended: string;
+    custom: string;
+    width: string;
+    height: string;
+    history: string;
+    cancel: string;
+    create: string;
+  };
 }
 
 export function EditorOverlays({
@@ -242,6 +264,15 @@ export function EditorOverlays({
   handleKeepCloud,
   handleKeepLocal,
   handleCancelSync,
+  showNewCanvasChoiceModal,
+  setShowNewCanvasChoiceModal,
+  showBlankCanvasSizeModal,
+  setShowBlankCanvasSizeModal,
+  onStartWithImage,
+  onOpenBlankCanvasSize,
+  onCreateBlankCanvas,
+  newCanvasChoiceTranslations,
+  blankCanvasSizeTranslations,
 }: EditorOverlaysProps) {
   return (
     <>
@@ -350,6 +381,21 @@ export function EditorOverlays({
         storageInfo={storageInfo}
         isLoading={isLoading}
         translations={projectListTranslations}
+      />
+
+      <NewCanvasChoiceModal
+        isOpen={showNewCanvasChoiceModal}
+        onClose={() => setShowNewCanvasChoiceModal(false)}
+        onImportImage={onStartWithImage}
+        onBlankCanvas={onOpenBlankCanvasSize}
+        translations={newCanvasChoiceTranslations}
+      />
+
+      <BlankCanvasSizeModal
+        isOpen={showBlankCanvasSizeModal}
+        onClose={() => setShowBlankCanvasSizeModal(false)}
+        onConfirm={onCreateBlankCanvas}
+        translations={blankCanvasSizeTranslations}
       />
 
       <SyncDialog

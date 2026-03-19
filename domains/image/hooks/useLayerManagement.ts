@@ -65,6 +65,8 @@ interface UseLayerManagementReturn {
   moveLayer: (layerId: string, direction: "up" | "down") => void;
   reorderLayers: (fromId: string, toId: string) => void;
   mergeLayerDown: (layerId: string) => void;
+  createClippingMask: (layerId: string) => void;
+  releaseClippingMask: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
   rotateAllLayerCanvases: (degrees: number) => void;
   resizeSelectedLayersToSmallest: () => void;
@@ -510,6 +512,27 @@ export function useLayerManagement(
     [layers, saveToHistory]
   );
 
+  // Clipping mask: clip this layer by the layer directly below it (in z-order)
+  const createClippingMask = useCallback((layerId: string) => {
+    setLayers((prev) => {
+      const sorted = [...prev].sort((a, b) => b.zIndex - a.zIndex);
+      const idx = sorted.findIndex((l) => l.id === layerId);
+      if (idx === -1 || idx === sorted.length - 1) return prev;
+      const layerBelow = sorted[idx + 1];
+      return prev.map((l) =>
+        l.id === layerId ? { ...l, clippingMaskLayerId: layerBelow.id } : l
+      );
+    });
+    saveToHistory?.();
+  }, [saveToHistory]);
+
+  const releaseClippingMask = useCallback((layerId: string) => {
+    setLayers((prev) =>
+      prev.map((l) => (l.id === layerId ? { ...l, clippingMaskLayerId: undefined } : l))
+    );
+    saveToHistory?.();
+  }, [saveToHistory]);
+
   // Rotate all layer canvases by degrees (90, -90, 180)
   const rotateAllLayerCanvases = useCallback((degrees: number) => {
     const normalizedDeg = ((degrees % 360) + 360) % 360;
@@ -917,6 +940,8 @@ export function useLayerManagement(
     moveLayer,
     reorderLayers,
     mergeLayerDown,
+    createClippingMask,
+    releaseClippingMask,
     duplicateLayer,
     rotateAllLayerCanvases,
     resizeSelectedLayersToSmallest,
