@@ -78,6 +78,10 @@ export function useEditorCanvasActions(
   const handleApplyCrop = useCallback(() => {
     if (!cropArea) return;
 
+    // History snapshots must be captured before mutating canvases/state,
+    // otherwise undo restores the already-cropped image.
+    saveToHistory();
+
     const newWidth = Math.round(cropArea.width);
     const newHeight = Math.round(cropArea.height);
     const offsetX = Math.round(cropArea.x);
@@ -144,7 +148,6 @@ export function useEditorCanvasActions(
 
     setCropArea(null);
     setCanvasExpandMode(false);
-    saveToHistory();
 
     setTimeout(() => {
       const container = containerRef.current;

@@ -1,4 +1,4 @@
-import type { CropArea, Point, SelectionMask } from "../types";
+import type { CropArea, Point, SelectionMask, SelectionCombineMode } from "../types";
 import { clearRectWithFeather } from "./selectionFeather";
 
 function roundSelectionArea(selection: CropArea): CropArea {
@@ -376,4 +376,102 @@ export function translateSelectionMask(
     x: Math.round(nextX),
     y: Math.round(nextY),
   };
+}
+
+// SelectionCombineMode is exported from ../types
+
+function getMaskAlphaAt(mask: SelectionMask, x: number, y: number): number {
+  const lx = x - mask.x;
+  const ly = y - mask.y;
+  if (lx < 0 || ly < 0 || lx >= mask.width || ly >= mask.height) return 0;
+  return mask.mask[ly * mask.width + lx];
+}
+
+/**
+ * Combine existing selection with a new one (add / subtract / intersect).
+ * Mode "new" is handled by caller (just use new selection).
+ */
+export function combineSelectionMasks(
+  mode: SelectionCombineMode,
+  existing: { selection: CropArea; mask: SelectionMask | null } | null,
+  newSelection: CropArea,
+  newMask: SelectionMask | null
+): { selection: CropArea; selectionMask: SelectionMask | null } {
+  if (mode === "new" || !existing) {
+    const mask = newMask ?? createSelectionMaskFromRect(newSelection);
+    return { selection: roundSelectionArea(newSelection), selectionMask: mask };
+  }
+
+  const a = existing.mask ?? createSelectionMaskFromRect(existing.selection);
+  const b = newMask ?? createSelectionMaskFromRect(newSelection);
+  if (!a || !b) return { selection: roundSelectionArea(newSelection), selectionMask: newMask };
+
+  const minX = Math.min(a.x, b.x);
+  const minY = Math.min(a.y, b.y);
+  const maxX = Math.max(a.x + a.width, b.x + b.width);
+  const maxY = Math.max(a.y + a.height, b.y + b.height);
+  const w = maxX - minX;
+  const h = maxY - minY;
+  if (w <= 0 || h <= 0) return { selection: roundSelectionArea(newSelection), selectionMask: newMask };
+
+  const outMask = new Uint8Array(w * h);
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const gx = minX + x;
+      const gy = minY + y;
+      const va = getMaskAlphaAt(a, gx, gy);
+      const vb = getMaskAlphaAt(b, gx, gy);
+
+      let out: number;
+      if (mode === "add") {
+        out = Math.max(va, vb);
+      } else if (mode === "subtract") {
+        out = Math.max(0, Math.round(va * (1 - vb / 255)));
+      } else {
+        out = Math.min(va, vb);
+      }
+      outMask[y * w + x] = out;
+    }
+  }
+
+  let trimMinX = w;
+  let trimMinY = h;
+  let trimMaxX = -1;
+  let trimMaxY = -1;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (outMask[y * w + x] === 0) continue;
+      if (x < trimMinX) trimMinX = x;
+      if (y < trimMinY) trimMinY = y;
+      if (x > trimMaxX) trimMaxX = x;
+      if (y > trimMaxY) trimMaxY = y;
+    }
+  }
+
+  if (trimMaxX < trimMinX || trimMaxY < trimMinY) {
+    return { selection: roundSelectionArea(newSelection), selectionMask: null };
+  }
+
+  const outW = trimMaxX - trimMinX + 1;
+  const outH = trimMaxY - trimMinY + 1;
+  const trimmed = new Uint8Array(outW * outH);
+  for (let y = 0; y < outH; y += 1) {
+    trimmed.set(outMask.subarray((trimMinY + y) * w + trimMinX, (trimMinY + y) * w + trimMinX + outW), y * outW);
+  }
+
+  const selection: CropArea = {
+    x: minX + trimMinX,
+    y: minY + trimMinY,
+    width: outW,
+    height: outH,
+  };
+  const selectionMask: SelectionMask = {
+    x: selection.x,
+    y: selection.y,
+    width: outW,
+    height: outH,
+    mask: trimmed,
+  };
+  return { selection, selectionMask };
 }

@@ -112,6 +112,8 @@ export interface BrushHandlerOptions extends BaseHandlerOptions {
 export interface SelectionHandlerOptions extends BaseHandlerOptions {
   activeLayerPosition?: { x: number; y: number } | null;
   marqueeSubTool: MarqueeSubTool;
+  selectionCombineMode: import("../../types").SelectionCombineMode;
+  previousCombineRef: RefObject<{ selection: CropArea; mask: SelectionMask | null } | null>;
   lassoPath: Point[] | null;
   setLassoPath: React.Dispatch<React.SetStateAction<Point[] | null>>;
   selectionMask: SelectionMask | null;
