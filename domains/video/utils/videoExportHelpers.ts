@@ -30,6 +30,11 @@ export interface DirectVideoExportPlan {
   audioVolume: number;
 }
 
+export interface DirectVideoExportPlanEvaluation {
+  plan: DirectVideoExportPlan | null;
+  reason: string;
+}
+
 export const VIDEO_EXPORT_EPSILON = 1e-3;
 
 export function sanitizeVideoExportFileName(name: string): string {
@@ -256,7 +261,7 @@ function roundIfNearInteger(value: number): number | null {
   return Math.abs(value - rounded) <= VIDEO_EXPORT_EPSILON ? rounded : null;
 }
 
-export function resolveDirectVideoExportPlan(params: {
+export function evaluateDirectVideoExportPlan(params: {
   clips: Clip[];
   tracks: VideoTrack[];
   masksMap: Map<string, MaskData>;
@@ -264,30 +269,71 @@ export function resolveDirectVideoExportPlan(params: {
   exportStart: number;
   exportEnd: number;
   includeAudio: boolean;
-}): DirectVideoExportPlan | null {
+}): DirectVideoExportPlanEvaluation {
   const { clips, tracks, masksMap, project, exportStart, exportEnd, includeAudio } = params;
-  if (clips.length !== 1) return null;
+  if (clips.length !== 1) {
+    return {
+      plan: null,
+      reason: "여러 클립이 있어서 단일 영상 직접 경로를 사용할 수 없습니다.",
+    };
+  }
 
   const clip = clips[0];
-  if (clip.type !== "video" || !clip.visible) return null;
+  if (clip.type !== "video" || !clip.visible) {
+    return {
+      plan: null,
+      reason: "단일 영상 클립이 아니거나 숨김 상태입니다.",
+    };
+  }
 
   const track = tracks.find((candidate) => candidate.id === clip.trackId);
-  if (!track || !track.visible) return null;
+  if (!track || !track.visible) {
+    return {
+      plan: null,
+      reason: "클립 트랙이 숨김 상태라 직접 경로를 사용할 수 없습니다.",
+    };
+  }
 
-  if (Array.from(masksMap.values()).some((mask) => Boolean(mask.maskData))) return null;
-  if ((clip.transformKeyframes?.position?.length ?? 0) > 0) return null;
-  if (Math.abs(clip.rotation) > VIDEO_EXPORT_EPSILON) return null;
-  if (Math.abs(clip.opacity - 100) > VIDEO_EXPORT_EPSILON) return null;
+  if (Array.from(masksMap.values()).some((mask) => Boolean(mask.maskData))) {
+    return {
+      plan: null,
+      reason: "마스크가 있어서 일반 렌더 경로가 필요합니다.",
+    };
+  }
+  if ((clip.transformKeyframes?.position?.length ?? 0) > 0) {
+    return {
+      plan: null,
+      reason: "위치 키프레임이 있어서 일반 렌더 경로가 필요합니다.",
+    };
+  }
+  if (Math.abs(clip.rotation) > VIDEO_EXPORT_EPSILON) {
+    return {
+      plan: null,
+      reason: "회전이 적용되어 직접 경로를 사용할 수 없습니다.",
+    };
+  }
+  if (Math.abs(clip.opacity - 100) > VIDEO_EXPORT_EPSILON) {
+    return {
+      plan: null,
+      reason: "불투명도 변경이 있어서 일반 렌더 경로가 필요합니다.",
+    };
+  }
 
   const scaleX = getClipScaleX(clip);
   const scaleY = getClipScaleY(clip);
   if (Math.abs(scaleX - 1) > VIDEO_EXPORT_EPSILON || Math.abs(scaleY - 1) > VIDEO_EXPORT_EPSILON) {
-    return null;
+    return {
+      plan: null,
+      reason: "스케일 변경이 있어서 일반 렌더 경로가 필요합니다.",
+    };
   }
 
   const clipEnd = clip.startTime + clip.duration;
   if (exportStart < clip.startTime - VIDEO_EXPORT_EPSILON || exportEnd > clipEnd + VIDEO_EXPORT_EPSILON) {
-    return null;
+    return {
+      plan: null,
+      reason: "내보내기 범위가 단일 클립 밖까지 걸쳐 있습니다.",
+    };
   }
 
   const cropX = roundIfNearInteger(-clip.position.x);
@@ -304,34 +350,46 @@ export function resolveDirectVideoExportPlan(params: {
     cropWidth <= 0 ||
     cropHeight <= 0
   ) {
-    return null;
+    return {
+      plan: null,
+      reason: "정수 crop 영역을 계산할 수 없어서 직접 경로를 사용할 수 없습니다.",
+    };
   }
 
   if (cropX + cropWidth > clip.sourceSize.width || cropY + cropHeight > clip.sourceSize.height) {
-    return null;
+    return {
+      plan: null,
+      reason: "캔버스 범위가 원본 비디오 바깥으로 나가 직접 경로를 사용할 수 없습니다.",
+    };
   }
 
   const sourceStart = getSourceTime(clip, exportStart);
   const sourceDuration = getSourceDurationForTimelineDuration(clip, exportEnd - exportStart);
   if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceDuration) || sourceDuration <= 0) {
-    return null;
+    return {
+      plan: null,
+      reason: "원본 비디오 구간 계산에 실패했습니다.",
+    };
   }
 
   const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
   return {
-    clip,
-    cropX,
-    cropY,
-    cropWidth,
-    cropHeight,
-    sourceStart,
-    sourceDuration,
-    includeAudio:
-      includeAudio &&
-      clip.hasAudio !== false &&
-      !(clip.audioMuted ?? false) &&
-      audioVolume > 0,
-    audioVolume,
+    plan: {
+      clip,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
+      sourceStart,
+      sourceDuration,
+      includeAudio:
+        includeAudio &&
+        clip.hasAudio !== false &&
+        !(clip.audioMuted ?? false) &&
+        audioVolume > 0,
+      audioVolume,
+    },
+    reason: "단일 영상 직접 인코딩 경로를 사용할 수 있습니다.",
   };
 }
 

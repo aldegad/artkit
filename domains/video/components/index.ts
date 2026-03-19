@@ -15,6 +15,7 @@ export { default as VideoMenuBar } from "./VideoMenuBar";
 export { default as VideoToolbar } from "./VideoToolbar";
 export { default as VideoProjectListModal } from "./VideoProjectListModal";
 export { default as VideoCanvasSizeEditor } from "./VideoCanvasSizeEditor";
+export { VideoCanvasOverlayModal } from "./VideoCanvasOverlayModal";
 
 // Export modal
 export { VideoExportModal } from "./VideoExportModal";

@@ -14,6 +14,7 @@ export {
   createVideoClip,
   createAudioClip,
   createImageClip,
+  createCanvasOverlayClip,
   getClipPlaybackSpeed,
   getClipSourceSpan,
   getSourceDurationForTimelineDuration,

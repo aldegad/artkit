@@ -85,7 +85,18 @@ export async function seekExportVideoFrame(
   });
 }
 
-export async function resolveClipSourceBlob(clip: VideoClip): Promise<Blob> {
+function getSourceBlobCacheKey(clip: VideoClip): string {
+  return `${clip.id}:${clip.sourceUrl ?? ""}`;
+}
+
+export async function resolveClipSourceBlob(
+  clip: VideoClip,
+  sourceBlobCache?: Map<string, Blob>
+): Promise<Blob> {
+  const cacheKey = getSourceBlobCacheKey(clip);
+  const cachedBlob = sourceBlobCache?.get(cacheKey);
+  if (cachedBlob) return cachedBlob;
+
   const sourceUrl = typeof clip.sourceUrl === "string" ? clip.sourceUrl : "";
   const shouldTrySourceUrlFirst =
     sourceUrl.startsWith("blob:") ||
@@ -95,14 +106,21 @@ export async function resolveClipSourceBlob(clip: VideoClip): Promise<Blob> {
   if (shouldTrySourceUrlFirst) {
     try {
       const response = await fetch(sourceUrl);
-      if (response.ok) return response.blob();
+      if (response.ok) {
+        const blob = await response.blob();
+        sourceBlobCache?.set(cacheKey, blob);
+        return blob;
+      }
     } catch {
       // Fall through to persisted media lookup.
     }
   }
 
   const storedBlob = await loadMediaBlob(clip.id).catch(() => null);
-  if (storedBlob) return storedBlob;
+  if (storedBlob) {
+    sourceBlobCache?.set(cacheKey, storedBlob);
+    return storedBlob;
+  }
 
   if (!sourceUrl) {
     throw new Error("clip source URL is missing");
@@ -112,7 +130,9 @@ export async function resolveClipSourceBlob(clip: VideoClip): Promise<Blob> {
   if (!response.ok) {
     throw new Error(`failed to load source media (${response.status})`);
   }
-  return response.blob();
+  const blob = await response.blob();
+  sourceBlobCache?.set(cacheKey, blob);
+  return blob;
 }
 
 export async function mountBlobToFfmpegFile(
@@ -199,6 +219,7 @@ async function runEncodeWithProgress(params: {
       elapsedSeconds,
       isIndeterminate: waitingForFirstProgress,
       isStalled,
+      ffmpegLogSummary: latestEncodeLog || undefined,
     });
   };
 
@@ -219,6 +240,7 @@ async function runEncodeWithProgress(params: {
       elapsedSeconds,
       isIndeterminate: waitingForMeaningfulProgress,
       isStalled: false,
+      ffmpegLogSummary: latestEncodeLog || undefined,
     });
   };
   const onFfmpegLog = ({ message }: { type: string; message: string }) => {
