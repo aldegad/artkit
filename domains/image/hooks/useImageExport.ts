@@ -2,7 +2,7 @@
 
 import { useCallback, RefObject } from "react";
 import { UnifiedLayer, OutputFormat, CropArea } from "../types";
-import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { drawLayerWithOptionalAlphaMask, drawLayerWithClippingMask } from "@/shared/utils/layerAlphaMask";
 import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
 import { trackEvent } from "@/shared/utils/analytics";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
@@ -73,6 +73,7 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
     const sortedVisibleLayers = [...layers]
       .filter((layer) => layer.visible)
       .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const layerById = new Map(layers.map((l) => [l.id, l]));
 
     sortedVisibleLayers.forEach((layer) => {
       if (!layer.visible) return;
@@ -83,7 +84,18 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       compositeCtx.globalCompositeOperation = layer.blendMode || "source-over";
       const posX = layer.position?.x || 0;
       const posY = layer.position?.y || 0;
-      drawLayerWithOptionalAlphaMask(compositeCtx, layerCanvas, posX, posY);
+
+      const maskLayerId = layer.clippingMaskLayerId ?? null;
+      const maskLayer = maskLayerId ? layerById.get(maskLayerId) : null;
+      const maskCanvas = maskLayerId ? layerCanvasesRef.current?.get(maskLayerId) : null;
+      if (maskLayer && maskCanvas && maskLayer.visible) {
+        const maskX = maskLayer.position?.x ?? 0;
+        const maskY = maskLayer.position?.y ?? 0;
+        drawLayerWithClippingMask(compositeCtx, layerCanvas, posX, posY, maskCanvas, maskX, maskY);
+      } else {
+        drawLayerWithOptionalAlphaMask(compositeCtx, layerCanvas, posX, posY);
+      }
+
       compositeCtx.globalAlpha = 1;
       compositeCtx.globalCompositeOperation = "source-over";
     });
@@ -242,13 +254,25 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
       ctx.globalAlpha = layer.opacity / 100;
       ctx.globalCompositeOperation = layer.blendMode || "source-over";
 
+      const maskLayer = layer.clippingMaskLayerId ? layers.find((l) => l.id === layer.clippingMaskLayerId) : null;
+      const maskCanvas = layer.clippingMaskLayerId ? layerCanvasesRef.current?.get(layer.clippingMaskLayerId) : null;
+      const useClippingMask = maskLayer && maskCanvas && maskLayer.visible;
+      const posX = layer.position?.x || 0;
+      const posY = layer.position?.y || 0;
+      const maskX = maskLayer?.position?.x ?? 0;
+      const maskY = maskLayer?.position?.y ?? 0;
+
       if (hasObjectBounds && layerBounds) {
         const maskedCanvas = document.createElement("canvas");
         maskedCanvas.width = layerCanvas.width;
         maskedCanvas.height = layerCanvas.height;
         const maskedCtx = maskedCanvas.getContext("2d");
         if (!maskedCtx) return null;
-        drawLayerWithOptionalAlphaMask(maskedCtx, layerCanvas, 0, 0);
+        if (useClippingMask) {
+          drawLayerWithClippingMask(maskedCtx, layerCanvas, 0, 0, maskCanvas!, maskX - posX, maskY - posY);
+        } else {
+          drawLayerWithOptionalAlphaMask(maskedCtx, layerCanvas, 0, 0);
+        }
 
         ctx.drawImage(
           maskedCanvas,
@@ -262,9 +286,11 @@ export function useImageExport(options: UseImageExportOptions): UseImageExportRe
           layerBounds.height,
         );
       } else {
-        const posX = layer.position?.x || 0;
-        const posY = layer.position?.y || 0;
-        drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
+        if (useClippingMask) {
+          drawLayerWithClippingMask(ctx, layerCanvas, posX, posY, maskCanvas!, maskX, maskY);
+        } else {
+          drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
+        }
       }
 
       ctx.globalAlpha = 1;

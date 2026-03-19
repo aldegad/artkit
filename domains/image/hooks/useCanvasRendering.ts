@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, RefObject, useCallback, useRef } from "react";
-import { UnifiedLayer, Point, CropArea, Guide, SnapSource, MarqueeSubTool, SelectionMask } from "../types";
+import { UnifiedLayer, Point, CropArea, Guide, SnapSource, MarqueeSubTool, SelectionMask, DragType } from "../types";
 import { useEditorState, useEditorRefs } from "../contexts";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { calculateViewOffset, ViewContext } from "../utils/coordinateSystem";
 import { canvasCache } from "../utils";
 import { CHECKERBOARD, HANDLE_SIZE, ROTATE_HANDLE, FLIP_HANDLE, LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawBrushCursor } from "@/shared/utils/brushCursor";
-import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
-import { drawMagicWandSelectionOutline, type MagicWandSelection } from "@/shared/utils/magicWand";
+import { drawLayerWithOptionalAlphaMask, drawLayerWithClippingMask } from "@/shared/utils/layerAlphaMask";
+import { drawMagicWandSelectionOutlineByComponents } from "@/shared/utils/magicWand";
 import { resizeCanvasForDpr, resolvePixelPreviewScalePolicy } from "@/shared/utils";
 
 // ============================================
@@ -57,6 +57,8 @@ interface UseCanvasRenderingOptions {
   lassoPath: Point[] | null;
   isDuplicating: boolean;
   isMovingSelection: boolean;
+  isDragging?: boolean;
+  dragType?: DragType;
 
   // Transform state (optional)
   transformBounds?: TransformBounds | null;
@@ -87,8 +89,10 @@ interface UseCanvasRenderingReturn {
   requestRender: () => void;
 }
 
-const MAGIC_WAND_OUTLINE_DASH = [4, 4];
-const MAGIC_WAND_OUTLINE_SPEED_MS = 140;
+// 화면 픽셀 기준 선택 점선. zoom과 무관하게 화면에서는 항상 같은 크기로 보인다.
+const SELECTION_DASH = [8, 6];
+// 포토샵 느낌으로 천천히 움직이는 marching ants 속도
+const SELECTION_DASH_SPEED_MS = 280;
 
 // ============================================
 // Hook Implementation
@@ -124,6 +128,8 @@ export function useCanvasRendering(
     lassoPath,
     isDuplicating,
     isMovingSelection,
+    isDragging = false,
+    dragType = null,
     transformBounds,
     isTransformActive,
     transformLayerId,
@@ -145,6 +151,7 @@ export function useCanvasRendering(
   // Ref to store the render function for direct calls from ResizeObserver
   const renderFnRef = useRef<(() => void) | null>(null);
   const rafIdRef = useRef<number | null>(null);
+  const selectionAnimationRafRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
   // Manual render trigger - calls render function directly via requestAnimationFrame
@@ -200,6 +207,10 @@ export function useCanvasRendering(
       }
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
+      }
+      if (selectionAnimationRafRef.current) {
+        cancelAnimationFrame(selectionAnimationRafRef.current);
+        selectionAnimationRafRef.current = null;
       }
     };
   }, [requestRender]);
@@ -312,17 +323,26 @@ export function useCanvasRendering(
       ctx.globalAlpha = layer.opacity / 100;
       ctx.globalCompositeOperation = layer.blendMode || "source-over";
 
-      // All layers are paint layers now - render from canvas
       const layerCanvas = layerCanvasesRef.current?.get(layer.id);
       if (layerCanvas) {
         ctx.imageSmoothingEnabled = previewScalePolicy.imageSmoothingEnabled;
         ctx.imageSmoothingQuality = previewScalePolicy.imageSmoothingQuality;
         ctx.translate(offsetX, offsetY);
         ctx.scale(zoom, zoom);
-        // Use layer position for alignment/positioning
         const posX = layer.position?.x || 0;
         const posY = layer.position?.y || 0;
-        drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
+
+        const maskLayerId = layer.clippingMaskLayerId ?? null;
+        const maskLayer = maskLayerId ? layerById.get(maskLayerId) : null;
+        const maskCanvas = maskLayerId ? layerCanvasesRef.current?.get(maskLayerId) : null;
+
+        if (maskLayer && maskCanvas && maskLayer.visible) {
+          const maskX = maskLayer.position?.x ?? 0;
+          const maskY = maskLayer.position?.y ?? 0;
+          drawLayerWithClippingMask(ctx, layerCanvas, posX, posY, maskCanvas, maskX, maskY);
+        } else {
+          drawLayerWithOptionalAlphaMask(ctx, layerCanvas, posX, posY);
+        }
       }
 
       ctx.restore();
@@ -566,8 +586,8 @@ export function useCanvasRendering(
       ctx.restore();
     }
 
-    // Draw marquee selection overlay.
-    const showSelectionForTool = (
+    // Draw marquee selection overlay. 선택이 있으면 어떤 도구에서든 점선으로 표시.
+    const showSelectionForTool = !!selection || (
       toolMode === "marquee"
       || toolMode === "move"
       || toolMode === "fill"
@@ -584,10 +604,14 @@ export function useCanvasRendering(
       && lassoPath.length > 1
     );
 
+    const dashCycle = SELECTION_DASH.reduce((sum, value) => sum + value, 0);
+    const animatedDashOffset = -Math.floor((performance.now() / SELECTION_DASH_SPEED_MS) % dashCycle);
+
     if (showLassoPreview) {
       ctx.save();
       ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
+      ctx.setLineDash(SELECTION_DASH);
+      ctx.lineDashOffset = animatedDashOffset;
       ctx.strokeStyle = colors.textOnColor;
       ctx.beginPath();
       lassoPath!.forEach((point, index) => {
@@ -602,7 +626,7 @@ export function useCanvasRendering(
       ctx.stroke();
 
       ctx.strokeStyle = "#000000";
-      ctx.lineDashOffset = 4;
+      ctx.lineDashOffset = animatedDashOffset + dashCycle / 2;
       ctx.beginPath();
       lassoPath!.forEach((point, index) => {
         const x = offsetX + point.x * zoom;
@@ -617,69 +641,75 @@ export function useCanvasRendering(
       ctx.restore();
     }
 
-    if (selection && showSelectionForTool && !showLassoPreview) {
-      const shouldDrawMaskedSelection = (
+    if (selection && showSelectionForTool) {
+      const isCreatePreview =
+        toolMode === "marquee"
+        && isDragging
+        && dragType === "create"
+        && marqueeSubTool !== "lasso";
+
+      if (isCreatePreview) {
+        const previewX = offsetX + selection.x * zoom;
+        const previewY = offsetY + selection.y * zoom;
+        const previewW = Math.max(1, selection.width * zoom);
+        const previewH = Math.max(1, selection.height * zoom);
+
+        ctx.save();
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.fillRect(previewX, previewY, previewW, previewH);
+        ctx.restore();
+      }
+
+      // 마스크가 유효하면 연결 요소별 점선, 없으면 bbox로 1개 마스크 생성 후 동일 경로로 점선 (항상 점선 + 여러 영역 유지)
+      const hasValidMask = (
         !!selectionMask
         && selectionMask.width > 0
         && selectionMask.height > 0
         && selectionMask.mask.length === selectionMask.width * selectionMask.height
       );
+      const w = hasValidMask ? selectionMask!.width : Math.max(1, Math.round(selection.width));
+      const h = hasValidMask ? selectionMask!.height : Math.max(1, Math.round(selection.height));
+      const maskX = hasValidMask ? selectionMask!.x : selection.x;
+      const maskY = hasValidMask ? selectionMask!.y : selection.y;
+      const maskData = hasValidMask
+        ? selectionMask!.mask
+        : (() => {
+            const arr = new Uint8Array(w * h);
+            arr.fill(255);
+            return arr;
+          })();
 
-      if (shouldDrawMaskedSelection && selectionMask) {
-        const wandSelection: MagicWandSelection = {
-          width: selectionMask.width,
-          height: selectionMask.height,
-          mask: selectionMask.mask,
-          selectedCount: 0,
-          bounds: {
-            x: 0,
-            y: 0,
-            width: selectionMask.width,
-            height: selectionMask.height,
-          },
-        };
-
-        const dashCycle = MAGIC_WAND_OUTLINE_DASH.reduce((sum, value) => sum + value, 0);
-        const antsOffset = dashCycle > 0
-          ? -((performance.now() / MAGIC_WAND_OUTLINE_SPEED_MS) % dashCycle)
-          : 0;
-
-        drawMagicWandSelectionOutline(ctx, wandSelection, {
-          zoom,
-          offsetX: offsetX + selectionMask.x * zoom,
-          offsetY: offsetY + selectionMask.y * zoom,
-          color: "rgba(0, 0, 0, 0.9)",
-          lineWidth: 2,
-          dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: antsOffset,
-        });
-        drawMagicWandSelectionOutline(ctx, wandSelection, {
-          zoom,
-          offsetX: offsetX + selectionMask.x * zoom,
-          offsetY: offsetY + selectionMask.y * zoom,
+      const baseOffsetX = offsetX + maskX * zoom;
+      const baseOffsetY = offsetY + maskY * zoom;
+      const opts = {
+        zoom,
+        offsetX: baseOffsetX,
+        offsetY: baseOffsetY,
+        lineWidth: 1,
+        dash: SELECTION_DASH,
+        dashOffset: animatedDashOffset,
+      };
+      ctx.save();
+      drawMagicWandSelectionOutlineByComponents(
+        ctx,
+        w,
+        h,
+        maskData,
+        { ...opts, color: "rgba(0, 0, 0, 0.9)" },
+      );
+      drawMagicWandSelectionOutlineByComponents(
+        ctx,
+        w,
+        h,
+        maskData,
+        {
+          ...opts,
           color: "rgba(255, 255, 255, 0.95)",
           lineWidth: 1,
-          dash: MAGIC_WAND_OUTLINE_DASH,
-          dashOffset: antsOffset + (dashCycle / 2),
-        });
-      } else {
-        const selX = offsetX + selection.x * zoom;
-        const selY = offsetY + selection.y * zoom;
-        const selW = selection.width * zoom;
-        const selH = selection.height * zoom;
-
-        ctx.save();
-        ctx.strokeStyle = colors.textOnColor;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(selX, selY, selW, selH);
-
-        // Draw second layer with offset for "marching ants" effect
-        ctx.strokeStyle = "#000000";
-        ctx.lineDashOffset = 4;
-        ctx.strokeRect(selX, selY, selW, selH);
-        ctx.restore();
-      }
+          dashOffset: animatedDashOffset + dashCycle / 2,
+        },
+      );
+      ctx.restore();
     }
 
     // Draw floating layer (when moving selection - both duplicate and cut-move)
@@ -1012,6 +1042,8 @@ export function useCanvasRendering(
     lassoPath,
     isDuplicating,
     isMovingSelection,
+    isDragging,
+    dragType,
     transformBounds,
     isTransformActive,
     transformLayerId,
@@ -1039,6 +1071,31 @@ export function useCanvasRendering(
   useEffect(() => {
     render();
   }, [render]);
+
+  useEffect(() => {
+    const shouldAnimateSelection = !!selection;
+    if (!shouldAnimateSelection) {
+      if (selectionAnimationRafRef.current) {
+        cancelAnimationFrame(selectionAnimationRafRef.current);
+        selectionAnimationRafRef.current = null;
+      }
+      return;
+    }
+
+    const tick = () => {
+      renderFnRef.current?.();
+      selectionAnimationRafRef.current = requestAnimationFrame(tick);
+    };
+
+    selectionAnimationRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (selectionAnimationRafRef.current) {
+        cancelAnimationFrame(selectionAnimationRafRef.current);
+        selectionAnimationRafRef.current = null;
+      }
+    };
+  }, [selection]);
 
   return {
     requestRender,

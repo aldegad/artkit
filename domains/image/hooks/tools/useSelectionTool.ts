@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, SetStateAction, useEffect } from "react";
-import { CropArea, Point, MarqueeSubTool, SelectionMask } from "../../types";
+import { CropArea, Point, MarqueeSubTool, SelectionMask, SelectionCombineMode } from "../../types";
 import { useEditorState, useEditorRefs } from "../../contexts";
 import { drawIntoLayerAlphaMask, drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 
@@ -38,6 +38,8 @@ interface UseSelectionToolReturn {
   setMagicWandAllowAlpha: React.Dispatch<React.SetStateAction<boolean>>;
   marqueeSubTool: MarqueeSubTool;
   setMarqueeSubTool: React.Dispatch<React.SetStateAction<MarqueeSubTool>>;
+  selectionCombineMode: SelectionCombineMode;
+  setSelectionCombineMode: React.Dispatch<React.SetStateAction<SelectionCombineMode>>;
   lassoPath: Point[] | null;
   setLassoPath: React.Dispatch<React.SetStateAction<Point[] | null>>;
   selectionMask: SelectionMask | null;
@@ -53,6 +55,7 @@ interface UseSelectionToolReturn {
   floatingLayerRef: React.MutableRefObject<FloatingLayer | null>;
   clipboardRef: React.MutableRefObject<ImageData | null>;
   dragStartOriginRef: React.MutableRefObject<Point | null>;
+  previousCombineRef: React.MutableRefObject<{ selection: CropArea; mask: SelectionMask | null } | null>;
 
   // Operations
   startSelection: (x: number, y: number) => void;
@@ -71,10 +74,11 @@ interface UseSelectionToolReturn {
 // ============================================
 
 export function useSelectionTool(options: UseSelectionToolOptions): UseSelectionToolReturn {
-  // Get state from EditorStateContext
+  // Get state from EditorStateContext (selectionMask도 컨텍스트에 두어 리마운트 시에도 유지)
   const {
-    state: { rotation, canvasSize, selection },
+    state: { rotation, canvasSize, selection, selectionMask },
     setSelection: setContextSelection,
+    setSelectionMask: setContextSelectionMask,
   } = useEditorState();
 
   // Get refs from EditorRefsContext
@@ -85,8 +89,9 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
 
   // Local selection state wrapper that syncs with context
   const [marqueeSubTool, setMarqueeSubTool] = useState<MarqueeSubTool>("freeRect");
+  const [selectionCombineMode, setSelectionCombineMode] = useState<SelectionCombineMode>("new");
   const [lassoPath, setLassoPath] = useState<Point[] | null>(null);
-  const [selectionMask, setSelectionMask] = useState<SelectionMask | null>(null);
+  const setSelectionMask = setContextSelectionMask;
 
   const setSelection = useCallback((newSelection: SetStateAction<CropArea | null>) => {
     const value = typeof newSelection === "function"
@@ -112,10 +117,11 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     }
   }, [marqueeSubTool, lassoPath]);
 
-  // Refs
+  // Refs (previousCombineRef is used by selection handler for add/subtract/intersect)
   const floatingLayerRef = useRef<FloatingLayer | null>(null);
   const clipboardRef = useRef<ImageData | null>(null);
   const dragStartOriginRef = useRef<Point | null>(null);
+  const previousCombineRef = useRef<{ selection: CropArea; mask: SelectionMask | null } | null>(null);
 
   // Start a new selection
   const startSelection = useCallback((x: number, y: number) => {
@@ -348,6 +354,8 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setMagicWandAllowAlpha,
     marqueeSubTool,
     setMarqueeSubTool,
+    selectionCombineMode,
+    setSelectionCombineMode,
     lassoPath,
     setLassoPath,
     selectionMask,
@@ -363,6 +371,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     floatingLayerRef,
     clipboardRef,
     dragStartOriginRef,
+    previousCombineRef,
 
     // Operations
     startSelection,

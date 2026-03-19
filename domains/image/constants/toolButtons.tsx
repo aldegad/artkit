@@ -83,7 +83,7 @@ export function createEditorToolButtons(
       mode: "transform",
       name: "Transform",
       description: "Scale and move layer content",
-      keys: ["⌘T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
+      keys: ["⌘⌥T / Ctrl+Alt+T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
       shortcut: "T",
       icon: <TransformIcon className="w-4 h-4" />,
     },

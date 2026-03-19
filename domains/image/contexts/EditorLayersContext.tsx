@@ -51,6 +51,8 @@ export interface EditorLayersContextValue {
   moveLayer: (layerId: string, direction: "up" | "down") => void;
   reorderLayers: (fromId: string, toId: string) => void;
   mergeLayerDown: (layerId: string) => void;
+  createClippingMask: (layerId: string) => void;
+  releaseClippingMask: (layerId: string) => void;
   duplicateLayer: (layerId: string) => void;
   rotateAllLayerCanvases: (degrees: number) => void;
   resizeSelectedLayersToSmallest: () => void;

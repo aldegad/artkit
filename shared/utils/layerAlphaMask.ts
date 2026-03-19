@@ -252,6 +252,87 @@ export function drawLayerWithOptionalAlphaMask(
   targetCtx.drawImage(maskDrawScratch.canvas, x, y);
 }
 
+// Scratch for clipping mask composite (content layer size)
+let clippingScratch: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null;
+let clippingMaskAlphaCanvas: HTMLCanvasElement | null = null;
+
+function ensureClippingScratch(contentWidth: number, contentHeight: number): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
+  if (
+    !clippingScratch
+    || clippingScratch.canvas.width !== contentWidth
+    || clippingScratch.canvas.height !== contentHeight
+  ) {
+    const canvas = document.createElement("canvas");
+    canvas.width = contentWidth;
+    canvas.height = contentHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    clippingScratch = { canvas, ctx };
+  }
+  return clippingScratch.ctx;
+}
+
+/** Returns a canvas that is white with the same alpha as the source (for use with destination-in). */
+function getCanvasAsAlphaOnly(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const ctx = sourceCanvas.getContext("2d");
+  if (!ctx) return null;
+  const id = ctx.getImageData(0, 0, w, h);
+  const data = id.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+    // keep data[i+3] as is (alpha)
+  }
+  if (!clippingMaskAlphaCanvas || clippingMaskAlphaCanvas.width !== w || clippingMaskAlphaCanvas.height !== h) {
+    clippingMaskAlphaCanvas = document.createElement("canvas");
+    clippingMaskAlphaCanvas.width = w;
+    clippingMaskAlphaCanvas.height = h;
+  }
+  const outCtx = clippingMaskAlphaCanvas.getContext("2d");
+  if (!outCtx) return null;
+  outCtx.putImageData(id, 0, 0);
+  return clippingMaskAlphaCanvas;
+}
+
+/**
+ * Draw a layer (content) masked by another layer's alpha (clipping mask).
+ * Content and mask can have different positions; mask is applied in document space.
+ */
+export function drawLayerWithClippingMask(
+  targetCtx: CanvasRenderingContext2D,
+  contentCanvas: HTMLCanvasElement,
+  contentX: number,
+  contentY: number,
+  maskCanvas: HTMLCanvasElement,
+  maskX: number,
+  maskY: number
+): void {
+  const cw = contentCanvas.width;
+  const ch = contentCanvas.height;
+  const scratchCtx = ensureClippingScratch(cw, ch);
+  if (!scratchCtx || !clippingScratch) {
+    targetCtx.drawImage(contentCanvas, contentX, contentY);
+    return;
+  }
+  scratchCtx.clearRect(0, 0, cw, ch);
+  scratchCtx.globalCompositeOperation = "source-over";
+  scratchCtx.drawImage(contentCanvas, 0, 0);
+  const maskAlpha = getCanvasAsAlphaOnly(maskCanvas);
+  if (!maskAlpha) {
+    targetCtx.drawImage(contentCanvas, contentX, contentY);
+    return;
+  }
+  scratchCtx.globalCompositeOperation = "destination-in";
+  scratchCtx.drawImage(maskAlpha, maskX - contentX, maskY - contentY);
+  scratchCtx.globalCompositeOperation = "source-over";
+  targetCtx.drawImage(clippingScratch.canvas, contentX, contentY);
+}
+
 export function getLayerAlphaMaskImageData(layerCanvas: HTMLCanvasElement): ImageData | null {
   const mask = getLayerAlphaMask(layerCanvas);
   if (!mask) return null;
