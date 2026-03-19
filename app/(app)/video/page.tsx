@@ -14,6 +14,9 @@ import {
   showErrorToast,
 } from "@/shared/components";
 import {
+  BrushIcon,
+  ImageIcon,
+  PlusIcon,
   VolumeOnIcon,
   VolumeMutedIcon,
   UndoIcon,
@@ -36,6 +39,7 @@ import {
   VideoMenuBar,
   VideoToolbar,
   VideoCanvasSizeEditor,
+  VideoCanvasOverlayModal,
   VideoExportModal,
   VideoInterpolationModal,
   MaskControls,
@@ -52,6 +56,8 @@ import {
   TIMELINE,
   MASK_BRUSH,
   type Clip,
+  type ImageClip,
+  createBlankCanvasOverlayDataUrl,
 } from "@/domains/video";
 import {
   useVideoKeyboardShortcuts,
@@ -190,6 +196,7 @@ function VideoEditorContent() {
     setViewState,
     addTrack,
     addImageClip,
+    addCanvasOverlayClip,
     removeClip,
     addClips,
     updateClip,
@@ -241,6 +248,7 @@ function VideoEditorContent() {
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
   const editorRootRef = useRef<HTMLDivElement>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [editingCanvasOverlayClipId, setEditingCanvasOverlayClipId] = useState<string | null>(null);
   const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
     () => readAISettings().frameInterpolationQuality,
   );
@@ -398,6 +406,14 @@ function VideoEditorContent() {
     : null;
   const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
   const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
+  const selectedCanvasOverlayClip = selectedVisualClip?.type === "image" && selectedVisualClip.isCanvasOverlay
+    ? selectedVisualClip
+    : null;
+  const editingCanvasOverlayClip = useMemo<ImageClip | null>(() => {
+    if (!editingCanvasOverlayClipId) return null;
+    const clip = clips.find((candidate) => candidate.id === editingCanvasOverlayClipId) || null;
+    return clip?.type === "image" && clip.isCanvasOverlay ? clip : null;
+  }, [clips, editingCanvasOverlayClipId]);
   const selectedPositionKeyframeClip = useMemo(
     () => findValidPositionKeyframeClip(clips, selectedPositionKeyframe),
     [clips, selectedPositionKeyframe]
@@ -408,6 +424,12 @@ function VideoEditorContent() {
       setSelectedPositionKeyframe(null);
     }
   }, [selectedPositionKeyframe, selectedPositionKeyframeClip, setSelectedPositionKeyframe]);
+
+  useEffect(() => {
+    if (editingCanvasOverlayClipId && !editingCanvasOverlayClip) {
+      setEditingCanvasOverlayClipId(null);
+    }
+  }, [editingCanvasOverlayClip, editingCanvasOverlayClipId]);
 
   const gapInterpolationAnalysis = useMemo(
     () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
@@ -628,6 +650,61 @@ function VideoEditorContent() {
   const handleApplyCanvasSize = useCallback((width: number, height: number) => {
     setProject({ ...project, canvasSize: { width, height } });
   }, [project, setProject]);
+
+  const resolveCanvasOverlayTrackId = useCallback(() => {
+    if (selectedVisualClip) {
+      return selectedVisualClip.trackId;
+    }
+
+    const firstVideoTrack = tracks.find((track) => track.type === "video");
+    if (firstVideoTrack) {
+      return firstVideoTrack.id;
+    }
+
+    return addTrack(undefined, "video");
+  }, [addTrack, selectedVisualClip, tracks]);
+
+  const handleCreateCanvasOverlay = useCallback(() => {
+    const sourceUrl = createBlankCanvasOverlayDataUrl(project.canvasSize);
+    const trackId = resolveCanvasOverlayTrackId();
+    saveToHistory();
+    const clipId = addCanvasOverlayClip(
+      trackId,
+      sourceUrl,
+      project.canvasSize,
+      playback.currentTime,
+      5,
+      project.canvasSize,
+    );
+    selectClips([clipId]);
+    setEditingCanvasOverlayClipId(clipId);
+  }, [
+    addCanvasOverlayClip,
+    playback.currentTime,
+    project.canvasSize,
+    resolveCanvasOverlayTrackId,
+    saveToHistory,
+    selectClips,
+  ]);
+
+  const handleEditCanvasOverlay = useCallback(() => {
+    if (!selectedCanvasOverlayClip) return;
+    setEditingCanvasOverlayClipId(selectedCanvasOverlayClip.id);
+  }, [selectedCanvasOverlayClip]);
+
+  const handleCloseCanvasOverlayModal = useCallback(() => {
+    setEditingCanvasOverlayClipId(null);
+  }, []);
+
+  const handleSaveCanvasOverlay = useCallback((dataUrl: string) => {
+    if (!editingCanvasOverlayClipId) return;
+    saveToHistory();
+    updateClip(editingCanvasOverlayClipId, {
+      sourceUrl: dataUrl,
+      imageData: dataUrl,
+    });
+    setEditingCanvasOverlayClipId(null);
+  }, [editingCanvasOverlayClipId, saveToHistory, updateClip]);
 
   const handleToggleTimeline = useCallback(() => {
     const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
@@ -918,6 +995,25 @@ function VideoEditorContent() {
             >
               <VideoCameraIcon className="w-4 h-4" />
             </button>
+            <div className="w-px h-4 bg-border-default mx-0.5" />
+            <button
+              onClick={handleCreateCanvasOverlay}
+              className="inline-flex items-center gap-1.5 rounded px-2 py-1 hover:bg-interactive-hover transition-colors"
+              title="빈 오버레이 캔버스 클립 추가"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <ImageIcon className="w-4 h-4" />
+              <span className="text-xs">오버레이</span>
+            </button>
+            <button
+              onClick={handleEditCanvasOverlay}
+              disabled={!selectedCanvasOverlayClip}
+              className="inline-flex items-center gap-1.5 rounded px-2 py-1 hover:bg-interactive-hover disabled:opacity-30 transition-colors"
+              title="선택한 오버레이 캔버스 편집"
+            >
+              <BrushIcon className="w-4 h-4" />
+              <span className="text-xs">편집</span>
+            </button>
           </div>
 
           {toolMode === "crop" && (
@@ -1127,6 +1223,13 @@ function VideoEditorContent() {
           compressionBalanced: t.compressionBalanced,
           compressionSmallFile: t.compressionSmallFile,
         }}
+      />
+
+      <VideoCanvasOverlayModal
+        isOpen={Boolean(editingCanvasOverlayClip)}
+        clip={editingCanvasOverlayClip}
+        onClose={handleCloseCanvasOverlayModal}
+        onSave={handleSaveCanvasOverlay}
       />
 
       <PanLockFloatingButton

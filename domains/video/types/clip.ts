@@ -83,6 +83,7 @@ export interface ImageClip extends BaseClip {
   sourceId: string;
   sourceSize: Size;
   imageData?: string; // Base64 for persistence
+  isCanvasOverlay?: boolean;
 }
 
 export type Clip = VideoClip | AudioClip | ImageClip;
@@ -215,6 +216,21 @@ export function createImageClip(
     sourceUrl,
     sourceId: crypto.randomUUID(),
     sourceSize,
+  };
+}
+
+export function createCanvasOverlayClip(
+  trackId: string,
+  sourceUrl: string,
+  sourceSize: Size,
+  startTime: number = 0,
+  duration: number = 5
+): ImageClip {
+  return {
+    ...createImageClip(trackId, sourceUrl, sourceSize, startTime, duration),
+    name: "Overlay Canvas",
+    isCanvasOverlay: true,
+    imageData: sourceUrl,
   };
 }
 

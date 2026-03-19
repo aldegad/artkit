@@ -5,3 +5,4 @@ export * from "./playbackTick";
 export * from "./playbackStopSignal";
 export * from "./timelineViewportMath";
 export * from "./clipTransformKeyframes";
+export * from "./videoCanvasOverlay";

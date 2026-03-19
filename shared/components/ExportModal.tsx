@@ -17,6 +17,10 @@ export interface ExportProgress {
   elapsedSeconds?: number;
   isIndeterminate?: boolean;
   isStalled?: boolean;
+  strategy?: "direct-single-video" | "frame-sequence";
+  strategyReason?: string;
+  strategyEngine?: "ffmpeg" | "native-recorder" | "webcodecs";
+  ffmpegLogSummary?: string;
 }
 
 export interface ExportModalProps {
@@ -77,6 +81,16 @@ export function ExportModal({
     ? Math.round(Math.max(0, Math.min(100, exportProgress.percent)))
     : 0;
   const phasePercent = exportProgress?.phasePercent;
+  const strategyLabel =
+    exportProgress?.strategy === "direct-single-video"
+      ? exportProgress.strategyReason
+        ? `직접 경로${exportProgress.strategyEngine === "native-recorder" ? " · 브라우저 네이티브" : exportProgress.strategyEngine === "webcodecs" ? " · 브라우저 WebCodecs" : exportProgress.strategyEngine === "ffmpeg" ? " · FFmpeg" : ""} · ${exportProgress.strategyReason}`
+        : "직접 경로"
+      : exportProgress?.strategy === "frame-sequence"
+        ? exportProgress.strategyReason
+          ? `일반 렌더 경로${exportProgress.strategyEngine === "ffmpeg" ? " · FFmpeg" : ""} · ${exportProgress.strategyReason}`
+          : "일반 렌더 경로"
+        : null;
   const phaseStatusLabel = exportProgress
     ? exportProgress.isIndeterminate
       ? exportProgress.isStalled
@@ -152,6 +166,11 @@ export function ExportModal({
           {exportProgress?.detail && (
             <div className="mt-0.5 text-xs text-text-tertiary truncate">
               {exportProgress.detail}
+            </div>
+          )}
+          {(strategyLabel || exportProgress?.ffmpegLogSummary) && (
+            <div className="mt-0.5 text-[11px] text-text-tertiary truncate">
+              {[strategyLabel, exportProgress?.ffmpegLogSummary].filter(Boolean).join(" · ")}
             </div>
           )}
           {(phaseStatusLabel || elapsedLabel || exportProgress) && (

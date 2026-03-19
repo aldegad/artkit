@@ -64,6 +64,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
     multi: null,
   });
   const audioBufferCacheRef = useRef<Map<string, AudioBuffer | null>>(new Map());
+  const sourceBlobCacheRef = useRef<Map<string, Blob>>(new Map());
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgressState | null>(null);
 
@@ -136,9 +137,8 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
 
     try {
       setIsExporting(true);
-      const ffmpeg = await getFFmpeg();
       const result = await runVideoExport({
-        ffmpeg,
+        getFFmpeg,
         project,
         playback,
         clips,
@@ -147,6 +147,7 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
         exportOptions,
         setExportProgress,
         audioBufferCache: audioBufferCacheRef.current,
+        sourceBlobCache: sourceBlobCacheRef.current,
       });
 
       downloadBlob(
@@ -162,11 +163,12 @@ export function useVideoExport(options: UseVideoExportOptions): UseVideoExportRe
     } catch (error) {
       console.error("Video export failed:", error);
       failureMessage = (error as Error).message;
-      setExportProgress({
+      setExportProgress((current) => ({
+        ...current,
         stage: "Export failed",
         percent: 0,
         detail: failureMessage,
-      });
+      }));
       showErrorToast(`${exportFailedLabel}: ${failureMessage}`);
     } finally {
       setIsExporting(false);

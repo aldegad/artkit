@@ -19,6 +19,7 @@ import {
   createVideoClip,
   createAudioClip,
   createImageClip,
+  createCanvasOverlayClip,
   getClipPlaybackSpeed,
   getClipSourceSpan,
   getTimelineDurationForSourceDuration,
@@ -98,6 +99,14 @@ interface TimelineContextValue {
     sourceSize?: Size
   ) => string;
   addImageClip: (
+    trackId: string,
+    sourceUrl: string,
+    sourceSize: Size,
+    startTime?: number,
+    duration?: number,
+    canvasSize?: Size
+  ) => string;
+  addCanvasOverlayClip: (
     trackId: string,
     sourceUrl: string,
     sourceSize: Size,
@@ -580,6 +589,36 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
   );
 
+  const addCanvasOverlayClip = useCallback(
+    (
+      trackId: string,
+      sourceUrl: string,
+      sourceSize: Size,
+      startTime: number = 0,
+      duration: number = 5,
+      canvasSize?: Size
+    ): string => {
+      const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
+      const frameAlignedStart = snapTimeToFrame(startTime);
+      const baseClip = createCanvasOverlayClip(
+        resolvedTrackId,
+        sourceUrl,
+        sourceSize,
+        frameAlignedStart,
+        duration
+      );
+      const clip = createSafeFittedVisualClip({
+        baseClip,
+        sourceSize,
+        startTime: frameAlignedStart,
+        canvasSize,
+      });
+      updateClipsWithDuration((prev) => [...prev, clip]);
+      return clip.id;
+    },
+    [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
+  );
+
   const removeClip = useCallback((clipId: string) => {
     updateClipsWithDuration((prev) => prev.filter((c) => c.id !== clipId));
   }, [updateClipsWithDuration]);
@@ -927,6 +966,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     addVideoClip,
     addAudioClip,
     addImageClip,
+    addCanvasOverlayClip,
     removeClip,
     updateClip,
     setClipPlaybackSpeed,
