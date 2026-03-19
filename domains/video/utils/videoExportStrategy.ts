@@ -7,7 +7,6 @@ import {
 } from "./videoExportHelpers";
 import { resolveClipSourceBlob } from "./videoExportIO";
 import { getNativeRecorderSupport } from "./videoExportNativeRecorder";
-import { getWebCodecsDirectExportSupport } from "./videoExportWebCodecs";
 import type {
   DirectVideoExportSubStrategy,
   DirectVideoExportEngine,
@@ -19,7 +18,6 @@ import type {
 export interface ResolvedVideoExportStrategy extends VideoExportStrategyDecision {
   directPlan?: DirectVideoExportPlan;
   sourceBlob?: Blob;
-  sourceExtension?: string;
   nativeRecorderMimeType?: string;
 }
 
@@ -106,10 +104,8 @@ async function resolveDirectEngine(params: {
   subStrategy: DirectVideoExportSubStrategy;
   plan: DirectVideoExportPlan;
   config: ResolvedVideoExportConfig;
-  sourceBlob: Blob;
-  sourceExtension: string;
 }): Promise<{ engine: DirectVideoExportEngine; reason: string; nativeRecorderMimeType?: string }> {
-  const { subStrategy, plan, config, sourceBlob, sourceExtension } = params;
+  const { subStrategy, plan, config } = params;
   if (subStrategy === "copy") {
     return {
       engine: "ffmpeg",
@@ -117,33 +113,15 @@ async function resolveDirectEngine(params: {
     };
   }
 
-  if (plan.overlays.length > 0) {
-    return {
-      engine: "ffmpeg",
-      reason: `오버레이 ${plan.overlays.length}개를 필터 합성하기 위해 ffmpeg 직접 경로를 사용합니다.`,
-    };
-  }
-
-  const webCodecsSupport = await getWebCodecsDirectExportSupport({
-    config,
-    sourceBlob,
-    sourceExtension,
-  });
-  if (!webCodecsSupport.supported) {
-    console.info("[VideoExport] webcodecs unsupported", {
-      reason: webCodecsSupport.reason,
-      sourceExtension,
-      format: config.format,
-    });
-  }
-  if (webCodecsSupport.supported) {
-    return {
-      engine: "webcodecs",
-      reason: webCodecsSupport.reason,
-    };
-  }
-
   const nativeSupport = getNativeRecorderSupport(config, plan);
+  if (plan.overlays.length > 0 && nativeSupport.supported && nativeSupport.mimeType) {
+    return {
+      engine: "native-recorder",
+      reason: `오버레이 ${plan.overlays.length}개를 포함한 직접 합성을 브라우저 네이티브 인코더로 처리합니다. (${config.frameRate}fps MP4)`,
+      nativeRecorderMimeType: nativeSupport.mimeType,
+    };
+  }
+
   if (nativeSupport.supported && nativeSupport.mimeType) {
     return {
       engine: "native-recorder",
@@ -193,8 +171,6 @@ export async function resolveVideoExportStrategy(
     config,
   });
   const engineDecision = await resolveDirectEngine({
-    sourceBlob,
-    sourceExtension,
     subStrategy: copyDecision.subStrategy,
     plan: directEvaluation.plan,
     config,
@@ -211,7 +187,6 @@ export async function resolveVideoExportStrategy(
     },
     directPlan: directEvaluation.plan,
     sourceBlob,
-    sourceExtension,
     nativeRecorderMimeType: engineDecision.nativeRecorderMimeType,
   };
 }

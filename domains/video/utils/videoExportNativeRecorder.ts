@@ -9,6 +9,7 @@ import {
   loadExportVideoElement,
   mountBlobToFfmpegFile,
   readBinaryOutputFile,
+  resolveClipSourceBlob,
   seekExportVideoFrame,
   writeBlobToFfmpegFile,
 } from "./videoExportIO";
@@ -31,6 +32,10 @@ interface NativeRecorderSupport {
   supported: boolean;
   mimeType?: string;
   reason: string;
+}
+
+interface NativeOverlayImage {
+  image: HTMLImageElement;
 }
 
 export interface NativeRecordedVideoExport {
@@ -103,20 +108,6 @@ function setPitchPreservation(video: HTMLVideoElement): void {
   if (typeof element.webkitPreservesPitch === "boolean") element.webkitPreservesPitch = true;
 }
 
-function getVideoCaptureStream(video: HTMLVideoElement): MediaStream | null {
-  const element = video as HTMLVideoElement & {
-    captureStream?: () => MediaStream;
-    mozCaptureStream?: () => MediaStream;
-  };
-  if (typeof element.captureStream === "function") {
-    return element.captureStream();
-  }
-  if (typeof element.mozCaptureStream === "function") {
-    return element.mozCaptureStream();
-  }
-  return null;
-}
-
 function stopTracks(stream: MediaStream | null): void {
   if (!stream) return;
   for (const track of stream.getTracks()) {
@@ -126,18 +117,6 @@ function stopTracks(stream: MediaStream | null): void {
 
 function toUint8Array(buffer: ArrayBuffer): Uint8Array {
   return new Uint8Array(buffer.slice(0));
-}
-
-async function waitForAudioTracks(stream: MediaStream, timeoutMs: number): Promise<MediaStreamTrack[]> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      return audioTracks;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 100));
-  }
-  return stream.getAudioTracks();
 }
 
 export function getNativeRecorderSupport(
@@ -176,9 +155,11 @@ export async function runNativeRecorderDirectExport(params: {
   mimeType: string;
   config: ResolvedVideoExportConfig;
   setExportProgress: (value: ExportProgressState) => void;
+  sourceBlobCache: Map<string, Blob>;
 }): Promise<NativeRecordedVideoExport> {
-  const { plan, sourceBlob, mimeType, config, setExportProgress } = params;
+  const { plan, sourceBlob, mimeType, config, setExportProgress, sourceBlobCache } = params;
   const objectUrl = URL.createObjectURL(sourceBlob);
+  const overlayObjectUrls: string[] = [];
   setExportProgress({
     stage: "Preparing export",
     percent: 3,
@@ -238,6 +219,57 @@ export async function runNativeRecorderDirectExport(params: {
     video.removeAttribute("src");
     video.load();
     URL.revokeObjectURL(objectUrl);
+    for (const overlayObjectUrl of overlayObjectUrls) {
+      URL.revokeObjectURL(overlayObjectUrl);
+    }
+  };
+
+  const overlayImages: NativeOverlayImage[] = await Promise.all(
+    plan.overlays.map(async (overlay) => {
+      const overlayBlob = await resolveClipSourceBlob(overlay.clip, sourceBlobCache);
+      const overlayUrl = URL.createObjectURL(overlayBlob);
+      overlayObjectUrls.push(overlayUrl);
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const nextImage = new Image();
+        nextImage.decoding = "async";
+        nextImage.onload = () => resolve(nextImage);
+        nextImage.onerror = () => reject(new Error("네이티브 export 오버레이 이미지를 불러오지 못했습니다."));
+        nextImage.src = overlayUrl;
+      });
+      return {
+        image,
+      };
+    })
+  );
+
+  const drawFrame = (currentTime: number) => {
+    ctx.clearRect(0, 0, plan.cropWidth, plan.cropHeight);
+    ctx.drawImage(
+      video,
+      plan.cropX,
+      plan.cropY,
+      plan.cropWidth,
+      plan.cropHeight,
+      0,
+      0,
+      plan.cropWidth,
+      plan.cropHeight
+    );
+    plan.overlays.forEach((overlay, index) => {
+      if (currentTime < overlay.startTime || currentTime > overlay.endTime) return;
+      const overlayImage = overlayImages[index]?.image;
+      if (!overlayImage) return;
+      const previousAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = Math.max(0, Math.min(1, overlay.opacity / 100));
+      ctx.drawImage(
+        overlayImage,
+        overlay.offsetX,
+        overlay.offsetY,
+        overlay.width,
+        overlay.height
+      );
+      ctx.globalAlpha = previousAlpha;
+    });
   };
 
   try {
@@ -278,17 +310,7 @@ export async function runNativeRecorderDirectExport(params: {
       currentTime: video.currentTime,
     });
 
-    ctx.drawImage(
-      video,
-      plan.cropX,
-      plan.cropY,
-      plan.cropWidth,
-      plan.cropHeight,
-      0,
-      0,
-      plan.cropWidth,
-      plan.cropHeight
-    );
+    drawFrame(0);
 
     combinedStream = new MediaStream();
     for (const track of canvasStream.getVideoTracks()) {
@@ -383,17 +405,8 @@ export async function runNativeRecorderDirectExport(params: {
     const scheduleFrameDraw = () => {
       video.requestVideoFrameCallback(() => {
         if (stopped) return;
-        ctx.drawImage(
-          video,
-          plan.cropX,
-          plan.cropY,
-          plan.cropWidth,
-          plan.cropHeight,
-          0,
-          0,
-          plan.cropWidth,
-          plan.cropHeight
-        );
+        const timelineTime = Math.max(0, (video.currentTime - plan.sourceStart) / Math.max(plan.clip.playbackSpeed, 0.001));
+        drawFrame(timelineTime);
         updateProgress();
         if (video.currentTime >= sourceEnd - (1 / Math.max(config.frameRate, 1))) {
           stopRecording();
@@ -454,6 +467,7 @@ export async function finalizeNativeRecorderExport(params: {
   cleanupFileNames: string[];
   cleanupMountPoints: string[];
   audioBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache: Map<string, Blob>;
   setExportProgress: (value: ExportProgressState) => void;
 }): Promise<CompletedVideoExport> {
   const {
@@ -469,6 +483,7 @@ export async function finalizeNativeRecorderExport(params: {
     cleanupFileNames,
     cleanupMountPoints,
     audioBufferCache,
+    sourceBlobCache,
     setExportProgress,
   } = params;
 
@@ -496,6 +511,7 @@ export async function finalizeNativeRecorderExport(params: {
     timelineStart: config.exportStart,
     projectDuration: config.duration,
     sourceBufferCache: audioBufferCache,
+    sourceBlobCache,
   });
 
   if (!mixedAudio) {
