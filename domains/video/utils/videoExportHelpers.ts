@@ -5,6 +5,7 @@ import {
   getSourceDurationForTimelineDuration,
   getSourceTime,
   type Clip,
+  type ImageClip,
   type MaskData,
   type PlaybackState,
   type VideoClip,
@@ -28,6 +29,18 @@ export interface DirectVideoExportPlan {
   sourceDuration: number;
   includeAudio: boolean;
   audioVolume: number;
+  overlays: DirectVideoOverlayPlan[];
+}
+
+export interface DirectVideoOverlayPlan {
+  clip: ImageClip;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  opacity: number;
+  startTime: number;
+  endTime: number;
 }
 
 export interface DirectVideoExportPlanEvaluation {
@@ -228,6 +241,10 @@ export function findActiveMaskAtTime(
 export function resolveSourceExtension(input?: string): string {
   if (!input) return "mp4";
   const lower = input.toLowerCase();
+  if (lower.includes("png")) return "png";
+  if (lower.includes("jpeg") || lower.includes("jpg")) return "jpg";
+  if (lower.includes("webp")) return "webp";
+  if (lower.includes("gif")) return "gif";
   if (lower.includes("webm")) return "webm";
   if (lower.includes("quicktime") || lower.includes("mov")) return "mov";
   if (lower.includes("ogg")) return "ogv";
@@ -271,26 +288,52 @@ export function evaluateDirectVideoExportPlan(params: {
   includeAudio: boolean;
 }): DirectVideoExportPlanEvaluation {
   const { clips, tracks, masksMap, project, exportStart, exportEnd, includeAudio } = params;
-  if (clips.length !== 1) {
+
+  const relevantClips = clips.filter((candidate) => {
+    if (!candidate.visible) return false;
+    const candidateEnd = candidate.startTime + candidate.duration;
+    return candidateEnd > exportStart + VIDEO_EXPORT_EPSILON
+      && candidate.startTime < exportEnd - VIDEO_EXPORT_EPSILON;
+  });
+
+  if (relevantClips.length === 0) {
     return {
       plan: null,
-      reason: "여러 클립이 있어서 단일 영상 직접 경로를 사용할 수 없습니다.",
+      reason: "내보내기 구간에 렌더할 클립이 없습니다.",
     };
   }
 
-  const clip = clips[0];
-  if (clip.type !== "video" || !clip.visible) {
+  const videoClips = relevantClips.filter((candidate): candidate is VideoClip => candidate.type === "video");
+  const imageClips = relevantClips.filter((candidate): candidate is ImageClip => candidate.type === "image");
+  const audioOnlyClips = relevantClips.filter((candidate) => candidate.type === "audio");
+
+  if (audioOnlyClips.length > 0) {
     return {
       plan: null,
-      reason: "단일 영상 클립이 아니거나 숨김 상태입니다.",
+      reason: "별도 오디오 클립이 있어 일반 렌더 경로가 필요합니다.",
     };
   }
 
+  if (videoClips.length !== 1) {
+    return {
+      plan: null,
+      reason: "내보내기 구간에 단일 영상 클립이 아니어서 직접 경로를 사용할 수 없습니다.",
+    };
+  }
+
+  const clip = videoClips[0];
   const track = tracks.find((candidate) => candidate.id === clip.trackId);
   if (!track || !track.visible) {
     return {
       plan: null,
       reason: "클립 트랙이 숨김 상태라 직접 경로를 사용할 수 없습니다.",
+    };
+  }
+
+  if (imageClips.some((candidate) => !candidate.visible)) {
+    return {
+      plan: null,
+      reason: "숨김 이미지 클립이 있어 일반 렌더 경로가 필요합니다.",
     };
   }
 
@@ -373,6 +416,101 @@ export function evaluateDirectVideoExportPlan(params: {
   }
 
   const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+  const videoTrackZIndex = track.zIndex;
+  const overlays: DirectVideoOverlayPlan[] = [];
+
+  for (const overlayClip of imageClips) {
+    const overlayTrack = tracks.find((candidate) => candidate.id === overlayClip.trackId) || null;
+    if (!overlayTrack || !overlayTrack.visible) {
+      return {
+        plan: null,
+        reason: "오버레이 트랙이 숨김 상태라 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    if (overlayTrack.zIndex <= videoTrackZIndex) {
+      return {
+        plan: null,
+        reason: "비디오 아래쪽 레이어가 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    if ((overlayClip.transformKeyframes?.position?.length ?? 0) > 0) {
+      return {
+        plan: null,
+        reason: "오버레이 위치 키프레임이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    if (Math.abs(overlayClip.rotation) > VIDEO_EXPORT_EPSILON) {
+      return {
+        plan: null,
+        reason: "오버레이 회전이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    const overlayScaleX = getClipScaleX(overlayClip);
+    const overlayScaleY = getClipScaleY(overlayClip);
+    if (
+      Math.abs(overlayScaleX - 1) > VIDEO_EXPORT_EPSILON ||
+      Math.abs(overlayScaleY - 1) > VIDEO_EXPORT_EPSILON
+    ) {
+      return {
+        plan: null,
+        reason: "오버레이 스케일 변경이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    const offsetX = roundIfNearInteger(overlayClip.position.x);
+    const offsetY = roundIfNearInteger(overlayClip.position.y);
+    if (offsetX === null || offsetY === null) {
+      return {
+        plan: null,
+        reason: "오버레이 위치가 정수가 아니라 직접 합성 경로를 사용할 수 없습니다.",
+      };
+    }
+
+    if (
+      offsetX < 0 ||
+      offsetY < 0 ||
+      offsetX + overlayClip.sourceSize.width > project.canvasSize.width ||
+      offsetY + overlayClip.sourceSize.height > project.canvasSize.height
+    ) {
+      return {
+        plan: null,
+        reason: "오버레이가 캔버스 밖으로 나가 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    const opacity = typeof overlayClip.opacity === "number" ? overlayClip.opacity : 100;
+    if (opacity <= VIDEO_EXPORT_EPSILON) {
+      continue;
+    }
+
+    const overlayStart = Math.max(0, overlayClip.startTime - exportStart);
+    const overlayEnd = Math.min(exportEnd - exportStart, overlayClip.startTime + overlayClip.duration - exportStart);
+    if (overlayEnd <= overlayStart + VIDEO_EXPORT_EPSILON) {
+      continue;
+    }
+
+    overlays.push({
+      clip: overlayClip,
+      offsetX,
+      offsetY,
+      width: overlayClip.sourceSize.width,
+      height: overlayClip.sourceSize.height,
+      opacity,
+      startTime: overlayStart,
+      endTime: overlayEnd,
+    });
+  }
+
+  overlays.sort((a, b) => {
+    const trackA = tracks.find((candidate) => candidate.id === a.clip.trackId)?.zIndex ?? 0;
+    const trackB = tracks.find((candidate) => candidate.id === b.clip.trackId)?.zIndex ?? 0;
+    return trackA - trackB;
+  });
+
   return {
     plan: {
       clip,
@@ -388,8 +526,11 @@ export function evaluateDirectVideoExportPlan(params: {
         !(clip.audioMuted ?? false) &&
         audioVolume > 0,
       audioVolume,
+      overlays,
     },
-    reason: "단일 영상 직접 인코딩 경로를 사용할 수 있습니다.",
+    reason: overlays.length > 0
+      ? `단일 영상 + 오버레이 ${overlays.length}개 직접 합성 경로를 사용할 수 있습니다.`
+      : "단일 영상 직접 인코딩 경로를 사용할 수 있습니다.",
   };
 }
 

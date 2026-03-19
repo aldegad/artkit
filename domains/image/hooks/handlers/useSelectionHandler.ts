@@ -3,7 +3,7 @@
 // ============================================
 
 import { useCallback } from "react";
-import { CropArea, Point, MarqueeSubTool } from "../../types";
+import { CropArea, Point, MarqueeSubTool, SelectionMask } from "../../types";
 import type { MouseEventContext, HandlerResult, SelectionHandlerOptions, FloatingLayer } from "./types";
 import { createRectFromDrag } from "@/shared/utils/rectTransform";
 import { applyFeatherToImageData } from "../../utils/selectionFeather";
