@@ -1,5 +1,5 @@
 import { loadMediaBlob } from "./mediaStorage";
-import type { VideoClip } from "../types";
+import type { Clip } from "../types";
 import type {
   ExportProgressState,
   VideoExportCompressionSettings,
@@ -85,7 +85,7 @@ export async function seekExportVideoFrame(
   });
 }
 
-type ClipSourceReference = Pick<VideoClip, "id" | "sourceUrl">;
+type ClipSourceReference = Pick<Clip, "id" | "sourceUrl">;
 
 function getSourceBlobCacheKey(clip: ClipSourceReference): string {
   return `${clip.id}:${clip.sourceUrl ?? ""}`;

@@ -19,7 +19,7 @@ export interface ExportProgress {
   isStalled?: boolean;
   strategy?: "direct-single-video" | "frame-sequence";
   strategyReason?: string;
-  strategyEngine?: "ffmpeg" | "native-recorder" | "webcodecs";
+  strategyEngine?: "ffmpeg" | "native-recorder";
   ffmpegLogSummary?: string;
 }
 
@@ -84,7 +84,7 @@ export function ExportModal({
   const strategyLabel =
     exportProgress?.strategy === "direct-single-video"
       ? exportProgress.strategyReason
-        ? `직접 경로${exportProgress.strategyEngine === "native-recorder" ? " · 브라우저 네이티브" : exportProgress.strategyEngine === "webcodecs" ? " · 브라우저 WebCodecs" : exportProgress.strategyEngine === "ffmpeg" ? " · FFmpeg" : ""} · ${exportProgress.strategyReason}`
+        ? `직접 경로${exportProgress.strategyEngine === "native-recorder" ? " · 브라우저 네이티브" : exportProgress.strategyEngine === "ffmpeg" ? " · FFmpeg" : ""} · ${exportProgress.strategyReason}`
         : "직접 경로"
       : exportProgress?.strategy === "frame-sequence"
         ? exportProgress.strategyReason

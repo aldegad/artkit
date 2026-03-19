@@ -18,6 +18,7 @@ import type {
   VideoExportCompressionSettings,
   VideoExportOptions,
 } from "./videoExportTypes";
+import { resolveClipSourceBlob } from "./videoExportIO";
 
 export interface DirectVideoExportPlan {
   clip: VideoClip;
@@ -38,6 +39,8 @@ export interface DirectVideoOverlayPlan {
   offsetY: number;
   width: number;
   height: number;
+  sourceWidth: number;
+  sourceHeight: number;
   opacity: number;
   startTime: number;
   endTime: number;
@@ -272,12 +275,6 @@ export function buildAtempoFilters(playbackSpeed: number): string[] {
   return filters;
 }
 
-function roundIfNearInteger(value: number): number | null {
-  if (!Number.isFinite(value)) return null;
-  const rounded = Math.round(value);
-  return Math.abs(value - rounded) <= VIDEO_EXPORT_EPSILON ? rounded : null;
-}
-
 export function evaluateDirectVideoExportPlan(params: {
   clips: Clip[];
   tracks: VideoTrack[];
@@ -379,15 +376,15 @@ export function evaluateDirectVideoExportPlan(params: {
     };
   }
 
-  const cropX = roundIfNearInteger(-clip.position.x);
-  const cropY = roundIfNearInteger(-clip.position.y);
-  const cropWidth = roundIfNearInteger(project.canvasSize.width);
-  const cropHeight = roundIfNearInteger(project.canvasSize.height);
+  const cropX = -clip.position.x;
+  const cropY = -clip.position.y;
+  const cropWidth = project.canvasSize.width;
+  const cropHeight = project.canvasSize.height;
   if (
-    cropX === null ||
-    cropY === null ||
-    cropWidth === null ||
-    cropHeight === null ||
+    !Number.isFinite(cropX) ||
+    !Number.isFinite(cropY) ||
+    !Number.isFinite(cropWidth) ||
+    !Number.isFinite(cropHeight) ||
     cropX < 0 ||
     cropY < 0 ||
     cropWidth <= 0 ||
@@ -395,7 +392,7 @@ export function evaluateDirectVideoExportPlan(params: {
   ) {
     return {
       plan: null,
-      reason: "정수 crop 영역을 계산할 수 없어서 직접 경로를 사용할 수 없습니다.",
+      reason: "crop 영역을 계산할 수 없어서 직접 경로를 사용할 수 없습니다.",
     };
   }
 
@@ -452,34 +449,47 @@ export function evaluateDirectVideoExportPlan(params: {
     const overlayScaleX = getClipScaleX(overlayClip);
     const overlayScaleY = getClipScaleY(overlayClip);
     if (
-      Math.abs(overlayScaleX - 1) > VIDEO_EXPORT_EPSILON ||
-      Math.abs(overlayScaleY - 1) > VIDEO_EXPORT_EPSILON
+      !Number.isFinite(overlayScaleX) ||
+      !Number.isFinite(overlayScaleY) ||
+      overlayScaleX <= VIDEO_EXPORT_EPSILON ||
+      overlayScaleY <= VIDEO_EXPORT_EPSILON
     ) {
       return {
         plan: null,
-        reason: "오버레이 스케일 변경이 있어 일반 렌더 경로가 필요합니다.",
+        reason: "오버레이 스케일을 계산할 수 없어 일반 렌더 경로가 필요합니다.",
       };
     }
 
-    const offsetX = roundIfNearInteger(overlayClip.position.x);
-    const offsetY = roundIfNearInteger(overlayClip.position.y);
-    if (offsetX === null || offsetY === null) {
-      return {
-        plan: null,
-        reason: "오버레이 위치가 정수가 아니라 직접 합성 경로를 사용할 수 없습니다.",
-      };
-    }
-
+    const overlayWidth = overlayClip.sourceSize.width * overlayScaleX;
+    const overlayHeight = overlayClip.sourceSize.height * overlayScaleY;
     if (
-      offsetX < 0 ||
-      offsetY < 0 ||
-      offsetX + overlayClip.sourceSize.width > project.canvasSize.width ||
-      offsetY + overlayClip.sourceSize.height > project.canvasSize.height
+      !Number.isFinite(overlayWidth) ||
+      !Number.isFinite(overlayHeight) ||
+      overlayWidth <= VIDEO_EXPORT_EPSILON ||
+      overlayHeight <= VIDEO_EXPORT_EPSILON
     ) {
       return {
         plan: null,
-        reason: "오버레이가 캔버스 밖으로 나가 일반 렌더 경로가 필요합니다.",
+        reason: "오버레이 크기를 계산할 수 없어 일반 렌더 경로가 필요합니다.",
       };
+    }
+
+    const offsetX = overlayClip.position.x;
+    const offsetY = overlayClip.position.y;
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+      return {
+        plan: null,
+        reason: "오버레이 위치를 계산할 수 없어 직접 합성 경로를 사용할 수 없습니다.",
+      };
+    }
+
+    const isOutsideCanvas =
+      offsetX + overlayWidth <= VIDEO_EXPORT_EPSILON ||
+      offsetY + overlayHeight <= VIDEO_EXPORT_EPSILON ||
+      offsetX >= project.canvasSize.width - VIDEO_EXPORT_EPSILON ||
+      offsetY >= project.canvasSize.height - VIDEO_EXPORT_EPSILON;
+    if (isOutsideCanvas) {
+      continue;
     }
 
     const opacity = typeof overlayClip.opacity === "number" ? overlayClip.opacity : 100;
@@ -497,8 +507,10 @@ export function evaluateDirectVideoExportPlan(params: {
       clip: overlayClip,
       offsetX,
       offsetY,
-      width: overlayClip.sourceSize.width,
-      height: overlayClip.sourceSize.height,
+      width: overlayWidth,
+      height: overlayHeight,
+      sourceWidth: overlayClip.sourceSize.width,
+      sourceHeight: overlayClip.sourceSize.height,
       opacity,
       startTime: overlayStart,
       endTime: overlayEnd,
@@ -540,8 +552,9 @@ export async function renderTimelineAudioBuffer(params: {
   timelineStart: number;
   projectDuration: number;
   sourceBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache?: Map<string, Blob>;
 }): Promise<AudioBuffer | null> {
-  const { clips, tracks, timelineStart, projectDuration, sourceBufferCache } = params;
+  const { clips, tracks, timelineStart, projectDuration, sourceBufferCache, sourceBlobCache } = params;
   if (typeof OfflineAudioContext === "undefined" || typeof AudioContext === "undefined") {
     throw new Error("browser does not support offline audio rendering");
   }
@@ -571,16 +584,17 @@ export async function renderTimelineAudioBuffer(params: {
       const timelineDuration = clipEndTimeInTimeline - clipStartTimeInTimeline;
       if (timelineDuration <= 0) continue;
 
-      let sourceBuffer = sourceBufferCache.get(clip.sourceUrl);
+      const sourceCacheKey = clip.sourceId || clip.id;
+      let sourceBuffer = sourceBufferCache.get(sourceCacheKey);
       if (sourceBuffer === undefined) {
         try {
-          const response = await fetch(clip.sourceUrl);
-          const sourceArrayBuffer = await response.arrayBuffer();
+          const sourceBlob = await resolveClipSourceBlob(clip, sourceBlobCache);
+          const sourceArrayBuffer = await sourceBlob.arrayBuffer();
           sourceBuffer = await decodeContext.decodeAudioData(sourceArrayBuffer.slice(0));
         } catch {
           sourceBuffer = null;
         }
-        sourceBufferCache.set(clip.sourceUrl, sourceBuffer);
+        sourceBufferCache.set(sourceCacheKey, sourceBuffer);
       }
 
       if (!sourceBuffer) continue;

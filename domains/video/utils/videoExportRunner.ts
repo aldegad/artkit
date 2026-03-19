@@ -13,7 +13,6 @@ import {
   finalizeNativeRecorderExport,
   runNativeRecorderDirectExport,
 } from "./videoExportNativeRecorder";
-import { runWebCodecsDirectExport } from "./videoExportWebCodecs";
 import type {
   CompletedVideoExport,
   ExportProgressState,
@@ -85,6 +84,7 @@ function createVideoExportSession(
     wavFileName: `${filePrefix}.wav`,
     cleanupFileNames: [outputFileName],
     cleanupMountPoints: [],
+    cleanupObjectUrls: [],
     exportVideoCache: new Map<string, HTMLVideoElement>(),
   };
 }
@@ -101,8 +101,141 @@ async function cleanupVideoExportSession(session: VideoExportSession): Promise<v
     video.removeAttribute("src");
     video.load();
   }
+  for (const objectUrl of session.cleanupObjectUrls) {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
+function trackCompletedExport(result: CompletedVideoExport): void {
+  trackEvent("file_export", {
+    tool: "video",
+    output_format: result.format,
+    include_audio: result.hasAudioInput,
+    compression: result.compression,
+    has_custom_range: result.hasCustomRange,
+    duration_seconds: Number(result.duration.toFixed(2)),
+  });
+}
+
+async function runNativeRecorderStrategy(params: {
+  strategyDecision: ResolvedVideoExportStrategy;
+  config: ReturnType<typeof resolveVideoExportConfig>;
+  clips: Clip[];
+  tracks: VideoTrack[];
+  getFFmpeg: () => Promise<FFmpeg>;
+  audioBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache: Map<string, Blob>;
+  setExportProgress: (value: ExportProgressState) => void;
+}): Promise<CompletedVideoExport> {
+  const {
+    strategyDecision,
+    config,
+    clips,
+    tracks,
+    getFFmpeg,
+    audioBufferCache,
+    sourceBlobCache,
+    setExportProgress,
+  } = params;
+  if (
+    strategyDecision.strategy !== "direct-single-video" ||
+    strategyDecision.subStrategy !== "reencode" ||
+    strategyDecision.engine !== "native-recorder" ||
+    !strategyDecision.directPlan ||
+    !strategyDecision.sourceBlob ||
+    !strategyDecision.nativeRecorderMimeType
+  ) {
+    throw new Error("네이티브 인코더 전략 구성이 올바르지 않습니다.");
+  }
+
+  const nativeVideo = await runNativeRecorderDirectExport({
+    plan: strategyDecision.directPlan,
+    sourceBlob: strategyDecision.sourceBlob,
+    mimeType: strategyDecision.nativeRecorderMimeType,
+    config,
+    setExportProgress,
+    sourceBlobCache,
+  });
+  const ffmpeg = config.includeAudio && strategyDecision.directPlan.includeAudio
+    ? await getFFmpeg()
+    : null;
+  const session = ffmpeg ? createVideoExportSession(ffmpeg, config.format) : null;
+  try {
+    return await finalizeNativeRecorderExport({
+      nativeVideo,
+      config,
+      plan: strategyDecision.directPlan,
+      clips,
+      tracks,
+      ffmpeg: session?.ffmpeg ?? (null as never),
+      filePrefix: session?.filePrefix ?? `native-export-${Date.now()}`,
+      outputFileName: session?.outputFileName ?? `native-export.${config.format}`,
+      wavFileName: session?.wavFileName ?? "native-export.wav",
+      cleanupFileNames: session?.cleanupFileNames ?? [],
+      cleanupMountPoints: session?.cleanupMountPoints ?? [],
+      audioBufferCache,
+      sourceBlobCache,
+      setExportProgress,
+    });
+  } finally {
+    if (session) {
+      await cleanupVideoExportSession(session);
+    }
+  }
+}
+
+async function runFfmpegStrategy(params: {
+  strategyDecision: ResolvedVideoExportStrategy;
+  config: ReturnType<typeof resolveVideoExportConfig>;
+  getFFmpeg: () => Promise<FFmpeg>;
+  project: VideoProject;
+  clips: Clip[];
+  tracks: VideoTrack[];
+  masksMap: Map<string, MaskData>;
+  audioBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache: Map<string, Blob>;
+  setExportProgress: (value: ExportProgressState) => void;
+}): Promise<CompletedVideoExport> {
+  const {
+    strategyDecision,
+    config,
+    getFFmpeg,
+    project,
+    clips,
+    tracks,
+    masksMap,
+    audioBufferCache,
+    sourceBlobCache,
+    setExportProgress,
+  } = params;
+  const ffmpeg = await getFFmpeg();
+  const session = createVideoExportSession(ffmpeg, config.format);
+  try {
+    if (strategyDecision.strategy === "direct-single-video") {
+      return await runDirectVideoExport({
+        session,
+        decision: strategyDecision,
+        config,
+        setExportProgress,
+      });
+    }
+
+    return await runFrameSequenceExport({
+      session,
+      project,
+      clips,
+      tracks,
+      masksMap,
+      config,
+      setExportProgress,
+      audioBufferCache,
+      sourceBlobCache,
+      decision: strategyDecision,
+    });
+  } finally {
+    await cleanupVideoExportSession(session);
+  }
+}
 
 export async function runVideoExport(params: RunVideoExportParams): Promise<CompletedVideoExport> {
   const config = resolveVideoExportConfig({
@@ -140,120 +273,32 @@ export async function runVideoExport(params: RunVideoExportParams): Promise<Comp
     detail: strategyDecision.reason,
   });
 
-  if (
-    strategyDecision.strategy === "direct-single-video" &&
-    strategyDecision.subStrategy === "reencode" &&
-    strategyDecision.engine === "webcodecs" &&
-    strategyDecision.directPlan &&
-    strategyDecision.sourceBlob &&
-    strategyDecision.sourceExtension
-  ) {
-    const result = await runWebCodecsDirectExport({
-      plan: strategyDecision.directPlan,
-      sourceBlob: strategyDecision.sourceBlob,
-      sourceExtension: strategyDecision.sourceExtension,
-      config,
-      clips: params.clips,
-      tracks: params.tracks,
-      audioBufferCache: params.audioBufferCache,
-      getFFmpeg: params.getFFmpeg,
-      setExportProgress: setProgressWithStrategy,
-    });
-    trackEvent("file_export", {
-      tool: "video",
-      output_format: result.format,
-      include_audio: result.hasAudioInput,
-      compression: result.compression,
-      has_custom_range: result.hasCustomRange,
-      duration_seconds: Number(result.duration.toFixed(2)),
-    });
-    return result;
-  }
-
-  if (
-    strategyDecision.strategy === "direct-single-video" &&
-    strategyDecision.subStrategy === "reencode" &&
-    strategyDecision.engine === "native-recorder" &&
-    strategyDecision.directPlan &&
-    strategyDecision.sourceBlob &&
-    strategyDecision.nativeRecorderMimeType
-  ) {
-    const nativeVideo = await runNativeRecorderDirectExport({
-      plan: strategyDecision.directPlan,
-      sourceBlob: strategyDecision.sourceBlob,
-      mimeType: strategyDecision.nativeRecorderMimeType,
-      config,
-      setExportProgress: setProgressWithStrategy,
-    });
-    const ffmpeg = config.includeAudio && strategyDecision.directPlan.includeAudio
-      ? await params.getFFmpeg()
-      : null;
-    const session = ffmpeg ? createVideoExportSession(ffmpeg, config.format) : null;
-    try {
-      const result = await finalizeNativeRecorderExport({
-        nativeVideo,
+  const result = strategyDecision.engine === "native-recorder"
+    ? await runNativeRecorderStrategy({
+        strategyDecision,
         config,
-        plan: strategyDecision.directPlan,
         clips: params.clips,
         tracks: params.tracks,
-        ffmpeg: session?.ffmpeg ?? (null as never),
-        filePrefix: session?.filePrefix ?? `native-export-${Date.now()}`,
-        outputFileName: session?.outputFileName ?? `native-export.${config.format}`,
-        wavFileName: session?.wavFileName ?? "native-export.wav",
-        cleanupFileNames: session?.cleanupFileNames ?? [],
-        cleanupMountPoints: session?.cleanupMountPoints ?? [],
+        getFFmpeg: params.getFFmpeg,
         audioBufferCache: params.audioBufferCache,
+        sourceBlobCache: params.sourceBlobCache,
+        setExportProgress: setProgressWithStrategy,
+      })
+    : await runFfmpegStrategy({
+        strategyDecision,
+        config,
+        getFFmpeg: params.getFFmpeg,
+        project: params.project,
+        clips: params.clips,
+        tracks: params.tracks,
+        masksMap: params.masksMap,
+        audioBufferCache: params.audioBufferCache,
+        sourceBlobCache: params.sourceBlobCache,
         setExportProgress: setProgressWithStrategy,
       });
-      trackEvent("file_export", {
-        tool: "video",
-        output_format: result.format,
-        include_audio: result.hasAudioInput,
-        compression: result.compression,
-        has_custom_range: result.hasCustomRange,
-        duration_seconds: Number(result.duration.toFixed(2)),
-      });
-      return result;
-    } finally {
-      if (session) {
-        await cleanupVideoExportSession(session);
-      }
-    }
-  }
 
-  const ffmpeg = await params.getFFmpeg();
-  const session = createVideoExportSession(ffmpeg, config.format);
-  try {
-    const directResult = await runDirectVideoExport({
-      session,
-      decision: strategyDecision,
-      config,
-      setExportProgress: setProgressWithStrategy,
-    });
-    const result = directResult ?? await runFrameSequenceExport({
-      session,
-      project: params.project,
-      clips: params.clips,
-      tracks: params.tracks,
-      masksMap: params.masksMap,
-      config,
-      setExportProgress: setProgressWithStrategy,
-      audioBufferCache: params.audioBufferCache,
-      decision: strategyDecision,
-    });
-
-    trackEvent("file_export", {
-      tool: "video",
-      output_format: result.format,
-      include_audio: result.hasAudioInput,
-      compression: result.compression,
-      has_custom_range: result.hasCustomRange,
-      duration_seconds: Number(result.duration.toFixed(2)),
-    });
-    return result;
-  } finally {
-    await cleanupVideoExportSession(session);
-  }
+  trackCompletedExport(result);
+  return result;
 }
 
 export function createVideoExportBlob(result: CompletedVideoExport): Blob {

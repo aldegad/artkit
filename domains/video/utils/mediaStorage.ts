@@ -65,7 +65,7 @@ export async function saveMediaBlob(clipId: string, blob: Blob): Promise<void> {
  */
 export async function loadMediaBlob(clipId: string): Promise<Blob | null> {
   const db = await getDB();
-  return new Promise((resolve, reject) => {
+  const result = await new Promise<Blob | null>((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(clipId);
@@ -73,6 +73,12 @@ export async function loadMediaBlob(clipId: string): Promise<Blob | null> {
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result || null);
   });
+  if (!result) return null;
+  try {
+    return await normalizeBlobForStorage(result);
+  } catch {
+    return null;
+  }
 }
 
 /**

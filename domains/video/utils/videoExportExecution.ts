@@ -48,6 +48,7 @@ export interface VideoExportSession {
   wavFileName: string;
   cleanupFileNames: string[];
   cleanupMountPoints: string[];
+  cleanupObjectUrls: string[];
   exportVideoCache: Map<string, HTMLVideoElement>;
 }
 
@@ -57,6 +58,10 @@ interface FrameSequenceMetrics {
   writeMs: number;
   audioRenderMs: number;
   encodeMs: number;
+}
+
+function appendEvenDimensionPad(filters: string[]): string[] {
+  return [...filters, "pad=ceil(iw/2)*2:ceil(ih/2)*2"];
 }
 
 function finalizeVideoExport(params: {
@@ -118,12 +123,16 @@ function buildMaskIndex(masksMap: Map<string, MaskData>): Map<string, TimedTrack
   return masksByTrack;
 }
 
-async function preloadExportImages(clips: Clip[]): Promise<Map<string, HTMLImageElement>> {
+async function preloadExportImages(
+  session: VideoExportSession,
+  clips: Clip[],
+  sourceBlobCache: Map<string, Blob>
+): Promise<Map<string, HTMLImageElement>> {
   const imageCache = new Map<string, HTMLImageElement>();
   const imageClips = clips.filter((clip) => clip.type === "image");
   await Promise.all(
     imageClips.map(
-      (clip) =>
+      async (clip) =>
         new Promise<void>((resolve) => {
           const img = new Image();
           img.onload = () => {
@@ -131,7 +140,15 @@ async function preloadExportImages(clips: Clip[]): Promise<Map<string, HTMLImage
             resolve();
           };
           img.onerror = () => resolve();
-          img.src = clip.sourceUrl;
+          resolveClipSourceBlob(clip, sourceBlobCache)
+            .then((blob) => {
+              const objectUrl = URL.createObjectURL(blob);
+              session.cleanupObjectUrls.push(objectUrl);
+              img.src = objectUrl;
+            })
+            .catch(() => {
+              img.src = clip.sourceUrl;
+            });
         })
     )
   );
@@ -162,11 +179,25 @@ async function preloadMaskImages(masksMap: Map<string, MaskData>): Promise<Map<s
   return maskCache;
 }
 
-async function preloadExportVideos(session: VideoExportSession, clips: Clip[]): Promise<void> {
+async function preloadExportVideos(
+  session: VideoExportSession,
+  clips: Clip[],
+  sourceBlobCache: Map<string, Blob>
+): Promise<void> {
   const videoClips = clips.filter((clip) => clip.type === "video");
   await Promise.all(
     videoClips.map(async (clip) => {
-      const video = await loadExportVideoElement(clip.sourceUrl);
+      let video = await loadExportVideoElement(clip.sourceUrl);
+      if (!video) {
+        try {
+          const sourceBlob = await resolveClipSourceBlob(clip, sourceBlobCache);
+          const objectUrl = URL.createObjectURL(sourceBlob);
+          session.cleanupObjectUrls.push(objectUrl);
+          video = await loadExportVideoElement(objectUrl);
+        } catch {
+          video = null;
+        }
+      }
       if (video) session.exportVideoCache.set(clip.id, video);
     })
   );
@@ -177,10 +208,10 @@ export async function runDirectVideoExport(params: {
   decision: ResolvedVideoExportStrategy;
   config: ReturnType<typeof resolveVideoExportConfig>;
   setExportProgress: (value: ExportProgressState) => void;
-}): Promise<CompletedVideoExport | null> {
+}): Promise<CompletedVideoExport> {
   const { session, decision, config, setExportProgress } = params;
   if (decision.strategy !== "direct-single-video" || !decision.directPlan || !decision.sourceBlob) {
-    return null;
+    throw new Error("FFmpeg 직접 경로 전략 구성이 올바르지 않습니다.");
   }
   const plan = decision.directPlan;
   const metrics = {
@@ -197,7 +228,7 @@ export async function runDirectVideoExport(params: {
 
   const sourceBlob = decision.sourceBlob;
   const sourceFileName = `${session.filePrefix}-source.${resolveSourceExtension(
-    sourceBlob.type || decision.sourceExtension || plan.clip.sourceUrl
+    sourceBlob.type || plan.clip.sourceUrl
   )}`;
   const mountStartedAt = performance.now();
   const sourceInput = await mountBlobToFfmpegFile(session.ffmpeg, sourceFileName, sourceBlob);
@@ -215,6 +246,7 @@ export async function runDirectVideoExport(params: {
   if (needsCrop) {
     videoFilters.push(`crop=${plan.cropWidth}:${plan.cropHeight}:${plan.cropX}:${plan.cropY}`);
   }
+  const directVideoFilters = appendEvenDimensionPad(videoFilters);
 
   if (decision.subStrategy === "copy") {
     setExportProgress({
@@ -287,21 +319,29 @@ export async function runDirectVideoExport(params: {
 
   if (plan.overlays.length > 0) {
     const baseVideoLabel = "basev0";
-    const filterSections = [`[0:v]${videoFilters.join(",")},format=rgba[${baseVideoLabel}]`];
+    const filterSections = [`[0:v]${directVideoFilters.join(",")},format=rgba[${baseVideoLabel}]`];
     let currentLabel = baseVideoLabel;
 
     plan.overlays.forEach((overlay, index) => {
       const overlayInputIndex = index + 1;
       const overlayLabel = `overlayv${index}`;
       const outputLabel = `compv${index}`;
-      const opacityFilters = Math.abs(overlay.opacity - 100) > VIDEO_EXPORT_EPSILON
-        ? `format=rgba,colorchannelmixer=aa=${(overlay.opacity / 100).toFixed(6)}`
-        : "format=rgba";
+      const overlayNeedsScale =
+        Math.abs(overlay.width - overlay.sourceWidth) > VIDEO_EXPORT_EPSILON ||
+        Math.abs(overlay.height - overlay.sourceHeight) > VIDEO_EXPORT_EPSILON;
+      const overlayFilters: string[] = [];
+      if (overlayNeedsScale) {
+        overlayFilters.push(`scale=${overlay.width.toFixed(3)}:${overlay.height.toFixed(3)}`);
+      }
+      overlayFilters.push("format=rgba");
+      if (Math.abs(overlay.opacity - 100) > VIDEO_EXPORT_EPSILON) {
+        overlayFilters.push(`colorchannelmixer=aa=${(overlay.opacity / 100).toFixed(6)}`);
+      }
       const enableExpr = `between(t\\,${overlay.startTime.toFixed(6)}\\,${overlay.endTime.toFixed(6)})`;
 
-      filterSections.push(`[${overlayInputIndex}:v]${opacityFilters}[${overlayLabel}]`);
+      filterSections.push(`[${overlayInputIndex}:v]${overlayFilters.join(",")}[${overlayLabel}]`);
       filterSections.push(
-        `[${currentLabel}][${overlayLabel}]overlay=${overlay.offsetX}:${overlay.offsetY}:enable='${enableExpr}':eof_action=pass[${outputLabel}]`
+        `[${currentLabel}][${overlayLabel}]overlay=${overlay.offsetX.toFixed(3)}:${overlay.offsetY.toFixed(3)}:enable='${enableExpr}':eof_action=pass[${outputLabel}]`
       );
       currentLabel = outputLabel;
     });
@@ -319,7 +359,7 @@ export async function runDirectVideoExport(params: {
       "-map",
       "0:v:0",
       "-vf",
-      videoFilters.join(","),
+      directVideoFilters.join(","),
       "-r",
       String(config.frameRate)
     );
@@ -375,9 +415,21 @@ export async function runFrameSequenceExport(params: {
   config: ReturnType<typeof resolveVideoExportConfig>;
   setExportProgress: (value: ExportProgressState) => void;
   audioBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache: Map<string, Blob>;
   decision: VideoExportStrategyDecision;
 }): Promise<CompletedVideoExport> {
-  const { session, project, clips, tracks, masksMap, config, setExportProgress, audioBufferCache, decision } = params;
+  const {
+    session,
+    project,
+    clips,
+    tracks,
+    masksMap,
+    config,
+    setExportProgress,
+    audioBufferCache,
+    sourceBlobCache,
+    decision,
+  } = params;
   const totalFrames = Math.max(1, Math.ceil(config.duration * config.frameRate));
   const captureWeight = 65;
   const encodeBase = 70;
@@ -392,9 +444,9 @@ export async function runFrameSequenceExport(params: {
   const sortedTracks = [...tracks].reverse();
   const clipsByTrack = buildClipIndex(clips);
   const masksByTrack = buildMaskIndex(masksMap);
-  const exportImageCache = await preloadExportImages(clips);
+  const exportImageCache = await preloadExportImages(session, clips, sourceBlobCache);
   const exportMaskImgCache = await preloadMaskImages(masksMap);
-  await preloadExportVideos(session, clips);
+  await preloadExportVideos(session, clips, sourceBlobCache);
 
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = project.canvasSize.width;
@@ -493,6 +545,7 @@ export async function runFrameSequenceExport(params: {
       timelineStart: config.exportStart,
       projectDuration: config.duration,
       sourceBufferCache: audioBufferCache,
+      sourceBlobCache,
     });
     metrics.audioRenderMs += performance.now() - audioRenderStartedAt;
     if (mixedAudio) {
@@ -508,6 +561,8 @@ export async function runFrameSequenceExport(params: {
     "-i",
     `${session.filePrefix}-frame-%06d.png`,
     ...(hasAudioInput ? ["-i", session.wavFileName] : []),
+    "-vf",
+    "pad=ceil(iw/2)*2:ceil(ih/2)*2",
   ];
 
   const encodeStartedAt = performance.now();
