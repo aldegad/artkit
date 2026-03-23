@@ -1,174 +1,46 @@
 "use client";
 
 import {
-  createContext,
-  useContext,
-  useState,
+  ReactNode,
   useCallback,
   useEffect,
-  useRef,
   useMemo,
-  ReactNode,
+  useRef,
+  useState,
 } from "react";
 import {
   AssetReference,
-  VideoTrack,
   Clip,
-  TimelineViewState,
-  INITIAL_TIMELINE_VIEW,
   createVideoTrack,
-  createVideoClip,
-  createAudioClip,
-  createImageClip,
-  createCanvasOverlayClip,
-  getClipPlaybackSpeed,
-  getClipSourceSpan,
-  getTimelineDurationForSourceDuration,
+  TimelineViewState,
+  VideoTrack,
 } from "../types";
-import { CLIP_PLAYBACK, PLAYBACK, TIMELINE } from "../constants";
+import { TIMELINE } from "../constants";
 import { useVideoState } from "./VideoStateContext";
-import { Size } from "@/shared/types";
-import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
+import { normalizeTimelineFrameRate, alignTimelineTimeToFrame } from "../utils/timelineFrame";
 import {
-  loadVideoAutosave,
-  type VideoAutosaveData,
-} from "../utils/videoAutosave";
-import { copyMediaBlob, moveMediaBlob } from "../utils/mediaStorage";
-import {
-  normalizeClipTransformKeyframes,
-  scaleClipPositionKeyframesDuration,
-  sliceClipPositionKeyframes,
-} from "../utils/clipTransformKeyframes";
-import {
-  cloneTrack,
   cloneClip,
-  calculateClipsDuration,
-  getDuplicateTrackName,
-  getDefaultTrackName,
-  reindexTracksForZOrder,
-  normalizeClip,
-  fitsTrackType,
-  resolveTrackIdForClipType,
-  getFittedVisualTransform,
-  hasTrackOverlap,
-  resolveNearestAvailableClipStart,
-  withSafeClipStart,
-  sanitizeTimelineViewState,
+  cloneTrack,
   findClipAtTime,
-  restoreAutosavedClips,
+  getDefaultTrackName,
+  getDuplicateTrackName,
+  reindexTracksForZOrder,
+  sanitizeTimelineViewState,
 } from "../utils/timelineModel";
-import { buildRazorSplitClips } from "../utils/razorSplit";
-import {
-  alignTimelineTimeToFrame,
-  getTimelineFrameRange,
-  normalizeTimelineFrameRate,
-} from "../utils/timelineFrame";
 import { useTimelineHistory } from "./useTimelineHistory";
-
-interface TimelineContextValue {
-  // View state
-  viewState: TimelineViewState;
-  setZoom: (zoom: number) => void;
-  setScrollX: (scrollX: number) => void;
-  setScrollY: (scrollY: number) => void;
-  toggleSnap: () => void;
-  setViewState: (viewState: TimelineViewState) => void;
-
-  // Track management
-  tracks: VideoTrack[];
-  addTrack: (name?: string, type?: "video" | "audio") => string;
-  duplicateTrack: (trackId: string) => string | null;
-  removeTrack: (trackId: string) => void;
-  updateTrack: (trackId: string, updates: Partial<VideoTrack>) => void;
-  reorderTracks: (fromIndex: number, toIndex: number) => void;
-  restoreTracks: (tracks: VideoTrack[]) => void;
-
-  // Clip management
-  clips: Clip[];
-  addVideoClip: (
-    trackId: string,
-    sourceUrl: string,
-    sourceDuration: number,
-    sourceSize: Size,
-    startTime?: number,
-    canvasSize?: Size,
-    options?: { sourceId?: string; asset?: AssetReference }
-  ) => string;
-  addAudioClip: (
-    trackId: string,
-    sourceUrl: string,
-    sourceDuration: number,
-    startTime?: number,
-    sourceSize?: Size,
-    options?: { sourceId?: string; asset?: AssetReference }
-  ) => string;
-  addImageClip: (
-    trackId: string,
-    sourceUrl: string,
-    sourceSize: Size,
-    startTime?: number,
-    duration?: number,
-    canvasSize?: Size,
-    options?: { sourceId?: string; asset?: AssetReference }
-  ) => string;
-  addCanvasOverlayClip: (
-    trackId: string,
-    sourceUrl: string,
-    sourceSize: Size,
-    startTime?: number,
-    duration?: number,
-    canvasSize?: Size,
-    options?: { sourceId?: string; asset?: AssetReference }
-  ) => string;
-  removeClip: (clipId: string) => void;
-  updateClip: (clipId: string, updates: Partial<Clip>) => void;
-  setClipPlaybackSpeed: (clipId: string, playbackSpeed: number) => void;
-  moveClip: (clipId: string, trackId: string, startTime: number, ignoreClipIds?: string[]) => void;
-  trimClipStart: (clipId: string, newStartTime: number) => void;
-  trimClipEnd: (clipId: string, newEndTime: number) => void;
-  splitClipAtTime: (clipId: string, splitCursorTime: number) => string | null;
-  duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
-  addClips: (newClips: Clip[]) => void;
-  restoreClips: (clips: Clip[]) => void;
-  saveToHistory: () => void;
-  undo: () => void;
-  redo: () => void;
-  clearHistory: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-
-  // Queries
-  getClipAtTime: (trackId: string, time: number) => Clip | null;
-  getClipsInTrack: (trackId: string) => Clip[];
-  getTrackById: (trackId: string) => VideoTrack | null;
-
-  // Autosave state
-  isAutosaveInitialized: boolean;
-}
-
-const TimelineContext = createContext<TimelineContextValue | null>(null);
-
-const SOURCE_TRIM_EPSILON = 1e-6;
-
-function upsertAssetReference(
-  existingAssets: AssetReference[],
-  nextAsset: AssetReference | null | undefined
-): AssetReference[] {
-  if (!nextAsset) return existingAssets;
-  const next = [...existingAssets];
-  const index = next.findIndex((asset) => asset.id === nextAsset.id);
-  if (index >= 0) {
-    next[index] = {
-      ...next[index],
-      ...nextAsset,
-    };
-    return next;
-  }
-  next.push(nextAsset);
-  return next;
-}
+import {
+  TimelineContext,
+  TimelineContextValue,
+  TIMELINE_INITIAL_VIEW,
+  upsertAssetReference,
+  useTimeline,
+} from "./TimelineContext.shared";
+import { useTimelineClipActions } from "./useTimelineClipActions";
+import { useTimelinePersistence } from "./useTimelinePersistence";
+import { copyMediaBlob } from "../utils/mediaStorage";
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
+  const videoState = useVideoState();
   const {
     updateProjectDuration,
     project,
@@ -182,27 +54,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     seek,
     setLoopRange,
     clearLoopRange,
-  } = useVideoState();
+  } = videoState;
 
-  const [viewState, setViewStateInternal] = useState<TimelineViewState>(sanitizeTimelineViewState(INITIAL_TIMELINE_VIEW));
-  const [tracks, _setTracks] = useState<VideoTrack[]>(() => {
-    // Start with one default track
-    return [createVideoTrack("Video 1", 0)];
-  });
+  const [viewState, setViewStateInternal] = useState<TimelineViewState>(
+    sanitizeTimelineViewState(TIMELINE_INITIAL_VIEW)
+  );
+  const [tracks, _setTracks] = useState<VideoTrack[]>(() => [createVideoTrack("Video 1", 0)]);
   const [clips, _setClips] = useState<Clip[]>([]);
-  const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
-  // Refs for autosave
   const projectRef = useRef(project);
-
-  // Refs for latest tracks/clips — kept in sync even during React batched updates
-  // so captureHistorySnapshot always reads the freshest state.
   const tracksRef = useRef(tracks);
   const clipsRef = useRef(clips);
   tracksRef.current = tracks;
   clipsRef.current = clips;
 
-  // Wrapped setters: keep refs in sync immediately inside the functional updater,
-  // preventing stale snapshots when multiple mutations are batched before re-render.
   const setTracks = useCallback((action: React.SetStateAction<VideoTrack[]>) => {
     _setTracks((prev) => {
       const next = typeof action === "function" ? action(prev) : action;
@@ -224,11 +88,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     updateProjectDuration();
   }, [setClips, updateProjectDuration]);
 
-  const appendTrack = useCallback((track: VideoTrack) => {
-    setTracks((prev) => {
-      const updated = [...prev, track];
-      return reindexTracksForZOrder(updated);
+  const copyMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
+    return copyMediaBlob(sourceClipId, targetClipId).catch((error) => {
+      console.error(`Failed to copy media blob (${reason}):`, error);
     });
+  }, []);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  const appendTrack = useCallback((track: VideoTrack) => {
+    setTracks((prev) => reindexTracksForZOrder([...prev, track]));
   }, [setTracks]);
 
   const registerProjectAsset = useCallback((asset: AssetReference | null | undefined) => {
@@ -243,58 +114,20 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     });
   }, [setProject]);
 
-  const copyMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
-    return copyMediaBlob(sourceClipId, targetClipId).catch((error) => {
-      console.error(`Failed to copy media blob (${reason}):`, error);
-    });
-  }, []);
-
-  const moveMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
-    return moveMediaBlob(sourceClipId, targetClipId).catch((error) => {
-      console.error(`Failed to move media blob (${reason}):`, error);
-    });
-  }, []);
-
-  const getTimelineFrameRate = useCallback((): number => {
-    return normalizeTimelineFrameRate(projectRef.current.frameRate);
-  }, []);
-
-  const snapTimeToFrame = useCallback((time: number): number => {
+  const getTimelineFrameRate = useCallback(() => normalizeTimelineFrameRate(projectRef.current.frameRate), []);
+  const snapTimeToFrame = useCallback((time: number) => {
     return alignTimelineTimeToFrame(time, getTimelineFrameRate());
   }, [getTimelineFrameRate]);
-
-  const getMinClipDuration = useCallback((): number => {
+  const getMinClipDuration = useCallback(() => {
     return Math.max(TIMELINE.CLIP_MIN_DURATION, 1 / getTimelineFrameRate());
   }, [getTimelineFrameRate]);
-
-  const createSafeFittedVisualClip = useCallback((options: {
-    baseClip: Clip;
-    sourceSize: Size;
-    startTime: number;
-    canvasSize?: Size;
-  }): Clip => {
-    const frameRate = getTimelineFrameRate();
-    const fitted = getFittedVisualTransform(options.sourceSize, options.canvasSize ?? projectRef.current.canvasSize);
-    return withSafeClipStart(clipsRef.current, {
-      ...options.baseClip,
-      position: fitted.position,
-      scale: fitted.scale,
-    }, options.startTime, { frameRate });
-  }, [getTimelineFrameRate]);
-
-  useEffect(() => {
-    projectRef.current = project;
-  }, [project]);
 
   const clipsByTrack = useMemo(() => {
     const index = new Map<string, Clip[]>();
     for (const clip of clips) {
       const list = index.get(clip.trackId);
-      if (list) {
-        list.push(clip);
-      } else {
-        index.set(clip.trackId, [clip]);
-      }
+      if (list) list.push(clip);
+      else index.set(clip.trackId, [clip]);
     }
     for (const list of index.values()) {
       list.sort((a, b) => a.startTime - b.startTime);
@@ -302,148 +135,55 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     return index;
   }, [clips]);
 
-  const {
-    canUndo,
-    canRedo,
-    saveToHistory,
-    clearHistory,
-    undo,
-    redo,
-  } = useTimelineHistory({
+  const history = useTimelineHistory({
     tracksRef,
     clipsRef,
     setTracks,
     setClips,
     cloneTrack,
-    cloneClip,
+    cloneClip: (clip) => ({ ...clip, position: { ...clip.position }, sourceSize: { ...clip.sourceSize } }),
     maxHistory: 100,
   });
 
-  // Set view state
-  const setViewState = useCallback((newViewState: TimelineViewState) => {
-    setViewStateInternal(sanitizeTimelineViewState(newViewState));
-  }, []);
-
-  // Restore functions for autosave
-  const restoreTracks = useCallback((savedTracks: VideoTrack[]) => {
-    setTracks(savedTracks.map(cloneTrack));
-  }, []);
-
-  const restoreClips = useCallback((savedClips: Clip[]) => {
-    updateClipsWithDuration(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
-  }, [updateClipsWithDuration]);
-
-  const restoreAutosaveData = useCallback(async (data: VideoAutosaveData) => {
-    let durationHint = Math.max(data.project?.duration || 0, 0);
-
-    // Restore timeline data
-    if (data.tracks && data.tracks.length > 0) {
-      setTracks(data.tracks);
-    }
-    if (data.clips && data.clips.length > 0) {
-      const { restoredClips, durationHint: clipDurationHint } = await restoreAutosavedClips(data.clips as Clip[]);
-      durationHint = Math.max(durationHint, clipDurationHint);
-      setClips(restoredClips);
-    }
-    if (data.timelineView) {
-      setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
-    }
-    const normalizedDurationHint = Math.max(durationHint, 0.001);
-
-    // Restore VideoState data
-    // Merge correct masks (data.masks) into project to avoid stale project.masks
-    if (data.project) {
-      setProject({
-        ...data.project,
-        duration: normalizedDurationHint,
-        masks: data.masks || data.project.masks || [],
-      });
-    }
-    if (data.projectName) {
-      setProjectName(data.projectName);
-    }
-    if (data.projectGroup) {
-      setProjectGroup(normalizeProjectGroupName(data.projectGroup));
-    }
-    if (data.toolMode) {
-      setToolMode(data.toolMode);
-    }
-    if (typeof data.autoKeyframeEnabled === "boolean") {
-      setAutoKeyframeEnabled(data.autoKeyframeEnabled);
-    }
-    if (data.selectedClipIds) {
-      selectClips(data.selectedClipIds);
-    }
-    if (data.selectedMaskIds) {
-      selectMasksForTimeline(data.selectedMaskIds);
-    }
-    const restoredTime = typeof data.currentTime === "number" ? data.currentTime : 0;
-    if (data.playbackRange) {
-      setLoopRange(
-        data.playbackRange.loopStart,
-        data.playbackRange.loopEnd,
-        Boolean(data.playbackRange.loop),
-        normalizedDurationHint
-      );
-    } else {
-      // Autosave can omit playbackRange when user cleared IN/OUT.
-      // In that case, explicitly restore a cleared range.
-      clearLoopRange(normalizedDurationHint);
-    }
-    seek(restoredTime);
-  }, [
-    clearLoopRange,
-    seek,
+  const persistence = useTimelinePersistence({
+    project,
+    tracks,
+    clips,
+    setTracks,
+    setClips,
+    setProject,
+    setViewStateInternal,
+    setProjectName,
+    setProjectGroup,
+    setToolMode,
+    setAutoKeyframeEnabled,
     selectClips,
     selectMasksForTimeline,
-    setAutoKeyframeEnabled,
+    seek,
     setLoopRange,
-    setProject,
-    setProjectGroup,
-    setProjectName,
-    setToolMode,
-  ]);
+    clearLoopRange,
+    clearHistory: history.clearHistory,
+    projectRef,
+  });
 
-  // Load autosave on mount
-  useEffect(() => {
-    const loadAutosave = async () => {
-      try {
-        const data = await loadVideoAutosave();
-        if (data) {
-          await restoreAutosaveData(data);
-        }
-      } catch (error) {
-        console.error("Failed to load autosave:", error);
-      } finally {
-        clearHistory();
-        setIsAutosaveInitialized(true);
-      }
-    };
+  const clipActions = useTimelineClipActions({
+    tracks,
+    clips,
+    projectCanvasSize: project.canvasSize,
+    viewState: { snapEnabled: viewState.snapEnabled, zoom: viewState.zoom },
+    appendTrack,
+    registerProjectAsset,
+    getTimelineFrameRate,
+    snapTimeToFrame,
+    getMinClipDuration,
+    updateClipsWithDuration,
+    saveToHistory: history.saveToHistory,
+  });
 
-    loadAutosave();
-  }, [restoreAutosaveData, clearHistory]);
+  const setViewState = useCallback((nextViewState: TimelineViewState) => {
+    setViewStateInternal(sanitizeTimelineViewState(nextViewState));
+  }, []);
 
-  // NOTE: Autosave writes are handled by useVideoSave (in page.tsx) which has
-  // access to MaskContext for correct mask data. TimelineContext only handles
-  // autosave RESTORE (on mount, above).
-
-  // Keep project.timeline data synchronized with TimelineContext state.
-  // NOTE: masks are NOT synced here — MaskContext is the single source of truth
-  // for mask data. project.masks is synced from MaskContext in page.tsx.
-  useEffect(() => {
-    const duration = clips.reduce((max, clip) => {
-      return Math.max(max, clip.startTime + clip.duration);
-    }, 0);
-
-    setProject({
-      ...projectRef.current,
-      tracks: tracks.map(cloneTrack),
-      clips: clips.map(cloneClip),
-      duration: Math.max(duration, 1),
-    });
-  }, [tracks, clips, setProject]);
-
-  // View state actions
   const setZoom = useCallback((zoom: number) => {
     const safeZoom = Number.isFinite(zoom) ? zoom : TIMELINE.DEFAULT_ZOOM;
     const clampedZoom = Math.max(TIMELINE.MIN_ZOOM, Math.min(TIMELINE.MAX_ZOOM, safeZoom));
@@ -451,29 +191,22 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setScrollX = useCallback((scrollX: number) => {
-    const safeScrollX = Math.max(0, Number.isFinite(scrollX) ? scrollX : 0);
-    setViewStateInternal((prev) => ({ ...prev, scrollX: safeScrollX }));
+    setViewStateInternal((prev) => ({ ...prev, scrollX: Math.max(0, Number.isFinite(scrollX) ? scrollX : 0) }));
   }, []);
 
   const setScrollY = useCallback((scrollY: number) => {
-    const safeScrollY = Math.max(0, Number.isFinite(scrollY) ? scrollY : 0);
-    setViewStateInternal((prev) => ({ ...prev, scrollY: safeScrollY }));
+    setViewStateInternal((prev) => ({ ...prev, scrollY: Math.max(0, Number.isFinite(scrollY) ? scrollY : 0) }));
   }, []);
 
   const toggleSnap = useCallback(() => {
     setViewStateInternal((prev) => ({ ...prev, snapEnabled: !prev.snapEnabled }));
   }, []);
 
-  // Track management
-  const addTrack = useCallback((name?: string, type: "video" | "audio" = "video"): string => {
-    const newTrack = createVideoTrack(
-      name || getDefaultTrackName(tracks, type),
-      0, // New track starts at bottom (background)
-      type
-    );
+  const addTrack = useCallback((name?: string, type: "video" | "audio" = "video") => {
+    const newTrack = createVideoTrack(name || getDefaultTrackName(tracks, type), 0, type);
     appendTrack(newTrack);
     return newTrack.id;
-  }, [tracks, appendTrack]);
+  }, [appendTrack, tracks]);
 
   const duplicateTrack = useCallback((trackId: string): string | null => {
     const sourceTrack = tracks.find((track) => track.id === trackId);
@@ -512,516 +245,39 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }
 
     return duplicatedTrack.id;
-  }, [tracks, clips, copyMediaBlobSafely, updateClipsWithDuration]);
+  }, [clips, copyMediaBlobSafely, setTracks, tracks, updateClipsWithDuration]);
 
   const removeTrack = useCallback((trackId: string) => {
-    // Don't remove the last track
     if (tracks.length <= 1) return;
-
-    // Remove all clips in the track first
     updateClipsWithDuration((prev) => prev.filter((clip) => clip.trackId !== trackId));
-
-    // Remove the track
-    setTracks((prev) => {
-      const filtered = prev.filter((t) => t.id !== trackId);
-      return reindexTracksForZOrder(filtered);
-    });
-
-  }, [tracks.length, updateClipsWithDuration]);
+    setTracks((prev) => reindexTracksForZOrder(prev.filter((track) => track.id !== trackId)));
+  }, [tracks.length, setTracks, updateClipsWithDuration]);
 
   const updateTrack = useCallback((trackId: string, updates: Partial<VideoTrack>) => {
-    setTracks((prev) =>
-      prev.map((t) => (t.id === trackId ? { ...t, ...updates } : t))
-    );
-  }, []);
+    setTracks((prev) => prev.map((track) => (track.id === trackId ? { ...track, ...updates } : track)));
+  }, [setTracks]);
 
   const reorderTracks = useCallback((fromIndex: number, toIndex: number) => {
     setTracks((prev) => {
-      const newTracks = [...prev];
-      const [removed] = newTracks.splice(fromIndex, 1);
-      newTracks.splice(toIndex, 0, removed);
-      return reindexTracksForZOrder(newTracks);
-    });
-  }, []);
-
-  // Clip management
-  const addVideoClip = useCallback(
-    (
-      trackId: string,
-      sourceUrl: string,
-      sourceDuration: number,
-      sourceSize: Size,
-      startTime: number = 0,
-      canvasSize?: Size,
-      options?: { sourceId?: string; asset?: AssetReference }
-    ): string => {
-      const resolvedTrackId = resolveTrackIdForClipType(trackId, "video", tracks);
-      const frameAlignedStart = snapTimeToFrame(startTime);
-      const baseClip = createVideoClip(
-        resolvedTrackId,
-        sourceUrl,
-        sourceDuration,
-        sourceSize,
-        frameAlignedStart,
-        options?.sourceId
-      );
-      const clip = createSafeFittedVisualClip({
-        baseClip,
-        sourceSize,
-        startTime: frameAlignedStart,
-        canvasSize,
-      });
-      registerProjectAsset(options?.asset);
-      updateClipsWithDuration((prev) => [...prev, clip]);
-      return clip.id;
-    },
-    [tracks, createSafeFittedVisualClip, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
-  );
-
-  const addAudioClip = useCallback(
-    (
-      trackId: string,
-      sourceUrl: string,
-      sourceDuration: number,
-      startTime: number = 0,
-      sourceSize: Size = { width: 0, height: 0 },
-      options?: { sourceId?: string; asset?: AssetReference }
-    ): string => {
-      const resolvedTrackId = resolveTrackIdForClipType(trackId, "audio", tracks);
-      const frameAlignedStart = snapTimeToFrame(startTime);
-      const clip = createAudioClip(
-        resolvedTrackId,
-        sourceUrl,
-        sourceDuration,
-        frameAlignedStart,
-        sourceSize,
-        options?.sourceId
-      );
-      const normalizedClip: Clip = withSafeClipStart(clipsRef.current, clip, frameAlignedStart, {
-        frameRate: getTimelineFrameRate(),
-      });
-      registerProjectAsset(options?.asset);
-      updateClipsWithDuration((prev) => [...prev, normalizedClip]);
-      return normalizedClip.id;
-    },
-    [tracks, getTimelineFrameRate, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
-  );
-
-  const addImageClip = useCallback(
-    (
-      trackId: string,
-      sourceUrl: string,
-      sourceSize: Size,
-      startTime: number = 0,
-      duration: number = 5,
-      canvasSize?: Size,
-      options?: { sourceId?: string; asset?: AssetReference }
-    ): string => {
-      const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
-      const frameAlignedStart = snapTimeToFrame(startTime);
-      const baseClip = createImageClip(
-        resolvedTrackId,
-        sourceUrl,
-        sourceSize,
-        frameAlignedStart,
-        duration,
-        options?.sourceId
-      );
-      const clip = createSafeFittedVisualClip({
-        baseClip,
-        sourceSize,
-        startTime: frameAlignedStart,
-        canvasSize,
-      });
-      registerProjectAsset(options?.asset);
-      updateClipsWithDuration((prev) => [...prev, clip]);
-      return clip.id;
-    },
-    [tracks, createSafeFittedVisualClip, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
-  );
-
-  const addCanvasOverlayClip = useCallback(
-    (
-      trackId: string,
-      sourceUrl: string,
-      sourceSize: Size,
-      startTime: number = 0,
-      duration: number = 5,
-      canvasSize?: Size,
-      options?: { sourceId?: string; asset?: AssetReference }
-    ): string => {
-      const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
-      const frameAlignedStart = snapTimeToFrame(startTime);
-      const baseClip = createCanvasOverlayClip(
-        resolvedTrackId,
-        sourceUrl,
-        sourceSize,
-        frameAlignedStart,
-        duration,
-        options?.sourceId
-      );
-      const clip = createSafeFittedVisualClip({
-        baseClip,
-        sourceSize,
-        startTime: frameAlignedStart,
-        canvasSize,
-      });
-      registerProjectAsset(options?.asset);
-      updateClipsWithDuration((prev) => [...prev, clip]);
-      return clip.id;
-    },
-    [tracks, createSafeFittedVisualClip, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
-  );
-
-  const removeClip = useCallback((clipId: string) => {
-    updateClipsWithDuration((prev) => prev.filter((c) => c.id !== clipId));
-  }, [updateClipsWithDuration]);
-
-  const updateClip = useCallback((clipId: string, updates: Partial<Clip>) => {
-    updateClipsWithDuration((prev) =>
-      prev.map((c) => {
-        if (c.id !== clipId) return c;
-        const next = normalizeClip({ ...c, ...updates } as Clip);
-        const normalizedTransformKeyframes = normalizeClipTransformKeyframes(next);
-        return normalizeClip({
-          ...next,
-          transformKeyframes: normalizedTransformKeyframes,
-        } as Clip);
-      })
-    );
-  }, [updateClipsWithDuration]);
-
-  const setClipPlaybackSpeed = useCallback((clipId: string, playbackSpeed: number) => {
-    const sourceClip = clips.find((candidate) => candidate.id === clipId);
-    if (!sourceClip || sourceClip.type === "image") return;
-
-    const sourceSpan = getClipSourceSpan(sourceClip);
-    if (sourceSpan <= SOURCE_TRIM_EPSILON) return;
-
-    const minDuration = getMinClipDuration();
-    const requestedSpeed = Math.max(
-      CLIP_PLAYBACK.MIN_SPEED,
-      Math.min(CLIP_PLAYBACK.MAX_SPEED, playbackSpeed)
-    );
-    const idealDuration = getTimelineDurationForSourceDuration(
-      { playbackSpeed: requestedSpeed },
-      sourceSpan
-    );
-    const nextDuration = Math.max(minDuration, idealDuration);
-    const appliedSpeed = Math.max(
-      CLIP_PLAYBACK.MIN_SPEED,
-      Math.min(CLIP_PLAYBACK.MAX_SPEED, sourceSpan / Math.max(nextDuration, SOURCE_TRIM_EPSILON))
-    );
-
-    const currentSpeed = getClipPlaybackSpeed(sourceClip);
-    if (
-      Math.abs(appliedSpeed - currentSpeed) <= SOURCE_TRIM_EPSILON
-      && Math.abs(nextDuration - sourceClip.duration) <= SOURCE_TRIM_EPSILON
-    ) {
-      return;
-    }
-
-    saveToHistory();
-    updateClipsWithDuration((prev) =>
-      prev.map((clip) => {
-        if (clip.id !== clipId || clip.type === "image") return clip;
-        const transformKeyframes = scaleClipPositionKeyframesDuration(clip, nextDuration);
-        const nextPosition = transformKeyframes?.position?.[0]?.value || clip.position;
-        return normalizeClip({
-          ...clip,
-          playbackSpeed: appliedSpeed,
-          duration: nextDuration,
-          position: { ...nextPosition },
-          transformKeyframes,
-        } as Clip);
-      })
-    );
-  }, [clips, getMinClipDuration, saveToHistory, updateClipsWithDuration]);
-
-  const moveClip = useCallback((clipId: string, trackId: string, startTime: number, ignoreClipIds: string[] = []) => {
-    const targetTrack = tracks.find((t) => t.id === trackId) || null;
-    if (!targetTrack) return;
-    const frameRate = getTimelineFrameRate();
-
-    updateClipsWithDuration((prev) =>
-      prev.map((c) => {
-        if (c.id !== clipId) return c;
-        if (!fitsTrackType(targetTrack, c)) return c;
-        const candidateStart = snapTimeToFrame(startTime);
-        const excludeIds = new Set<string>([clipId, ...ignoreClipIds]);
-        const overlaps = hasTrackOverlap(prev, {
-          trackId,
-          startTime: candidateStart,
-          duration: c.duration,
-        }, excludeIds, frameRate);
-        if (!overlaps) {
-          return { ...c, trackId, startTime: candidateStart };
-        }
-
-        const clampedStart = resolveNearestAvailableClipStart(prev, {
-          trackId,
-          startTime: candidateStart,
-          duration: c.duration,
-        }, excludeIds, frameRate);
-
-        if (
-          Math.abs(clampedStart - c.startTime) <= SOURCE_TRIM_EPSILON
-          || hasTrackOverlap(prev, {
-            trackId,
-            startTime: clampedStart,
-            duration: c.duration,
-          }, excludeIds, frameRate)
-        ) {
-          return c;
-        }
-
-        return { ...c, trackId, startTime: clampedStart };
-      })
-    );
-  }, [tracks, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
-
-  const trimClipStart = useCallback((clipId: string, newStartTime: number) => {
-    const frameRate = getTimelineFrameRate();
-    updateClipsWithDuration((prev) =>
-      prev.map((c) => {
-        if (c.id !== clipId) return c;
-
-        const minDuration = getMinClipDuration();
-        const frameAlignedStart = snapTimeToFrame(newStartTime);
-        const deltaTime = frameAlignedStart - c.startTime;
-        const newTrimIn = c.trimIn + (deltaTime * getClipPlaybackSpeed(c));
-        const newDuration = c.duration - deltaTime;
-
-        // Validate
-        if (newTrimIn < 0 || newDuration < minDuration) return c;
-
-        const candidate = {
-          trackId: c.trackId,
-          startTime: frameAlignedStart,
-          duration: newDuration,
-        };
-        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]), frameRate);
-        if (overlaps) return c;
-
-        const transformKeyframes = sliceClipPositionKeyframes(
-          c,
-          deltaTime,
-          newDuration,
-          { includeStart: true, includeEnd: false }
-        );
-        const nextPosition = transformKeyframes?.position?.[0]?.value || c.position;
-
-        return normalizeClip({
-          ...c,
-          startTime: frameAlignedStart,
-          trimIn: newTrimIn,
-          duration: newDuration,
-          position: { ...nextPosition },
-          transformKeyframes,
-        } as Clip);
-      })
-    );
-  }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
-
-  const trimClipEnd = useCallback((clipId: string, newEndTime: number) => {
-    const frameRate = getTimelineFrameRate();
-    updateClipsWithDuration((prev) =>
-      prev.map((c) => {
-        if (c.id !== clipId) return c;
-
-        const minDuration = getMinClipDuration();
-        const frameAlignedEnd = snapTimeToFrame(newEndTime);
-        const newDuration = frameAlignedEnd - c.startTime;
-        const newTrimOut = c.trimIn + (newDuration * getClipPlaybackSpeed(c));
-
-        // Validate
-        if (newDuration < minDuration) return c;
-        if (
-          (c.type === "video" || c.type === "audio")
-          && newTrimOut > c.sourceDuration + SOURCE_TRIM_EPSILON
-        ) {
-          return c;
-        }
-        const safeTrimOut = (c.type === "video" || c.type === "audio")
-          ? Math.min(newTrimOut, c.sourceDuration)
-          : newTrimOut;
-
-        const candidate = {
-          trackId: c.trackId,
-          startTime: c.startTime,
-          duration: newDuration,
-        };
-        const overlaps = hasTrackOverlap(prev, candidate, new Set([clipId]), frameRate);
-        if (overlaps) return c;
-
-        const transformKeyframes = sliceClipPositionKeyframes(
-          c,
-          0,
-          newDuration,
-          { includeStart: true, includeEnd: true }
-        );
-        const nextPosition = transformKeyframes?.position?.[0]?.value || c.position;
-
-        return normalizeClip({
-          ...c,
-          duration: newDuration,
-          trimOut: safeTrimOut,
-          position: { ...nextPosition },
-          transformKeyframes,
-        } as Clip);
-      })
-    );
-  }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
-
-  // Duplicate a clip to a target track (or new track if not specified)
-  const duplicateClip = useCallback((clipId: string, targetTrackId?: string): string | null => {
-    const sourceClip = clips.find((c) => c.id === clipId);
-    if (!sourceClip) return null;
-
-    // Determine target track
-    let trackId = targetTrackId;
-    if (!trackId) {
-      // Create a new track for the duplicate
-      const duplicateTrackType = sourceClip.type === "audio" ? "audio" : "video";
-      const newTrack = createVideoTrack(
-        getDefaultTrackName(tracks, duplicateTrackType),
-        0,
-        duplicateTrackType
-      );
-      appendTrack(newTrack);
-      trackId = newTrack.id;
-    }
-
-    // Create duplicate with new ID
-    const newClip: Clip = withSafeClipStart(clips, {
-      ...sourceClip,
-      id: crypto.randomUUID(),
-      trackId,
-      name: `${sourceClip.name} (Copy)`,
-      position: { ...sourceClip.position },
-      sourceSize: { ...sourceClip.sourceSize },
-      transformKeyframes: normalizeClipTransformKeyframes(sourceClip),
-    }, snapTimeToFrame(sourceClip.startTime + 0.25), {
-      frameRate: getTimelineFrameRate(),
-    });
-
-    void copyMediaBlobSafely(sourceClip.id, newClip.id, "timeline duplicate");
-
-    updateClipsWithDuration((prev) => [...prev, newClip]);
-    return newClip.id;
-  }, [clips, tracks, appendTrack, copyMediaBlobSafely, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
-
-  const splitClipAtTime = useCallback((clipId: string, splitCursorTime: number): string | null => {
-    const clip = clips.find((candidate) => candidate.id === clipId);
-    if (!clip) return null;
-    const frameRate = getTimelineFrameRate();
-
-    const snapToPoints = (time: number): number => {
-      if (!viewState.snapEnabled) return snapTimeToFrame(time);
-      const safeZoom = Number.isFinite(viewState.zoom) && viewState.zoom > 0
-        ? viewState.zoom
-        : TIMELINE.DEFAULT_ZOOM;
-      const threshold = TIMELINE.SNAP_THRESHOLD / safeZoom;
-      const points: number[] = [0];
-
-      for (const candidate of clips) {
-        if (candidate.id === clip.id) continue;
-        const range = getTimelineFrameRange(candidate.startTime, candidate.duration, frameRate);
-        points.push(range.startTime);
-        points.push(range.endTime);
-      }
-
-      for (const point of points) {
-        if (Math.abs(time - point) < threshold) {
-          return snapTimeToFrame(point);
-        }
-      }
-      return snapTimeToFrame(time);
-    };
-
-    const splitResult = buildRazorSplitClips({
-      clip,
-      splitCursorTime: snapTimeToFrame(splitCursorTime),
-      snapToPoints,
-    });
-    if (!splitResult) return null;
-
-    const { firstClip, secondClip } = splitResult;
-    saveToHistory();
-
-    void moveMediaBlobSafely(clip.id, firstClip.id, "timeline split");
-
-    updateClipsWithDuration((prev) => [
-      ...prev.filter((candidate) => candidate.id !== clip.id),
-      firstClip,
-      secondClip,
-    ]);
-
-    return secondClip.id;
-  }, [
-    clips,
-    viewState.snapEnabled,
-    viewState.zoom,
-    saveToHistory,
-    copyMediaBlobSafely,
-    moveMediaBlobSafely,
-    getTimelineFrameRate,
-    snapTimeToFrame,
-    updateClipsWithDuration,
-  ]);
-
-  // Add pre-formed clips (for paste)
-  const addClips = useCallback((newClips: Clip[]) => {
-    updateClipsWithDuration((prev) => {
       const next = [...prev];
-      const normalized: Clip[] = [];
-
-      for (const clip of newClips) {
-        const frameAlignedStart = snapTimeToFrame(clip.startTime);
-        const adjusted = withSafeClipStart(
-          next,
-          {
-            ...cloneClip(clip),
-            startTime: frameAlignedStart,
-          },
-          frameAlignedStart,
-          {
-            excludeClipIds: new Set([clip.id]),
-            frameRate: getTimelineFrameRate(),
-          }
-        );
-        normalized.push(adjusted);
-        next.push(adjusted);
-      }
-
-      return [...prev, ...normalized];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      return reindexTracksForZOrder(next);
     });
-  }, [getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
+  }, [setTracks]);
 
-  // Queries
-  const getClipAtTime = useCallback(
-    (trackId: string, time: number): Clip | null => {
-      const trackClips = clipsByTrack.get(trackId);
-      if (!trackClips) return null;
-      return findClipAtTime(trackClips, time);
-    },
-    [clipsByTrack]
-  );
+  const getClipAtTime = useCallback((trackId: string, time: number): Clip | null => {
+    const trackClips = clipsByTrack.get(trackId);
+    return trackClips ? findClipAtTime(trackClips, time) : null;
+  }, [clipsByTrack]);
 
-  const getClipsInTrack = useCallback(
-    (trackId: string): Clip[] => {
-      const trackClips = clipsByTrack.get(trackId);
-      return trackClips ? [...trackClips] : [];
-    },
-    [clipsByTrack]
-  );
+  const getClipsInTrack = useCallback((trackId: string): Clip[] => {
+    return clipsByTrack.get(trackId) ? [...clipsByTrack.get(trackId)!] : [];
+  }, [clipsByTrack]);
 
-  const getTrackById = useCallback(
-    (trackId: string): VideoTrack | null => {
-      return tracks.find((t) => t.id === trackId) || null;
-    },
-    [tracks]
-  );
+  const getTrackById = useCallback((trackId: string): VideoTrack | null => {
+    return tracks.find((track) => track.id === trackId) || null;
+  }, [tracks]);
 
   const value: TimelineContextValue = {
     viewState,
@@ -1036,45 +292,35 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     removeTrack,
     updateTrack,
     reorderTracks,
-    restoreTracks,
+    restoreTracks: persistence.restoreTracks,
     clips,
-    addVideoClip,
-    addAudioClip,
-    addImageClip,
-    addCanvasOverlayClip,
-    removeClip,
-    updateClip,
-    setClipPlaybackSpeed,
-    moveClip,
-    trimClipStart,
-    trimClipEnd,
-    splitClipAtTime,
-    duplicateClip,
-    addClips,
-    restoreClips,
-    saveToHistory,
-    undo,
-    redo,
-    clearHistory,
-    canUndo,
-    canRedo,
+    addVideoClip: clipActions.addVideoClip,
+    addAudioClip: clipActions.addAudioClip,
+    addImageClip: clipActions.addImageClip,
+    addCanvasOverlayClip: clipActions.addCanvasOverlayClip,
+    removeClip: clipActions.removeClip,
+    updateClip: clipActions.updateClip,
+    setClipPlaybackSpeed: clipActions.setClipPlaybackSpeed,
+    moveClip: clipActions.moveClip,
+    trimClipStart: clipActions.trimClipStart,
+    trimClipEnd: clipActions.trimClipEnd,
+    splitClipAtTime: clipActions.splitClipAtTime,
+    duplicateClip: clipActions.duplicateClip,
+    addClips: clipActions.addClips,
+    restoreClips: persistence.restoreClips,
+    saveToHistory: history.saveToHistory,
+    undo: history.undo,
+    redo: history.redo,
+    clearHistory: history.clearHistory,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
     getClipAtTime,
     getClipsInTrack,
     getTrackById,
-    isAutosaveInitialized,
+    isAutosaveInitialized: persistence.isAutosaveInitialized,
   };
 
-  return (
-    <TimelineContext.Provider value={value}>
-      {children}
-    </TimelineContext.Provider>
-  );
+  return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
 }
 
-export function useTimeline() {
-  const context = useContext(TimelineContext);
-  if (!context) {
-    throw new Error("useTimeline must be used within TimelineProvider");
-  }
-  return context;
-}
+export { useTimeline } from "./TimelineContext.shared";
