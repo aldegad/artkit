@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import { useVideoState, useVideoRefs, useTimeline } from "../../contexts";
 import {
   useVideoElements,
@@ -19,7 +19,15 @@ import {
 } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
 import { PLAYBACK, PREVIEW, PRE_RENDER } from "../../constants";
-import { getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
+import {
+  Clip,
+  VideoClip,
+  VideoTrack,
+  getClipPlaybackSpeed,
+  getClipScaleX,
+  getClipScaleY,
+  getSourceTime,
+} from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
@@ -153,6 +161,35 @@ function ensureRenderSurfaceCanvas(
   return { canvas, resized };
 }
 
+interface DirectPreviewPlan {
+  trackId: string;
+  sourceKey: string;
+}
+
+function resolveDirectPreviewPlan(tracks: VideoTrack[], clips: Clip[], maskCount: number): DirectPreviewPlan | null {
+  if (maskCount > 0) return null;
+
+  const visibleVisualTracks = tracks.filter((track) => track.visible && track.type !== "audio");
+  if (visibleVisualTracks.length !== 1) return null;
+
+  const track = visibleVisualTracks[0];
+  const trackClips = clips.filter((clip) => clip.trackId === track.id && clip.visible);
+  if (trackClips.length === 0) return null;
+  if (trackClips.some((clip) => clip.type !== "video")) return null;
+
+  const videoClips = trackClips as VideoClip[];
+  const sourceKey = videoClips[0].sourceId || videoClips[0].sourceUrl;
+  if (!sourceKey) return null;
+  if (videoClips.some((clip) => (clip.sourceId || clip.sourceUrl) !== sourceKey)) {
+    return null;
+  }
+
+  return {
+    trackId: track.id,
+    sourceKey,
+  };
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const {
     previewCanvasRef,
@@ -192,6 +229,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const previewWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const hasCommittedCompositeFrameRef = useRef(false);
+  const directPreviewHostRef = useRef<HTMLDivElement | null>(null);
+  const directPreviewAttachedVideoRef = useRef<HTMLVideoElement | null>(null);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const [inpaintBrushMode, setInpaintBrushMode] = useState<InpaintBrushMode>("paint");
   const inpaintStrokeActiveRef = useRef(false);
@@ -220,6 +259,18 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     renderRequestRef.current = requestAnimationFrame(() => renderRef.current());
   }, []);
 
+  const detachDirectPreviewVideo = useCallback(() => {
+    const host = directPreviewHostRef.current;
+    const attachedVideo = directPreviewAttachedVideoRef.current;
+    if (host && attachedVideo && attachedVideo.parentElement === host) {
+      host.removeChild(attachedVideo);
+    }
+    directPreviewAttachedVideoRef.current = null;
+    if (host) {
+      host.style.display = "none";
+    }
+  }, []);
+
   useEffect(() => {
     const handleInpaintRegionUpdate = () => {
       scheduleRender();
@@ -229,6 +280,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       window.removeEventListener("artkit:inpaint-region-updated", handleInpaintRegionUpdate);
     };
   }, [scheduleRender]);
+
+  useEffect(() => {
+    return () => {
+      detachDirectPreviewVideo();
+    };
+  }, [detachDirectPreviewVideo]);
 
   // Mask
   const {
@@ -249,6 +306,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     maskRegionClearRequestId,
   } = useMask();
   const { startDraw, continueDraw, endDraw } = useMaskTool();
+  const directPreviewPlan = useMemo(
+    () => resolveDirectPreviewPlan(tracks, clips, masks.size),
+    [tracks, clips, masks.size]
+  );
 
   const isHandTool = toolMode === "hand";
   const isZoomTool = toolMode === "zoom";
@@ -627,34 +688,103 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       const selected = clips.find((clip) => clip.id === clipId);
       return !!selected && selected.type !== "audio";
     }) || null;
+    const directPreviewHost = directPreviewHostRef.current;
+    let usesDirectVideoPreview = false;
 
-    // Draw checkerboard for transparency
-    workingCompositeCtx.save();
-    workingCompositeCtx.beginPath();
-    workingCompositeCtx.rect(offsetX, offsetY, previewWidth, previewHeight);
-    workingCompositeCtx.clip();
-    drawPreviewCheckerboard({
-      ctx: workingCompositeCtx,
-      width,
-      height,
-      isDraftMode: previewPerfRef.current.draftMode,
-      cache: {
-        patternRef: checkerPatternRef,
-        patternKeyRef: checkerPatternKeyRef,
-        patternCanvasRef: checkerPatternCanvasRef,
-      },
-    });
-    workingCompositeCtx.restore();
+    if (directPreviewPlan && directPreviewHost) {
+      const activeClip = getClipAtTime(directPreviewPlan.trackId, renderTime);
+      const directVideoClip = activeClip && activeClip.type === "video" ? activeClip : null;
+      const directVideoElement = directVideoClip
+        ? videoElementsRef.current.get(directVideoClip.id) || null
+        : null;
+
+      if (directVideoClip && directVideoElement && directVideoElement.readyState >= 1) {
+        usesDirectVideoPreview = true;
+        if (directPreviewAttachedVideoRef.current !== directVideoElement) {
+          directPreviewHost.replaceChildren(directVideoElement);
+          directPreviewAttachedVideoRef.current = directVideoElement;
+        }
+
+        const directSourceTime = getSourceTime(directVideoClip, renderTime);
+        if (playback.isPlaying) {
+          if (Math.abs(directVideoElement.currentTime - directSourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
+            directVideoElement.currentTime = directSourceTime;
+          }
+          directVideoElement.playbackRate = playback.playbackRate * getClipPlaybackSpeed(directVideoClip);
+          if (directVideoElement.paused) {
+            directVideoElement.play().catch(() => {});
+          }
+        } else {
+          if (Math.abs(directVideoElement.currentTime - directSourceTime) > 0.05) {
+            directVideoElement.currentTime = directSourceTime;
+          }
+          directVideoElement.pause();
+        }
+        directVideoElement.muted = true;
+        directVideoElement.volume = 0;
+
+        const clipPosition = resolveClipPositionAtTimelineTime(directVideoClip, renderTime);
+        const drawPoint = vpContentToScreen(clipPosition);
+        const drawW = directVideoClip.sourceSize.width * scale * getClipScaleX(directVideoClip);
+        const drawH = directVideoClip.sourceSize.height * scale * getClipScaleY(directVideoClip);
+        const rotation = directVideoClip.rotation || 0;
+
+        directPreviewHost.style.display = "block";
+        directPreviewHost.style.position = "absolute";
+        directPreviewHost.style.inset = "0";
+        directPreviewHost.style.pointerEvents = "none";
+        directPreviewHost.style.overflow = "hidden";
+
+        directVideoElement.style.position = "absolute";
+        directVideoElement.style.left = `${drawPoint.x}px`;
+        directVideoElement.style.top = `${drawPoint.y}px`;
+        directVideoElement.style.width = `${drawW}px`;
+        directVideoElement.style.height = `${drawH}px`;
+        directVideoElement.style.opacity = `${Math.max(0, Math.min(1, directVideoClip.opacity / 100))}`;
+        directVideoElement.style.objectFit = "fill";
+        directVideoElement.style.pointerEvents = "none";
+        directVideoElement.style.transformOrigin = "center center";
+        directVideoElement.style.transform = rotation === 0 ? "none" : `rotate(${rotation}deg)`;
+      } else {
+        detachDirectPreviewVideo();
+      }
+    } else {
+      detachDirectPreviewVideo();
+    }
+
+    if (!usesDirectVideoPreview) {
+      // Draw checkerboard for transparency
+      workingCompositeCtx.save();
+      workingCompositeCtx.beginPath();
+      workingCompositeCtx.rect(offsetX, offsetY, previewWidth, previewHeight);
+      workingCompositeCtx.clip();
+      drawPreviewCheckerboard({
+        ctx: workingCompositeCtx,
+        width,
+        height,
+        isDraftMode: previewPerfRef.current.draftMode,
+        cache: {
+          patternRef: checkerPatternRef,
+          patternKeyRef: checkerPatternKeyRef,
+          patternCanvasRef: checkerPatternCanvasRef,
+        },
+      });
+      workingCompositeCtx.restore();
+    }
 
     // Try cached frame first (any state — instant display on seek/scrub)
     // Skip cache during mask editing — cached frames don't include live mask
     // overlay or edits, so they would hide the mask completely.
     // Skip cache when mask is active (editing or selected) — overlay needs live rendering
-    const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(renderTime);
+    const cachedBitmap = usesDirectVideoPreview || (isEditingMask || activeMaskId)
+      ? null
+      : getCachedFrame(renderTime);
 
-    let baseFrameReady = Boolean(cachedBitmap);
+    let baseFrameReady = usesDirectVideoPreview || Boolean(cachedBitmap);
 
-    if (cachedBitmap) {
+    if (usesDirectVideoPreview) {
+      workingCompositeCtx.clearRect(0, 0, width, height);
+    } else if (cachedBitmap) {
       if (playback.isPlaying) {
         playbackPerfRef.current.cacheFrames += 1;
       }
@@ -803,21 +933,22 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       }
     }
 
-    if (baseFrameReady || !playback.isPlaying) {
+    if (!usesDirectVideoPreview && (baseFrameReady || !playback.isPlaying)) {
       committedCompositeCtx.setTransform(1, 0, 0, 1, 0, 0);
       committedCompositeCtx.clearRect(0, 0, committedCompositeCanvas.width, committedCompositeCanvas.height);
       committedCompositeCtx.drawImage(workingCompositeCanvas, 0, 0);
       hasCommittedCompositeFrameRef.current = true;
     }
 
-    const baseCanvasToPresent =
-      playback.isPlaying && !baseFrameReady && hasCommittedCompositeFrameRef.current
-        ? committedCompositeCanvas
-        : workingCompositeCanvas;
-
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(baseCanvasToPresent, 0, 0);
+    if (!usesDirectVideoPreview) {
+      const baseCanvasToPresent =
+        playback.isPlaying && !baseFrameReady && hasCommittedCompositeFrameRef.current
+          ? committedCompositeCanvas
+          : workingCompositeCanvas;
+      ctx.drawImage(baseCanvasToPresent, 0, 0);
+    }
     ctx.setTransform(canvasSize.dpr, 0, 0, canvasSize.dpr, 0, 0);
 
     if (
@@ -1381,15 +1512,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     <div
       ref={containerRefCallback}
       data-video-preview-root=""
-      className={cn("relative w-full h-full overflow-hidden focus:outline-none", className)}
+      className={cn("relative w-full h-full overflow-hidden focus:outline-none bg-[var(--surface-primary)]", className)}
       tabIndex={0}
       onPointerDownCapture={(e) => {
         e.currentTarget.focus();
       }}
     >
+      <div
+        ref={directPreviewHostRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{ display: "none" }}
+      />
       <canvas
         ref={previewCanvasRef}
-        className="absolute inset-0"
+        className="absolute inset-0 z-10"
         tabIndex={0}
         style={{
           cursor: canvasCursor,
