@@ -9,6 +9,7 @@ import { safeSetPointerCapture, safeReleasePointerCapture } from "@/shared/utils
 interface NumberScrubberProps {
   value: number;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
   min: number;
   max: number;
   step: number | { multiply: number };
@@ -39,6 +40,7 @@ function clamp(value: number, min: number, max: number) {
 export function NumberScrubber({
   value,
   onChange,
+  onCommit,
   min,
   max,
   step,
@@ -56,6 +58,7 @@ export function NumberScrubber({
   const [editValue, setEditValue] = useState("");
   const [dragPending, setDragPending] = useState<NumberScrubPendingState | null>(null);
   const valueRef = useRef<HTMLSpanElement | null>(null);
+  const lastEmittedValueRef = useRef(value);
   const dragDeltaXRef = useRef(0);
   const dragLastClientXRef = useRef(0);
   const dragPointerIdRef = useRef<number | null>(null);
@@ -70,23 +73,65 @@ export function NumberScrubber({
     (sensitivity ?? defaultSensitivity) / SCRUB_CHANGE_SPEED_MULTIPLIER
   );
 
+  useEffect(() => {
+    if (!dragPending && !isEditing) {
+      lastEmittedValueRef.current = value;
+    }
+  }, [dragPending, isEditing, value]);
+
+  const emitChange = useCallback((nextValue: number) => {
+    lastEmittedValueRef.current = nextValue;
+    onChange(nextValue);
+  }, [onChange]);
+
+  const emitCommit = useCallback((nextValue: number) => {
+    lastEmittedValueRef.current = nextValue;
+    onCommit?.(nextValue);
+  }, [onCommit]);
+
   const handleIncrement = useCallback(() => {
     if (disabled) return;
+    let nextValue: number;
     if (isMultiplicative) {
-      onChange(clamp(value * multiplyFactor, min, max));
+      nextValue = clamp(value * multiplyFactor, min, max);
     } else {
-      onChange(clamp(value + linearStep, min, max));
+      nextValue = clamp(value + linearStep, min, max);
     }
-  }, [disabled, isMultiplicative, value, multiplyFactor, linearStep, min, max, onChange]);
+    emitChange(nextValue);
+    emitCommit(nextValue);
+  }, [
+    disabled,
+    emitChange,
+    emitCommit,
+    isMultiplicative,
+    value,
+    multiplyFactor,
+    linearStep,
+    min,
+    max,
+  ]);
 
   const handleDecrement = useCallback(() => {
     if (disabled) return;
+    let nextValue: number;
     if (isMultiplicative) {
-      onChange(clamp(value / multiplyFactor, min, max));
+      nextValue = clamp(value / multiplyFactor, min, max);
     } else {
-      onChange(clamp(value - linearStep, min, max));
+      nextValue = clamp(value - linearStep, min, max);
     }
-  }, [disabled, isMultiplicative, value, multiplyFactor, linearStep, min, max, onChange]);
+    emitChange(nextValue);
+    emitCommit(nextValue);
+  }, [
+    disabled,
+    emitChange,
+    emitCommit,
+    isMultiplicative,
+    value,
+    multiplyFactor,
+    linearStep,
+    min,
+    max,
+  ]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLSpanElement>) => {
@@ -143,11 +188,11 @@ export function NumberScrubber({
         } else {
           for (let i = 0; i < Math.abs(steps); i++) newValue /= multiplyFactor;
         }
-        onChange(clamp(newValue, min, max));
+        emitChange(clamp(newValue, min, max));
       } else {
         const steps = Math.round(deltaX / dragSensitivity);
         const newValue = pending.startValue + steps * linearStep;
-        onChange(clamp(Math.round(newValue / linearStep) * linearStep, min, max));
+        emitChange(clamp(Math.round(newValue / linearStep) * linearStep, min, max));
       }
     },
     onEnd: (pending) => {
@@ -160,6 +205,7 @@ export function NumberScrubber({
       dragPointerIdRef.current = null;
       pointerLockActiveRef.current = false;
       document.body.style.cursor = "";
+      emitCommit(lastEmittedValueRef.current);
     },
   });
 
@@ -185,10 +231,12 @@ export function NumberScrubber({
   const commitEdit = useCallback(() => {
     const parsed = parseFloat(editValue);
     if (!isNaN(parsed)) {
-      onChange(clamp(parsed, min, max));
+      const nextValue = clamp(parsed, min, max);
+      emitChange(nextValue);
+      emitCommit(nextValue);
     }
     setIsEditing(false);
-  }, [editValue, onChange, min, max]);
+  }, [editValue, emitChange, emitCommit, min, max]);
 
   const displayValue = format ? format(value) : String(value);
 
