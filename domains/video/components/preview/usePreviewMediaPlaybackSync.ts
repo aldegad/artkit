@@ -90,9 +90,6 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
   // Handle playback state changes - sync video/audio elements.
   // Runs only when play state or clip/track structure changes, NOT every frame.
   useEffect(() => {
-    const videoClips = clips.filter((clip): clip is VideoClip => clip.type === "video");
-    const audioClips = clips.filter((clip): clip is AudioClip => clip.type === "audio");
-
     if (!playback.isPlaying) {
       forceStopMediaImmediately();
       wasPlayingRef.current = false;
@@ -103,27 +100,51 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     const syncMedia = () => {
       const ct = currentTimeRef.current || 0;
       const trackById = new Map(tracks.map((track) => [track.id, track]));
+      const desiredVideoStates = new Map<
+        HTMLVideoElement,
+        { clip: VideoClip; isAudible: boolean }
+      >();
+      const desiredAudioStates = new Map<HTMLAudioElement, AudioClip>();
 
-      // Collect audible clips at current time
-      const audibleClipIds = new Set<string>();
       for (const track of tracks) {
         if (!track.visible || track.muted) continue;
         const clip = getClipAtTime(track.id, ct);
         if (!clip || !clip.visible) continue;
-        if (isAudibleMediaClip(clip)) {
-          audibleClipIds.add(clip.id);
+
+        if (clip.type === "video") {
+          const video = videoElementsRef.current?.get(clip.id);
+          if (!video || video.readyState < 2) continue;
+          desiredVideoStates.set(video, {
+            clip,
+            isAudible: isAudibleMediaClip(clip),
+          });
+          continue;
+        }
+
+        if (clip.type === "audio") {
+          const audio = audioElementsRef.current?.get(clip.id);
+          if (!audio) continue;
+          if (!isAudibleMediaClip(clip)) continue;
+          desiredAudioStates.set(audio, clip);
         }
       }
 
-      for (const clip of videoClips) {
-        const video = videoElementsRef.current?.get(clip.id);
-        const track = trackById.get(clip.trackId);
-        if (!video || !track || video.readyState < 2) continue;
-
-        const clipTime = ct - clip.startTime;
-        if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible) {
+      const uniqueVideos = new Set(videoElementsRef.current?.values() || []);
+      for (const video of uniqueVideos) {
+        const desiredState = desiredVideoStates.get(video);
+        if (!desiredState) {
           video.pause();
           video.muted = true;
+          video.volume = 0;
+          continue;
+        }
+
+        const { clip } = desiredState;
+        const track = trackById.get(clip.trackId);
+        if (!track || !track.visible) {
+          video.pause();
+          video.muted = true;
+          video.volume = 0;
           continue;
         }
 
@@ -134,38 +155,42 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
 
         video.playbackRate = playback.playbackRate * getClipPlaybackSpeed(clip);
 
-        // Web Audio handles audio when buffer is ready — mute HTMLVideoElement
         if (isWebAudioReadyRef.current(clip.sourceUrl)) {
           video.muted = true;
           video.volume = 0;
         } else {
-          // Fallback: HTMLMediaElement audio (draft mode)
-          const isAudible = audibleClipIds.has(clip.id);
-          video.muted = !isAudible;
           const clipVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
-          video.volume = isAudible ? Math.max(0, Math.min(1, clipVolume / 100)) : 0;
+          video.muted = !desiredState.isAudible;
+          video.volume = desiredState.isAudible
+            ? Math.max(0, Math.min(1, clipVolume / 100))
+            : 0;
         }
 
         if (video.paused) video.play().catch(() => {});
       }
 
-      for (const clip of audioClips) {
-        const audio = audioElementsRef.current?.get(clip.id);
-        const track = trackById.get(clip.trackId);
-        if (!audio || !track) continue;
-
-        // Web Audio handles this clip — skip HTMLAudioElement entirely
-        if (isWebAudioReadyRef.current(clip.sourceUrl)) {
+      const uniqueAudios = new Set(audioElementsRef.current?.values() || []);
+      for (const audio of uniqueAudios) {
+        const clip = desiredAudioStates.get(audio);
+        if (!clip) {
           audio.pause();
           audio.muted = true;
+          audio.volume = 0;
           continue;
         }
 
-        // Fallback: HTMLMediaElement audio (draft mode)
-        const clipTime = ct - clip.startTime;
-        if (clipTime < 0 || clipTime >= clip.duration || !clip.visible || !track.visible || !audibleClipIds.has(clip.id)) {
+        const track = trackById.get(clip.trackId);
+        if (!track || !track.visible) {
           audio.pause();
           audio.muted = true;
+          audio.volume = 0;
+          continue;
+        }
+
+        if (isWebAudioReadyRef.current(clip.sourceUrl)) {
+          audio.pause();
+          audio.muted = true;
+          audio.volume = 0;
           continue;
         }
 
@@ -202,7 +227,6 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
   }, [
     playback.isPlaying,
     playback.playbackRate,
-    clips,
     tracks,
     getClipAtTime,
     videoElementsRef,

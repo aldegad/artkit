@@ -50,10 +50,10 @@ interface VideoRefsContextValue {
   // Compositing canvas (offscreen for layer compositing)
   compositingCanvasRef: RefObject<HTMLCanvasElement | null>;
 
-  // Video element pool for frame extraction (keyed by clip.id)
+  // Video element lookup for frame extraction (clip.id -> shared source slot element)
   videoElementsRef: RefObject<Map<string, HTMLVideoElement>>;
 
-  // Audio element pool for timeline audio clips (keyed by clip.id)
+  // Audio element lookup for timeline audio clips (clip.id -> shared source slot element)
   audioElementsRef: RefObject<Map<string, HTMLAudioElement>>;
 }
 

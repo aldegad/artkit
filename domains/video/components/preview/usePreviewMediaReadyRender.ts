@@ -26,6 +26,7 @@ export function usePreviewMediaReadyRender(options: UsePreviewMediaReadyRenderOp
   useEffect(() => {
     const videoClips = clips.filter((clip): clip is VideoClip => clip.type === "video");
     const cleanupFns: Array<() => void> = [];
+    const observedVideos = new Set<HTMLVideoElement>();
 
     const scheduleRenderFromMediaReady = () => {
       // During playback, the playback loop already drives rendering.
@@ -40,6 +41,8 @@ export function usePreviewMediaReadyRender(options: UsePreviewMediaReadyRenderOp
     for (const clip of videoClips) {
       const video = videoElementsRef.current?.get(clip.id);
       if (!video) continue;
+      if (observedVideos.has(video)) continue;
+      observedVideos.add(video);
 
       video.addEventListener("canplay", scheduleRenderFromMediaReady);
       video.addEventListener("seeked", scheduleRenderFromMediaReady);
