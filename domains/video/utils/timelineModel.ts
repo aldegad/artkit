@@ -204,6 +204,75 @@ export function hasTrackOverlap(
   return false;
 }
 
+export function resolveNearestAvailableClipStart(
+  allClips: Clip[],
+  candidate: { trackId: string; startTime: number; duration: number },
+  excludeClipIds: Set<string> = new Set(),
+  frameRate?: number
+): number {
+  const safeFrameRate = normalizeOverlapFrameRate(frameRate ?? Number.NaN);
+
+  if (safeFrameRate) {
+    const desiredStartFrame = toTimelineFrameIndex(candidate.startTime, safeFrameRate);
+    const candidateFrameCount = getTimelineFrameRange(0, candidate.duration, safeFrameRate).frameCount;
+    const trackClips = allClips
+      .filter((clip) => clip.trackId === candidate.trackId && !excludeClipIds.has(clip.id))
+      .sort((a, b) => a.startTime - b.startTime);
+
+    let bestStartFrame = Math.max(0, desiredStartFrame);
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let gapStartFrame = 0;
+
+    const considerGap = (gapMinFrame: number, gapMaxFrame: number) => {
+      if (gapMaxFrame < gapMinFrame) return;
+      const candidateStartFrame = Math.max(gapMinFrame, Math.min(desiredStartFrame, gapMaxFrame));
+      const distance = Math.abs(candidateStartFrame - desiredStartFrame);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestStartFrame = candidateStartFrame;
+      }
+    };
+
+    for (const clip of trackClips) {
+      const clipRange = getTimelineFrameRange(clip.startTime, clip.duration, safeFrameRate);
+      const gapMaxFrame = clipRange.startFrame - candidateFrameCount;
+      considerGap(gapStartFrame, gapMaxFrame);
+      gapStartFrame = Math.max(gapStartFrame, clipRange.endFrame);
+    }
+
+    considerGap(gapStartFrame, Number.POSITIVE_INFINITY);
+    return timelineFrameIndexToTime(bestStartFrame, safeFrameRate);
+  }
+
+  const desiredStart = Math.max(0, candidate.startTime);
+  const trackClips = allClips
+    .filter((clip) => clip.trackId === candidate.trackId && !excludeClipIds.has(clip.id))
+    .sort((a, b) => a.startTime - b.startTime);
+
+  let bestStart = desiredStart;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let gapStart = 0;
+
+  const considerGap = (gapMin: number, gapMax: number) => {
+    if (gapMax < gapMin) return;
+    const candidateStart = Math.max(gapMin, Math.min(desiredStart, gapMax));
+    const distance = Math.abs(candidateStart - desiredStart);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestStart = candidateStart;
+    }
+  };
+
+  for (const clip of trackClips) {
+    const gapMax = clip.startTime - candidate.duration;
+    considerGap(gapStart, gapMax);
+    gapStart = Math.max(gapStart, clip.startTime + clip.duration);
+  }
+
+  considerGap(gapStart, Number.POSITIVE_INFINITY);
+  return bestStart;
+}
+
 function findNextNonOverlappingStart(
   allClips: Clip[],
   trackId: string,

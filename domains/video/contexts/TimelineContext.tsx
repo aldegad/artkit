@@ -50,6 +50,7 @@ import {
   resolveTrackIdForClipType,
   getFittedVisualTransform,
   hasTrackOverlap,
+  resolveNearestAvailableClipStart,
   withSafeClipStart,
   sanitizeTimelineViewState,
   findClipAtTime,
@@ -700,8 +701,28 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           startTime: candidateStart,
           duration: c.duration,
         }, excludeIds, frameRate);
-        if (overlaps) return c;
-        return { ...c, trackId, startTime: candidateStart };
+        if (!overlaps) {
+          return { ...c, trackId, startTime: candidateStart };
+        }
+
+        const clampedStart = resolveNearestAvailableClipStart(prev, {
+          trackId,
+          startTime: candidateStart,
+          duration: c.duration,
+        }, excludeIds, frameRate);
+
+        if (
+          Math.abs(clampedStart - c.startTime) <= SOURCE_TRIM_EPSILON
+          || hasTrackOverlap(prev, {
+            trackId,
+            startTime: clampedStart,
+            duration: c.duration,
+          }, excludeIds, frameRate)
+        ) {
+          return c;
+        }
+
+        return { ...c, trackId, startTime: clampedStart };
       })
     );
   }, [tracks, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
