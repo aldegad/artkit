@@ -159,12 +159,12 @@ export interface SaveLoadProgress {
 async function uploadMediaFile(
   userId: string,
   projectId: string,
-  clipId: string,
+  mediaKey: string,
   blob: Blob,
   contentType: string
 ): Promise<string> {
   const ext = contentType.split("/")[1] || "bin";
-  const path = `users/${userId}/video-media/${projectId}/${clipId}.${ext}`;
+  const path = `users/${userId}/video-media/${projectId}/${mediaKey}.${ext}`;
   const storageRef = ref(storage, path);
 
   await uploadBytes(storageRef, blob, { contentType });
@@ -394,6 +394,16 @@ export async function saveVideoProjectToFirebase(
   const existingClipMap = new Map(
     (existingProject?.clips || []).map((clipMeta) => [clipMeta.id, clipMeta] as const)
   );
+  const existingStorageBySourceId = new Map<string, { storageRef: string; mediaType: string }>();
+  for (const clipMeta of existingProject?.clips || []) {
+    if (!clipMeta.sourceId || !clipMeta.storageRef) continue;
+    if (!existingStorageBySourceId.has(clipMeta.sourceId)) {
+      existingStorageBySourceId.set(clipMeta.sourceId, {
+        storageRef: clipMeta.storageRef,
+        mediaType: clipMeta.mediaType || "",
+      });
+    }
+  }
 
   const clips = project.project.clips;
   const masks = project.project.masks;
@@ -404,6 +414,7 @@ export async function saveVideoProjectToFirebase(
   const clipMetas: FirestoreClipMeta[] = [];
   const clipIdsBySourceId = new Map<string, string[]>();
   const sourceBlobCache = new Map<string, Blob>();
+  const uploadedStorageBySourceId = new Map<string, { storageRef: string; mediaType: string }>();
   for (const clip of clips) {
     if (!clip.sourceId) continue;
     const ids = clipIdsBySourceId.get(clip.sourceId) || [];
@@ -421,46 +432,69 @@ export async function saveVideoProjectToFirebase(
     let storageRefPath = "";
     let mediaBlob: Blob | null = null;
     let reusedMediaType = "";
+    const sharedUploadedMedia = clip.sourceId
+      ? uploadedStorageBySourceId.get(clip.sourceId) || null
+      : null;
+    const existingSharedMedia = clip.sourceId
+      ? existingStorageBySourceId.get(clip.sourceId) || null
+      : null;
 
     // Imported media is stored by clip.id in IndexedDB while clip.sourceUrl
     // stays as blob: URL for runtime playback.
-    mediaBlob = await loadMediaBlob(clip.id);
-    if (!mediaBlob && clip.sourceId) {
-      mediaBlob = sourceBlobCache.get(clip.sourceId) || null;
-      if (!mediaBlob) {
-        const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
-        for (const candidateId of candidateIds) {
-          if (candidateId === clip.id) continue;
-          const candidateBlob = await loadMediaBlob(candidateId);
-          if (candidateBlob) {
-            mediaBlob = candidateBlob;
-            sourceBlobCache.set(clip.sourceId, candidateBlob);
-            break;
+    if (sharedUploadedMedia) {
+      storageRefPath = sharedUploadedMedia.storageRef;
+      reusedMediaType = sharedUploadedMedia.mediaType;
+    } else if (existingSharedMedia) {
+      storageRefPath = existingSharedMedia.storageRef;
+      reusedMediaType = existingSharedMedia.mediaType;
+      uploadedStorageBySourceId.set(clip.sourceId, existingSharedMedia);
+    } else {
+      mediaBlob = await loadMediaBlob(clip.id);
+      if (!mediaBlob && clip.sourceId) {
+        mediaBlob = sourceBlobCache.get(clip.sourceId) || null;
+        if (!mediaBlob) {
+          const candidateIds = clipIdsBySourceId.get(clip.sourceId) || [];
+          for (const candidateId of candidateIds) {
+            if (candidateId === clip.id) continue;
+            const candidateBlob = await loadMediaBlob(candidateId);
+            if (candidateBlob) {
+              mediaBlob = candidateBlob;
+              sourceBlobCache.set(clip.sourceId, candidateBlob);
+              break;
+            }
           }
         }
       }
-    }
-    if (mediaBlob && clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
-      sourceBlobCache.set(clip.sourceId, mediaBlob);
-    }
 
-    if (mediaBlob) {
-      storageRefPath = await uploadMediaFile(
-        userId,
-        project.id,
-        clip.id,
-        mediaBlob,
-        mediaBlob.type || "application/octet-stream"
-      );
-    } else {
-      const existingClipMeta = existingClipMap.get(clip.id);
-      if (
-        existingClipMeta?.storageRef &&
-        existingClipMeta.sourceId === clip.sourceId
-      ) {
-        // If local blob is temporarily unavailable, keep existing uploaded media.
-        storageRefPath = existingClipMeta.storageRef;
-        reusedMediaType = existingClipMeta.mediaType || "";
+      if (mediaBlob && clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
+        sourceBlobCache.set(clip.sourceId, mediaBlob);
+      }
+
+      if (mediaBlob) {
+        const mediaKey = clip.sourceId || clip.id;
+        storageRefPath = await uploadMediaFile(
+          userId,
+          project.id,
+          mediaKey,
+          mediaBlob,
+          mediaBlob.type || "application/octet-stream"
+        );
+        if (clip.sourceId) {
+          uploadedStorageBySourceId.set(clip.sourceId, {
+            storageRef: storageRefPath,
+            mediaType: mediaBlob.type || "application/octet-stream",
+          });
+        }
+      } else {
+        const existingClipMeta = existingClipMap.get(clip.id);
+        if (
+          existingClipMeta?.storageRef &&
+          existingClipMeta.sourceId === clip.sourceId
+        ) {
+          // If local blob is temporarily unavailable, keep existing uploaded media.
+          storageRefPath = existingClipMeta.storageRef;
+          reusedMediaType = existingClipMeta.mediaType || "";
+        }
       }
     }
     // If no media blob and no reusable reference are available, keep empty storageRef.
@@ -560,6 +594,7 @@ export async function getVideoProjectFromFirebase(
   // Download media for each clip in parallel
   const totalSteps = data.clips.length + (data.masks.some((m) => m.maskDataRef) ? 1 : 0);
   let currentStep = 0;
+  const downloadPromiseByStorageRef = new Map<string, Promise<Blob>>();
 
   const clips: Clip[] = await mapWithConcurrency(
     data.clips,
@@ -575,7 +610,12 @@ export async function getVideoProjectFromFirebase(
 
       if (clipMeta.storageRef) {
         try {
-          const blob = await downloadMediaFile(clipMeta.storageRef);
+          let blobPromise = downloadPromiseByStorageRef.get(clipMeta.storageRef);
+          if (!blobPromise) {
+            blobPromise = downloadMediaFile(clipMeta.storageRef);
+            downloadPromiseByStorageRef.set(clipMeta.storageRef, blobPromise);
+          }
+          const blob = await blobPromise;
 
           // Store in local IndexedDB for autosave compatibility
           const { saveMediaBlob } = await import(
