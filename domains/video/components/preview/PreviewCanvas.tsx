@@ -169,7 +169,10 @@ interface DirectPreviewPlan {
 function resolveDirectPreviewPlan(tracks: VideoTrack[], clips: Clip[], maskCount: number): DirectPreviewPlan | null {
   if (maskCount > 0) return null;
 
-  const visibleVisualTracks = tracks.filter((track) => track.visible && track.type !== "audio");
+  const visibleVisualTracks = tracks.filter((track) => {
+    if (!track.visible || track.type === "audio") return false;
+    return clips.some((clip) => clip.trackId === track.id && clip.visible);
+  });
   if (visibleVisualTracks.length !== 1) return null;
 
   const track = visibleVisualTracks[0];
@@ -310,6 +313,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     () => resolveDirectPreviewPlan(tracks, clips, masks.size),
     [tracks, clips, masks.size]
   );
+  const directPreviewOptimized = Boolean(directPreviewPlan);
+  const effectivePreRenderEnabled = previewPerf.preRenderEnabled && !directPreviewOptimized;
 
   const isHandTool = toolMode === "hand";
   const isZoomTool = toolMode === "zoom";
@@ -454,12 +459,12 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     suspendPreRender: Boolean(isEditingMask || activeMaskId),
     currentTime: playback.currentTime,
     currentTimeRef,
-    enabled: previewPerf.preRenderEnabled,
+    enabled: effectivePreRenderEnabled,
     debugLogs: previewPerf.debugLogs,
   });
 
   // Pre-decode audio buffers for all audible clips (Web Audio API)
-  useAudioBufferCache(clips);
+  useAudioBufferCache(clips, { enabled: !directPreviewOptimized });
 
   // Web Audio playback engine — plays audio via AudioBufferSourceNode
   const { isWebAudioReady } = useWebAudioPlayback({
@@ -470,6 +475,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     playbackRate: playback.playbackRate,
     currentTimeRef,
     debugLogs: previewPerf.debugLogs,
+    enabled: !directPreviewOptimized,
   });
 
   // Ref for isWebAudioReady to avoid stale closure in syncMedia
@@ -487,7 +493,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     if (!previewPerf.debugLogs) return;
     console.info("[VideoPreviewConfig]", {
       draftMode: previewPerf.draftMode,
-      preRenderEnabled: previewPerf.preRenderEnabled,
+      preRenderEnabled: effectivePreRenderEnabled,
+      directVideoPreview: directPreviewOptimized,
       qualityFirstMode: previewPerf.qualityFirstMode,
       playbackRenderFpsCap: adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
       maxCanvasDpr: adaptivePlaybackPreviewPolicy.maxCanvasDpr,
@@ -500,9 +507,10 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     adaptivePlaybackPreviewPolicy.smoothingQuality,
     previewPerf.debugLogs,
     previewPerf.draftMode,
-    previewPerf.preRenderEnabled,
+    effectivePreRenderEnabled,
     previewPerf.qualityFirstMode,
     previewPerf.isMobileLike,
+    directPreviewOptimized,
   ]);
 
   const maybeReportPlaybackStats = useCallback((now: number) => {
@@ -536,7 +544,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     console.info("[VideoPreviewPerf]", {
       draftMode: previewPerf.draftMode,
-      preRenderEnabled: previewPerf.preRenderEnabled,
+      preRenderEnabled: effectivePreRenderEnabled,
+      directVideoPreview: directPreviewOptimized,
       fpsCap: adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
       maxCanvasDpr: adaptivePlaybackPreviewPolicy.maxCanvasDpr,
       smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
@@ -562,12 +571,13 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     adaptivePlaybackPreviewPolicy.smoothingQuality,
     previewPerf.debugLogs,
     previewPerf.draftMode,
-    previewPerf.preRenderEnabled,
+    effectivePreRenderEnabled,
     playback.isPlaying,
     clips,
     tracks,
     getClipAtTime,
     currentTimeRef,
+    directPreviewOptimized,
   ]);
 
   const resetPlaybackPerfStats = useCallback(() => {
@@ -625,7 +635,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       playback.loopEnd,
       project.duration || 0
     );
-    const renderTime = (playback.isPlaying && previewPerf.preRenderEnabled)
+    const renderTime = (playback.isPlaying && effectivePreRenderEnabled)
       ? getPlaybackSampleTime(ct, loopFrameBounds)
       : ct;
 
@@ -1548,7 +1558,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         brushHardness={brushHardness}
         brushMode={brushMode}
         draftMode={previewPerf.draftMode}
-        preRenderEnabled={previewPerf.preRenderEnabled}
+        preRenderEnabled={effectivePreRenderEnabled}
         zoomPercent={zoomPercent}
       />
     </div>

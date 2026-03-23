@@ -110,8 +110,15 @@ export function clearAudioBufferCache(): void {
  * Call once in the preview component — it watches clip changes and
  * pre-decodes audio so that useWebAudioPlayback can use them instantly.
  */
-export function useAudioBufferCache(clips: Clip[]): void {
+export function useAudioBufferCache(
+  clips: Clip[],
+  options?: { enabled?: boolean }
+): void {
+  const enabled = options?.enabled ?? true;
+
   useEffect(() => {
+    if (!enabled) return;
+
     const audibleSourceUrls = new Set<string>();
 
     for (const clip of clips) {
@@ -127,5 +134,5 @@ export function useAudioBufferCache(clips: Clip[]): void {
         decodeAudioBuffer(sourceUrl);
       }
     }
-  }, [clips]);
+  }, [clips, enabled]);
 }

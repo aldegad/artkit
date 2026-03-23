@@ -43,13 +43,22 @@ interface UseWebAudioPlaybackParams {
   playbackRate: number;
   currentTimeRef: React.RefObject<number>;
   debugLogs?: boolean;
+  enabled?: boolean;
 }
 
 // --- Hook ---
 
 export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
-  const { tracks, clips, getClipAtTime, isPlaying, playbackRate, currentTimeRef, debugLogs = false } =
-    params;
+  const {
+    tracks,
+    clips,
+    getClipAtTime,
+    isPlaying,
+    playbackRate,
+    currentTimeRef,
+    debugLogs = false,
+    enabled = true,
+  } = params;
 
   const activeNodesRef = useRef<Map<string, ActiveAudioNode>>(new Map());
   const schedulerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -150,8 +159,14 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     }
   }, [stopAllNodes]);
 
+  useEffect(() => {
+    if (enabled) return;
+    forceStopImmediately();
+  }, [enabled, forceStopImmediately]);
+
   // Schedule audio nodes for all audible clips at current time
   const scheduleAudio = useCallback(() => {
+    if (!enabled) return;
     if (!isPlayingRef.current || !isForegroundRef.current) return;
     debugStatsRef.current.scheduleRuns += 1;
 
@@ -293,7 +308,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       });
     }
     maybeReportDebugStats();
-  }, [currentTimeRef, maybeReportDebugStats]);
+  }, [currentTimeRef, enabled, maybeReportDebugStats]);
 
   // Reschedule all audio from scratch (for seek events)
   const rescheduleAudio = useCallback(() => {
@@ -307,11 +322,14 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
 
   // Hard-stop on external pause/navigation signal.
   useEffect(() => {
+    if (!enabled) return;
     return subscribeImmediatePlaybackStop(forceStopImmediately);
-  }, [forceStopImmediately]);
+  }, [enabled, forceStopImmediately]);
 
   // Force-stop audio when app loses foreground.
   useEffect(() => {
+    if (!enabled) return;
+
     const handleBackground = () => {
       isForegroundRef.current = false;
       stopAllNodes();
@@ -345,11 +363,13 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       window.removeEventListener("pagehide", handleBackground);
       window.removeEventListener("pageshow", handleVisible);
     };
-  }, [scheduleAudio, stopAllNodes]);
+  }, [enabled, scheduleAudio, stopAllNodes]);
 
   // Detect seek/loop wrap via timeline jump relative to wall-time progression.
   // This avoids false seek detection when rendering is slow (large but expected deltas).
   useEffect(() => {
+    if (!enabled) return;
+
     lastTickTimeRef.current = currentTimeRef.current;
     lastTickWallTimeRef.current = nowMs();
 
@@ -384,10 +404,19 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       lastTickTimeRef.current = time;
       lastTickWallTimeRef.current = now;
     });
-  }, [rescheduleAudio, currentTimeRef, nowMs]);
+  }, [enabled, rescheduleAudio, currentTimeRef, nowMs]);
 
   // Start/stop audio on play state change
   useEffect(() => {
+    if (!enabled) {
+      stopAllNodes();
+      if (schedulerTimerRef.current !== null) {
+        clearInterval(schedulerTimerRef.current);
+        schedulerTimerRef.current = null;
+      }
+      return;
+    }
+
     if (isPlaying) {
       const ctx = getSharedAudioContext();
       if (ctx.state === "suspended") {
@@ -427,17 +456,18 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
         schedulerTimerRef.current = null;
       }
     };
-  }, [isPlaying, scheduleAudio, stopAllNodes, currentTimeRef, nowMs]);
+  }, [enabled, isPlaying, scheduleAudio, stopAllNodes, currentTimeRef, nowMs]);
 
   // Update playbackRate on all active source nodes
   useEffect(() => {
+    if (!enabled) return;
     const ctx = getSharedAudioContext();
     for (const [clipId, node] of activeNodesRef.current) {
       const clip = clipsRef.current.find((candidate) => candidate.id === clipId);
       const clipSpeed = clip ? getClipPlaybackSpeed(clip) : 1;
       node.sourceNode.playbackRate.setValueAtTime(playbackRate * clipSpeed, ctx.currentTime);
     }
-  }, [playbackRate, clips]);
+  }, [enabled, playbackRate, clips]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -451,8 +481,8 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
 
   // Public API
   const isWebAudioReady = useCallback(
-    (sourceUrl: string) => isAudioBufferReady(sourceUrl),
-    []
+    (sourceUrl: string) => enabled && isAudioBufferReady(sourceUrl),
+    [enabled]
   );
 
   return { isWebAudioReady };
