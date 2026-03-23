@@ -19,6 +19,7 @@ import type {
   VideoExportOptions,
 } from "./videoExportTypes";
 import { resolveClipSourceBlob } from "./videoExportIO";
+import { getTimelineFrameRange, normalizeTimelineFrameRate } from "./timelineFrame";
 
 export interface SingleDirectVideoExportPlan {
   kind: "single";
@@ -641,6 +642,8 @@ function evaluateSameSourceSequenceExportPlan(params: {
   includeAudio: boolean;
 }): DirectVideoExportPlanEvaluation {
   const { videoClips, imageClips, tracks, masksMap, project, exportStart, exportEnd, includeAudio } = params;
+  const frameRate = normalizeTimelineFrameRate(project.frameRate || 30);
+  const exportFrameRange = getTimelineFrameRange(exportStart, exportEnd - exportStart, frameRate);
 
   if (videoClips.length < 2) {
     return {
@@ -689,22 +692,23 @@ function evaluateSameSourceSequenceExportPlan(params: {
 
   const sortedClips = [...videoClips].sort((a, b) => a.startTime - b.startTime);
   const segments: DirectVideoSequenceSegmentPlan[] = [];
-  let coveredUntil = exportStart;
+  let coveredUntilFrame = exportFrameRange.startFrame;
 
   for (const clip of sortedClips) {
     const clipStart = Math.max(clip.startTime, exportStart);
     const clipEnd = Math.min(clip.startTime + clip.duration, exportEnd);
     const timelineDuration = clipEnd - clipStart;
     if (timelineDuration <= VIDEO_EXPORT_EPSILON) continue;
+    const clipFrameRange = getTimelineFrameRange(clipStart, timelineDuration, frameRate);
 
-    if (clipStart > coveredUntil + VIDEO_EXPORT_EPSILON) {
+    if (clipFrameRange.startFrame > coveredUntilFrame) {
       return {
         plan: null,
         reason: "클립 사이에 빈 구간이 있어 일반 렌더 경로가 필요합니다.",
       };
     }
 
-    if (clipStart < coveredUntil - VIDEO_EXPORT_EPSILON) {
+    if (clipFrameRange.startFrame < coveredUntilFrame) {
       return {
         plan: null,
         reason: "겹치는 클립이 있어 직접 경로를 사용할 수 없습니다.",
@@ -747,8 +751,10 @@ function evaluateSameSourceSequenceExportPlan(params: {
       };
     }
 
-    const sourceStart = getSourceTime(clip, clipStart);
-    const sourceDuration = getSourceDurationForTimelineDuration(clip, timelineDuration);
+    const quantizedClipStart = Math.max(exportStart, clipFrameRange.startTime);
+    const quantizedTimelineDuration = clipFrameRange.duration;
+    const sourceStart = getSourceTime(clip, quantizedClipStart);
+    const sourceDuration = getSourceDurationForTimelineDuration(clip, quantizedTimelineDuration);
     if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceDuration) || sourceDuration <= 0) {
       return {
         plan: null,
@@ -767,7 +773,7 @@ function evaluateSameSourceSequenceExportPlan(params: {
       padY: visibleWindow.padY,
       sourceStart,
       sourceDuration,
-      timelineDuration,
+      timelineDuration: quantizedTimelineDuration,
       includeAudio:
         includeAudio &&
         clip.hasAudio !== false &&
@@ -775,7 +781,7 @@ function evaluateSameSourceSequenceExportPlan(params: {
         audioVolume > VIDEO_EXPORT_EPSILON,
       audioVolume,
     });
-    coveredUntil = clipEnd;
+    coveredUntilFrame = clipFrameRange.endFrame;
   }
 
   if (segments.length === 0) {
@@ -785,7 +791,7 @@ function evaluateSameSourceSequenceExportPlan(params: {
     };
   }
 
-  if (coveredUntil < exportEnd - VIDEO_EXPORT_EPSILON) {
+  if (coveredUntilFrame < exportFrameRange.endFrame) {
     return {
       plan: null,
       reason: "클립 사이에 빈 구간이 있어 일반 렌더 경로가 필요합니다.",
