@@ -118,7 +118,8 @@ export function createVideoClip(
   sourceUrl: string,
   sourceDuration: number,
   sourceSize: Size,
-  startTime: number = 0
+  startTime: number = 0,
+  sourceId: string = crypto.randomUUID(),
 ): VideoClip {
   return {
     id: crypto.randomUUID(),
@@ -139,7 +140,7 @@ export function createVideoClip(
     scaleY: 1,
     rotation: 0,
     sourceUrl,
-    sourceId: crypto.randomUUID(),
+    sourceId,
     sourceDuration,
     sourceSize,
     hasAudio: true,
@@ -156,7 +157,8 @@ export function createAudioClip(
   sourceUrl: string,
   sourceDuration: number,
   startTime: number = 0,
-  sourceSize: Size = { width: 0, height: 0 }
+  sourceSize: Size = { width: 0, height: 0 },
+  sourceId: string = crypto.randomUUID(),
 ): AudioClip {
   return {
     id: crypto.randomUUID(),
@@ -177,7 +179,7 @@ export function createAudioClip(
     scaleY: 1,
     rotation: 0,
     sourceUrl,
-    sourceId: crypto.randomUUID(),
+    sourceId,
     sourceDuration,
     sourceSize,
     audioMuted: false,
@@ -193,7 +195,8 @@ export function createImageClip(
   sourceUrl: string,
   sourceSize: Size,
   startTime: number = 0,
-  duration: number = 5
+  duration: number = 5,
+  sourceId: string = crypto.randomUUID(),
 ): ImageClip {
   return {
     id: crypto.randomUUID(),
@@ -214,7 +217,7 @@ export function createImageClip(
     scaleY: 1,
     rotation: 0,
     sourceUrl,
-    sourceId: crypto.randomUUID(),
+    sourceId,
     sourceSize,
   };
 }
@@ -224,10 +227,11 @@ export function createCanvasOverlayClip(
   sourceUrl: string,
   sourceSize: Size,
   startTime: number = 0,
-  duration: number = 5
+  duration: number = 5,
+  sourceId?: string
 ): ImageClip {
   return {
-    ...createImageClip(trackId, sourceUrl, sourceSize, startTime, duration),
+    ...createImageClip(trackId, sourceUrl, sourceSize, startTime, duration, sourceId),
     name: "Overlay Canvas",
     isCanvasOverlay: true,
     imageData: sourceUrl,

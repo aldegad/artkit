@@ -14,7 +14,7 @@ import {
 } from "../types";
 import { VideoStorageInfo, VideoStorageProvider } from "../services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
-import { loadMediaBlob } from "../utils/mediaStorage";
+import { loadMediaBlob, loadMediaBlobFromKeys } from "../utils/mediaStorage";
 import { saveVideoAutosave } from "../utils/videoAutosave";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 import { TIMELINE } from "../constants";
@@ -133,7 +133,7 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
   const restoredClips: Clip[] = [];
 
   for (const clip of normalizedClips) {
-    let blob = await loadMediaBlob(clip.id);
+    let blob = await loadMediaBlobFromKeys([clip.id, clip.sourceId]);
     if (!blob && clip.sourceId) {
       blob = sourceBlobCache.get(clip.sourceId) || null;
       if (!blob) {

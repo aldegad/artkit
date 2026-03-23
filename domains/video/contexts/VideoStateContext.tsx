@@ -68,7 +68,7 @@ interface VideoState {
 
 interface VideoStateContextValue extends VideoState {
   // Project actions
-  setProject: (project: VideoProject) => void;
+  setProject: (project: React.SetStateAction<VideoProject>) => void;
   setProjectName: (name: string) => void;
   setProjectGroup: (group: string) => void;
   updateProjectDuration: () => void;
@@ -254,8 +254,12 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Project actions
-  const setProject = useCallback((project: VideoProject) => {
-    setState((prev) => ({ ...prev, project, selectedPositionKeyframe: null }));
+  const setProject = useCallback((project: React.SetStateAction<VideoProject>) => {
+    setState((prev) => ({
+      ...prev,
+      project: typeof project === "function" ? project(prev.project) : project,
+      selectedPositionKeyframe: null,
+    }));
   }, []);
 
   const setProjectName = useCallback((name: string) => {

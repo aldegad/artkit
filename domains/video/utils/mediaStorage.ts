@@ -82,6 +82,29 @@ export async function loadMediaBlob(clipId: string): Promise<Blob | null> {
 }
 
 /**
+ * Load first available media blob for the provided keys.
+ * Useful while migrating from clip-owned blobs to source-owned blobs.
+ */
+export async function loadMediaBlobFromKeys(
+  keys: Array<string | null | undefined>
+): Promise<Blob | null> {
+  const uniqueKeys = Array.from(
+    new Set(
+      keys
+        .map((key) => (typeof key === "string" ? key.trim() : ""))
+        .filter((key) => key.length > 0)
+    )
+  );
+
+  for (const key of uniqueKeys) {
+    const blob = await loadMediaBlob(key);
+    if (blob) return blob;
+  }
+
+  return null;
+}
+
+/**
  * Delete a media file from IndexedDB
  * @param clipId - The clip ID used as key
  */

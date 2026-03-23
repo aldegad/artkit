@@ -10,7 +10,7 @@ import {
   type Clip,
   type VideoClip,
 } from "../types";
-import { loadMediaBlob, saveMediaBlob } from "../utils/mediaStorage";
+import { loadMediaBlobFromKeys, saveMediaBlob } from "../utils/mediaStorage";
 import type { Size } from "@/shared/types";
 
 const SOURCE_TIME_EPSILON = 1e-4;
@@ -271,7 +271,7 @@ async function buildHoleMaskForClip(options: {
 }
 
 async function loadSourceBlobForClip(clip: VideoClip): Promise<Blob> {
-  const stored = await loadMediaBlob(clip.id);
+  const stored = await loadMediaBlobFromKeys([clip.id, clip.sourceId]);
   if (stored) return stored;
 
   const response = await fetch(clip.sourceUrl);

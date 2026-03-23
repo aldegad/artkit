@@ -28,10 +28,12 @@ import {
   VideoTrack,
   MaskData,
   TimelineViewState,
+  AssetReference,
 } from "@/domains/video/types";
 import { Clip, ClipTransformKeyframes } from "@/domains/video/types/clip";
 import {
   loadMediaBlob,
+  loadMediaBlobFromKeys,
 } from "@/domains/video/utils/mediaStorage";
 import { normalizeClipTransformKeyframes } from "@/domains/video/utils/clipTransformKeyframes";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
@@ -91,6 +93,7 @@ interface FirestoreVideoProject {
   duration: number;
   tracks: VideoTrack[];
   clips: FirestoreClipMeta[];
+  assets?: AssetReference[];
   masks: FirestoreMaskMeta[];
   timelineView: TimelineViewState;
   currentTime: number;
@@ -368,6 +371,25 @@ function metaToClip(meta: FirestoreClipMeta, sourceUrl: string): Clip {
   }
 }
 
+function deriveAssetReferencesFromClipMetas(clips: FirestoreClipMeta[]): AssetReference[] {
+  const assets = new Map<string, AssetReference>();
+  for (const clip of clips) {
+    if (!clip.sourceId) continue;
+    if (assets.has(clip.sourceId)) continue;
+    assets.set(clip.sourceId, {
+      id: clip.sourceId,
+      name: clip.name,
+      type: clip.type,
+      url: clip.storageRef || clip.imageData || "",
+      size: clip.sourceSize,
+      duration: clip.sourceDuration,
+      storageRef: clip.storageRef,
+      mediaType: clip.mediaType,
+    });
+  }
+  return [...assets.values()];
+}
+
 // ============================================
 // Firestore CRUD Functions
 // ============================================
@@ -394,7 +416,26 @@ export async function saveVideoProjectToFirebase(
   const existingClipMap = new Map(
     (existingProject?.clips || []).map((clipMeta) => [clipMeta.id, clipMeta] as const)
   );
+  const projectAssets = project.project.assets?.length
+    ? project.project.assets.map((asset) => ({ ...asset }))
+    : deriveAssetReferencesFromClipMetas(
+        project.project.clips.map((clip) => {
+          const meta = clipToMeta(clip, "");
+          meta.mediaType = "";
+          return meta;
+        })
+      );
+  const assetById = new Map(projectAssets.map((asset) => [asset.id, asset] as const));
   const existingStorageBySourceId = new Map<string, { storageRef: string; mediaType: string }>();
+  for (const asset of existingProject?.assets || []) {
+    if (!asset.id || !asset.storageRef) continue;
+    if (!existingStorageBySourceId.has(asset.id)) {
+      existingStorageBySourceId.set(asset.id, {
+        storageRef: asset.storageRef,
+        mediaType: asset.mediaType || "",
+      });
+    }
+  }
   for (const clipMeta of existingProject?.clips || []) {
     if (!clipMeta.sourceId || !clipMeta.storageRef) continue;
     if (!existingStorageBySourceId.has(clipMeta.sourceId)) {
@@ -465,7 +506,7 @@ export async function saveVideoProjectToFirebase(
       reusedMediaType = existingSharedMedia.mediaType;
       uploadedStorageBySourceId.set(clip.sourceId, existingSharedMedia);
     } else {
-      mediaBlob = await loadMediaBlob(clip.id);
+      mediaBlob = await loadMediaBlobFromKeys([clip.id, clip.sourceId]);
       if (!mediaBlob && clip.sourceId) {
         mediaBlob = sourceBlobCache.get(clip.sourceId) || null;
         if (!mediaBlob) {
@@ -521,6 +562,13 @@ export async function saveVideoProjectToFirebase(
     const meta = clipToMeta(clip, storageRefPath);
     meta.mediaType = mediaBlob?.type || reusedMediaType;
     clipMetas.push(meta);
+    if (clip.sourceId) {
+      const asset = assetById.get(clip.sourceId);
+      if (asset) {
+        asset.storageRef = storageRefPath || asset.storageRef;
+        asset.mediaType = meta.mediaType || asset.mediaType;
+      }
+    }
     clipMetadataCount += 1;
     currentStep += 1;
     emitSaveProgress(
@@ -585,6 +633,7 @@ export async function saveVideoProjectToFirebase(
     duration: project.project.duration,
     tracks: project.project.tracks,
     clips: clipMetas,
+    assets: [...assetById.values()],
     masks: maskMetas,
     timelineView: project.timelineView,
     currentTime: project.currentTime,
@@ -642,7 +691,7 @@ export async function getVideoProjectFromFirebase(
           const { saveMediaBlob } = await import(
             "@/domains/video/utils/mediaStorage"
           );
-          await saveMediaBlob(clipMeta.id, blob);
+          await saveMediaBlob(clipMeta.sourceId || clipMeta.id, blob);
           sourceUrl = URL.createObjectURL(blob);
         } catch (error) {
           console.error(`Failed to download media for clip ${clipMeta.id}:`, error);
@@ -694,7 +743,9 @@ export async function getVideoProjectFromFirebase(
     tracks: data.tracks,
     clips,
     masks,
-    assets: [],
+    assets: (data.assets && data.assets.length > 0)
+      ? data.assets.map((asset) => ({ ...asset }))
+      : deriveAssetReferencesFromClipMetas(data.clips),
   };
 
   return {
@@ -737,7 +788,9 @@ export async function getAllVideoProjectsFromFirebase(
         tracks: data.tracks,
         clips: [], // Don't include clips in list view
         masks: [],
-        assets: [],
+        assets: (data.assets && data.assets.length > 0)
+          ? data.assets.map((asset) => ({ ...asset }))
+          : deriveAssetReferencesFromClipMetas(data.clips),
       },
       timelineView: data.timelineView,
       currentTime: data.currentTime,
