@@ -123,6 +123,9 @@ export function getNativeRecorderSupport(
   config: ResolvedVideoExportConfig,
   plan: DirectVideoExportPlan
 ): NativeRecorderSupport {
+  if (plan.kind !== "single") {
+    return { supported: false, reason: "분할 클립 시퀀스는 네이티브 인코더 대신 ffmpeg 직접 경로를 사용합니다." };
+  }
   if (typeof window === "undefined") {
     return { supported: false, reason: "브라우저 환경이 아니어서 네이티브 인코더를 사용할 수 없습니다." };
   }
@@ -158,6 +161,9 @@ export async function runNativeRecorderDirectExport(params: {
   sourceBlobCache: Map<string, Blob>;
 }): Promise<NativeRecordedVideoExport> {
   const { plan, sourceBlob, mimeType, config, setExportProgress, sourceBlobCache } = params;
+  if (plan.kind !== "single") {
+    throw new Error("네이티브 인코더는 단일 비디오 직접 경로에서만 사용할 수 있습니다.");
+  }
   const objectUrl = URL.createObjectURL(sourceBlob);
   const overlayObjectUrls: string[] = [];
   setExportProgress({
@@ -486,6 +492,9 @@ export async function finalizeNativeRecorderExport(params: {
     sourceBlobCache,
     setExportProgress,
   } = params;
+  if (plan.kind !== "single") {
+    throw new Error("네이티브 인코더 후처리는 단일 비디오 직접 경로에서만 사용할 수 있습니다.");
+  }
 
   if (!config.includeAudio || !plan.includeAudio) {
     const outputBytes = toUint8Array(await nativeVideo.videoBlob.arrayBuffer());

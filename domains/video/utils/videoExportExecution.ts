@@ -11,6 +11,7 @@ import {
   audioBufferToWavBlob,
   buildAtempoFilters,
   canvasToBlob,
+  type DirectVideoSequenceSegmentPlan,
   findActiveClipAtTime,
   findActiveMaskAtTime,
   renderTimelineAudioBuffer,
@@ -64,6 +65,10 @@ function appendEvenDimensionPad(filters: string[]): string[] {
   return [...filters, "pad=ceil(iw/2)*2:ceil(ih/2)*2"];
 }
 
+function toFfmpegColor(color: string): string {
+  return color.startsWith("#") ? `0x${color.slice(1)}` : color;
+}
+
 function finalizeVideoExport(params: {
   outputBytes: Uint8Array;
   config: ReturnType<typeof resolveVideoExportConfig>;
@@ -97,6 +102,50 @@ function buildClipIndex(clips: Clip[]): Map<string, Clip[]> {
   }
 
   return clipsByTrack;
+}
+
+function findExportClipAtTime(
+  trackClips: Clip[],
+  time: number,
+  tolerance: number,
+): Clip | null {
+  const exactClip = findActiveClipAtTime(trackClips, time);
+  if (exactClip) return exactClip;
+  if (trackClips.length === 0) return null;
+
+  let lo = 0;
+  let hi = trackClips.length - 1;
+  let candidate = -1;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (trackClips[mid].startTime <= time) {
+      candidate = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  const nextClip = trackClips[candidate + 1] ?? null;
+  if (
+    nextClip
+    && Math.abs(nextClip.startTime - time) <= tolerance
+    && time < nextClip.startTime + nextClip.duration + tolerance
+  ) {
+    return nextClip;
+  }
+
+  const prevClip = candidate >= 0 ? trackClips[candidate] : null;
+  if (
+    prevClip
+    && Math.abs(time - (prevClip.startTime + prevClip.duration)) <= tolerance
+    && time >= prevClip.startTime - tolerance
+  ) {
+    return prevClip;
+  }
+
+  return null;
 }
 
 function buildMaskIndex(masksMap: Map<string, MaskData>): Map<string, TimedTrackMask[]> {
@@ -214,6 +263,15 @@ export async function runDirectVideoExport(params: {
     throw new Error("FFmpeg 직접 경로 전략 구성이 올바르지 않습니다.");
   }
   const plan = decision.directPlan;
+  if (plan.kind === "sequence") {
+    return runDirectVideoSequenceExport({
+      session,
+      decision,
+      config,
+      setExportProgress,
+      plan,
+    });
+  }
   const metrics = {
     mountMs: 0,
     encodeMs: 0,
@@ -245,6 +303,16 @@ export async function runDirectVideoExport(params: {
     plan.cropHeight !== plan.clip.sourceSize.height;
   if (needsCrop) {
     videoFilters.push(`crop=${plan.cropWidth}:${plan.cropHeight}:${plan.cropX}:${plan.cropY}`);
+  }
+  const needsCanvasPad =
+    plan.outputWidth !== plan.cropWidth ||
+    plan.outputHeight !== plan.cropHeight ||
+    plan.padX !== 0 ||
+    plan.padY !== 0;
+  if (needsCanvasPad) {
+    videoFilters.push(
+      `pad=${plan.outputWidth}:${plan.outputHeight}:${plan.padX}:${plan.padY}:color=${toFfmpegColor(config.backgroundColor)}`
+    );
   }
   const directVideoFilters = appendEvenDimensionPad(videoFilters);
 
@@ -384,8 +452,8 @@ export async function runDirectVideoExport(params: {
     hasAudioInput,
     outputFileName: session.outputFileName,
     outputSize: {
-      width: plan.cropWidth,
-      height: plan.cropHeight,
+      width: plan.outputWidth,
+      height: plan.outputHeight,
     },
     videoTune: "fastdecode",
     preferFastEncoding: true,
@@ -401,6 +469,159 @@ export async function runDirectVideoExport(params: {
   console.info("[VideoExport] direct export metrics", {
     subStrategy: decision.subStrategy,
     overlays: plan.overlays.length,
+    ...metrics,
+  });
+  return finalizeVideoExport({ outputBytes, config, hasAudioInput });
+}
+
+async function runDirectVideoSequenceExport(params: {
+  session: VideoExportSession;
+  decision: ResolvedVideoExportStrategy;
+  config: ReturnType<typeof resolveVideoExportConfig>;
+  setExportProgress: (value: ExportProgressState) => void;
+  plan: Extract<NonNullable<ResolvedVideoExportStrategy["directPlan"]>, { kind: "sequence" }>;
+}): Promise<CompletedVideoExport> {
+  const { session, decision, config, setExportProgress, plan } = params;
+  if (!decision.sourceBlob) {
+    throw new Error("분할 클립 직접 경로 전략 구성이 올바르지 않습니다.");
+  }
+
+  const metrics = {
+    mountMs: 0,
+    encodeMs: 0,
+    outputReadMs: 0,
+  };
+
+  setExportProgress({
+    stage: "Preparing direct export",
+    percent: 8,
+    detail: `직접 경로 준비 중 · 동일 원본 분할 ${plan.segments.length}개 concat`,
+  });
+
+  const sourceBlob = decision.sourceBlob;
+  const sourceFileName = `${session.filePrefix}-source.${resolveSourceExtension(
+    sourceBlob.type || plan.sourceClip.sourceUrl
+  )}`;
+  const mountStartedAt = performance.now();
+  const sourceInput = await mountBlobToFfmpegFile(session.ffmpeg, sourceFileName, sourceBlob);
+  metrics.mountMs = performance.now() - mountStartedAt;
+  session.cleanupMountPoints.push(sourceInput.mountPoint);
+
+  const baseArgs: string[] = [];
+  const filterSections: string[] = [];
+  const concatInputs: string[] = [];
+  const hasAudioInput = plan.includeAudio;
+
+  const buildSegmentAudioFilter = (segment: DirectVideoSequenceSegmentPlan, inputIndex: number): string => {
+    const audioLabel = `a${inputIndex}`;
+    if (!hasAudioInput) {
+      return audioLabel;
+    }
+
+    if (segment.includeAudio) {
+      const audioFilters = ["asetpts=N/SR/TB", ...buildAtempoFilters(segment.clip.playbackSpeed)];
+      if (Math.abs(segment.audioVolume - 100) > VIDEO_EXPORT_EPSILON) {
+        audioFilters.push(`volume=${(segment.audioVolume / 100).toFixed(6)}`);
+      }
+      filterSections.push(`[${inputIndex}:a]${audioFilters.join(",")}[${audioLabel}]`);
+      return audioLabel;
+    }
+
+    filterSections.push(
+      `anullsrc=r=44100:cl=stereo,atrim=duration=${segment.timelineDuration.toFixed(6)},asetpts=N/SR/TB[${audioLabel}]`
+    );
+    return audioLabel;
+  };
+
+  plan.segments.forEach((segment, index) => {
+    baseArgs.push(
+      "-ss",
+      segment.sourceStart.toFixed(6),
+      "-t",
+      segment.sourceDuration.toFixed(6),
+      "-probesize",
+      "1048576",
+      "-analyzeduration",
+      "1000000",
+      "-i",
+      sourceInput.filePath,
+    );
+
+    const videoFilters = [`setpts=(PTS-STARTPTS)/${segment.clip.playbackSpeed.toFixed(6)}`];
+    const needsCrop =
+      segment.cropX !== 0 ||
+      segment.cropY !== 0 ||
+      segment.cropWidth !== segment.clip.sourceSize.width ||
+      segment.cropHeight !== segment.clip.sourceSize.height;
+    if (needsCrop) {
+      videoFilters.push(
+        `crop=${segment.cropWidth}:${segment.cropHeight}:${segment.cropX}:${segment.cropY}`
+      );
+    }
+    const needsCanvasPad =
+      plan.outputWidth !== segment.cropWidth ||
+      plan.outputHeight !== segment.cropHeight ||
+      segment.padX !== 0 ||
+      segment.padY !== 0;
+    if (needsCanvasPad) {
+      videoFilters.push(
+        `pad=${plan.outputWidth}:${plan.outputHeight}:${segment.padX}:${segment.padY}:color=${toFfmpegColor(config.backgroundColor)}`
+      );
+    }
+    filterSections.push(
+      `[${index}:v]${appendEvenDimensionPad(videoFilters).join(",")}[v${index}]`
+    );
+    concatInputs.push(`[v${index}]`);
+    if (hasAudioInput) {
+      concatInputs.push(`[${buildSegmentAudioFilter(segment, index)}]`);
+    }
+  });
+
+  filterSections.push(
+    `${concatInputs.join("")}concat=n=${plan.segments.length}:v=1:a=${hasAudioInput ? 1 : 0}[vout]${hasAudioInput ? "[aout]" : ""}`
+  );
+
+  baseArgs.push(
+    "-filter_complex",
+    filterSections.join(";"),
+    "-map",
+    "[vout]",
+  );
+
+  if (hasAudioInput) {
+    baseArgs.push("-map", "[aout]");
+  } else {
+    baseArgs.push("-an");
+  }
+
+  baseArgs.push("-r", String(config.frameRate));
+
+  const encodeStartedAt = performance.now();
+  await encodeOutputFile({
+    ffmpeg: session.ffmpeg,
+    format: config.format,
+    baseArgs,
+    compressionSettings: config.compressionSettings,
+    hasAudioInput,
+    outputFileName: session.outputFileName,
+    outputSize: {
+      width: plan.outputWidth,
+      height: plan.outputHeight,
+    },
+    videoTune: "fastdecode",
+    preferFastEncoding: true,
+    encodeBase: 70,
+    encodeWeight: 28,
+    setExportProgress,
+  });
+  metrics.encodeMs = performance.now() - encodeStartedAt;
+
+  const outputReadStartedAt = performance.now();
+  const outputBytes = await readBinaryOutputFile(session.ffmpeg, session.outputFileName);
+  metrics.outputReadMs = performance.now() - outputReadStartedAt;
+  console.info("[VideoExport] direct sequence export metrics", {
+    segments: plan.segments.length,
+    hasAudioInput,
     ...metrics,
   });
   return finalizeVideoExport({ outputBytes, config, hasAudioInput });
@@ -431,6 +652,8 @@ export async function runFrameSequenceExport(params: {
     decision,
   } = params;
   const totalFrames = Math.max(1, Math.ceil(config.duration * config.frameRate));
+  const frameDuration = 1 / Math.max(1, config.frameRate);
+  const boundaryTolerance = Math.max(VIDEO_EXPORT_EPSILON, Math.min(frameDuration * 0.25, 0.01));
   const captureWeight = 65;
   const encodeBase = 70;
   const encodeWeight = 28;
@@ -458,18 +681,52 @@ export async function runFrameSequenceExport(params: {
   exportCtx.imageSmoothingEnabled = true;
   exportCtx.imageSmoothingQuality = "high";
 
+  const committedFrameCanvas = document.createElement("canvas");
+  committedFrameCanvas.width = project.canvasSize.width;
+  committedFrameCanvas.height = project.canvasSize.height;
+  const committedFrameCtx = committedFrameCanvas.getContext("2d");
+  if (!committedFrameCtx) {
+    throw new Error("export committed canvas unavailable");
+  }
+  let hasCommittedFrame = false;
+
   const exportMaskTmpCanvas = document.createElement("canvas");
   exportMaskTmpCanvas.width = project.canvasSize.width;
   exportMaskTmpCanvas.height = project.canvasSize.height;
 
   const getClipAtTimeForExport = (trackId: string, time: number) => {
     const trackClips = clipsByTrack.get(trackId);
-    return trackClips ? findActiveClipAtTime(trackClips, time) : null;
+    return trackClips ? findExportClipAtTime(trackClips, time, boundaryTolerance) : null;
   };
 
   const getMaskAtTimeForExport = (trackId: string, time: number) => {
     const trackMasks = masksByTrack.get(trackId) ?? [];
     return findActiveMaskAtTime(trackMasks, time);
+  };
+
+  const seekVideosForFrame = async (time: number) => {
+    const pendingVideoSeeks: Promise<boolean>[] = [];
+    for (const track of sortedTracks) {
+      if (!track.visible) continue;
+      const clip = getClipAtTimeForExport(track.id, time);
+      if (!clip || !clip.visible || clip.type !== "video") continue;
+      const video = session.exportVideoCache.get(clip.id);
+      if (!video) continue;
+      pendingVideoSeeks.push(seekExportVideoFrame(video, getSourceTime(clip, time)));
+    }
+    await Promise.all(pendingVideoSeeks);
+  };
+
+  const hasExpectedVisualContentAtTime = (time: number) =>
+    sortedTracks.some((track) => {
+      if (!track.visible) return false;
+      const clip = getClipAtTimeForExport(track.id, time);
+      return Boolean(clip && clip.visible && clip.type !== "audio");
+    });
+
+  const clearExportFrame = () => {
+    exportCtx.fillStyle = config.backgroundColor;
+    exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
   };
 
   setExportProgress({
@@ -481,24 +738,15 @@ export async function runFrameSequenceExport(params: {
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
     const maxFrameTime = Math.max(config.exportStart, config.exportEnd - 0.5 / config.frameRate);
     const frameTime = Math.min(maxFrameTime, config.exportStart + frameIndex / config.frameRate);
-    exportCtx.fillStyle = config.backgroundColor;
-    exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    clearExportFrame();
 
-    const pendingVideoSeeks: Promise<boolean>[] = [];
     const seekStartedAt = performance.now();
-    for (const track of sortedTracks) {
-      if (!track.visible) continue;
-      const clip = getClipAtTimeForExport(track.id, frameTime);
-      if (!clip || !clip.visible || clip.type !== "video") continue;
-      const video = session.exportVideoCache.get(clip.id);
-      if (!video) continue;
-      pendingVideoSeeks.push(seekExportVideoFrame(video, getSourceTime(clip, frameTime)));
-    }
-    await Promise.all(pendingVideoSeeks);
+    await seekVideosForFrame(frameTime);
     metrics.seekMs += performance.now() - seekStartedAt;
 
     const captureStartedAt = performance.now();
-    renderCompositeFrame(exportCtx, {
+    const expectedVisualContent = hasExpectedVisualContentAtTime(frameTime);
+    let fullyRendered = renderCompositeFrame(exportCtx, {
       time: frameTime,
       tracks,
       getClipAtTime: getClipAtTimeForExport,
@@ -513,7 +761,39 @@ export async function runFrameSequenceExport(params: {
       preSeekVerified: true,
     });
 
-    const frameBlob = await canvasToBlob(exportCanvas, "image/png");
+    if (!fullyRendered && expectedVisualContent) {
+      const retrySeekStartedAt = performance.now();
+      await seekVideosForFrame(frameTime);
+      metrics.seekMs += performance.now() - retrySeekStartedAt;
+      clearExportFrame();
+      fullyRendered = renderCompositeFrame(exportCtx, {
+        time: frameTime,
+        tracks,
+        getClipAtTime: getClipAtTimeForExport,
+        getMaskAtTimeForTrack: getMaskAtTimeForExport,
+        videoElements: session.exportVideoCache,
+        imageCache: exportImageCache,
+        maskImageCache: exportMaskImgCache,
+        maskTempCanvas: exportMaskTmpCanvas,
+        projectSize: project.canvasSize as Size,
+        renderRect: { x: 0, y: 0, width: exportCanvas.width, height: exportCanvas.height },
+        isPlaying: false,
+        preSeekVerified: true,
+      });
+    }
+
+    if (fullyRendered) {
+      committedFrameCtx.clearRect(0, 0, committedFrameCanvas.width, committedFrameCanvas.height);
+      committedFrameCtx.drawImage(exportCanvas, 0, 0);
+      hasCommittedFrame = true;
+    }
+
+    const frameCanvasToEncode =
+      !fullyRendered && expectedVisualContent && hasCommittedFrame
+        ? committedFrameCanvas
+        : exportCanvas;
+
+    const frameBlob = await canvasToBlob(frameCanvasToEncode, "image/png");
     metrics.captureMs += performance.now() - captureStartedAt;
     const frameName = `${session.filePrefix}-frame-${String(frameIndex).padStart(6, "0")}.png`;
     session.cleanupFileNames.push(frameName);

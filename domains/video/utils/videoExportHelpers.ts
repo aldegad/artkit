@@ -20,18 +20,51 @@ import type {
 } from "./videoExportTypes";
 import { resolveClipSourceBlob } from "./videoExportIO";
 
-export interface DirectVideoExportPlan {
+export interface SingleDirectVideoExportPlan {
+  kind: "single";
   clip: VideoClip;
   cropX: number;
   cropY: number;
   cropWidth: number;
   cropHeight: number;
+  outputWidth: number;
+  outputHeight: number;
+  padX: number;
+  padY: number;
   sourceStart: number;
   sourceDuration: number;
   includeAudio: boolean;
   audioVolume: number;
   overlays: DirectVideoOverlayPlan[];
 }
+
+export interface DirectVideoSequenceSegmentPlan {
+  clip: VideoClip;
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+  padX: number;
+  padY: number;
+  sourceStart: number;
+  sourceDuration: number;
+  timelineDuration: number;
+  includeAudio: boolean;
+  audioVolume: number;
+}
+
+export interface SequenceDirectVideoExportPlan {
+  kind: "sequence";
+  sourceClip: VideoClip;
+  segments: DirectVideoSequenceSegmentPlan[];
+  outputWidth: number;
+  outputHeight: number;
+  includeAudio: boolean;
+}
+
+export type DirectVideoExportPlan =
+  | SingleDirectVideoExportPlan
+  | SequenceDirectVideoExportPlan;
 
 export interface DirectVideoOverlayPlan {
   clip: ImageClip;
@@ -67,6 +100,61 @@ export function normalizeVideoExportBackgroundColor(input?: string): string {
   if (!shortMatch) return "#000000";
   const [r, g, b] = shortMatch[1].split("");
   return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+}
+
+function resolveVisibleVideoWindow(params: {
+  clip: VideoClip;
+  project: VideoProject;
+}): {
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+  outputWidth: number;
+  outputHeight: number;
+  padX: number;
+  padY: number;
+} | null {
+  const { clip, project } = params;
+  const projectWidth = project.canvasSize.width;
+  const projectHeight = project.canvasSize.height;
+  const sourceWidth = clip.sourceSize.width;
+  const sourceHeight = clip.sourceSize.height;
+  const positionX = clip.position.x;
+  const positionY = clip.position.y;
+
+  if (
+    !Number.isFinite(projectWidth) ||
+    !Number.isFinite(projectHeight) ||
+    !Number.isFinite(sourceWidth) ||
+    !Number.isFinite(sourceHeight) ||
+    !Number.isFinite(positionX) ||
+    !Number.isFinite(positionY)
+  ) {
+    return null;
+  }
+
+  const visibleLeft = Math.max(positionX, 0);
+  const visibleTop = Math.max(positionY, 0);
+  const visibleRight = Math.min(positionX + sourceWidth, projectWidth);
+  const visibleBottom = Math.min(positionY + sourceHeight, projectHeight);
+  const visibleWidth = visibleRight - visibleLeft;
+  const visibleHeight = visibleBottom - visibleTop;
+
+  if (visibleWidth <= VIDEO_EXPORT_EPSILON || visibleHeight <= VIDEO_EXPORT_EPSILON) {
+    return null;
+  }
+
+  return {
+    cropX: Math.max(0, -positionX),
+    cropY: Math.max(0, -positionY),
+    cropWidth: visibleWidth,
+    cropHeight: visibleHeight,
+    outputWidth: projectWidth,
+    outputHeight: projectHeight,
+    padX: visibleLeft,
+    padY: visibleTop,
+  };
 }
 
 export function resolveVideoExportCompression(
@@ -312,9 +400,19 @@ export function evaluateDirectVideoExportPlan(params: {
   }
 
   if (videoClips.length !== 1) {
+    const sameSourceSequenceEvaluation = evaluateSameSourceSequenceExportPlan({
+      videoClips,
+      imageClips,
+      tracks,
+      masksMap,
+      project,
+      exportStart,
+      exportEnd,
+      includeAudio,
+    });
     return {
-      plan: null,
-      reason: "내보내기 구간에 단일 영상 클립이 아니어서 직접 경로를 사용할 수 없습니다.",
+      plan: sameSourceSequenceEvaluation.plan,
+      reason: sameSourceSequenceEvaluation.reason,
     };
   }
 
@@ -376,30 +474,11 @@ export function evaluateDirectVideoExportPlan(params: {
     };
   }
 
-  const cropX = -clip.position.x;
-  const cropY = -clip.position.y;
-  const cropWidth = project.canvasSize.width;
-  const cropHeight = project.canvasSize.height;
-  if (
-    !Number.isFinite(cropX) ||
-    !Number.isFinite(cropY) ||
-    !Number.isFinite(cropWidth) ||
-    !Number.isFinite(cropHeight) ||
-    cropX < 0 ||
-    cropY < 0 ||
-    cropWidth <= 0 ||
-    cropHeight <= 0
-  ) {
+  const visibleWindow = resolveVisibleVideoWindow({ clip, project });
+  if (!visibleWindow) {
     return {
       plan: null,
-      reason: "crop 영역을 계산할 수 없어서 직접 경로를 사용할 수 없습니다.",
-    };
-  }
-
-  if (cropX + cropWidth > clip.sourceSize.width || cropY + cropHeight > clip.sourceSize.height) {
-    return {
-      plan: null,
-      reason: "캔버스 범위가 원본 비디오 바깥으로 나가 직접 경로를 사용할 수 없습니다.",
+      reason: "비디오가 캔버스에 보이는 영역이 없어 직접 경로를 사용할 수 없습니다.",
     };
   }
 
@@ -525,11 +604,16 @@ export function evaluateDirectVideoExportPlan(params: {
 
   return {
     plan: {
+      kind: "single",
       clip,
-      cropX,
-      cropY,
-      cropWidth,
-      cropHeight,
+      cropX: visibleWindow.cropX,
+      cropY: visibleWindow.cropY,
+      cropWidth: visibleWindow.cropWidth,
+      cropHeight: visibleWindow.cropHeight,
+      outputWidth: visibleWindow.outputWidth,
+      outputHeight: visibleWindow.outputHeight,
+      padX: visibleWindow.padX,
+      padY: visibleWindow.padY,
       sourceStart,
       sourceDuration,
       includeAudio:
@@ -543,6 +627,181 @@ export function evaluateDirectVideoExportPlan(params: {
     reason: overlays.length > 0
       ? `단일 영상 + 오버레이 ${overlays.length}개 직접 합성 경로를 사용할 수 있습니다.`
       : "단일 영상 직접 인코딩 경로를 사용할 수 있습니다.",
+  };
+}
+
+function evaluateSameSourceSequenceExportPlan(params: {
+  videoClips: VideoClip[];
+  imageClips: ImageClip[];
+  tracks: VideoTrack[];
+  masksMap: Map<string, MaskData>;
+  project: VideoProject;
+  exportStart: number;
+  exportEnd: number;
+  includeAudio: boolean;
+}): DirectVideoExportPlanEvaluation {
+  const { videoClips, imageClips, tracks, masksMap, project, exportStart, exportEnd, includeAudio } = params;
+
+  if (videoClips.length < 2) {
+    return {
+      plan: null,
+      reason: "내보내기 구간에 단일 영상 클립이 아니어서 직접 경로를 사용할 수 없습니다.",
+    };
+  }
+
+  if (imageClips.length > 0) {
+    return {
+      plan: null,
+      reason: "이미지 오버레이가 있어 일반 렌더 경로가 필요합니다.",
+    };
+  }
+
+  if (Array.from(masksMap.values()).some((mask) => Boolean(mask.maskData))) {
+    return {
+      plan: null,
+      reason: "마스크가 있어서 일반 렌더 경로가 필요합니다.",
+    };
+  }
+
+  const trackId = videoClips[0].trackId;
+  if (videoClips.some((clip) => clip.trackId !== trackId)) {
+    return {
+      plan: null,
+      reason: "여러 비디오 트랙이 섞여 있어 일반 렌더 경로가 필요합니다.",
+    };
+  }
+
+  const track = tracks.find((candidate) => candidate.id === trackId);
+  if (!track || !track.visible) {
+    return {
+      plan: null,
+      reason: "클립 트랙이 숨김 상태라 직접 경로를 사용할 수 없습니다.",
+    };
+  }
+
+  const sourceKey = videoClips[0].sourceId || videoClips[0].sourceUrl;
+  if (videoClips.some((clip) => (clip.sourceId || clip.sourceUrl) !== sourceKey)) {
+    return {
+      plan: null,
+      reason: "여러 원본 비디오가 섞여 있어 직접 경로를 사용할 수 없습니다.",
+    };
+  }
+
+  const sortedClips = [...videoClips].sort((a, b) => a.startTime - b.startTime);
+  const segments: DirectVideoSequenceSegmentPlan[] = [];
+  let coveredUntil = exportStart;
+
+  for (const clip of sortedClips) {
+    const clipStart = Math.max(clip.startTime, exportStart);
+    const clipEnd = Math.min(clip.startTime + clip.duration, exportEnd);
+    const timelineDuration = clipEnd - clipStart;
+    if (timelineDuration <= VIDEO_EXPORT_EPSILON) continue;
+
+    if (clipStart > coveredUntil + VIDEO_EXPORT_EPSILON) {
+      return {
+        plan: null,
+        reason: "클립 사이에 빈 구간이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    if (clipStart < coveredUntil - VIDEO_EXPORT_EPSILON) {
+      return {
+        plan: null,
+        reason: "겹치는 클립이 있어 직접 경로를 사용할 수 없습니다.",
+      };
+    }
+
+    if ((clip.transformKeyframes?.position?.length ?? 0) > 0) {
+      return {
+        plan: null,
+        reason: "위치 키프레임이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+    if (Math.abs(clip.rotation) > VIDEO_EXPORT_EPSILON) {
+      return {
+        plan: null,
+        reason: "회전이 적용되어 직접 경로를 사용할 수 없습니다.",
+      };
+    }
+    if (Math.abs(clip.opacity - 100) > VIDEO_EXPORT_EPSILON) {
+      return {
+        plan: null,
+        reason: "불투명도 변경이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    const scaleX = getClipScaleX(clip);
+    const scaleY = getClipScaleY(clip);
+    if (Math.abs(scaleX - 1) > VIDEO_EXPORT_EPSILON || Math.abs(scaleY - 1) > VIDEO_EXPORT_EPSILON) {
+      return {
+        plan: null,
+        reason: "스케일 변경이 있어 일반 렌더 경로가 필요합니다.",
+      };
+    }
+
+    const visibleWindow = resolveVisibleVideoWindow({ clip, project });
+    if (!visibleWindow) {
+      return {
+        plan: null,
+        reason: "비디오가 캔버스에 보이는 영역이 없어 직접 경로를 사용할 수 없습니다.",
+      };
+    }
+
+    const sourceStart = getSourceTime(clip, clipStart);
+    const sourceDuration = getSourceDurationForTimelineDuration(clip, timelineDuration);
+    if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+      return {
+        plan: null,
+        reason: "원본 비디오 구간 계산에 실패했습니다.",
+      };
+    }
+
+    const audioVolume = typeof clip.audioVolume === "number" ? clip.audioVolume : 100;
+    segments.push({
+      clip,
+      cropX: visibleWindow.cropX,
+      cropY: visibleWindow.cropY,
+      cropWidth: visibleWindow.cropWidth,
+      cropHeight: visibleWindow.cropHeight,
+      padX: visibleWindow.padX,
+      padY: visibleWindow.padY,
+      sourceStart,
+      sourceDuration,
+      timelineDuration,
+      includeAudio:
+        includeAudio &&
+        clip.hasAudio !== false &&
+        !(clip.audioMuted ?? false) &&
+        audioVolume > VIDEO_EXPORT_EPSILON,
+      audioVolume,
+    });
+    coveredUntil = clipEnd;
+  }
+
+  if (segments.length === 0) {
+    return {
+      plan: null,
+      reason: "내보내기 구간에 렌더할 클립이 없습니다.",
+    };
+  }
+
+  if (coveredUntil < exportEnd - VIDEO_EXPORT_EPSILON) {
+    return {
+      plan: null,
+      reason: "클립 사이에 빈 구간이 있어 일반 렌더 경로가 필요합니다.",
+    };
+  }
+
+  return {
+    plan: {
+      kind: "sequence",
+      sourceClip: sortedClips[0],
+      segments,
+      outputWidth: project.canvasSize.width,
+      outputHeight: project.canvasSize.height,
+      includeAudio: includeAudio && segments.some((segment) => segment.includeAudio),
+    },
+    reason: `동일 원본 비디오 분할 클립 ${segments.length}개를 직접 경로로 이어서 내보낼 수 있습니다.`,
   };
 }
 

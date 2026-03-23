@@ -42,7 +42,9 @@ export async function seekExportVideoFrame(
 
   const maxTime = Math.max(0, video.duration - 0.001);
   const clamped = Math.max(0, Math.min(targetTime, maxTime));
-  if (Math.abs(video.currentTime - clamped) <= 0.01) return true;
+  if (Math.abs(video.currentTime - clamped) <= 0.01) {
+    return video.readyState >= 2;
+  }
 
   return new Promise((resolve) => {
     let settled = false;
@@ -57,19 +59,34 @@ export async function seekExportVideoFrame(
       window.clearTimeout(timeout);
       video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
+      video.removeEventListener("loadeddata", onReadyForFrame);
+      video.removeEventListener("canplay", onReadyForFrame);
+      video.removeEventListener("canplaythrough", onReadyForFrame);
+    };
+
+    const finish = (success: boolean) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(success);
+    };
+
+    const onReadyForFrame = () => {
+      finish(video.readyState >= 2);
     };
 
     const onSeeked = () => {
       if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(true);
+      if (video.readyState >= 2) {
+        finish(true);
+        return;
+      }
+      video.addEventListener("loadeddata", onReadyForFrame, { once: true });
+      video.addEventListener("canplay", onReadyForFrame, { once: true });
+      video.addEventListener("canplaythrough", onReadyForFrame, { once: true });
     };
     const onError = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(false);
+      finish(false);
     };
 
     video.addEventListener("seeked", onSeeked, { once: true });
