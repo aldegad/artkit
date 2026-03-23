@@ -46,6 +46,14 @@ function resolveDirectSubStrategy(params: {
   config: ResolvedVideoExportConfig;
 }): { subStrategy: DirectVideoExportSubStrategy; reason: string; directCopy: boolean } {
   const { plan, sourceExtension, config } = params;
+  if (plan.kind === "sequence") {
+    return {
+      subStrategy: "reencode",
+      reason: `동일 원본 분할 클립 ${plan.segments.length}개를 concat 재인코딩으로 직접 처리합니다.`,
+      directCopy: false,
+    };
+  }
+
   const clip = plan.clip;
   const clipEnd = clip.startTime + clip.duration;
   const hasSpeedChange = Math.abs(clip.playbackSpeed - 1) > VIDEO_EXPORT_EPSILON;
@@ -106,10 +114,32 @@ async function resolveDirectEngine(params: {
   config: ResolvedVideoExportConfig;
 }): Promise<{ engine: DirectVideoExportEngine; reason: string; nativeRecorderMimeType?: string }> {
   const { subStrategy, plan, config } = params;
+  if (plan.kind === "sequence") {
+    return {
+      engine: "ffmpeg",
+      reason: "동일 원본 분할 클립 시퀀스를 ffmpeg 직접 경로로 처리합니다.",
+    };
+  }
+
   if (subStrategy === "copy") {
     return {
       engine: "ffmpeg",
       reason: "원본 스트림 복사를 위해 ffmpeg 직접 경로를 사용합니다.",
+    };
+  }
+
+  if (
+    plan.kind === "single" &&
+    (
+      plan.outputWidth !== plan.cropWidth ||
+      plan.outputHeight !== plan.cropHeight ||
+      plan.padX !== 0 ||
+      plan.padY !== 0
+    )
+  ) {
+    return {
+      engine: "ffmpeg",
+      reason: "캔버스 여백 합성이 필요해 ffmpeg 직접 재인코딩을 사용합니다.",
     };
   }
 
@@ -161,9 +191,12 @@ export async function resolveVideoExportStrategy(
     };
   }
 
-  const sourceBlob = await resolveClipSourceBlob(directEvaluation.plan.clip, sourceBlobCache);
+  const sourceClip = directEvaluation.plan.kind === "single"
+    ? directEvaluation.plan.clip
+    : directEvaluation.plan.sourceClip;
+  const sourceBlob = await resolveClipSourceBlob(sourceClip, sourceBlobCache);
   const sourceExtension = resolveSourceExtension(
-    sourceBlob.type || directEvaluation.plan.clip.sourceUrl
+    sourceBlob.type || sourceClip.sourceUrl
   );
   const copyDecision = resolveDirectSubStrategy({
     plan: directEvaluation.plan,
