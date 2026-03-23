@@ -24,7 +24,7 @@ import {
   getClipSourceSpan,
   getTimelineDurationForSourceDuration,
 } from "../types";
-import { PLAYBACK, TIMELINE } from "../constants";
+import { CLIP_PLAYBACK, PLAYBACK, TIMELINE } from "../constants";
 import { useVideoState } from "./VideoStateContext";
 import { Size } from "@/shared/types";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
@@ -645,15 +645,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     if (sourceSpan <= SOURCE_TRIM_EPSILON) return;
 
     const minDuration = getMinClipDuration();
-    const requestedSpeed = Math.max(1, Math.min(PLAYBACK.MAX_RATE, playbackSpeed));
+    const requestedSpeed = Math.max(
+      CLIP_PLAYBACK.MIN_SPEED,
+      Math.min(CLIP_PLAYBACK.MAX_SPEED, playbackSpeed)
+    );
     const idealDuration = getTimelineDurationForSourceDuration(
       { playbackSpeed: requestedSpeed },
       sourceSpan
     );
     const nextDuration = Math.max(minDuration, idealDuration);
     const appliedSpeed = Math.max(
-      1,
-      Math.min(PLAYBACK.MAX_RATE, sourceSpan / Math.max(nextDuration, SOURCE_TRIM_EPSILON))
+      CLIP_PLAYBACK.MIN_SPEED,
+      Math.min(CLIP_PLAYBACK.MAX_SPEED, sourceSpan / Math.max(nextDuration, SOURCE_TRIM_EPSILON))
     );
 
     const currentSpeed = getClipPlaybackSpeed(sourceClip);

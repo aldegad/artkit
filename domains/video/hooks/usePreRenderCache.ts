@@ -55,6 +55,32 @@ function clearCache() {
   emitCacheStatus();
 }
 
+function deleteCachedFrame(frameIndex: number): boolean {
+  const bitmap = frameCache.get(frameIndex);
+  if (!bitmap) return false;
+  bitmap.close();
+  frameCache.delete(frameIndex);
+  cachedFrameSet.delete(frameIndex);
+  cacheVersion++;
+  return true;
+}
+
+function evictFarthestCachedFrame(targetFrameIndex: number): boolean {
+  let farthestFrameIndex: number | null = null;
+  let farthestDistance = -1;
+
+  for (const frameIndex of frameCache.keys()) {
+    const distance = Math.abs(frameIndex - targetFrameIndex);
+    if (distance > farthestDistance) {
+      farthestDistance = distance;
+      farthestFrameIndex = frameIndex;
+    }
+  }
+
+  if (farthestFrameIndex === null) return false;
+  return deleteCachedFrame(farthestFrameIndex);
+}
+
 function timeToFrameIndex(time: number): number {
   if (!Number.isFinite(time)) return 0;
   // Use floor-based indexing so cached sampling never jumps to a future frame.
@@ -116,6 +142,7 @@ interface UsePreRenderCacheParams {
   currentTime: number;
   currentTimeRef: React.RefObject<number>;
   enabled?: boolean;
+  debugLogs?: boolean;
 }
 
 export function usePreRenderCache(params: UsePreRenderCacheParams) {
@@ -135,6 +162,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     currentTime,
     currentTimeRef,
     enabled = true,
+    debugLogs = false,
   } = params;
 
   // Stable fingerprints — only change when actual content changes, not on reference changes.
@@ -184,8 +212,27 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   // Invalidate cache when structure or mask data changes.
   // Use fingerprints (not raw references) to avoid false invalidation on React re-renders.
   useEffect(() => {
+    if (debugLogs) {
+      const visibleTrackCount = tracks.filter((track) => track.visible).length;
+      const visibleClipCount = clips.filter((clip) => clip.visible).length;
+      const visualClipCount = clips.filter((clip) => clip.type !== "audio").length;
+      const videoClipCount = clips.filter((clip) => clip.type === "video").length;
+      const audioClipCount = clips.filter((clip) => clip.type === "audio").length;
+
+      console.info("[VideoPreRenderInvalidate]", {
+        trackCount: tracks.length,
+        visibleTrackCount,
+        clipCount: clips.length,
+        visibleClipCount,
+        visualClipCount,
+        videoClipCount,
+        audioClipCount,
+        maskCount: masks.size,
+        clipFingerprintLength: clipFingerprint.length,
+      });
+    }
     clearCache();
-  }, [trackFingerprint, clipFingerprint, projectSize, maskFingerprint]);
+  }, [clipFingerprint, clips, debugLogs, maskFingerprint, masks, projectSize, trackFingerprint, tracks]);
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
@@ -242,11 +289,32 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       if (queue.length >= PRE_RENDER.MAX_FRAMES) break;
     }
 
+    if (debugLogs) {
+      const currentTracks = tracksRef.current;
+      const visibleTrackCount = currentTracks.filter((track) => track.visible).length;
+      const visibleClipCount = clips.filter((clip) => clip.visible).length;
+      console.info("[VideoPreRenderStart]", {
+        totalFrames: totalFrameCount,
+        queuedFrames: queue.length,
+        playheadFrame,
+        trackCount: currentTracks.length,
+        visibleTrackCount,
+        clipCount: clips.length,
+        visibleClipCount,
+      });
+    }
+
     for (const frameIdx of queue) {
       // Check if this loop instance is still the active one
       if (myGeneration !== renderGeneration) break;
-      if (frameCache.size >= PRE_RENDER.MAX_FRAMES) break;
       if (cachedFrameSet.has(frameIdx)) continue;
+
+      if (
+        frameCache.size >= PRE_RENDER.MAX_FRAMES
+        && !evictFarthestCachedFrame(playheadFrame)
+      ) {
+        break;
+      }
 
       const time = frameIndexToTime(frameIdx);
       const currentTracks = tracksRef.current;
@@ -333,7 +401,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
     if (myGeneration === renderGeneration) {
       isPreRenderingRef.current = false;
     }
-  }, [currentTimeRef, enabled]);
+  }, [clips, currentTimeRef, debugLogs, enabled]);
 
   const stopPreRender = useCallback(() => {
     // Bump generation so any running loop exits at the next check
