@@ -32,7 +32,7 @@ import {
   loadVideoAutosave,
   type VideoAutosaveData,
 } from "../utils/videoAutosave";
-import { copyMediaBlob } from "../utils/mediaStorage";
+import { copyMediaBlob, moveMediaBlob } from "../utils/mediaStorage";
 import {
   normalizeClipTransformKeyframes,
   scaleClipPositionKeyframesDuration,
@@ -211,6 +211,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const copyMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
     return copyMediaBlob(sourceClipId, targetClipId).catch((error) => {
       console.error(`Failed to copy media blob (${reason}):`, error);
+    });
+  }, []);
+
+  const moveMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
+    return moveMediaBlob(sourceClipId, targetClipId).catch((error) => {
+      console.error(`Failed to move media blob (${reason}):`, error);
     });
   }, []);
 
@@ -896,10 +902,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     const { firstClip, secondClip } = splitResult;
     saveToHistory();
 
-    void Promise.all([
-      copyMediaBlobSafely(clip.id, firstClip.id, "timeline split"),
-      copyMediaBlobSafely(clip.id, secondClip.id, "timeline split"),
-    ]);
+    void moveMediaBlobSafely(clip.id, firstClip.id, "timeline split");
 
     updateClipsWithDuration((prev) => [
       ...prev.filter((candidate) => candidate.id !== clip.id),
@@ -914,6 +917,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     viewState.zoom,
     saveToHistory,
     copyMediaBlobSafely,
+    moveMediaBlobSafely,
     getTimelineFrameRate,
     snapTimeToFrame,
     updateClipsWithDuration,
