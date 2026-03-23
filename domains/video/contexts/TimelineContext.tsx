@@ -11,6 +11,7 @@ import {
   ReactNode,
 } from "react";
 import {
+  AssetReference,
   VideoTrack,
   Clip,
   TimelineViewState,
@@ -90,14 +91,16 @@ interface TimelineContextValue {
     sourceDuration: number,
     sourceSize: Size,
     startTime?: number,
-    canvasSize?: Size
+    canvasSize?: Size,
+    options?: { sourceId?: string; asset?: AssetReference }
   ) => string;
   addAudioClip: (
     trackId: string,
     sourceUrl: string,
     sourceDuration: number,
     startTime?: number,
-    sourceSize?: Size
+    sourceSize?: Size,
+    options?: { sourceId?: string; asset?: AssetReference }
   ) => string;
   addImageClip: (
     trackId: string,
@@ -105,7 +108,8 @@ interface TimelineContextValue {
     sourceSize: Size,
     startTime?: number,
     duration?: number,
-    canvasSize?: Size
+    canvasSize?: Size,
+    options?: { sourceId?: string; asset?: AssetReference }
   ) => string;
   addCanvasOverlayClip: (
     trackId: string,
@@ -113,7 +117,8 @@ interface TimelineContextValue {
     sourceSize: Size,
     startTime?: number,
     duration?: number,
-    canvasSize?: Size
+    canvasSize?: Size,
+    options?: { sourceId?: string; asset?: AssetReference }
   ) => string;
   removeClip: (clipId: string) => void;
   updateClip: (clipId: string, updates: Partial<Clip>) => void;
@@ -144,6 +149,24 @@ interface TimelineContextValue {
 const TimelineContext = createContext<TimelineContextValue | null>(null);
 
 const SOURCE_TRIM_EPSILON = 1e-6;
+
+function upsertAssetReference(
+  existingAssets: AssetReference[],
+  nextAsset: AssetReference | null | undefined
+): AssetReference[] {
+  if (!nextAsset) return existingAssets;
+  const next = [...existingAssets];
+  const index = next.findIndex((asset) => asset.id === nextAsset.id);
+  if (index >= 0) {
+    next[index] = {
+      ...next[index],
+      ...nextAsset,
+    };
+    return next;
+  }
+  next.push(nextAsset);
+  return next;
+}
 
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const {
@@ -207,6 +230,18 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       return reindexTracksForZOrder(updated);
     });
   }, [setTracks]);
+
+  const registerProjectAsset = useCallback((asset: AssetReference | null | undefined) => {
+    if (!asset) return;
+    setProject((prev) => {
+      const nextProject = {
+        ...prev,
+        assets: upsertAssetReference(prev.assets || [], asset),
+      };
+      projectRef.current = nextProject;
+      return nextProject;
+    });
+  }, [setProject]);
 
   const copyMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
     return copyMediaBlob(sourceClipId, targetClipId).catch((error) => {
@@ -517,7 +552,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceDuration: number,
       sourceSize: Size,
       startTime: number = 0,
-      canvasSize?: Size
+      canvasSize?: Size,
+      options?: { sourceId?: string; asset?: AssetReference }
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "video", tracks);
       const frameAlignedStart = snapTimeToFrame(startTime);
@@ -526,7 +562,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         sourceUrl,
         sourceDuration,
         sourceSize,
-        frameAlignedStart
+        frameAlignedStart,
+        options?.sourceId
       );
       const clip = createSafeFittedVisualClip({
         baseClip,
@@ -534,10 +571,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         startTime: frameAlignedStart,
         canvasSize,
       });
+      registerProjectAsset(options?.asset);
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
   );
 
   const addAudioClip = useCallback(
@@ -546,7 +584,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceUrl: string,
       sourceDuration: number,
       startTime: number = 0,
-      sourceSize: Size = { width: 0, height: 0 }
+      sourceSize: Size = { width: 0, height: 0 },
+      options?: { sourceId?: string; asset?: AssetReference }
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "audio", tracks);
       const frameAlignedStart = snapTimeToFrame(startTime);
@@ -555,15 +594,17 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         sourceUrl,
         sourceDuration,
         frameAlignedStart,
-        sourceSize
+        sourceSize,
+        options?.sourceId
       );
       const normalizedClip: Clip = withSafeClipStart(clipsRef.current, clip, frameAlignedStart, {
         frameRate: getTimelineFrameRate(),
       });
+      registerProjectAsset(options?.asset);
       updateClipsWithDuration((prev) => [...prev, normalizedClip]);
       return normalizedClip.id;
     },
-    [tracks, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]
+    [tracks, getTimelineFrameRate, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
   );
 
   const addImageClip = useCallback(
@@ -573,7 +614,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceSize: Size,
       startTime: number = 0,
       duration: number = 5,
-      canvasSize?: Size
+      canvasSize?: Size,
+      options?: { sourceId?: string; asset?: AssetReference }
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
       const frameAlignedStart = snapTimeToFrame(startTime);
@@ -582,7 +624,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         sourceUrl,
         sourceSize,
         frameAlignedStart,
-        duration
+        duration,
+        options?.sourceId
       );
       const clip = createSafeFittedVisualClip({
         baseClip,
@@ -590,10 +633,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         startTime: frameAlignedStart,
         canvasSize,
       });
+      registerProjectAsset(options?.asset);
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
   );
 
   const addCanvasOverlayClip = useCallback(
@@ -603,7 +647,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       sourceSize: Size,
       startTime: number = 0,
       duration: number = 5,
-      canvasSize?: Size
+      canvasSize?: Size,
+      options?: { sourceId?: string; asset?: AssetReference }
     ): string => {
       const resolvedTrackId = resolveTrackIdForClipType(trackId, "image", tracks);
       const frameAlignedStart = snapTimeToFrame(startTime);
@@ -612,7 +657,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         sourceUrl,
         sourceSize,
         frameAlignedStart,
-        duration
+        duration,
+        options?.sourceId
       );
       const clip = createSafeFittedVisualClip({
         baseClip,
@@ -620,10 +666,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         startTime: frameAlignedStart,
         canvasSize,
       });
+      registerProjectAsset(options?.asset);
       updateClipsWithDuration((prev) => [...prev, clip]);
       return clip.id;
     },
-    [tracks, createSafeFittedVisualClip, snapTimeToFrame, updateClipsWithDuration]
+    [tracks, createSafeFittedVisualClip, snapTimeToFrame, registerProjectAsset, updateClipsWithDuration]
   );
 
   const removeClip = useCallback((clipId: string) => {

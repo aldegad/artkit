@@ -7,7 +7,7 @@ import {
   VideoTrack,
   getClipPlaybackSpeed,
 } from "../types";
-import { loadMediaBlob } from "./mediaStorage";
+import { loadMediaBlob, loadMediaBlobFromKeys } from "./mediaStorage";
 import { normalizeClipTransformKeyframes } from "./clipTransformKeyframes";
 import {
   alignTimelineTimeToFrame,
@@ -420,7 +420,7 @@ export async function restoreAutosavedClips(savedClips: Clip[]): Promise<{ resto
   const sourceBlobCache = new Map<string, Blob>();
 
   for (const normalizedClip of normalizedClips) {
-    let blob = await loadMediaBlob(normalizedClip.id);
+    let blob = await loadMediaBlobFromKeys([normalizedClip.id, normalizedClip.sourceId]);
     if (!blob && normalizedClip.sourceId) {
       blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
       if (!blob) {

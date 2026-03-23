@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useTimeline, useVideoState } from "../contexts";
+import { type AssetReference } from "../types";
 import {
   SUPPORTED_VIDEO_FORMATS,
   SUPPORTED_IMAGE_FORMATS,
@@ -113,23 +114,35 @@ export function useMediaImport() {
 
           const isFirstVisual = !hasExistingVisualClip && visualImportedCount === 0;
           if (isFirstVisual) {
-            setProject({
-              ...project,
+            setProject((prev) => ({
+              ...prev,
               canvasSize: metadata.size,
-            });
+            }));
           }
 
-          const clipId = addVideoClip(
+          const assetId = crypto.randomUUID();
+          const asset: AssetReference = {
+            id: assetId,
+            name: file.name,
+            type: "video",
+            url,
+            size: metadata.size,
+            duration: metadata.duration,
+            mediaType: file.type || "application/octet-stream",
+          };
+
+          addVideoClip(
             targetVideoTrackId,
             url,
             metadata.duration,
             metadata.size,
             alignInsertTime(insertTime),
-            isFirstVisual ? metadata.size : undefined
+            isFirstVisual ? metadata.size : undefined,
+            { sourceId: assetId, asset }
           );
 
           try {
-            await saveMediaBlob(clipId, file);
+            await saveMediaBlob(assetId, file);
           } catch (error) {
             console.error("Failed to save media blob:", error);
           }
@@ -162,16 +175,28 @@ export function useMediaImport() {
             targetAudioTrackId = addTrack("Audio 1", "audio");
           }
 
-          const clipId = addAudioClip(
+          const assetId = crypto.randomUUID();
+          const asset: AssetReference = {
+            id: assetId,
+            name: file.name,
+            type: "audio",
+            url,
+            size: { ...project.canvasSize },
+            duration: metadata.duration,
+            mediaType: file.type || "application/octet-stream",
+          };
+
+          addAudioClip(
             targetAudioTrackId,
             url,
             metadata.duration,
             alignInsertTime(insertTime),
-            { ...project.canvasSize }
+            { ...project.canvasSize },
+            { sourceId: assetId, asset }
           );
 
           try {
-            await saveMediaBlob(clipId, file);
+            await saveMediaBlob(assetId, file);
           } catch (error) {
             console.error("Failed to save media blob:", error);
           }
@@ -206,23 +231,34 @@ export function useMediaImport() {
 
           const isFirstVisual = !hasExistingVisualClip && visualImportedCount === 0;
           if (isFirstVisual) {
-            setProject({
-              ...project,
+            setProject((prev) => ({
+              ...prev,
               canvasSize: size,
-            });
+            }));
           }
 
-          const clipId = addImageClip(
+          const assetId = crypto.randomUUID();
+          const asset: AssetReference = {
+            id: assetId,
+            name: file.name,
+            type: "image",
+            url,
+            size,
+            mediaType: file.type || "application/octet-stream",
+          };
+
+          addImageClip(
             targetVideoTrackId,
             url,
             size,
             alignInsertTime(insertTime),
             5,
-            isFirstVisual ? size : undefined
+            isFirstVisual ? size : undefined,
+            { sourceId: assetId, asset }
           );
 
           try {
-            await saveMediaBlob(clipId, file);
+            await saveMediaBlob(assetId, file);
           } catch (error) {
             console.error("Failed to save media blob:", error);
           }

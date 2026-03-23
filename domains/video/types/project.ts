@@ -15,6 +15,8 @@ export interface AssetReference {
   size: Size;
   duration?: number;
   thumbnailUrl?: string;
+  storageRef?: string;
+  mediaType?: string;
 }
 
 /**

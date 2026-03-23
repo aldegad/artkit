@@ -1,4 +1,4 @@
-import { loadMediaBlob } from "./mediaStorage";
+import { loadMediaBlobFromKeys } from "./mediaStorage";
 import type { Clip } from "../types";
 import type {
   ExportProgressState,
@@ -102,7 +102,7 @@ export async function seekExportVideoFrame(
   });
 }
 
-type ClipSourceReference = Pick<Clip, "id" | "sourceUrl">;
+type ClipSourceReference = Pick<Clip, "id" | "sourceId" | "sourceUrl">;
 
 function getSourceBlobCacheKey(clip: ClipSourceReference): string {
   return `${clip.id}:${clip.sourceUrl ?? ""}`;
@@ -135,7 +135,7 @@ export async function resolveClipSourceBlob(
     }
   }
 
-  const storedBlob = await loadMediaBlob(clip.id).catch(() => null);
+  const storedBlob = await loadMediaBlobFromKeys([clip.id, clip.sourceId]).catch(() => null);
   if (storedBlob) {
     sourceBlobCache?.set(cacheKey, storedBlob);
     return storedBlob;
