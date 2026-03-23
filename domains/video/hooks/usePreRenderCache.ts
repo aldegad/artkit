@@ -14,6 +14,11 @@ let totalFrameCount = 0;
 // Monotonically increasing counter — each pre-render loop gets a unique generation.
 // When a new loop starts, old loops detect the mismatch and exit.
 let renderGeneration = 0;
+const RGBA_BYTES_PER_PIXEL = 4;
+const PRE_RENDER_MIN_CACHE_RESOLUTION_SCALE = 0.5;
+const PRE_RENDER_TARGET_LONG_EDGE_PX = 1280;
+const PRE_RENDER_MAX_BYTES_BUDGET = 256 * 1024 * 1024;
+const PRE_RENDER_MIN_FRAMES = 24;
 
 // Simple event emitter for cache status updates
 type CacheStatusListener = () => void;
@@ -90,6 +95,40 @@ function timeToFrameIndex(time: number): number {
 
 function frameIndexToTime(frameIndex: number): number {
   return frameIndex / PRE_RENDER.FRAME_RATE;
+}
+
+function resolvePreRenderBudget(projectSize: Size): {
+  cacheW: number;
+  cacheH: number;
+  cacheResolutionScale: number;
+  frameLimit: number;
+} {
+  const baseScale = PRE_RENDER.CACHE_RESOLUTION_SCALE;
+  const maxDimension = Math.max(projectSize.width, projectSize.height, 1);
+  const adaptiveScale = Math.min(1, PRE_RENDER_TARGET_LONG_EDGE_PX / maxDimension);
+  const cacheResolutionScale = Math.max(
+    PRE_RENDER_MIN_CACHE_RESOLUTION_SCALE,
+    Math.min(baseScale, adaptiveScale)
+  );
+
+  const cacheW = Math.max(1, Math.round(projectSize.width * cacheResolutionScale));
+  const cacheH = Math.max(1, Math.round(projectSize.height * cacheResolutionScale));
+  const bytesPerFrame = Math.max(1, cacheW * cacheH * RGBA_BYTES_PER_PIXEL);
+  const budgetFrameLimit = Math.max(
+    PRE_RENDER_MIN_FRAMES,
+    Math.floor(PRE_RENDER_MAX_BYTES_BUDGET / bytesPerFrame)
+  );
+  const frameLimit = Math.max(
+    PRE_RENDER_MIN_FRAMES,
+    Math.min(PRE_RENDER.MAX_FRAMES, budgetFrameLimit)
+  );
+
+  return {
+    cacheW,
+    cacheH,
+    cacheResolutionScale,
+    frameLimit,
+  };
 }
 
 // Wait for a video element to finish seeking
@@ -256,8 +295,12 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
     const osc = offscreenCanvasRef.current;
     const pSize = projectSizeRef.current;
-    const cacheW = Math.round(pSize.width * PRE_RENDER.CACHE_RESOLUTION_SCALE);
-    const cacheH = Math.round(pSize.height * PRE_RENDER.CACHE_RESOLUTION_SCALE);
+    const {
+      cacheW,
+      cacheH,
+      cacheResolutionScale,
+      frameLimit,
+    } = resolvePreRenderBudget(pSize);
     osc.width = cacheW;
     osc.height = cacheH;
 
@@ -286,7 +329,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         queue.push(backward);
       }
 
-      if (queue.length >= PRE_RENDER.MAX_FRAMES) break;
+      if (queue.length >= frameLimit) break;
     }
 
     if (debugLogs) {
@@ -296,6 +339,9 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       console.info("[VideoPreRenderStart]", {
         totalFrames: totalFrameCount,
         queuedFrames: queue.length,
+        frameLimit,
+        cacheResolutionScale,
+        cacheSize: { width: cacheW, height: cacheH },
         playheadFrame,
         trackCount: currentTracks.length,
         visibleTrackCount,
@@ -310,7 +356,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       if (cachedFrameSet.has(frameIdx)) continue;
 
       if (
-        frameCache.size >= PRE_RENDER.MAX_FRAMES
+        frameCache.size >= frameLimit
         && !evictFarthestCachedFrame(playheadFrame)
       ) {
         break;
