@@ -24,11 +24,33 @@ interface TimelineToolbarProps {
   className?: string;
 }
 
+const SPEED_SCRUB_STEP = 0.05;
+
 function formatSeconds(value: number): string {
   if (!Number.isFinite(value)) return "0.00s";
   const safeValue = Math.max(0, value);
   if (safeValue >= 10) return `${safeValue.toFixed(1)}s`;
   return `${safeValue.toFixed(2)}s`;
+}
+
+function roundClipSpeed(value: number): number {
+  return Math.round(value / SPEED_SCRUB_STEP) * SPEED_SCRUB_STEP;
+}
+
+function clampClipSpeed(value: number, maxSpeed: number): number {
+  return Math.max(CLIP_PLAYBACK.MIN_SPEED, Math.min(maxSpeed, roundClipSpeed(value)));
+}
+
+function formatSpeed(value: number): string {
+  if (!Number.isFinite(value)) return "1x";
+  const rounded = roundClipSpeed(Math.max(0, value));
+  if (Math.abs(rounded - Math.round(rounded)) <= 0.001) {
+    return `${Math.round(rounded)}x`;
+  }
+  if (Math.abs((rounded * 10) - Math.round(rounded * 10)) <= 0.001) {
+    return `${rounded.toFixed(1)}x`;
+  }
+  return `${rounded.toFixed(2)}x`;
 }
 
 export function TimelineToolbar({ className }: TimelineToolbarProps) {
@@ -70,6 +92,8 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         nonDestructive: "비파괴 편집: 소스 파일 자체는 변경되지 않습니다.",
         maxSpeed: "이 클립에서 가능한 최대 속도",
         noSelection: "선택 없음",
+        fineTune: "세밀 조절",
+        dragHint: "좌우 드래그 · 더블클릭 입력",
       }
     : {
         addLayer: "Add Layer",
@@ -94,10 +118,13 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         nonDestructive: "Non-destructive: the source file stays untouched.",
         maxSpeed: "Max speed available for this clip",
         noSelection: "No clip",
+        fineTune: "Fine Tune",
+        dragHint: "Drag sideways · double-click to type",
       };
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [isCompact, setIsCompact] = useState(false);
+  const [draftClipSpeed, setDraftClipSpeed] = useState<number | null>(null);
   const projectDuration = Math.max(project.duration || 0, 0);
   const rangeStart = Math.max(0, Math.min(playback.loopStart, projectDuration));
   const hasRange = playback.loopEnd > rangeStart + 0.001;
@@ -129,6 +156,10 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         )
       )
     : CLIP_PLAYBACK.MIN_SPEED;
+  const displayedClipSpeed = selectedSpeedClip
+    ? clampClipSpeed(draftClipSpeed ?? selectedClipSpeed, maxSelectableSpeed)
+    : CLIP_PLAYBACK.DEFAULT_SPEED;
+  const isFineTuneDisabled = maxSelectableSpeed <= CLIP_PLAYBACK.MIN_SPEED + 0.0001;
   const hasSpeedBoost = selectedSpeedClip
     ? selectedClipSpeed > CLIP_PLAYBACK.DEFAULT_SPEED + 0.001
     : false;
@@ -174,6 +205,27 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!selectedSpeedClip) {
+      setDraftClipSpeed(null);
+      return;
+    }
+    setDraftClipSpeed(clampClipSpeed(selectedClipSpeed, maxSelectableSpeed));
+  }, [maxSelectableSpeed, selectedClipSpeed, selectedSpeedClip]);
+
+  const updateDraftClipSpeed = (nextSpeed: number) => {
+    if (!selectedSpeedClip) return;
+    setDraftClipSpeed(clampClipSpeed(nextSpeed, maxSelectableSpeed));
+  };
+
+  const commitDraftClipSpeed = (nextSpeed: number) => {
+    if (!selectedSpeedClip) return;
+    const resolvedSpeed = clampClipSpeed(nextSpeed, maxSelectableSpeed);
+    setDraftClipSpeed(resolvedSpeed);
+    if (Math.abs(resolvedSpeed - selectedClipSpeed) <= 0.01) return;
+    setClipPlaybackSpeed(selectedSpeedClip.id, resolvedSpeed);
+  };
+
   const renderSpeedPanel = (embedded: boolean) => (
     <div
       className={cn(
@@ -189,7 +241,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
           <div className="text-[11px] text-text-tertiary">{labels.speedDesc}</div>
         </div>
         <span className="rounded bg-surface-tertiary px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
-          {selectedSpeedClip ? `${selectedClipSpeed.toFixed(2)}x` : labels.noSelection}
+          {selectedSpeedClip ? formatSpeed(displayedClipSpeed) : labels.noSelection}
         </span>
       </div>
 
@@ -197,16 +249,18 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         <>
           <div className="truncate text-[11px] text-text-secondary">{selectedSpeedClip.name}</div>
 
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-4 gap-1">
             {CLIP_PLAYBACK.PRESETS.map((speed) => {
               const disabled = speed > maxSelectableSpeed + 0.0001;
-              const active = Math.abs(selectedClipSpeed - speed) <= 0.01;
+              const active = Math.abs(displayedClipSpeed - speed) <= 0.01;
               return (
                 <button
                   key={speed}
                   onClick={() => {
                     if (disabled) return;
-                    setClipPlaybackSpeed(selectedSpeedClip.id, speed);
+                    const nextSpeed = clampClipSpeed(speed, maxSelectableSpeed);
+                    setDraftClipSpeed(nextSpeed);
+                    setClipPlaybackSpeed(selectedSpeedClip.id, nextSpeed);
                   }}
                   className={cn(
                     "rounded px-2 py-1 text-[11px] font-medium transition-colors",
@@ -217,10 +271,31 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
                         : "bg-surface-tertiary text-text-secondary hover:bg-interactive-hover hover:text-text-primary"
                   )}
                 >
-                  {speed.toFixed(speed % 1 === 0 ? 0 : 2)}x
+                  {formatSpeed(speed)}
                 </button>
               );
             })}
+          </div>
+
+          <div className="rounded-md border border-border-default bg-surface-secondary/80 px-2 py-1.5">
+            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-text-tertiary">
+              <span className="font-medium text-text-secondary">{labels.fineTune}</span>
+              <span>{labels.dragHint}</span>
+            </div>
+            <NumberScrubber
+              value={displayedClipSpeed}
+              onChange={updateDraftClipSpeed}
+              onCommit={commitDraftClipSpeed}
+              min={CLIP_PLAYBACK.MIN_SPEED}
+              max={maxSelectableSpeed}
+              step={SPEED_SCRUB_STEP}
+              format={formatSpeed}
+              valueWidth="min-w-[52px]"
+              size="sm"
+              editable
+              disabled={isFineTuneDisabled}
+              className="w-full justify-between gap-2"
+            />
           </div>
 
           <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[11px] text-text-secondary">
@@ -258,7 +333,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
     >
       <StepForwardIcon className="h-4 w-4" />
       <span className="font-medium">
-        {selectedSpeedClip ? `${selectedClipSpeed.toFixed(2)}x` : "1.00x"}
+        {selectedSpeedClip ? formatSpeed(selectedClipSpeed) : "1x"}
       </span>
     </button>
   );

@@ -60,9 +60,9 @@ export const PLAYBACK = {
 
 export const CLIP_PLAYBACK = {
   MIN_SPEED: 1,
-  MAX_SPEED: 5,
+  MAX_SPEED: 10,
   DEFAULT_SPEED: 1,
-  PRESETS: [1, 1.25, 1.5, 2, 3, 4, 5],
+  PRESETS: [1, 1.25, 1.5, 2, 3, 4, 5, 10],
 } as const;
 
 // UI constants
