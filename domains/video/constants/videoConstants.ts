@@ -52,7 +52,7 @@ export const PLAYBACK = {
   MAX_RATE: 4,
   DEFAULT_RATE: 1,
   FRAME_STEP: 1 / 30, // 30fps
-  SYNC_INTERVAL_MS: 100, // media sync interval during playback
+  SYNC_INTERVAL_MS: 50, // media sync interval during playback
   SEEK_DRIFT_THRESHOLD: 0.15, // seconds: visual media re-seek threshold
   AUDIO_SEEK_DRIFT_THRESHOLD: 0.35, // seconds: fallback HTMLAudio seek threshold
   TIME_DISPLAY_THROTTLE_MS: 100, // throttle for time display updates
@@ -60,9 +60,9 @@ export const PLAYBACK = {
 
 export const CLIP_PLAYBACK = {
   MIN_SPEED: 1,
-  MAX_SPEED: 4,
+  MAX_SPEED: 5,
   DEFAULT_SPEED: 1,
-  PRESETS: [1, 1.25, 1.5, 2, 3, 4],
+  PRESETS: [1, 1.25, 1.5, 2, 3, 4, 5],
 } as const;
 
 // UI constants

@@ -18,7 +18,7 @@ import {
   safeSetPointerCapture,
 } from "@/shared/utils";
 import { getCanvasColorsSync, useViewportZoomTool } from "@/shared/hooks";
-import { PREVIEW, PRE_RENDER } from "../../constants";
+import { PLAYBACK, PREVIEW, PRE_RENDER } from "../../constants";
 import { getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
 import { useMask } from "../../contexts";
 import { useMaskTool } from "../../hooks/useMaskTool";
@@ -69,11 +69,96 @@ const INPAINT_BRUSH_HARDNESS = 80;
 const INPAINT_STROKE_SPACING = Math.max(1, INPAINT_BRUSH_SIZE * 0.35);
 type InpaintBrushMode = "paint" | "erase";
 
+function resolveAdaptivePlaybackPreviewPolicy(params: {
+  playbackIsPlaying: boolean;
+  qualityFirstMode: boolean;
+  clipCount: number;
+  visualClipCount: number;
+  baseMaxCanvasDpr: number;
+  basePlaybackRenderFpsCap: number;
+}): {
+  maxCanvasDpr: number;
+  playbackRenderFpsCap: number;
+  smoothingQuality: ImageSmoothingQuality;
+} {
+  const {
+    playbackIsPlaying,
+    qualityFirstMode,
+    clipCount,
+    visualClipCount,
+    baseMaxCanvasDpr,
+    basePlaybackRenderFpsCap,
+  } = params;
+
+  if (!playbackIsPlaying || qualityFirstMode) {
+    return {
+      maxCanvasDpr: baseMaxCanvasDpr,
+      playbackRenderFpsCap: basePlaybackRenderFpsCap,
+      smoothingQuality: "high",
+    };
+  }
+
+  const loadScore = Math.max(clipCount, visualClipCount * 1.5);
+
+  if (loadScore >= 24) {
+    return {
+      maxCanvasDpr: 1,
+      playbackRenderFpsCap: Math.min(basePlaybackRenderFpsCap, 24),
+      smoothingQuality: "low",
+    };
+  }
+
+  if (loadScore >= 12) {
+    return {
+      maxCanvasDpr: 1.25,
+      playbackRenderFpsCap: Math.min(basePlaybackRenderFpsCap, 30),
+      smoothingQuality: "medium",
+    };
+  }
+
+  if (loadScore >= 6) {
+    return {
+      maxCanvasDpr: Math.min(baseMaxCanvasDpr, 1.5),
+      playbackRenderFpsCap: Math.min(basePlaybackRenderFpsCap, 45),
+      smoothingQuality: "medium",
+    };
+  }
+
+  return {
+    maxCanvasDpr: Math.min(baseMaxCanvasDpr, 2),
+    playbackRenderFpsCap: basePlaybackRenderFpsCap,
+    smoothingQuality: "high",
+  };
+}
+
+function ensureRenderSurfaceCanvas(
+  canvasRef: { current: HTMLCanvasElement | null },
+  pixelWidth: number,
+  pixelHeight: number,
+): { canvas: HTMLCanvasElement; resized: boolean } {
+  let canvas = canvasRef.current;
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvasRef.current = canvas;
+  }
+
+  const nextWidth = Math.max(1, Math.round(pixelWidth));
+  const nextHeight = Math.max(1, Math.round(pixelHeight));
+  const resized = canvas.width !== nextWidth || canvas.height !== nextHeight;
+  if (resized) {
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+  }
+
+  return { canvas, resized };
+}
+
 export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const {
     previewCanvasRef,
     previewContainerRef,
     previewViewportRef,
+    compositingCanvasRef,
     videoElementsRef,
     audioElementsRef,
     inpaintMaskCanvasRef,
@@ -104,7 +189,9 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   const imageCacheRef = useRef(new Map<string, HTMLImageElement>());
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskOverlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
+  const hasCommittedCompositeFrameRef = useRef(false);
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
   const [inpaintBrushMode, setInpaintBrushMode] = useState<InpaintBrushMode>("paint");
   const inpaintStrokeActiveRef = useRef(false);
@@ -116,6 +203,15 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
   previewPerf.qualityFirstMode = previewQualityFirstEnabled;
   previewPerf.maxCanvasDpr = previewQualityFirstEnabled ? Number.POSITIVE_INFINITY : 2;
   const playbackPerfRef = useRef(createPlaybackPerfStats());
+  const visualClipCount = clips.filter((clip) => clip.type !== "audio").length;
+  const adaptivePlaybackPreviewPolicy = resolveAdaptivePlaybackPreviewPolicy({
+    playbackIsPlaying: playback.isPlaying,
+    qualityFirstMode: previewPerf.qualityFirstMode,
+    clipCount: clips.length,
+    visualClipCount,
+    baseMaxCanvasDpr: previewPerf.maxCanvasDpr,
+    basePlaybackRenderFpsCap: previewPerf.playbackRenderFpsCap,
+  });
   const syncMediaRef = useRef<(() => void) | null>(null);
   const syncMediaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlaybackTickTimeRef = useRef<number | null>(null);
@@ -298,6 +394,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     currentTime: playback.currentTime,
     currentTimeRef,
     enabled: previewPerf.preRenderEnabled,
+    debugLogs: previewPerf.debugLogs,
   });
 
   // Pre-decode audio buffers for all audible clips (Web Audio API)
@@ -331,17 +428,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       draftMode: previewPerf.draftMode,
       preRenderEnabled: previewPerf.preRenderEnabled,
       qualityFirstMode: previewPerf.qualityFirstMode,
-      playbackRenderFpsCap: previewPerf.playbackRenderFpsCap,
-      maxCanvasDpr: previewPerf.maxCanvasDpr,
+      playbackRenderFpsCap: adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
+      maxCanvasDpr: adaptivePlaybackPreviewPolicy.maxCanvasDpr,
+      smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
       isMobileLike: previewPerf.isMobileLike,
     });
   }, [
+    adaptivePlaybackPreviewPolicy.maxCanvasDpr,
+    adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
+    adaptivePlaybackPreviewPolicy.smoothingQuality,
     previewPerf.debugLogs,
     previewPerf.draftMode,
     previewPerf.preRenderEnabled,
     previewPerf.qualityFirstMode,
-    previewPerf.playbackRenderFpsCap,
-    previewPerf.maxCanvasDpr,
     previewPerf.isMobileLike,
   ]);
 
@@ -369,28 +468,42 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
       getClipAtTime,
       currentTimeRef.current,
     );
+    const visibleClipCount = clips.filter((clip) => clip.visible).length;
+    const videoClipCount = clips.filter((clip) => clip.type === "video").length;
+    const audioClipCount = clips.filter((clip) => clip.type === "audio").length;
+    const visualClipCount = clips.filter((clip) => clip.type !== "audio").length;
 
     console.info("[VideoPreviewPerf]", {
       draftMode: previewPerf.draftMode,
       preRenderEnabled: previewPerf.preRenderEnabled,
-      fpsCap: previewPerf.playbackRenderFpsCap,
+      fpsCap: adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
+      maxCanvasDpr: adaptivePlaybackPreviewPolicy.maxCanvasDpr,
+      smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
       renderedFps: Number(renderedFps.toFixed(1)),
       renderedFrames: stats.renderedFrames,
       skippedByCap: stats.skippedByCap,
       longTickCount: stats.longTickCount,
       cacheHitRate: Number((cacheHitRate * 100).toFixed(1)),
       activeVisualLayers,
+      clipCount: clips.length,
+      visibleClipCount,
+      visualClipCount,
+      videoClipCount,
+      audioClipCount,
       visibleTracks: tracks.filter((track) => track.visible).length,
     });
 
     stats.windowStartMs = now;
     resetPlaybackPerfStatsWindow(stats);
   }, [
+    adaptivePlaybackPreviewPolicy.maxCanvasDpr,
+    adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
+    adaptivePlaybackPreviewPolicy.smoothingQuality,
     previewPerf.debugLogs,
     previewPerf.draftMode,
     previewPerf.preRenderEnabled,
-    previewPerf.playbackRenderFpsCap,
     playback.isPlaying,
+    clips,
     tracks,
     getClipAtTime,
     currentTimeRef,
@@ -466,7 +579,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
     // Set canvas size with DPI scaling
     const canvasSize = resizeCanvasForDpr(canvas, ctx, width, height, {
-      maxDevicePixelRatio: previewPerf.maxCanvasDpr,
+      maxDevicePixelRatio: adaptivePlaybackPreviewPolicy.maxCanvasDpr,
       scaleContext: true,
     });
     width = canvasSize.width;
@@ -483,9 +596,22 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     }
     const { surfacePrimary, borderDefault } = cssColorsRef.current;
 
-    // Clear with background color
-    ctx.fillStyle = surfacePrimary;
-    ctx.fillRect(0, 0, width, height);
+    const { canvas: committedCompositeCanvas, resized: committedCanvasResized } =
+      ensureRenderSurfaceCanvas(compositingCanvasRef, canvasSize.pixelWidth, canvasSize.pixelHeight);
+    const committedCompositeCtx = committedCompositeCanvas.getContext("2d");
+    const { canvas: workingCompositeCanvas } =
+      ensureRenderSurfaceCanvas(previewWorkingCanvasRef, canvasSize.pixelWidth, canvasSize.pixelHeight);
+    const workingCompositeCtx = workingCompositeCanvas.getContext("2d");
+    if (!committedCompositeCtx || !workingCompositeCtx) return;
+
+    if (committedCanvasResized) {
+      hasCommittedCompositeFrameRef.current = false;
+    }
+
+    workingCompositeCtx.setTransform(canvasSize.dpr, 0, 0, canvasSize.dpr, 0, 0);
+    workingCompositeCtx.clearRect(0, 0, width, height);
+    workingCompositeCtx.fillStyle = surfacePrimary;
+    workingCompositeCtx.fillRect(0, 0, width, height);
 
     // Calculate preview area from shared viewport transform
     const projectWidth = project.canvasSize.width;
@@ -496,15 +622,19 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     const previewHeight = projectHeight * scale;
     const offsetX = renderOffset.x;
     const offsetY = renderOffset.y;
-    const previewScalePolicy = applyPixelPreviewScalePolicy(ctx, scale);
+    const previewScalePolicy = applyPixelPreviewScalePolicy(workingCompositeCtx, scale);
+    const selectedVisualClipId = selectedClipIds.find((clipId) => {
+      const selected = clips.find((clip) => clip.id === clipId);
+      return !!selected && selected.type !== "audio";
+    }) || null;
 
     // Draw checkerboard for transparency
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(offsetX, offsetY, previewWidth, previewHeight);
-    ctx.clip();
+    workingCompositeCtx.save();
+    workingCompositeCtx.beginPath();
+    workingCompositeCtx.rect(offsetX, offsetY, previewWidth, previewHeight);
+    workingCompositeCtx.clip();
     drawPreviewCheckerboard({
-      ctx,
+      ctx: workingCompositeCtx,
       width,
       height,
       isDraftMode: previewPerfRef.current.draftMode,
@@ -514,7 +644,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         patternCanvasRef: checkerPatternCanvasRef,
       },
     });
-    ctx.restore();
+    workingCompositeCtx.restore();
 
     // Try cached frame first (any state — instant display on seek/scrub)
     // Skip cache during mask editing — cached frames don't include live mask
@@ -522,29 +652,31 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
     // Skip cache when mask is active (editing or selected) — overlay needs live rendering
     const cachedBitmap = (isEditingMask || activeMaskId) ? null : getCachedFrame(renderTime);
 
+    let baseFrameReady = Boolean(cachedBitmap);
+
     if (cachedBitmap) {
       if (playback.isPlaying) {
         playbackPerfRef.current.cacheFrames += 1;
       }
       // Use pre-rendered cached frame — skip per-track compositing
       drawScaledImage(
-        ctx,
+        workingCompositeCtx,
         cachedBitmap,
         { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-        { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
+        {
+          mode: previewScalePolicy.mode,
+          progressiveMinify: !playback.isPlaying,
+          smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
+        },
       );
     } else {
       if (playback.isPlaying) {
         playbackPerfRef.current.liveFrames += 1;
       }
+      baseFrameReady = true;
       // Draw bottom track first (background), top track last (foreground).
       // Use array order directly — tracks[0] is the topmost track in the timeline.
       const sortedTracks = [...tracks].reverse();
-
-      const selectedVisualClipId = selectedClipIds.find((clipId) => {
-        const selected = clips.find((clip) => clip.id === clipId);
-        return !!selected && selected.type !== "audio";
-      }) || null;
 
       // Composite each track
       for (const track of sortedTracks) {
@@ -559,12 +691,20 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
         // Determine source element
         let sourceEl: CanvasImageSource | null = null;
 
-        if (clip.type === "video" && videoElement) {
-          if (videoElement.readyState < 2) {
+        if (clip.type === "video") {
+          if (!videoElement || videoElement.readyState < 2) {
+            baseFrameReady = false;
+            continue;
+          }
+          const sourceTime = getSourceTime(clip, renderTime);
+          if (
+            playback.isPlaying
+            && Math.abs(videoElement.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD * 1.25
+          ) {
+            baseFrameReady = false;
             continue;
           }
           if (!playback.isPlaying) {
-            const sourceTime = getSourceTime(clip, renderTime);
             if (Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
               videoElement.currentTime = sourceTime;
               // Keep rendering the currently available frame while seek settles.
@@ -581,6 +721,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           }
           if (img.complete && img.naturalWidth > 0) {
             sourceEl = img;
+          } else {
+            baseFrameReady = false;
           }
         }
 
@@ -612,6 +754,8 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
             }
             if (maskImg.complete && maskImg.naturalWidth > 0) {
               clipMaskSource = maskImg;
+            } else {
+              baseFrameReady = false;
             }
           }
 
@@ -622,7 +766,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
                 : "rgba(168, 85, 247, 0.3)"
               : null;
             drawMaskedClipLayer({
-              ctx,
+              ctx: workingCompositeCtx,
               sourceEl,
               clipMaskSource,
               clipProjectRect: {
@@ -636,49 +780,72 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
               clipOpacity: clip.opacity / 100,
               progressiveMinify: !playback.isPlaying,
               previewScaleMode: previewScalePolicy.mode,
+              smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
               maskTempCanvasRef,
               maskOverlayCanvasRef,
               overlayTint,
             });
           } else {
-            ctx.globalAlpha = clip.opacity / 100;
+            workingCompositeCtx.globalAlpha = clip.opacity / 100;
             drawScaledImage(
-              ctx,
+              workingCompositeCtx,
               sourceEl,
               { x: drawX, y: drawY, width: drawW, height: drawH },
-              { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
+              {
+                mode: previewScalePolicy.mode,
+                progressiveMinify: !playback.isPlaying,
+                smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
+              },
             );
-            ctx.globalAlpha = 1;
+            workingCompositeCtx.globalAlpha = 1;
           }
         }
+      }
+    }
 
-        if (
-          selectedVisualClipId
-          && clip.id === selectedVisualClipId
-          && clip.type !== "audio"
-          && !(toolMode === "transform" && transformTool.state.isActive)
-        ) {
-          const clipPosition = resolveClipPositionAtTimelineTime(clip, renderTime);
-          const boxPoint = vpContentToScreen(clipPosition);
-          const boxX = boxPoint.x;
-          const boxY = boxPoint.y;
-          const boxW = clip.sourceSize.width * scale * getClipScaleX(clip);
-          const boxH = clip.sourceSize.height * scale * getClipScaleY(clip);
+    if (baseFrameReady || !playback.isPlaying) {
+      committedCompositeCtx.setTransform(1, 0, 0, 1, 0, 0);
+      committedCompositeCtx.clearRect(0, 0, committedCompositeCanvas.width, committedCompositeCanvas.height);
+      committedCompositeCtx.drawImage(workingCompositeCanvas, 0, 0);
+      hasCommittedCompositeFrameRef.current = true;
+    }
 
-          ctx.save();
-          if (clip.rotation !== 0) {
-            const centerX = boxX + boxW / 2;
-            const centerY = boxY + boxH / 2;
-            ctx.translate(centerX, centerY);
-            ctx.rotate((clip.rotation * Math.PI) / 180);
-            ctx.translate(-centerX, -centerY);
-          }
-          ctx.strokeStyle = colors.selection;
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([6, 4]);
-          ctx.strokeRect(boxX, boxY, boxW, boxH);
-          ctx.restore();
+    const baseCanvasToPresent =
+      playback.isPlaying && !baseFrameReady && hasCommittedCompositeFrameRef.current
+        ? committedCompositeCanvas
+        : workingCompositeCanvas;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(baseCanvasToPresent, 0, 0);
+    ctx.setTransform(canvasSize.dpr, 0, 0, canvasSize.dpr, 0, 0);
+
+    if (
+      selectedVisualClipId
+      && !(toolMode === "transform" && transformTool.state.isActive)
+    ) {
+      const selectedVisualClip = clips.find((clip) => clip.id === selectedVisualClipId);
+      if (selectedVisualClip && selectedVisualClip.type !== "audio") {
+        const clipPosition = resolveClipPositionAtTimelineTime(selectedVisualClip, renderTime);
+        const boxPoint = vpContentToScreen(clipPosition);
+        const boxX = boxPoint.x;
+        const boxY = boxPoint.y;
+        const boxW = selectedVisualClip.sourceSize.width * scale * getClipScaleX(selectedVisualClip);
+        const boxH = selectedVisualClip.sourceSize.height * scale * getClipScaleY(selectedVisualClip);
+
+        ctx.save();
+        if (selectedVisualClip.rotation !== 0) {
+          const centerX = boxX + boxW / 2;
+          const centerY = boxY + boxH / 2;
+          ctx.translate(centerX, centerY);
+          ctx.rotate((selectedVisualClip.rotation * Math.PI) / 180);
+          ctx.translate(-centerX, -centerY);
         }
+        ctx.strokeStyle = colors.selection;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+        ctx.restore();
       }
     }
 
@@ -744,7 +911,11 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
           ctx,
           inpaintMaskCanvas,
           { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
-          { mode: previewScalePolicy.mode, progressiveMinify: !playback.isPlaying },
+          {
+            mode: previewScalePolicy.mode,
+            progressiveMinify: !playback.isPlaying,
+            smoothingQuality: adaptivePlaybackPreviewPolicy.smoothingQuality,
+          },
         );
         ctx.globalCompositeOperation = "source-atop";
         ctx.fillStyle = "rgba(255, 109, 74, 0.95)";
@@ -1137,7 +1308,7 @@ export function PreviewCanvas({ className }: PreviewCanvasProps) {
 
   usePreviewPlaybackRenderTick({
     playbackIsPlaying: playback.isPlaying,
-    playbackRenderFpsCap: previewPerf.playbackRenderFpsCap,
+    playbackRenderFpsCap: adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
     playbackPerfRef,
     lastPlaybackTickTimeRef,
     syncMediaRef,

@@ -23,6 +23,7 @@ interface DrawMaskedClipOptions {
   clipOpacity: number;
   progressiveMinify: boolean;
   previewScaleMode: CanvasScaleMode;
+  smoothingQuality?: ImageSmoothingQuality;
   maskTempCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   maskOverlayCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   overlayTint: string | null;
@@ -56,6 +57,7 @@ export function drawMaskedClipLayer({
   clipOpacity,
   progressiveMinify,
   previewScaleMode,
+  smoothingQuality = "high",
   maskTempCanvasRef,
   maskOverlayCanvasRef,
   overlayTint,
@@ -67,7 +69,7 @@ export function drawMaskedClipLayer({
   if (!tmpCtx) return;
 
   tmpCtx.imageSmoothingEnabled = true;
-  tmpCtx.imageSmoothingQuality = "high";
+  tmpCtx.imageSmoothingQuality = smoothingQuality;
   tmpCtx.clearRect(0, 0, maskWidth, maskHeight);
   tmpCtx.globalCompositeOperation = "source-over";
   tmpCtx.globalAlpha = 1;
@@ -75,14 +77,14 @@ export function drawMaskedClipLayer({
     tmpCtx,
     sourceEl,
     clipProjectRect,
-    { mode: "continuous", progressiveMinify },
+    { mode: "continuous", progressiveMinify, smoothingQuality },
   );
   tmpCtx.globalCompositeOperation = "destination-in";
   drawScaledImage(
     tmpCtx,
     clipMaskSource,
     { x: 0, y: 0, width: maskWidth, height: maskHeight },
-    { mode: "continuous" },
+    { mode: "continuous", smoothingQuality },
   );
   tmpCtx.globalCompositeOperation = "source-over";
 
@@ -91,7 +93,7 @@ export function drawMaskedClipLayer({
     ctx,
     tmpCanvas,
     previewRect,
-    { mode: previewScaleMode, progressiveMinify },
+    { mode: previewScaleMode, progressiveMinify, smoothingQuality },
   );
   ctx.globalAlpha = 1;
 
@@ -102,14 +104,14 @@ export function drawMaskedClipLayer({
   if (!overlayCtx) return;
 
   overlayCtx.imageSmoothingEnabled = true;
-  overlayCtx.imageSmoothingQuality = "high";
+  overlayCtx.imageSmoothingQuality = smoothingQuality;
   overlayCtx.clearRect(0, 0, maskWidth, maskHeight);
   overlayCtx.globalCompositeOperation = "source-over";
   drawScaledImage(
     overlayCtx,
     clipMaskSource,
     { x: 0, y: 0, width: maskWidth, height: maskHeight },
-    { mode: "continuous" },
+    { mode: "continuous", smoothingQuality },
   );
   overlayCtx.globalCompositeOperation = "source-in";
   overlayCtx.fillStyle = overlayTint;
@@ -119,6 +121,6 @@ export function drawMaskedClipLayer({
     ctx,
     overlayCanvas,
     previewRect,
-    { mode: previewScaleMode, progressiveMinify },
+    { mode: previewScaleMode, progressiveMinify, smoothingQuality },
   );
 }
