@@ -407,28 +407,44 @@ export async function saveVideoProjectToFirebase(
 
   const clips = project.project.clips;
   const masks = project.project.masks;
-  const totalSteps = clips.length + (masks.length > 0 ? 1 : 0) + 1; // clips + masks + metadata
-  let currentStep = 0;
 
   // 1. Upload media for each clip
   const clipMetas: FirestoreClipMeta[] = [];
   const clipIdsBySourceId = new Map<string, string[]>();
   const sourceBlobCache = new Map<string, Blob>();
   const uploadedStorageBySourceId = new Map<string, { storageRef: string; mediaType: string }>();
+  const uploadCandidateKeys = new Set<string>();
   for (const clip of clips) {
     if (!clip.sourceId) continue;
     const ids = clipIdsBySourceId.get(clip.sourceId) || [];
     ids.push(clip.id);
     clipIdsBySourceId.set(clip.sourceId, ids);
   }
+  for (const clip of clips) {
+    const mediaKey = clip.sourceId || clip.id;
+    if (!mediaKey) continue;
+    if (clip.sourceId && existingStorageBySourceId.has(clip.sourceId)) continue;
+    if (!clip.sourceId && existingClipMap.get(clip.id)?.storageRef) continue;
+    uploadCandidateKeys.add(mediaKey);
+  }
+
+  const totalMediaUploads = uploadCandidateKeys.size;
+  const totalClipMetadata = clips.length;
+  const totalSteps =
+    totalMediaUploads + totalClipMetadata + (masks.length > 0 ? 1 : 0) + 1;
+  let uploadedMediaCount = 0;
+  let clipMetadataCount = 0;
+  let currentStep = 0;
+
+  const emitSaveProgress = (detail: string) => {
+    onProgress?.({
+      current: currentStep,
+      total: totalSteps,
+      clipName: detail,
+    });
+  };
 
   for (const clip of clips) {
-    onProgress?.({
-      current: ++currentStep,
-      total: totalSteps,
-      clipName: clip.name,
-    });
-
     let storageRefPath = "";
     let mediaBlob: Blob | null = null;
     let reusedMediaType = "";
@@ -485,6 +501,8 @@ export async function saveVideoProjectToFirebase(
             mediaType: mediaBlob.type || "application/octet-stream",
           });
         }
+        uploadedMediaCount += 1;
+        currentStep += 1;
       } else {
         const existingClipMeta = existingClipMap.get(clip.id);
         if (
@@ -503,18 +521,17 @@ export async function saveVideoProjectToFirebase(
     const meta = clipToMeta(clip, storageRefPath);
     meta.mediaType = mediaBlob?.type || reusedMediaType;
     clipMetas.push(meta);
+    clipMetadataCount += 1;
+    currentStep += 1;
+    emitSaveProgress(
+      `미디어 업로드 ${uploadedMediaCount}/${totalMediaUploads} · 클립 메타데이터 ${clipMetadataCount}/${totalClipMetadata} · ${clip.name}`
+    );
   }
 
   // 2. Upload mask keyframes
   const maskMetas: FirestoreMaskMeta[] = [];
 
   if (masks.length > 0) {
-    onProgress?.({
-      current: ++currentStep,
-      total: totalSteps,
-      clipName: "Masks",
-    });
-
     for (const mask of masks) {
       let maskDataRef: string | undefined;
 
@@ -536,6 +553,11 @@ export async function saveVideoProjectToFirebase(
         maskDataRef,
       });
     }
+
+    currentStep += 1;
+    emitSaveProgress(
+      `미디어 업로드 ${uploadedMediaCount}/${totalMediaUploads} · 클립 메타데이터 ${clipMetadataCount}/${totalClipMetadata} · 마스크 저장`
+    );
   }
 
   // 3. Upload thumbnail
@@ -549,11 +571,10 @@ export async function saveVideoProjectToFirebase(
   }
 
   // 4. Save metadata to Firestore
-  onProgress?.({
-    current: ++currentStep,
-    total: totalSteps,
-    clipName: "Saving metadata",
-  });
+  currentStep += 1;
+  emitSaveProgress(
+    `미디어 업로드 ${uploadedMediaCount}/${totalMediaUploads} · 클립 메타데이터 ${clipMetadataCount}/${totalClipMetadata} · 프로젝트 메타데이터 저장`
+  );
 
   const firestoreProject: FirestoreVideoProject = {
     id: project.id,
