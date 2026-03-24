@@ -70,6 +70,7 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
     scheduleRender,
     renderRequestRef,
   } = params;
+  const safeProjectDuration = Number.isFinite(project.duration) && project.duration > 0 ? project.duration : 1;
 
   useVideoElements();
 
@@ -83,7 +84,7 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
     imageCache: imageCacheRef.current,
     maskImageCache: savedMaskImgCacheRef.current,
     projectSize: project.canvasSize,
-    projectDuration: project.duration || 1,
+    projectDuration: safeProjectDuration,
     isPlaying: playback.isPlaying,
     suspendPreRender: Boolean(isEditingMask || activeMaskId),
     currentTime: playback.currentTime,

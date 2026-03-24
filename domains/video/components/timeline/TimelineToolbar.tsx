@@ -125,7 +125,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [isCompact, setIsCompact] = useState(false);
   const [draftClipSpeed, setDraftClipSpeed] = useState<number | null>(null);
-  const projectDuration = Math.max(project.duration || 0, 0);
+  const projectDuration = Number.isFinite(project.duration) ? Math.max(project.duration, 0) : 0;
   const rangeStart = Math.max(0, Math.min(playback.loopStart, projectDuration));
   const hasRange = playback.loopEnd > rangeStart + 0.001;
   const rangeEnd = hasRange

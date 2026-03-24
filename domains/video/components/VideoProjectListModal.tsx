@@ -206,7 +206,7 @@ export default function VideoProjectListModal({
                     <div className="text-xs text-text-tertiary">
                       {project.project.canvasSize.width} ×{" "}
                       {project.project.canvasSize.height}
-                      {project.project.duration > 0 &&
+                      {Number.isFinite(project.project.duration) && project.project.duration > 0 &&
                         ` • ${formatDuration(project.project.duration)}`}
                       {project.project.tracks.length > 0 &&
                         ` • ${project.project.tracks.length} tracks`}
