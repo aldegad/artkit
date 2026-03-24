@@ -123,9 +123,6 @@ export function getNativeRecorderSupport(
   config: ResolvedVideoExportConfig,
   plan: DirectVideoExportPlan
 ): NativeRecorderSupport {
-  if (plan.kind !== "single") {
-    return { supported: false, reason: "분할 클립 시퀀스는 네이티브 인코더 대신 ffmpeg 직접 경로를 사용합니다." };
-  }
   if (typeof window === "undefined") {
     return { supported: false, reason: "브라우저 환경이 아니어서 네이티브 인코더를 사용할 수 없습니다." };
   }
@@ -148,7 +145,9 @@ export function getNativeRecorderSupport(
   return {
     supported: true,
     mimeType,
-    reason: "브라우저 네이티브 인코더로 직접 재인코딩할 수 있습니다.",
+    reason: plan.kind === "sequence"
+      ? "브라우저 네이티브 인코더로 분할 시퀀스를 직접 재인코딩할 수 있습니다."
+      : "브라우저 네이티브 인코더로 직접 재인코딩할 수 있습니다.",
   };
 }
 
@@ -161,11 +160,11 @@ export async function runNativeRecorderDirectExport(params: {
   sourceBlobCache: Map<string, Blob>;
 }): Promise<NativeRecordedVideoExport> {
   const { plan, sourceBlob, mimeType, config, setExportProgress, sourceBlobCache } = params;
-  if (plan.kind !== "single") {
-    throw new Error("네이티브 인코더는 단일 비디오 직접 경로에서만 사용할 수 있습니다.");
-  }
+  const singlePlan = plan.kind === "single" ? plan : null;
+  const sequencePlan = plan.kind === "sequence" ? plan : null;
   const objectUrl = URL.createObjectURL(sourceBlob);
   const overlayObjectUrls: string[] = [];
+
   setExportProgress({
     stage: "Preparing export",
     percent: 3,
@@ -176,6 +175,7 @@ export async function runNativeRecorderDirectExport(params: {
     includeAudio: plan.includeAudio,
     sourceSize: sourceBlob.size,
   });
+
   const video = await withTimeout(
     loadExportVideoElement(objectUrl),
     10000,
@@ -185,6 +185,7 @@ export async function runNativeRecorderDirectExport(params: {
     URL.revokeObjectURL(objectUrl);
     throw new Error("네이티브 export용 비디오를 열 수 없습니다.");
   }
+
   logNativeRecorderStep("load-video:done", {
     duration: video.duration,
     videoWidth: video.videoWidth,
@@ -192,8 +193,8 @@ export async function runNativeRecorderDirectExport(params: {
   });
 
   const outputCanvas = document.createElement("canvas");
-  outputCanvas.width = plan.cropWidth;
-  outputCanvas.height = plan.cropHeight;
+  outputCanvas.width = singlePlan ? singlePlan.cropWidth : sequencePlan!.outputWidth;
+  outputCanvas.height = singlePlan ? singlePlan.cropHeight : sequencePlan!.outputHeight;
   const ctx = outputCanvas.getContext("2d");
   if (!ctx) {
     URL.revokeObjectURL(objectUrl);
@@ -207,9 +208,9 @@ export async function runNativeRecorderDirectExport(params: {
   const chunks: Blob[] = [];
   let recorder: MediaRecorder | null = null;
   let progressTimer: number | null = null;
-
-  const expectedWallDuration = Math.max(0.1, plan.sourceDuration / Math.max(plan.clip.playbackSpeed, 0.01));
-  const sourceEnd = plan.sourceStart + plan.sourceDuration;
+  const expectedWallDuration = singlePlan
+    ? Math.max(0.1, singlePlan.sourceDuration / Math.max(singlePlan.clip.playbackSpeed, 0.01))
+    : Math.max(0.1, sequencePlan!.segments.reduce((sum, segment) => sum + Math.max(segment.timelineDuration, 0), 0));
   const startedAt = Date.now();
 
   const cleanup = async () => {
@@ -230,38 +231,39 @@ export async function runNativeRecorderDirectExport(params: {
     }
   };
 
-  const overlayImages: NativeOverlayImage[] = await Promise.all(
-    plan.overlays.map(async (overlay) => {
-      const overlayBlob = await resolveClipSourceBlob(overlay.clip, sourceBlobCache);
-      const overlayUrl = URL.createObjectURL(overlayBlob);
-      overlayObjectUrls.push(overlayUrl);
-      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const nextImage = new Image();
-        nextImage.decoding = "async";
-        nextImage.onload = () => resolve(nextImage);
-        nextImage.onerror = () => reject(new Error("네이티브 export 오버레이 이미지를 불러오지 못했습니다."));
-        nextImage.src = overlayUrl;
-      });
-      return {
-        image,
-      };
-    })
-  );
+  const overlayImages: NativeOverlayImage[] = singlePlan
+    ? await Promise.all(
+      singlePlan.overlays.map(async (overlay) => {
+        const overlayBlob = await resolveClipSourceBlob(overlay.clip, sourceBlobCache);
+        const overlayUrl = URL.createObjectURL(overlayBlob);
+        overlayObjectUrls.push(overlayUrl);
+        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const nextImage = new Image();
+          nextImage.decoding = "async";
+          nextImage.onload = () => resolve(nextImage);
+          nextImage.onerror = () => reject(new Error("네이티브 export 오버레이 이미지를 불러오지 못했습니다."));
+          nextImage.src = overlayUrl;
+        });
+        return { image };
+      })
+    )
+    : [];
 
-  const drawFrame = (currentTime: number) => {
-    ctx.clearRect(0, 0, plan.cropWidth, plan.cropHeight);
+  const drawSingleFrame = (currentTime: number) => {
+    if (!singlePlan) return;
+    ctx.clearRect(0, 0, singlePlan.cropWidth, singlePlan.cropHeight);
     ctx.drawImage(
       video,
-      plan.cropX,
-      plan.cropY,
-      plan.cropWidth,
-      plan.cropHeight,
+      singlePlan.cropX,
+      singlePlan.cropY,
+      singlePlan.cropWidth,
+      singlePlan.cropHeight,
       0,
       0,
-      plan.cropWidth,
-      plan.cropHeight
+      singlePlan.cropWidth,
+      singlePlan.cropHeight
     );
-    plan.overlays.forEach((overlay, index) => {
+    singlePlan.overlays.forEach((overlay, index) => {
       if (currentTime < overlay.startTime || currentTime > overlay.endTime) return;
       const overlayImage = overlayImages[index]?.image;
       if (!overlayImage) return;
@@ -278,6 +280,24 @@ export async function runNativeRecorderDirectExport(params: {
     });
   };
 
+  const drawSequenceFrame = (segmentIndex: number) => {
+    const segment = sequencePlan?.segments[segmentIndex];
+    if (!segment || !sequencePlan) return;
+    ctx.fillStyle = config.backgroundColor;
+    ctx.fillRect(0, 0, sequencePlan.outputWidth, sequencePlan.outputHeight);
+    ctx.drawImage(
+      video,
+      segment.cropX,
+      segment.cropY,
+      segment.cropWidth,
+      segment.cropHeight,
+      segment.padX,
+      segment.padY,
+      segment.cropWidth,
+      segment.cropHeight
+    );
+  };
+
   try {
     setExportProgress({
       stage: "Preparing export",
@@ -290,8 +310,8 @@ export async function runNativeRecorderDirectExport(params: {
     video.muted = true;
     video.defaultMuted = true;
     video.volume = 0;
-    video.defaultPlaybackRate = plan.clip.playbackSpeed;
-    video.playbackRate = plan.clip.playbackSpeed;
+    video.defaultPlaybackRate = singlePlan ? singlePlan.clip.playbackSpeed : 1;
+    video.playbackRate = singlePlan ? singlePlan.clip.playbackSpeed : 1;
     setPitchPreservation(video);
 
     setExportProgress({
@@ -300,23 +320,33 @@ export async function runNativeRecorderDirectExport(params: {
       detail: "네이티브 인코더 준비 중 · 시작 지점 이동",
     });
     logNativeRecorderStep("seek:start", {
-      sourceStart: plan.sourceStart,
-      sourceDuration: plan.sourceDuration,
-      playbackSpeed: plan.clip.playbackSpeed,
+      sourceStart: singlePlan ? singlePlan.sourceStart : sequencePlan?.segments[0]?.sourceStart ?? 0,
+      sourceDuration: singlePlan ? singlePlan.sourceDuration : sequencePlan?.segments[0]?.sourceDuration ?? 0,
+      playbackSpeed: singlePlan ? singlePlan.clip.playbackSpeed : sequencePlan?.segments[0]?.clip.playbackSpeed ?? 1,
     });
+
     const seeked = await withTimeout(
-      seekExportVideoFrame(video, plan.sourceStart, 5000),
+      seekExportVideoFrame(
+        video,
+        singlePlan ? singlePlan.sourceStart : sequencePlan?.segments[0]?.sourceStart ?? 0,
+        5000
+      ),
       7000,
       "네이티브 export 시작 지점 seek가 지연되고 있습니다."
     );
     if (!seeked) {
       throw new Error("네이티브 export 시작 지점으로 이동할 수 없습니다.");
     }
+
     logNativeRecorderStep("seek:done", {
       currentTime: video.currentTime,
     });
 
-    drawFrame(0);
+    if (singlePlan) {
+      drawSingleFrame(0);
+    } else {
+      drawSequenceFrame(0);
+    }
 
     combinedStream = new MediaStream();
     for (const track of canvasStream.getVideoTracks()) {
@@ -346,25 +376,46 @@ export async function runNativeRecorderDirectExport(params: {
       }
     };
 
+    let stopped = false;
+    let completedTimelineDuration = 0;
+    let activeSegmentIndex = 0;
+    let settleRecording:
+      | ((value: Blob | PromiseLike<Blob>) => void)
+      | null = null;
+    let rejectRecording:
+      | ((reason?: unknown) => void)
+      | null = null;
+    let recordingSettled = false;
+
     const recordingPromise = new Promise<Blob>((resolve, reject) => {
-      if (!recorder) {
-        reject(new Error("네이티브 recorder를 만들 수 없습니다."));
-        return;
-      }
-      recorder.onerror = () => {
-        reject(new Error("네이티브 recorder가 실패했습니다."));
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        if (blob.size <= 0) {
-          reject(new Error("네이티브 recorder 결과가 비어 있습니다."));
-          return;
-        }
-        resolve(blob);
-      };
+      settleRecording = resolve;
+      rejectRecording = reject;
     });
 
-    let stopped = false;
+    const resolveRecording = () => {
+      if (recordingSettled) return;
+      recordingSettled = true;
+      const blob = new Blob(chunks, { type: mimeType });
+      if (blob.size <= 0) {
+        rejectRecording?.(new Error("네이티브 recorder 결과가 비어 있습니다."));
+        return;
+      }
+      settleRecording?.(blob);
+    };
+
+    const failRecording = (error: unknown) => {
+      if (recordingSettled) return;
+      recordingSettled = true;
+      rejectRecording?.(error);
+    };
+
+    recorder.onerror = () => {
+      failRecording(new Error("네이티브 recorder가 실패했습니다."));
+    };
+    recorder.onstop = () => {
+      resolveRecording();
+    };
+
     const stopRecording = () => {
       if (stopped) return;
       stopped = true;
@@ -380,9 +431,25 @@ export async function runNativeRecorderDirectExport(params: {
 
     const updateProgress = () => {
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-      const sourceProgress = Math.max(0, Math.min(1, (video.currentTime - plan.sourceStart) / Math.max(plan.sourceDuration, 0.001)));
-      const overallPercent = Math.min(98, 70 + sourceProgress * 28);
-      const phasePercent = Math.round(sourceProgress * 100);
+      const progressRatio = singlePlan
+        ? Math.max(0, Math.min(1, (video.currentTime - singlePlan.sourceStart) / Math.max(singlePlan.sourceDuration, 0.001)))
+        : Math.max(
+          0,
+          Math.min(
+            1,
+            (
+              completedTimelineDuration +
+              Math.max(
+                0,
+                (
+                  video.currentTime - (sequencePlan?.segments[activeSegmentIndex]?.sourceStart ?? 0)
+                ) / Math.max(sequencePlan?.segments[activeSegmentIndex]?.clip.playbackSpeed ?? 1, 0.001)
+              )
+            ) / Math.max(expectedWallDuration, 0.001)
+          )
+        );
+      const overallPercent = Math.min(98, 70 + progressRatio * 28);
+      const phasePercent = Math.round(progressRatio * 100);
       setExportProgress({
         stage: `Encoding ${config.format.toUpperCase()}`,
         percent: overallPercent,
@@ -399,8 +466,8 @@ export async function runNativeRecorderDirectExport(params: {
       includeAudio: false,
       expectedWallDuration,
       outputSize: {
-        width: plan.cropWidth,
-        height: plan.cropHeight,
+        width: singlePlan ? singlePlan.cropWidth : sequencePlan!.outputWidth,
+        height: singlePlan ? singlePlan.cropHeight : sequencePlan!.outputHeight,
       },
     });
     recorder.start(1000);
@@ -408,43 +475,114 @@ export async function runNativeRecorderDirectExport(params: {
       recorderState: recorder.state,
     });
 
-    const scheduleFrameDraw = () => {
-      video.requestVideoFrameCallback(() => {
-        if (stopped) return;
-        const timelineTime = Math.max(0, (video.currentTime - plan.sourceStart) / Math.max(plan.clip.playbackSpeed, 0.001));
-        drawFrame(timelineTime);
-        updateProgress();
-        if (video.currentTime >= sourceEnd - (1 / Math.max(config.frameRate, 1))) {
-          stopRecording();
-          return;
+    const playSequenceSegments = async () => {
+      if (!sequencePlan) return;
+      for (let segmentIndex = 0; segmentIndex < sequencePlan.segments.length; segmentIndex += 1) {
+        const segment = sequencePlan.segments[segmentIndex];
+        activeSegmentIndex = segmentIndex;
+        video.defaultPlaybackRate = segment.clip.playbackSpeed;
+        video.playbackRate = segment.clip.playbackSpeed;
+
+        const segmentSeeked = await withTimeout(
+          seekExportVideoFrame(video, segment.sourceStart, 5000),
+          7000,
+          "네이티브 export 세그먼트 seek가 지연되고 있습니다."
+        );
+        if (!segmentSeeked) {
+          throw new Error(`네이티브 export 세그먼트 ${segmentIndex + 1} 시작 지점으로 이동할 수 없습니다.`);
         }
-        scheduleFrameDraw();
-      });
+
+        drawSequenceFrame(segmentIndex);
+        await withTimeout(
+          video.play(),
+          5000,
+          "네이티브 export 세그먼트 재생 시작이 지연되고 있습니다."
+        );
+
+        await new Promise<void>((resolve, reject) => {
+          const segmentEnd = segment.sourceStart + segment.sourceDuration;
+          const timeoutId = window.setTimeout(() => {
+            reject(new Error(`네이티브 export 세그먼트 ${segmentIndex + 1}가 지연되고 있습니다.`));
+          }, Math.ceil(segment.timelineDuration * 1000) + 3000);
+
+          const step = () => {
+            video.requestVideoFrameCallback(() => {
+              if (stopped) {
+                window.clearTimeout(timeoutId);
+                resolve();
+                return;
+              }
+              drawSequenceFrame(segmentIndex);
+              updateProgress();
+              if (video.currentTime >= segmentEnd - (1 / Math.max(config.frameRate, 1))) {
+                video.pause();
+                completedTimelineDuration += segment.timelineDuration;
+                window.clearTimeout(timeoutId);
+                resolve();
+                return;
+              }
+              step();
+            });
+          };
+
+          step();
+        });
+      }
+      stopRecording();
     };
 
-    scheduleFrameDraw();
     setExportProgress({
       stage: "Preparing export",
       percent: 3,
       detail: "네이티브 인코더 준비 중 · 재생 시작",
     });
     logNativeRecorderStep("play:start");
-    await withTimeout(
-      video.play(),
-      5000,
-      "네이티브 export 재생 시작이 지연되고 있습니다."
-    );
-    logNativeRecorderStep("play:done", {
-      currentTime: video.currentTime,
-      playbackRate: video.playbackRate,
-      paused: video.paused,
-    });
-    window.setTimeout(() => {
-      if (stopped) return;
-      if (video.currentTime >= sourceEnd - 0.05) {
+
+    if (singlePlan) {
+      const sourceEnd = singlePlan.sourceStart + singlePlan.sourceDuration;
+      const scheduleFrameDraw = () => {
+        video.requestVideoFrameCallback(() => {
+          if (stopped) return;
+          const timelineTime = Math.max(0, (video.currentTime - singlePlan.sourceStart) / Math.max(singlePlan.clip.playbackSpeed, 0.001));
+          drawSingleFrame(timelineTime);
+          updateProgress();
+          if (video.currentTime >= sourceEnd - (1 / Math.max(config.frameRate, 1))) {
+            stopRecording();
+            return;
+          }
+          scheduleFrameDraw();
+        });
+      };
+
+      scheduleFrameDraw();
+      await withTimeout(
+        video.play(),
+        5000,
+        "네이티브 export 재생 시작이 지연되고 있습니다."
+      );
+      logNativeRecorderStep("play:done", {
+        currentTime: video.currentTime,
+        playbackRate: video.playbackRate,
+        paused: video.paused,
+      });
+      window.setTimeout(() => {
+        if (stopped) return;
+        if (video.currentTime >= sourceEnd - 0.05) {
+          stopRecording();
+        }
+      }, Math.ceil(expectedWallDuration * 1000) + 1500);
+    } else {
+      logNativeRecorderStep("play:done", {
+        currentTime: video.currentTime,
+        playbackRate: video.playbackRate,
+        paused: video.paused,
+        segments: sequencePlan?.segments.length ?? 0,
+      });
+      void playSequenceSegments().catch((error) => {
+        failRecording(error);
         stopRecording();
-      }
-    }, Math.ceil(expectedWallDuration * 1000) + 1500);
+      });
+    }
 
     const recordedBlob = await recordingPromise;
     console.info("[VideoExport] native recorder finished", {
@@ -492,10 +630,6 @@ export async function finalizeNativeRecorderExport(params: {
     sourceBlobCache,
     setExportProgress,
   } = params;
-  if (plan.kind !== "single") {
-    throw new Error("네이티브 인코더 후처리는 단일 비디오 직접 경로에서만 사용할 수 있습니다.");
-  }
-
   if (!config.includeAudio || !plan.includeAudio) {
     const outputBytes = toUint8Array(await nativeVideo.videoBlob.arrayBuffer());
     return {
