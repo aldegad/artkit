@@ -91,10 +91,10 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
   const [marqueeSubTool, setMarqueeSubTool] = useState<MarqueeSubTool>("freeRect");
   const [selectionCombineMode, setSelectionCombineMode] = useState<SelectionCombineMode>("new");
   const [lassoPath, setLassoPath] = useState<Point[] | null>(null);
-  const setSelectionMask = useCallback((newMask: SetStateAction<SelectionMask | null>) => {
-    const value = typeof newMask === "function"
-      ? newMask(selectionMask)
-      : newMask;
+  const setSelectionMask = useCallback((newSelectionMask: SetStateAction<SelectionMask | null>) => {
+    const value = typeof newSelectionMask === "function"
+      ? newSelectionMask(selectionMask)
+      : newSelectionMask;
     setContextSelectionMask(value);
   }, [selectionMask, setContextSelectionMask]);
 
@@ -107,7 +107,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       setLassoPath(null);
       setSelectionMask(null);
     }
-  }, [selection, setContextSelection]);
+  }, [selection, setContextSelection, setSelectionMask]);
   const [isMovingSelection, setIsMovingSelection] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isAltPressed, setIsAltPressed] = useState(false);

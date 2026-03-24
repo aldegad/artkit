@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { createElement, useCallback, useMemo, useRef, useState } from "react";
 import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
 import { useSaveProjectDialog } from "@/shared/hooks";
 import { useLanguage, useAuth } from "@/shared/contexts";
@@ -17,6 +17,7 @@ import { useBrushTool } from "./useBrushTool";
 import { useCanvasInput } from "./useCanvasInput";
 import { useSelectionTool } from "./tools/useSelectionTool";
 import { useCropTool } from "./tools/useCropTool";
+import { useTextTool, TEXT_FONT_OPTIONS } from "./useTextTool";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { useMouseHandlers } from "./useMouseHandlers";
 import { useCanvasRendering } from "./useCanvasRendering";
@@ -55,6 +56,8 @@ import { useImageUpscaleActions } from "./useImageUpscaleActions";
 import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
 import { getLayerContentBounds } from "../utils/layerContentBounds";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
+import { TextEditorCanvasOverlay } from "../components/TextEditorCanvasOverlay";
+import { getTextLayerHitType, isPointInsideTextLayer } from "../utils/textLayer";
 import {
   computeMagicWandSelectionFromAlphaMask,
   toMagicWandBoundsMask,
@@ -385,19 +388,33 @@ export function useImageEditorController() {
   });
 
   const {
-    showTransformDiscardConfirm,
-    handleToolModeChange,
-    handleTransformDiscardConfirm,
-    handleTransformApplyAndSwitch,
-    handleTransformDiscardCancel,
-    previousToolModeRef,
-  } = useToolModeGuard({
+    textDraft,
+    textStyle,
+    setTextStyle,
+    startTextAt,
+    startEditingTextLayer,
+    setTextDraftPosition,
+    setTextDraftText,
+    setTextDraftSize,
+    applyTextDraft,
+    cancelTextDraft,
+    clearTextLayerMetadata,
+    hasTextDraft,
+  } = useTextTool({
+    layers,
+    setLayers,
+    setActiveLayerId,
+    layerCanvasesRef,
+    editCanvasRef,
+    saveToHistory,
     toolMode,
-    setToolMode,
-    isTransformActive: transformState.isActive,
-    cancelTransform,
-    applyTransform,
   });
+
+  const rasterizeActiveTextLayer = useCallback(() => {
+    const activeLayer = layers.find((layer) => layer.id === activeLayerId);
+    if (!activeLayerId || !activeLayer?.textData) return;
+    clearTextLayerMetadata([activeLayerId]);
+  }, [activeLayerId, clearTextLayerMetadata, layers]);
 
   const { fillWithColor, getActiveToolMode, activeLayerPosition } = useEditorToolRuntime({
     isSpacePressed,
@@ -409,6 +426,32 @@ export function useImageEditorController() {
     selection,
     selectionFeather,
     saveToHistory,
+    rasterizeActiveTextLayer,
+  });
+
+  const handleApplyTransform = useCallback(() => {
+    const transformedLayerIds = (
+      transformState.layerIds.length > 0
+        ? transformState.layerIds
+        : (transformState.layerId ? [transformState.layerId] : [])
+    );
+    applyTransform();
+    clearTextLayerMetadata(transformedLayerIds);
+  }, [applyTransform, clearTextLayerMetadata, transformState.layerId, transformState.layerIds]);
+
+  const {
+    showTransformDiscardConfirm,
+    handleToolModeChange,
+    handleTransformDiscardConfirm,
+    handleTransformApplyAndSwitch,
+    handleTransformDiscardCancel,
+    previousToolModeRef,
+  } = useToolModeGuard({
+    toolMode,
+    setToolMode,
+    isTransformActive: transformState.isActive,
+    cancelTransform,
+    applyTransform: handleApplyTransform,
   });
 
   const applyMagicWandSelection = useMagicWandSelectionAction({
@@ -472,6 +515,7 @@ export function useImageEditorController() {
     updateCropExpand,
     saveToHistory,
     fillWithColor,
+    rasterizeActiveTextLayer,
     applyMagicWandSelection,
     isTransformActive,
     handleTransformMouseDown,
@@ -489,12 +533,101 @@ export function useImageEditorController() {
     selectedLayerIds,
   });
 
+  const handleTextCanvasPointerDown = useCallback((e: Parameters<typeof handleMouseDown>[0]) => {
+    if ((toolMode !== "text" && toolMode !== "move") || e.button !== 0) {
+      handleMouseDown(e);
+      return;
+    }
+
+    const mousePos = getMousePos(e);
+    const imagePos = screenToImage(mousePos.x, mousePos.y);
+
+    if (hasTextDraft) {
+      applyTextDraft();
+    }
+
+    const hitTextLayer = [...layers]
+      .sort((a, b) => b.zIndex - a.zIndex)
+      .find((layer) => !layer.locked && isPointInsideTextLayer(layer, imagePos));
+
+    if (hitTextLayer) {
+      const hitType = getTextLayerHitType(
+        hitTextLayer,
+        imagePos,
+        layerCanvasesRef.current.get(hitTextLayer.id) || null,
+      );
+
+      if (hitType === "content") {
+        if (toolMode !== "text") {
+          handleToolModeChange("text");
+        }
+        startEditingTextLayer(hitTextLayer.id);
+        return;
+      }
+
+      if (toolMode === "move") {
+        handleMouseDown(e);
+        return;
+      }
+
+      if (toolMode !== "text") {
+        handleToolModeChange("text");
+      }
+      startEditingTextLayer(hitTextLayer.id);
+      return;
+    }
+
+    if (toolMode !== "text") {
+      handleMouseDown(e);
+      return;
+    }
+
+    startTextAt(imagePos);
+  }, [
+    applyTextDraft,
+    getMousePos,
+    handleToolModeChange,
+    handleMouseDown,
+    hasTextDraft,
+    layers,
+    screenToImage,
+    startEditingTextLayer,
+    startTextAt,
+    toolMode,
+  ]);
+
+  const handleCanvasDoubleClick = useCallback((e: Parameters<typeof getMousePos>[0]) => {
+    const mousePos = getMousePos(e);
+    const imagePos = screenToImage(mousePos.x, mousePos.y);
+    const hitTextLayer = [...layers]
+      .sort((a, b) => b.zIndex - a.zIndex)
+      .find((layer) => !layer.locked && isPointInsideTextLayer(layer, imagePos));
+
+    if (!hitTextLayer) return;
+
+    if (hasTextDraft) {
+      applyTextDraft();
+    }
+
+    handleToolModeChange("text");
+    startEditingTextLayer(hitTextLayer.id);
+  }, [
+    applyTextDraft,
+    getMousePos,
+    handleToolModeChange,
+    hasTextDraft,
+    layers,
+    screenToImage,
+    startEditingTextLayer,
+  ]);
+
   const { guideDragPreview, handleGuideDragStateChange } = useGuideDragPreview();
 
   const { requestRender } = useCanvasRendering({
     layerCanvasesRef,
     floatingLayerRef,
     layers,
+    hiddenLayerIds: textDraft?.layerId ? [textDraft.layerId] : [],
     cropArea,
     canvasExpandMode,
     mousePos,
@@ -528,6 +661,16 @@ export function useImageEditorController() {
     guideDragPreview,
     getDisplayDimensions,
   });
+
+  const handleApplyTextDraft = useCallback(() => {
+    applyTextDraft();
+    requestRender();
+  }, [applyTextDraft, requestRender]);
+
+  const handleCancelTextDraft = useCallback(() => {
+    cancelTextDraft();
+    requestRender();
+  }, [cancelTextDraft, requestRender]);
 
   const clearSelectionPixels = useClearSelectionPixelsAction({
     selection,
@@ -860,7 +1003,7 @@ export function useImageEditorController() {
     layersCount: layers.length,
     isTransformActive: transformState.isActive,
     startTransform,
-    applyTransform,
+    applyTransform: handleApplyTransform,
     cancelTransform,
     previousToolModeRef,
   });
@@ -924,7 +1067,8 @@ export function useImageEditorController() {
     layers,
     handleDrop,
     handleDragOver,
-    handleMouseDown,
+    handleMouseDown: handleTextCanvasPointerDown,
+    handleDoubleClick: handleCanvasDoubleClick,
     handleMouseMove,
     handleMouseUp,
     handleMouseLeave,
@@ -1219,6 +1363,12 @@ export function useImageEditorController() {
       setMagicWandTolerance,
       magicWandAllowAlpha,
       setMagicWandAllowAlpha,
+      textStyle,
+      setTextStyle,
+      textFontOptions: TEXT_FONT_OPTIONS,
+      hasTextDraft,
+      onApplyTextDraft: handleApplyTextDraft,
+      onCancelTextDraft: handleCancelTextDraft,
       onClearSelection: clearSelection,
       onClearSelectionPixels: clearSelectionPixels,
       onInvertSelection: invertSelection,
@@ -1249,7 +1399,7 @@ export function useImageEditorController() {
       transformBounds: transformState.bounds,
       setTransformSizeByWidth,
       setTransformSizeByHeight,
-      onApplyTransform: applyTransform,
+      onApplyTransform: handleApplyTransform,
       cancelTransform,
       setToolMode,
     },
@@ -1361,6 +1511,19 @@ export function useImageEditorController() {
     handleKeepCloud,
     handleKeepLocal,
     handleCancelSync,
+    textOverlay: createElement(TextEditorCanvasOverlay, {
+      canvasRef,
+      displaySize,
+      zoom,
+      pan,
+      draft: textDraft,
+      styleSettings: textStyle,
+      onChangePosition: setTextDraftPosition,
+      onChangeText: setTextDraftText,
+      onChangeSize: setTextDraftSize,
+      onApply: handleApplyTextDraft,
+      onCancel: handleCancelTextDraft,
+    }),
     showNewCanvasChoiceModal,
     setShowNewCanvasChoiceModal,
     showBlankCanvasSizeModal,

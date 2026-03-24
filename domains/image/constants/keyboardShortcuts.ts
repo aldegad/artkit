@@ -28,6 +28,7 @@ export const TOOL_SHORTCUTS: ToolShortcutMap<EditorToolMode> = {
   KeyC: "crop",
   KeyH: "hand",
   KeyZ: "zoom",
+  KeyT: "text",
   KeyB: "brush",
   KeyE: "eraser",
   KeyW: "magicWand",
@@ -36,7 +37,6 @@ export const TOOL_SHORTCUTS: ToolShortcutMap<EditorToolMode> = {
   KeyS: "stamp",
   KeyM: "marquee",
   KeyV: "move",
-  KeyT: "transform",
 };
 
 /**

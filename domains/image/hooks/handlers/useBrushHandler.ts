@@ -13,7 +13,15 @@ export interface UseBrushHandlerReturn {
 }
 
 export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerReturn {
-  const { activeLayerPosition, drawOnEditCanvas, resetLastDrawPoint, stampSource, setStampSource, saveToHistory } =
+  const {
+    activeLayerPosition,
+    drawOnEditCanvas,
+    resetLastDrawPoint,
+    stampSource,
+    setStampSource,
+    saveToHistory,
+    rasterizeActiveTextLayer,
+  } =
     options;
   const resolvePressure = useCallback((e: MouseEventContext["e"]) => {
     if ("pointerType" in e) {
@@ -44,6 +52,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
 
         if (inBounds) {
           saveToHistory();
+          rasterizeActiveTextLayer?.();
           resetLastDrawPoint();
           const pressure = resolvePressure(e);
           // Convert from image coordinates to layer-local coordinates
@@ -61,6 +70,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
       // Brush/Eraser tool
       if (activeMode === "brush" || activeMode === "eraser") {
         saveToHistory();
+        rasterizeActiveTextLayer?.();
         resetLastDrawPoint();
         const pressure = resolvePressure(e);
         // Convert from image coordinates to layer-local coordinates
@@ -82,6 +92,7 @@ export function useBrushHandler(options: BrushHandlerOptions): UseBrushHandlerRe
       stampSource,
       setStampSource,
       saveToHistory,
+      rasterizeActiveTextLayer,
       resolvePressure,
     ]
   );

@@ -12,6 +12,7 @@ export default function CanvasPanelContent() {
     handleDrop,
     handleDragOver,
     handleMouseDown,
+    handleDoubleClick,
     handleMouseMove,
     handleMouseUp,
     handleMouseLeave,
@@ -43,6 +44,7 @@ export default function CanvasPanelContent() {
         <canvas
           ref={canvasRefCallback}
           onPointerDown={handleMouseDown}
+          onDoubleClick={handleDoubleClick}
           onPointerMove={handleMouseMove}
           onPointerUp={handleMouseUp}
           onPointerLeave={handleMouseLeave}

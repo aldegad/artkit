@@ -80,6 +80,7 @@ interface UseMouseHandlersOptions {
 
   // Fill function
   fillWithColor: () => void;
+  rasterizeActiveTextLayer?: () => void;
   applyMagicWandSelection: (x: number, y: number) => void;
 
   // Transform functions (from useTransformTool)
@@ -179,6 +180,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     updateCropExpand,
     saveToHistory,
     fillWithColor,
+    rasterizeActiveTextLayer,
     applyMagicWandSelection,
     isTransformActive,
     handleTransformMouseDown,
@@ -242,6 +244,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     stampSource,
     setStampSource,
     fillWithColor,
+    rasterizeActiveTextLayer,
     saveToHistory,
   });
 

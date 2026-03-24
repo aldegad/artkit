@@ -19,6 +19,7 @@ export interface EditorCanvasContextValue {
   handleDrop: (e: React.DragEvent) => void;
   handleDragOver: (e: React.DragEvent) => void;
   handleMouseDown: (e: React.PointerEvent) => void;
+  handleDoubleClick: (e: React.MouseEvent) => void;
   handleMouseMove: (e: React.PointerEvent) => void;
   handleMouseUp: (e: React.PointerEvent) => void;
   handleMouseLeave: (e: React.PointerEvent) => void;

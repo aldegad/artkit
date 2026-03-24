@@ -103,6 +103,7 @@ export interface BrushHandlerOptions extends BaseHandlerOptions {
   setStampSource: (source: { x: number; y: number } | null) => void;
   fillWithColor: () => void;
   saveToHistory: () => void;
+  rasterizeActiveTextLayer?: () => void;
 }
 
 // ============================================

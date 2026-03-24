@@ -43,6 +43,7 @@ interface UseCanvasRenderingOptions {
 
   // State from other hooks (not in context)
   layers: UnifiedLayer[];
+  hiddenLayerIds?: string[];
   cropArea: CropArea | null;
   canvasExpandMode: boolean;
   mousePos: Point | null;
@@ -114,6 +115,7 @@ export function useCanvasRendering(
     layerCanvasesRef,
     floatingLayerRef,
     layers,
+    hiddenLayerIds = [],
     cropArea,
     canvasExpandMode,
     mousePos,
@@ -301,6 +303,7 @@ export function useCanvasRendering(
     // (keep smoothing only when downscaling).
     const previewScalePolicy = resolvePixelPreviewScalePolicy(zoom);
     const layerById = new Map(layers.map((layer) => [layer.id, layer]));
+    const hiddenLayerIdSet = new Set(hiddenLayerIds);
     const activeTransformLayerIds = isTransformActive
       ? (
           transformLayerIds && transformLayerIds.length > 0
@@ -316,6 +319,7 @@ export function useCanvasRendering(
 
     for (const layer of sortedLayers) {
       if (!layer.visible) continue;
+      if (hiddenLayerIdSet.has(layer.id)) continue;
       // Skip full-layer transform targets - they are rendered in transform overlay.
       if (isTransformActive && !isSelectionBasedTransform && activeTransformLayerIdSet.has(layer.id)) continue;
 

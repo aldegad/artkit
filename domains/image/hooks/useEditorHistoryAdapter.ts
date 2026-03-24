@@ -55,6 +55,7 @@ function cloneLayerForHistory(layer: UnifiedLayer): UnifiedLayer {
   return {
     ...rest,
     position: rest.position ? { ...rest.position } : undefined,
+    textData: rest.textData ? { ...rest.textData } : undefined,
   };
 }
 
