@@ -13,6 +13,27 @@ export type LayerBlendMode =
   | "color"
   | "luminosity";
 
+export type TextLayerAlign = "left" | "center" | "right";
+export type TextLayerVerticalAlign = "top" | "middle" | "bottom";
+
+export interface TextLayerData {
+  text: string;
+  width: number;
+  height: number;
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: "normal" | "bold";
+  fontStyle: "normal" | "italic";
+  textAlign: TextLayerAlign;
+  verticalAlign: TextLayerVerticalAlign;
+  color: string;
+  lineHeight: number;
+  letterSpacing: number;
+  backgroundColor?: string | null;
+  strokeColor?: string;
+  strokeWidth?: number;
+}
+
 /**
  * UnifiedLayer: All layers are pixel-based (paint layers)
  * Images imported are drawn onto the layer canvas
@@ -32,6 +53,7 @@ export interface UnifiedLayer {
   // Canvas data (base64 encoded)
   paintData?: string;
   alphaMaskData?: string;
+  textData?: TextLayerData;
 
   // Optional transform (for layer positioning within canvas)
   position?: Point; // x, y offset from canvas origin

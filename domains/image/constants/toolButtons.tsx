@@ -14,6 +14,7 @@ import {
   CropIcon,
   HandIcon,
   ZoomSearchIcon,
+  TextIcon,
 } from "@/shared/components/icons";
 import { EditorToolMode, MarqueeSubTool } from "../types";
 
@@ -84,7 +85,7 @@ export function createEditorToolButtons(
       name: "Transform",
       description: "Scale and move layer content",
       keys: ["⌘⌥T / Ctrl+Alt+T: Enter transform", "⇧: Keep aspect ratio", "⌥: From center", "Enter: Apply", "Esc: Cancel"],
-      shortcut: "T",
+      shortcut: "Ctrl+Alt+T",
       icon: <TransformIcon className="w-4 h-4" />,
     },
     {
@@ -102,6 +103,14 @@ export function createEditorToolButtons(
       keys: ["Click: Zoom in", "⌥+Click: Zoom out", "Wheel: Zoom"],
       shortcut: "Z",
       icon: <ZoomSearchIcon className="w-4 h-4" />,
+    },
+    {
+      mode: "text",
+      name: "텍스트",
+      description: "텍스트 입력 및 스타일 편집",
+      keys: ["Click: 텍스트 박스 생성", "Ctrl+Enter: 적용", "Esc: 취소"],
+      shortcut: "T",
+      icon: <TextIcon className="w-4 h-4" />,
     },
     {
       mode: "crop",

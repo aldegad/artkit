@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool, CropSizePivot, SelectionCombineMode } from "../../types";
+import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSubTool, CropSizePivot, SelectionCombineMode, TextAlign, TextStyleSettings, TextVerticalAlign } from "../../types";
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
 import { Select, Scrollbar, NumberScrubber, Popover } from "../../../../shared/components";
-import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon, CloseIcon } from "@/shared/components/icons";
+import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon, CloseIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon } from "@/shared/components/icons";
 import { DeleteIcon } from "@/shared/components/icons";
 import { INTERACTION } from "../../constants";
 
@@ -36,6 +36,12 @@ export interface EditorToolOptionsProps {
   setMagicWandTolerance: React.Dispatch<React.SetStateAction<number>>;
   magicWandAllowAlpha: boolean;
   setMagicWandAllowAlpha: React.Dispatch<React.SetStateAction<boolean>>;
+  textStyle: TextStyleSettings;
+  setTextStyle: React.Dispatch<React.SetStateAction<TextStyleSettings>>;
+  textFontOptions: readonly string[];
+  hasTextDraft: boolean;
+  onApplyTextDraft: () => void;
+  onCancelTextDraft: () => void;
   onClearSelection: () => void;
   onClearSelectionPixels: () => void;
   onInvertSelection: () => void;
@@ -118,6 +124,12 @@ export function EditorToolOptions({
   setMagicWandTolerance,
   magicWandAllowAlpha,
   setMagicWandAllowAlpha,
+  textStyle,
+  setTextStyle,
+  textFontOptions,
+  hasTextDraft,
+  onApplyTextDraft,
+  onCancelTextDraft,
   onClearSelection,
   onClearSelectionPixels,
   onInvertSelection,
@@ -421,6 +433,162 @@ export function EditorToolOptions({
             {t.allowAlpha}
           </label>
           <span className="text-xs text-text-tertiary">Click to auto-select similar connected color</span>
+        </div>
+      )}
+
+      {toolMode === "text" && (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">폰트:</span>
+            <Select
+              value={textStyle.fontFamily}
+              onChange={(value) => setTextStyle((prev) => ({ ...prev, fontFamily: value }))}
+              options={textFontOptions.map((font) => ({ value: font, label: font }))}
+              size="sm"
+            />
+          </div>
+          <NumberScrubber
+            value={textStyle.fontSize}
+            onChange={(v) => setTextStyle((prev) => ({ ...prev, fontSize: Math.max(8, Math.round(v)) }))}
+            min={8}
+            max={240}
+            step={1}
+            label="크기:"
+            size="sm"
+            editable
+          />
+          <NumberScrubber
+            value={textStyle.lineHeight * 100}
+            onChange={(v) => setTextStyle((prev) => ({ ...prev, lineHeight: Math.max(80, Math.round(v)) / 100 }))}
+            min={80}
+            max={300}
+            step={5}
+            label="줄간:"
+            format={(v) => `${Math.round(v)}%`}
+            size="sm"
+          />
+          <NumberScrubber
+            value={textStyle.letterSpacing}
+            onChange={(v) => setTextStyle((prev) => ({ ...prev, letterSpacing: Math.max(-20, Math.min(100, Math.round(v))) }))}
+            min={-20}
+            max={100}
+            step={1}
+            label="자간:"
+            size="sm"
+            editable
+          />
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setTextStyle((prev) => ({ ...prev, fontWeight: prev.fontWeight === "bold" ? "normal" : "bold" }))}
+              className={`px-2 py-1 text-xs rounded border ${textStyle.fontWeight === "bold" ? "bg-accent-primary text-white border-accent-primary" : "bg-surface-primary border-border-default hover:bg-interactive-hover"}`}
+              title="굵게"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => setTextStyle((prev) => ({ ...prev, fontStyle: prev.fontStyle === "italic" ? "normal" : "italic" }))}
+              className={`px-2 py-1 text-xs rounded border italic ${textStyle.fontStyle === "italic" ? "bg-accent-primary text-white border-accent-primary" : "bg-surface-primary border-border-default hover:bg-interactive-hover"}`}
+              title="기울임"
+            >
+              I
+            </button>
+          </div>
+          <div className="flex items-center gap-0.5">
+            {([
+              { value: "left" as TextAlign, title: "왼쪽 정렬", icon: <AlignLeftIcon className="w-3.5 h-3.5" /> },
+              { value: "center" as TextAlign, title: "가운데 정렬", icon: <AlignCenterHIcon className="w-3.5 h-3.5" /> },
+              { value: "right" as TextAlign, title: "오른쪽 정렬", icon: <AlignRightIcon className="w-3.5 h-3.5" /> },
+            ]).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setTextStyle((prev) => ({ ...prev, textAlign: option.value }))}
+                className={`p-1.5 rounded border ${textStyle.textAlign === option.value ? "bg-accent-primary text-white border-accent-primary" : "bg-surface-primary border-border-default hover:bg-interactive-hover"}`}
+                title={option.title}
+              >
+                {option.icon}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-0.5">
+            {([
+              { value: "top" as TextVerticalAlign, title: "위쪽 정렬", icon: <AlignTopIcon className="w-3.5 h-3.5" /> },
+              { value: "middle" as TextVerticalAlign, title: "가운데 정렬", icon: <AlignMiddleVIcon className="w-3.5 h-3.5" /> },
+              { value: "bottom" as TextVerticalAlign, title: "아래쪽 정렬", icon: <AlignBottomIcon className="w-3.5 h-3.5" /> },
+            ]).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setTextStyle((prev) => ({ ...prev, verticalAlign: option.value }))}
+                className={`p-1.5 rounded border ${textStyle.verticalAlign === option.value ? "bg-accent-primary text-white border-accent-primary" : "bg-surface-primary border-border-default hover:bg-interactive-hover"}`}
+                title={option.title}
+              >
+                {option.icon}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">색상:</span>
+            <input
+              type="color"
+              value={textStyle.color}
+              onChange={(e) => setTextStyle((prev) => ({ ...prev, color: e.target.value }))}
+              className="w-6 h-6 rounded cursor-pointer border border-border-default"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">배경:</span>
+            <input
+              type="color"
+              value={textStyle.backgroundColor || "#ffffff"}
+              onChange={(e) => setTextStyle((prev) => ({ ...prev, backgroundColor: e.target.value }))}
+              className="w-6 h-6 rounded cursor-pointer border border-border-default"
+            />
+            <button
+              type="button"
+              onClick={() => setTextStyle((prev) => ({ ...prev, backgroundColor: null }))}
+              className="px-1.5 py-1 text-[11px] rounded border border-border-default bg-surface-primary hover:bg-interactive-hover"
+            >
+              없음
+            </button>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-text-secondary">외곽선:</span>
+            <input
+              type="color"
+              value={textStyle.strokeColor}
+              onChange={(e) => setTextStyle((prev) => ({ ...prev, strokeColor: e.target.value }))}
+              className="w-6 h-6 rounded cursor-pointer border border-border-default"
+            />
+          </div>
+          <NumberScrubber
+            value={textStyle.strokeWidth}
+            onChange={(v) => setTextStyle((prev) => ({ ...prev, strokeWidth: Math.max(0, Math.round(v)) }))}
+            min={0}
+            max={24}
+            step={1}
+            label="선폭:"
+            size="sm"
+            editable
+          />
+          <button
+            type="button"
+            onClick={onCancelTextDraft}
+            disabled={!hasTextDraft}
+            className="px-2 py-1 text-xs rounded border border-border-default bg-surface-primary hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onApplyTextDraft}
+            disabled={!hasTextDraft}
+            className="px-2 py-1 text-xs rounded bg-accent-primary text-white hover:bg-accent-hover disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            적용
+          </button>
         </div>
       )}
 

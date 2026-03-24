@@ -92,6 +92,12 @@ export const ZoomSearchIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) =
   </svg>
 );
 
+export const TextIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5h14M12 5v14M8 19h8" />
+  </svg>
+);
+
 export const PanIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v18m0-18l-3 3m3-3l3 3m-3 15l-3-3m3 3l3-3M3 12h18m-18 0l3-3m-3 3l3 3m15-3l-3-3m3 3l-3 3" />

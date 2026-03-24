@@ -38,6 +38,7 @@ export type {
   Size,
   BoundingBox,
   UnifiedLayer,
+  TextLayerData,
 } from "../../../shared/types";
 
 export {
@@ -53,6 +54,7 @@ export type EditorToolMode =
   | "crop"
   | "hand"
   | "zoom"
+  | "text"
   | "brush"
   | "eraser"
   | "magicWand"
@@ -106,6 +108,33 @@ export interface SelectionMask {
   width: number;
   height: number;
   mask: Uint8Array;
+}
+
+export type TextAlign = "left" | "center" | "right";
+export type TextVerticalAlign = "top" | "middle" | "bottom";
+
+export interface TextDraft {
+  layerId?: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+}
+
+export interface TextStyleSettings {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: "normal" | "bold";
+  fontStyle: "normal" | "italic";
+  textAlign: TextAlign;
+  verticalAlign: TextVerticalAlign;
+  color: string;
+  lineHeight: number;
+  letterSpacing: number;
+  backgroundColor: string | null;
+  strokeColor: string;
+  strokeWidth: number;
 }
 
 /**

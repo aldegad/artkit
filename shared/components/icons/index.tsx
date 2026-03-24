@@ -59,6 +59,7 @@ export {
   CropIcon,
   HandIcon,
   ZoomSearchIcon,
+  TextIcon,
   PanIcon,
   ReorderIcon,
   OffsetIcon,

@@ -6,7 +6,7 @@ import { useLanguage } from "../../../shared/contexts";
 import { LAYER_CANVAS_UPDATED_EVENT } from "../constants";
 import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
 import { Scrollbar, Select } from "@/shared/components";
-import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon } from "@/shared/components/icons";
+import { PlusIcon, ImageIcon, EyeOpenIcon, EyeClosedIcon, LockClosedIcon, LockOpenIcon, DuplicateIcon, MergeDownIcon, DeleteIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, DistributeHIcon, DistributeVIcon, PencilPresetIcon, TextIcon } from "@/shared/components/icons";
 import type { LayerBlendMode } from "@/shared/types";
 
 // ============================================
@@ -422,6 +422,11 @@ export default function LayersPanelContent() {
                         />
                       ) : (
                         <div className="flex items-center gap-0.5 min-w-0">
+                          {layer.textData ? (
+                            <span className="shrink-0 text-text-secondary" title="Text Layer">
+                              <TextIcon className="w-3 h-3" />
+                            </span>
+                          ) : null}
                           <span className="text-xs px-1 truncate select-none">
                             {layer.name}
                           </span>
@@ -439,7 +444,7 @@ export default function LayersPanelContent() {
                         </div>
                       )}
                       <span className="text-[10px] text-text-quaternary px-1">
-                        {layer.blendMode && layer.blendMode !== "source-over" ? "Filter" : "Layer"}
+                        {layer.textData ? "Text" : layer.blendMode && layer.blendMode !== "source-over" ? "Filter" : "Layer"}
                       </span>
                     </div>
 

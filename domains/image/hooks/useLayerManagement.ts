@@ -499,6 +499,7 @@ export function useLayerManagement(
                     blendMode: "source-over",
                     visible: lowerLayer.visible || upperLayer.visible,
                     alphaMaskData: undefined,
+                    textData: undefined,
                   };
                 })()
               : layer
@@ -569,6 +570,9 @@ export function useLayerManagement(
 
       rotateLayerAlphaMask(canvas, normalizedDeg);
     });
+    setLayers((prev) => prev.map((layer) => (
+      layer.textData ? { ...layer, textData: undefined } : layer
+    )));
   }, []);
 
   // Resize selected layers to the smallest selected layer dimensions.
@@ -655,6 +659,7 @@ export function useLayerManagement(
                 + (selectedTargetMap.get(layer.id)!.bounds.height - targetHeight) / 2
               ),
             },
+            textData: undefined,
           }
         : layer
     )));
@@ -680,6 +685,7 @@ export function useLayerManagement(
       name: `${layer.name} (copy)`,
       zIndex: maxZIndex,
       alphaMaskData: undefined,
+      textData: layer.textData ? { ...layer.textData } : undefined,
     };
 
     // Copy the layer canvas

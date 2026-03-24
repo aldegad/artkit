@@ -15,6 +15,7 @@ interface UseEditorToolRuntimeOptions {
   selection: CropArea | null;
   selectionFeather: number;
   saveToHistory: () => void;
+  rasterizeActiveTextLayer?: () => void;
 }
 
 interface UseEditorToolRuntimeReturn {
@@ -36,6 +37,7 @@ export function useEditorToolRuntime(
     selection,
     selectionFeather,
     saveToHistory,
+    rasterizeActiveTextLayer,
   } = options;
 
   const activeLayerPosition = useMemo(() => {
@@ -49,6 +51,7 @@ export function useEditorToolRuntime(
     if (!editCanvas || !ctx) return;
 
     saveToHistory();
+    rasterizeActiveTextLayer?.();
     ctx.fillStyle = brushColor;
 
     if (selection) {
@@ -83,7 +86,7 @@ export function useEditorToolRuntime(
 
     ctx.fillRect(0, 0, editCanvas.width, editCanvas.height);
     fillLayerAlphaMaskRect(editCanvas, 0, 0, editCanvas.width, editCanvas.height);
-  }, [editCanvasRef, saveToHistory, brushColor, selection, selectionFeather, activeLayerPosition]);
+  }, [editCanvasRef, saveToHistory, rasterizeActiveTextLayer, brushColor, selection, selectionFeather, activeLayerPosition]);
 
   const getActiveToolMode = useCallback((): EditorToolMode => {
     return isSpacePressed ? "hand" : toolMode;

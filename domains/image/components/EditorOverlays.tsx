@@ -167,6 +167,7 @@ export interface EditorOverlaysProps {
   handleKeepCloud: () => Promise<void>;
   handleKeepLocal: () => Promise<void>;
   handleCancelSync: () => void;
+  textOverlay?: React.ReactNode;
 
   // New canvas choice & blank canvas size
   showNewCanvasChoiceModal: boolean;
@@ -264,6 +265,7 @@ export function EditorOverlays({
   handleKeepCloud,
   handleKeepLocal,
   handleCancelSync,
+  textOverlay,
   showNewCanvasChoiceModal,
   setShowNewCanvasChoiceModal,
   showBlankCanvasSizeModal,
@@ -406,6 +408,8 @@ export function EditorOverlays({
         onKeepLocal={handleKeepLocal}
         onCancel={handleCancelSync}
       />
+
+      {textOverlay}
     </>
   );
 }

@@ -42,6 +42,7 @@ export function useEditorCursor(options: UseEditorCursorOptions): UseEditorCurso
     const activeMode = getActiveToolMode();
     if (activeMode === "hand") return isDragging ? "grabbing" : "grab";
     if (activeMode === "zoom") return isAltPressed ? "zoom-out" : "zoom-in";
+    if (activeMode === "text") return "text";
     if (activeMode === "eyedropper") return "crosshair";
     if (activeMode === "fill") return "crosshair";
     if (activeMode === "magicWand") return "crosshair";

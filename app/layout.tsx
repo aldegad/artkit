@@ -4,6 +4,7 @@ import { ThemeProvider, LanguageProvider, AuthProvider } from "../shared/context
 import { ToastProvider } from "../shared/components/ToastProvider";
 import { ConfirmDialogProvider } from "../shared/components/ConfirmDialogProvider";
 import AnalyticsTracker from "@/shared/components/app/layout/AnalyticsTracker";
+import ServiceWorkerManager from "@/shared/components/app/layout/ServiceWorkerManager";
 import "./globals.css";
 
 const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
@@ -66,6 +67,7 @@ export default function RootLayout({
               <ToastProvider>
                 <ConfirmDialogProvider>
                   <AnalyticsTracker />
+                  <ServiceWorkerManager />
                   {children}
                 </ConfirmDialogProvider>
               </ToastProvider>
