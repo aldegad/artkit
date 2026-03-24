@@ -26,6 +26,7 @@ Thumbs.db
 # Build
 dist/
 build/
+apache-dist/
 
 # Serwist (auto-generated SW)
 public/sw.js
