@@ -48,4 +48,13 @@ Open [http://localhost:3005](http://localhost:3005) in your browser.
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE)
+
+Commercial use, modification, and redistribution are allowed under Apache 2.0.
+If you redistribute Artkit or ship a product or service that includes
+substantial portions of this codebase, you must preserve the license and
+attribution notices in [LICENSE](LICENSE)
+and [NOTICE](NOTICE).
+
+Suggested attribution:
+"This product includes software from Artkit (https://github.com/aldegad/artkit)."
