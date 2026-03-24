@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "node scripts/dev-with-fallback-port.mjs",
     "build": "next build",
+    "package:apache": "node scripts/package-apache.mjs",
     "start": "next start",
     "lint": "eslint",
-    "deploy": "next build && firebase deploy"
+    "deploy": "next build && node scripts/package-apache.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

@@ -11,8 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev      # Start dev server on http://localhost:3005
 npm run build    # Build for production (static export to /out)
+npm run package:apache  # Package Apache-ready static output to /apache-dist
 npm run lint     # Run ESLint
-npm run deploy   # Build and deploy to Firebase Hosting
+npm run deploy   # Build and package Apache deployment artifacts
 ```
 
 ## Git Commit Convention
