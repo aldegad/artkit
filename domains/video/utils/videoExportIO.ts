@@ -8,6 +8,69 @@ import type {
 
 const FFMPEG_WORKER_FS_TYPE = "WORKERFS" as const;
 const LARGE_EXPORT_PIXEL_THRESHOLD = 6_000_000;
+const MIN_MEDIA_DURATION_SECONDS = 0.001;
+const DURATION_RECOVERY_SEEK_TIME = 1000000;
+
+function readFiniteMediaDuration(duration: number): number | null {
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+  return Math.max(duration, MIN_MEDIA_DURATION_SECONDS);
+}
+
+async function ensureFiniteMediaDuration(
+  media: HTMLMediaElement,
+  timeoutMs: number = 2500
+): Promise<number | null> {
+  const immediate = readFiniteMediaDuration(media.duration);
+  if (immediate != null) {
+    return immediate;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      media.removeEventListener("durationchange", handleReady);
+      media.removeEventListener("timeupdate", handleReady);
+      media.removeEventListener("seeked", handleReady);
+      media.removeEventListener("loadeddata", handleReady);
+      media.removeEventListener("canplay", handleReady);
+      media.removeEventListener("error", handleError);
+    };
+
+    const finish = (duration: number | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(duration);
+    };
+
+    const handleReady = () => {
+      const next = readFiniteMediaDuration(media.duration);
+      if (next != null) {
+        finish(next);
+      }
+    };
+
+    const handleError = () => finish(null);
+    const timeoutId = window.setTimeout(() => finish(null), timeoutMs);
+
+    media.addEventListener("durationchange", handleReady);
+    media.addEventListener("timeupdate", handleReady);
+    media.addEventListener("seeked", handleReady);
+    media.addEventListener("loadeddata", handleReady);
+    media.addEventListener("canplay", handleReady);
+    media.addEventListener("error", handleError, { once: true });
+
+    try {
+      media.currentTime = DURATION_RECOVERY_SEEK_TIME;
+    } catch {
+      finish(null);
+    }
+  });
+}
 
 export async function loadExportVideoElement(sourceUrl: string): Promise<HTMLVideoElement | null> {
   return new Promise((resolve) => {
@@ -22,7 +85,8 @@ export async function loadExportVideoElement(sourceUrl: string): Promise<HTMLVid
       video.onerror = null;
     };
 
-    video.onloadedmetadata = () => {
+    video.onloadedmetadata = async () => {
+      await ensureFiniteMediaDuration(video).catch(() => null);
       cleanup();
       resolve(video);
     };
@@ -38,9 +102,10 @@ export async function seekExportVideoFrame(
   targetTime: number,
   timeoutMs: number = 2000
 ): Promise<boolean> {
-  if (!Number.isFinite(video.duration) || video.duration <= 0) return false;
+  const recoveredDuration = await ensureFiniteMediaDuration(video, timeoutMs);
+  if (recoveredDuration == null) return false;
 
-  const maxTime = Math.max(0, video.duration - 0.001);
+  const maxTime = Math.max(0, recoveredDuration - 0.001);
   const clamped = Math.max(0, Math.min(targetTime, maxTime));
   if (Math.abs(video.currentTime - clamped) <= 0.01) {
     return video.readyState >= 2;
@@ -188,6 +253,25 @@ function getContainerAudioArgs(
     : ["-c:a", "aac", "-b:a", "192k", "-shortest"];
 }
 
+function resolveEncoderThreadCount(outputPixelCount: number): string {
+  if (outputPixelCount >= LARGE_EXPORT_PIXEL_THRESHOLD) {
+    return "1";
+  }
+
+  const canUseThreadedWasm =
+    typeof window !== "undefined" &&
+    window.crossOriginIsolated &&
+    typeof SharedArrayBuffer !== "undefined";
+  if (!canUseThreadedWasm || typeof navigator === "undefined") {
+    return "1";
+  }
+
+  const hardwareThreads = Number.isFinite(navigator.hardwareConcurrency)
+    ? navigator.hardwareConcurrency || 1
+    : 1;
+  return String(Math.max(1, Math.min(8, hardwareThreads)));
+}
+
 async function runEncodeWithProgress(params: {
   ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg;
   args: string[];
@@ -199,10 +283,14 @@ async function runEncodeWithProgress(params: {
   const { ffmpeg, args, stage, encodeBase, encodeWeight, setExportProgress } = params;
   const startedAt = Date.now();
   let lastProgressAt = startedAt;
+  let latestPhaseRatio = 0;
   let latestPhasePercent = 0;
+  let hasSeenProgressEvent = false;
   let monitorTimer: number | null = null;
   const recentLogs: string[] = [];
   let latestEncodeLog = "";
+  let lastReportedStallSecond = -1;
+  let exitCode: number | null = null;
 
   const summarizeEncodeLog = (message: string): string => {
     const normalized = message.replace(/\s+/g, " ").trim();
@@ -217,24 +305,39 @@ async function runEncodeWithProgress(params: {
     const now = Date.now();
     const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
     const stalledSeconds = Math.max(0, Math.floor((now - lastProgressAt) / 1000));
-    const waitingForFirstProgress = latestPhasePercent <= 0;
+    const waitingForFirstProgress = !hasSeenProgressEvent;
     const isStalled = waitingForFirstProgress
       ? elapsedSeconds >= 15
       : stalledSeconds >= 15;
+    const displayPhasePercent = latestPhaseRatio > 0 && latestPhaseRatio < 0.1
+      ? Number((latestPhaseRatio * 100).toFixed(1))
+      : latestPhasePercent;
 
     const detail = waitingForFirstProgress
       ? isStalled
         ? `인코더 첫 응답 지연 중... ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
         : `인코더 시작 중... ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
       : isStalled
-        ? `인코딩 지연 중... ${latestPhasePercent}% · ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
-        : `인코딩 ${latestPhasePercent}% · ${elapsedSeconds}s`;
+        ? `인코딩 진행 중... ${displayPhasePercent}% · ${elapsedSeconds}s${latestEncodeLog ? ` · ${latestEncodeLog}` : ""}`
+        : `인코딩 ${displayPhasePercent}% · ${elapsedSeconds}s`;
+
+    if (isStalled && elapsedSeconds !== lastReportedStallSecond) {
+      lastReportedStallSecond = elapsedSeconds;
+      console.warn("[VideoExport] ffmpeg appears stalled", {
+        stage,
+        elapsedSeconds,
+        waitingForFirstProgress,
+        phasePercent: displayPhasePercent,
+        latestEncodeLog,
+        recentLogs: recentLogs.slice(-4),
+      });
+    }
 
     setExportProgress({
       stage,
-      percent: Math.min(98, encodeBase + ((latestPhasePercent / 100) * encodeWeight)),
+      percent: Math.min(98, encodeBase + (latestPhaseRatio * encodeWeight)),
       detail,
-      phasePercent: latestPhasePercent,
+      phasePercent: displayPhasePercent,
       elapsedSeconds,
       isIndeterminate: waitingForFirstProgress,
       isStalled,
@@ -244,20 +347,22 @@ async function runEncodeWithProgress(params: {
 
   const onFfmpegProgress = ({ progress }: { progress: number }) => {
     const ratio = Math.max(0, Math.min(1, progress || 0));
+    latestPhaseRatio = ratio;
     latestPhasePercent = Math.round(ratio * 100);
+    hasSeenProgressEvent = true;
     lastProgressAt = Date.now();
     const elapsedSeconds = Math.max(0, Math.floor((lastProgressAt - startedAt) / 1000));
-    const waitingForMeaningfulProgress = latestPhasePercent <= 0;
+    const displayPhasePercent = ratio > 0 && ratio < 0.1
+      ? Number((ratio * 100).toFixed(1))
+      : latestPhasePercent;
 
     setExportProgress({
       stage,
       percent: Math.min(98, encodeBase + (ratio * encodeWeight)),
-      detail: waitingForMeaningfulProgress
-        ? `인코더 응답 수신, 시작 준비 중... ${elapsedSeconds}s`
-        : `인코딩 ${latestPhasePercent}% · ${elapsedSeconds}s`,
-      phasePercent: latestPhasePercent,
+      detail: `인코딩 ${displayPhasePercent}% · ${elapsedSeconds}s`,
+      phasePercent: displayPhasePercent,
       elapsedSeconds,
-      isIndeterminate: waitingForMeaningfulProgress,
+      isIndeterminate: false,
       isStalled: false,
       ffmpegLogSummary: latestEncodeLog || undefined,
     });
@@ -278,9 +383,13 @@ async function runEncodeWithProgress(params: {
   ffmpeg.on("progress", onFfmpegProgress);
   ffmpeg.on("log", onFfmpegLog);
   try {
+    console.info("[VideoExport] ffmpeg exec start", {
+      stage,
+      args,
+    });
     updateEncodeStatus();
     monitorTimer = window.setInterval(updateEncodeStatus, 1000);
-    const exitCode = await ffmpeg.exec(args);
+    exitCode = await ffmpeg.exec(args);
     if (exitCode !== 0) {
       const errorDetail = recentLogs.slice(-4).join(" | ");
       throw new Error(
@@ -290,6 +399,11 @@ async function runEncodeWithProgress(params: {
       );
     }
   } finally {
+    console.info("[VideoExport] ffmpeg exec end", {
+      stage,
+      exitCode,
+      recentLogs: recentLogs.slice(-4),
+    });
     if (monitorTimer !== null) {
       window.clearInterval(monitorTimer);
     }
@@ -328,15 +442,17 @@ export async function encodeOutputFile(params: {
   } = params;
   const outputPixelCount = outputSize.width * outputSize.height;
   const shouldUseLowMemoryX264 = outputPixelCount >= LARGE_EXPORT_PIXEL_THRESHOLD;
-  const videoPreset = shouldUseLowMemoryX264
-    ? (preferFastEncoding ? "ultrafast" : "veryfast")
+  const encoderThreadCount = resolveEncoderThreadCount(outputPixelCount);
+  const shouldPreferLowLatencyX264 = shouldUseLowMemoryX264 || Boolean(preferFastEncoding);
+  const videoPreset = shouldPreferLowLatencyX264
+    ? "ultrafast"
     : compressionSettings.preset;
   const args = [
     ...baseArgs,
     "-c:v",
     "libx264",
     "-threads",
-    "1",
+    encoderThreadCount,
     "-preset",
     videoPreset,
     "-crf",
@@ -346,7 +462,7 @@ export async function encodeOutputFile(params: {
     "high",
     "-pix_fmt",
     "yuv420p",
-    ...(shouldUseLowMemoryX264
+    ...(shouldPreferLowLatencyX264
       ? ["-x264-params", "rc-lookahead=0:sync-lookahead=0:ref=1:bframes=0"]
       : []),
     ...(format === "mov" || format === "mp4" ? ["-movflags", "+faststart"] : []),

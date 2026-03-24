@@ -274,18 +274,7 @@ export async function runVideoExport(params: RunVideoExportParams): Promise<Comp
     detail: strategyDecision.reason,
   });
 
-  const result = strategyDecision.engine === "native-recorder"
-    ? await runNativeRecorderStrategy({
-        strategyDecision,
-        config,
-        clips: params.clips,
-        tracks: params.tracks,
-        getFFmpeg: params.getFFmpeg,
-        audioBufferCache: params.audioBufferCache,
-        sourceBlobCache: params.sourceBlobCache,
-        setExportProgress: setProgressWithStrategy,
-      })
-    : await runFfmpegStrategy({
+  const runFfmpegFallback = () => runFfmpegStrategy({
         strategyDecision,
         config,
         getFFmpeg: params.getFFmpeg,
@@ -297,6 +286,33 @@ export async function runVideoExport(params: RunVideoExportParams): Promise<Comp
         sourceBlobCache: params.sourceBlobCache,
         setExportProgress: setProgressWithStrategy,
       });
+
+  const result = strategyDecision.engine === "native-recorder"
+    ? await (async () => {
+        try {
+          return await runNativeRecorderStrategy({
+            strategyDecision,
+            config,
+            clips: params.clips,
+            tracks: params.tracks,
+            getFFmpeg: params.getFFmpeg,
+            audioBufferCache: params.audioBufferCache,
+            sourceBlobCache: params.sourceBlobCache,
+            setExportProgress: setProgressWithStrategy,
+          });
+        } catch (error) {
+          console.warn("[VideoExport] native recorder failed, falling back to ffmpeg", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          setProgressWithStrategy({
+            stage: "Preparing export",
+            percent: 4,
+            detail: "네이티브 export가 실패해 FFmpeg 경로로 전환합니다.",
+          });
+          return runFfmpegFallback();
+        }
+      })()
+    : await runFfmpegFallback();
 
   trackCompletedExport(result);
   return result;

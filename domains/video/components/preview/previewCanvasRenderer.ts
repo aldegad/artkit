@@ -142,11 +142,12 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
 
   const { canvas, ctx, size: canvasSize } = renderTarget;
   const ct = params.currentTimeRef.current;
+  const safeProjectDuration = Number.isFinite(params.project.duration) ? Math.max(params.project.duration, 0) : 0;
   const loopFrameBounds = params.getLoopFrameBounds(
     params.playback.loop,
     params.playback.loopStart,
     params.playback.loopEnd,
-    params.project.duration || 0,
+    safeProjectDuration,
   );
   const renderTime = (params.playback.isPlaying && params.effectivePreRenderEnabled)
     ? params.getPlaybackSampleTime(ct, loopFrameBounds)

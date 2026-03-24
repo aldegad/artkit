@@ -16,6 +16,9 @@ type MediaType = "video" | "image" | "audio";
 const VIDEO_EXTENSIONS = [".mp4", ".webm", ".ogv", ".mov"] as const;
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp"] as const;
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".oga"] as const;
+const MIN_MEDIA_DURATION_SECONDS = 0.1;
+const DURATION_RECOVERY_TIMEOUT_MS = 2500;
+const DURATION_RECOVERY_SEEK_TIME = 1000000;
 
 function hasExtension(fileName: string, extensions: readonly string[]): boolean {
   const lowerName = fileName.toLowerCase();
@@ -50,6 +53,60 @@ function detectMediaType(file: File): MediaType | null {
   }
 
   return null;
+}
+
+function readFiniteDuration(value: number): number | null {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.max(value, MIN_MEDIA_DURATION_SECONDS);
+}
+
+async function recoverMediaDuration(element: HTMLMediaElement): Promise<number | null> {
+  const immediate = readFiniteDuration(element.duration);
+  if (immediate != null) {
+    return immediate;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      element.removeEventListener("durationchange", handleDurationUpdate);
+      element.removeEventListener("timeupdate", handleDurationUpdate);
+      element.removeEventListener("seeked", handleDurationUpdate);
+      element.removeEventListener("error", handleError);
+    };
+
+    const finish = (duration: number | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(duration);
+    };
+
+    const handleDurationUpdate = () => {
+      const duration = readFiniteDuration(element.duration);
+      if (duration != null) {
+        finish(duration);
+      }
+    };
+
+    const handleError = () => finish(null);
+    const timeoutId = window.setTimeout(() => finish(null), DURATION_RECOVERY_TIMEOUT_MS);
+
+    element.addEventListener("durationchange", handleDurationUpdate);
+    element.addEventListener("timeupdate", handleDurationUpdate);
+    element.addEventListener("seeked", handleDurationUpdate);
+    element.addEventListener("error", handleError, { once: true });
+
+    try {
+      element.currentTime = DURATION_RECOVERY_SEEK_TIME;
+    } catch {
+      finish(null);
+    }
+  });
 }
 
 export function useMediaImport() {
@@ -92,12 +149,16 @@ export function useMediaImport() {
 
           const url = URL.createObjectURL(file);
           const video = document.createElement("video");
+          video.preload = "metadata";
+          video.muted = true;
+          video.playsInline = true;
           video.src = url;
 
           const metadata = await new Promise<{ duration: number; size: { width: number; height: number } } | null>((resolve) => {
-            video.onloadedmetadata = () => {
-              resolve({
-                duration: Math.max(video.duration || 0, 0.1),
+            video.onloadedmetadata = async () => {
+              const duration = await recoverMediaDuration(video);
+              resolve(duration == null ? null : {
+                duration,
                 size: {
                   width: video.videoWidth || project.canvasSize.width,
                   height: video.videoHeight || project.canvasSize.height,
@@ -155,12 +216,14 @@ export function useMediaImport() {
         if (mediaType === "audio") {
           const url = URL.createObjectURL(file);
           const audio = document.createElement("audio");
+          audio.preload = "metadata";
           audio.src = url;
 
           const metadata = await new Promise<{ duration: number } | null>((resolve) => {
-            audio.onloadedmetadata = () => {
-              resolve({
-                duration: Math.max(audio.duration || 0, 0.1),
+            audio.onloadedmetadata = async () => {
+              const duration = await recoverMediaDuration(audio);
+              resolve(duration == null ? null : {
+                duration,
               });
             };
             audio.onerror = () => resolve(null);

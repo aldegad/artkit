@@ -92,17 +92,21 @@ export function Clip({
   const clipPlaybackSpeed = getClipPlaybackSpeed(clip);
   const showSpeedBadge = clip.type !== "image" && clipPlaybackSpeed > 1.001;
   const frameRate = normalizeTimelineFrameRate(project.frameRate);
-  const frameRange = getTimelineFrameRange(clip.startTime, clip.duration, frameRate);
+  const safeStartTime = Number.isFinite(clip.startTime) ? Math.max(0, clip.startTime) : 0;
+  const safeDuration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration) : 0;
+  const frameRange = getTimelineFrameRange(safeStartTime, safeDuration, frameRate);
   const rawLeft = timeToPixel(frameRange.startTime);
   const rawRight = timeToPixel(frameRange.endTime);
 
   // Slice waveform to match trimIn/trimOut
   const visibleWaveform = useMemo(() => {
     if (!waveform || clip.type === "image") return null;
-    const sourceDuration = clip.sourceDuration;
+    const sourceDuration = Number.isFinite(clip.sourceDuration) ? clip.sourceDuration : 0;
     if (!sourceDuration || sourceDuration <= 0) return waveform;
-    const startRatio = clip.trimIn / sourceDuration;
-    const endRatio = clip.trimOut / sourceDuration;
+    const safeTrimIn = Number.isFinite(clip.trimIn) ? Math.max(0, clip.trimIn) : 0;
+    const safeTrimOut = Number.isFinite(clip.trimOut) ? Math.max(safeTrimIn, clip.trimOut) : sourceDuration;
+    const startRatio = safeTrimIn / sourceDuration;
+    const endRatio = safeTrimOut / sourceDuration;
     const totalBins = waveform.length;
     const startBin = Math.floor(startRatio * totalBins);
     const endBin = Math.ceil(endRatio * totalBins);

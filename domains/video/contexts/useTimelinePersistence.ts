@@ -48,6 +48,9 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
     projectRef,
   } = params;
   const [isAutosaveInitialized, setIsAutosaveInitialized] = useState(false);
+  const sanitizeDurationHint = useCallback((value: number) => {
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }, []);
 
   const restoreTracks = useCallback((savedTracks: VideoTrack[]) => {
     setTracks(savedTracks.map(cloneTrack));
@@ -58,20 +61,20 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
   }, [setClips]);
 
   const restoreAutosaveData = useCallback(async (data: VideoAutosaveData) => {
-    let durationHint = Math.max(data.project?.duration || 0, 0);
+    let durationHint = sanitizeDurationHint(data.project?.duration || 0);
 
     if (data.tracks?.length) {
       setTracks(data.tracks);
     }
     if (data.clips?.length) {
       const restored = await restoreAutosavedClips(data.clips as Clip[]);
-      durationHint = Math.max(durationHint, restored.durationHint);
+      durationHint = Math.max(durationHint, sanitizeDurationHint(restored.durationHint));
       setClips(restored.restoredClips);
     }
     if (data.timelineView) {
       setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
     }
-    const normalizedDurationHint = Math.max(durationHint, 0.001);
+    const normalizedDurationHint = Math.max(sanitizeDurationHint(durationHint), 0.001);
 
     if (data.project) {
       setProject({
@@ -112,6 +115,7 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
     setToolMode,
     setTracks,
     setViewStateInternal,
+    sanitizeDurationHint,
   ]);
 
   useEffect(() => {

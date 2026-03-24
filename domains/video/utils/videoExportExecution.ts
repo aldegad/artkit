@@ -511,6 +511,10 @@ async function runDirectVideoSequenceExport(params: {
   const filterSections: string[] = [];
   const concatInputs: string[] = [];
   const hasAudioInput = plan.includeAudio;
+  const videoSplitLabels = plan.segments.map((_, index) => `vsplit${index}`);
+  const audioSplitLabels = hasAudioInput
+    ? plan.segments.map((_, index) => `asplit${index}`)
+    : [];
 
   const buildSegmentAudioFilter = (segment: DirectVideoSequenceSegmentPlan, inputIndex: number): string => {
     const audioLabel = `a${inputIndex}`;
@@ -519,11 +523,16 @@ async function runDirectVideoSequenceExport(params: {
     }
 
     if (segment.includeAudio) {
-      const audioFilters = ["asetpts=N/SR/TB", ...buildAtempoFilters(segment.clip.playbackSpeed)];
+      const audioInputLabel = plan.segments.length > 1 ? audioSplitLabels[inputIndex] : "0:a";
+      const audioFilters = [
+        `atrim=start=${segment.sourceStart.toFixed(6)}:duration=${segment.sourceDuration.toFixed(6)}`,
+        "asetpts=N/SR/TB",
+        ...buildAtempoFilters(segment.clip.playbackSpeed),
+      ];
       if (Math.abs(segment.audioVolume - 100) > VIDEO_EXPORT_EPSILON) {
         audioFilters.push(`volume=${(segment.audioVolume / 100).toFixed(6)}`);
       }
-      filterSections.push(`[${inputIndex}:a]${audioFilters.join(",")}[${audioLabel}]`);
+      filterSections.push(`[${audioInputLabel}]${audioFilters.join(",")}[${audioLabel}]`);
       return audioLabel;
     }
 
@@ -533,21 +542,32 @@ async function runDirectVideoSequenceExport(params: {
     return audioLabel;
   };
 
-  plan.segments.forEach((segment, index) => {
-    baseArgs.push(
-      "-ss",
-      segment.sourceStart.toFixed(6),
-      "-t",
-      segment.sourceDuration.toFixed(6),
-      "-probesize",
-      "1048576",
-      "-analyzeduration",
-      "1000000",
-      "-i",
-      sourceInput.filePath,
-    );
+  baseArgs.push(
+    "-probesize",
+    "1048576",
+    "-analyzeduration",
+    "1000000",
+    "-i",
+    sourceInput.filePath,
+  );
 
-    const videoFilters = [`setpts=(PTS-STARTPTS)/${segment.clip.playbackSpeed.toFixed(6)}`];
+  if (plan.segments.length > 1) {
+    filterSections.push(
+      `[0:v]split=${plan.segments.length}${videoSplitLabels.map((label) => `[${label}]`).join("")}`
+    );
+    if (hasAudioInput) {
+      filterSections.push(
+        `[0:a]asplit=${plan.segments.length}${audioSplitLabels.map((label) => `[${label}]`).join("")}`
+      );
+    }
+  }
+
+  plan.segments.forEach((segment, index) => {
+    const videoInputLabel = plan.segments.length > 1 ? videoSplitLabels[index] : "0:v";
+    const videoFilters = [
+      `trim=start=${segment.sourceStart.toFixed(6)}:duration=${segment.sourceDuration.toFixed(6)}`,
+      `setpts=(PTS-STARTPTS)/${segment.clip.playbackSpeed.toFixed(6)}`,
+    ];
     const needsCrop =
       segment.cropX !== 0 ||
       segment.cropY !== 0 ||
@@ -569,7 +589,7 @@ async function runDirectVideoSequenceExport(params: {
       );
     }
     filterSections.push(
-      `[${index}:v]${appendEvenDimensionPad(videoFilters).join(",")}[v${index}]`
+      `[${videoInputLabel}]${appendEvenDimensionPad(videoFilters).join(",")}[v${index}]`
     );
     concatInputs.push(`[v${index}]`);
     if (hasAudioInput) {

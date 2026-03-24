@@ -125,7 +125,9 @@ export function resolveVideoExportConfig(params: {
   const compression = options?.compression ?? "balanced";
   const backgroundColor = normalizeVideoExportBackgroundColor(options?.backgroundColor);
 
-  const fullDuration = Math.max(project.duration, 0.1);
+  const fullDuration = Number.isFinite(project.duration)
+    ? Math.max(project.duration, 0.1)
+    : 0.1;
   const rangeStart = Math.max(0, Math.min(playback.loopStart, fullDuration));
   const hasRange = playback.loopEnd > rangeStart + 0.001;
   const rangeEnd = hasRange

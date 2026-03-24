@@ -17,8 +17,10 @@ export function PreRenderBar() {
   // Use refs so draw() has a stable identity — subscription never re-registers
   const viewStateRef = useRef(viewState);
   viewStateRef.current = viewState;
-  const projectDurationRef = useRef(project.duration);
-  projectDurationRef.current = project.duration;
+  const projectDurationRef = useRef(
+    Number.isFinite(project.duration) && project.duration > 0 ? project.duration : 1
+  );
+  projectDurationRef.current = Number.isFinite(project.duration) && project.duration > 0 ? project.duration : 1;
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -54,7 +56,7 @@ export function PreRenderBar() {
     if (totalFrames <= 0) return;
 
     const { zoom, scrollX } = viewStateRef.current;
-    const duration = projectDurationRef.current || 1;
+    const duration = projectDurationRef.current;
     // Draw uncached background for the visible duration range
     const visibleStartTime = scrollX;
     const visibleEndTime = pixelToTimelineTime(w, scrollX, zoom);
