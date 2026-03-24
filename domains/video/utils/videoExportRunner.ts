@@ -142,7 +142,6 @@ async function runNativeRecorderStrategy(params: {
     strategyDecision.subStrategy !== "reencode" ||
     strategyDecision.engine !== "native-recorder" ||
     !strategyDecision.directPlan ||
-    strategyDecision.directPlan.kind !== "single" ||
     !strategyDecision.sourceBlob ||
     !strategyDecision.nativeRecorderMimeType
   ) {

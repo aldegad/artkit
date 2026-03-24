@@ -115,9 +115,17 @@ async function resolveDirectEngine(params: {
 }): Promise<{ engine: DirectVideoExportEngine; reason: string; nativeRecorderMimeType?: string }> {
   const { subStrategy, plan, config } = params;
   if (plan.kind === "sequence") {
+    const nativeSupport = getNativeRecorderSupport(config, plan);
+    if (nativeSupport.supported && nativeSupport.mimeType) {
+      return {
+        engine: "native-recorder",
+        reason: `${nativeSupport.reason} (${config.frameRate}fps MP4)`,
+        nativeRecorderMimeType: nativeSupport.mimeType,
+      };
+    }
     return {
       engine: "ffmpeg",
-      reason: "동일 원본 분할 클립 시퀀스를 ffmpeg 직접 경로로 처리합니다.",
+      reason: `${nativeSupport.reason} 동일 원본 분할 클립 시퀀스를 ffmpeg 직접 경로로 처리합니다.`,
     };
   }
 
@@ -199,19 +207,6 @@ export async function resolveVideoExportStrategy(
     sourceBlob.type || sourceClip.sourceUrl
   );
 
-  // WebM source sequences have proven unreliable in ffmpeg.wasm direct concat re-encode.
-  // Fall back to the general frame render path so export progresses predictably.
-  if (directEvaluation.plan.kind === "sequence" && sourceExtension === "webm") {
-    return {
-      strategy: "frame-sequence",
-      reason: "WebM 분할 클립 시퀀스는 직접 concat 경로가 멈출 수 있어 일반 렌더 경로를 사용합니다.",
-      eligibility: {
-        directSingleVideo: false,
-        directCopy: false,
-      },
-    };
-  }
-
   const copyDecision = resolveDirectSubStrategy({
     plan: directEvaluation.plan,
     sourceExtension,
@@ -222,6 +217,21 @@ export async function resolveVideoExportStrategy(
     plan: directEvaluation.plan,
     config,
   });
+
+  if (
+    directEvaluation.plan.kind === "sequence" &&
+    sourceExtension === "webm" &&
+    engineDecision.engine !== "native-recorder"
+  ) {
+    return {
+      strategy: "frame-sequence",
+      reason: "WebM 분할 클립 시퀀스는 네이티브 인코더를 사용할 수 없으면 직접 concat 경로가 멈출 수 있어 일반 렌더 경로를 사용합니다.",
+      eligibility: {
+        directSingleVideo: false,
+        directCopy: false,
+      },
+    };
+  }
 
   return {
     strategy: "direct-single-video",
