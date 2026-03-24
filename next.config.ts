@@ -9,11 +9,21 @@ const withSerwist = withSerwistInit({
 
 const nextConfig: NextConfig = {
   output: "export",
-  trailingSlash: true,
   images: {
     unoptimized: true,
   },
   turbopack: {},
+  async headers() {
+    return [
+      {
+        source: "/video",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+        ],
+      },
+    ];
+  },
 };
 
 export default withSerwist(nextConfig);
