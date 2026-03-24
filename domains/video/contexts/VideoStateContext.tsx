@@ -151,6 +151,9 @@ const initialState: VideoState = {
 
 export function VideoStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<VideoState>(initialState);
+  const readSafeProjectDuration = useCallback((value: number) => {
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  }, []);
   const [previewPreRenderEnabled, setPreviewPreRenderEnabledState] = useState<boolean>(resolvePreRenderEnabledSetting);
   const [previewQualityFirstEnabled, setPreviewQualityFirstEnabledState] = useState<boolean>(resolvePreviewQualityFirstSetting);
 
@@ -180,14 +183,14 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const loopRef = useRef(state.playback.loop);
   const loopStartRef = useRef(state.playback.loopStart);
   const loopEndRef = useRef(state.playback.loopEnd);
-  const projectDurationRef = useRef(state.project.duration || 10);
+  const projectDurationRef = useRef(readSafeProjectDuration(state.project.duration || 10));
   const projectFrameRateRef = useRef<number>(normalizeTimelineFrameRate(state.project.frameRate));
 
   useEffect(() => { playbackRateRef.current = state.playback.playbackRate; }, [state.playback.playbackRate]);
   useEffect(() => { loopRef.current = state.playback.loop; }, [state.playback.loop]);
   useEffect(() => { loopStartRef.current = state.playback.loopStart; }, [state.playback.loopStart]);
   useEffect(() => { loopEndRef.current = state.playback.loopEnd; }, [state.playback.loopEnd]);
-  useEffect(() => { projectDurationRef.current = state.project.duration || 10; }, [state.project.duration]);
+  useEffect(() => { projectDurationRef.current = readSafeProjectDuration(state.project.duration || 10); }, [readSafeProjectDuration, state.project.duration]);
   useEffect(() => {
     projectFrameRateRef.current = normalizeTimelineFrameRate(state.project.frameRate);
   }, [state.project.frameRate]);
@@ -280,7 +283,9 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const updateProjectDuration = useCallback(() => {
     setState((prev) => {
       const maxEndTime = prev.project.clips.reduce((max, clip) => {
-        return Math.max(max, clip.startTime + clip.duration);
+        const startTime = Number.isFinite(clip.startTime) ? Math.max(0, clip.startTime) : 0;
+        const duration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration) : 0;
+        return Math.max(max, startTime + duration);
       }, 0);
       return {
         ...prev,

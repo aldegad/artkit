@@ -57,21 +57,25 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
     setClips(savedClips.map((clip) => cloneClip(normalizeClip(clip))));
   }, [setClips]);
 
+  const sanitizeDurationHint = useCallback((value: number) => {
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }, []);
+
   const restoreAutosaveData = useCallback(async (data: VideoAutosaveData) => {
-    let durationHint = Math.max(data.project?.duration || 0, 0);
+    let durationHint = sanitizeDurationHint(data.project?.duration || 0);
 
     if (data.tracks?.length) {
       setTracks(data.tracks);
     }
     if (data.clips?.length) {
       const restored = await restoreAutosavedClips(data.clips as Clip[]);
-      durationHint = Math.max(durationHint, restored.durationHint);
+      durationHint = Math.max(durationHint, sanitizeDurationHint(restored.durationHint));
       setClips(restored.restoredClips);
     }
     if (data.timelineView) {
       setViewStateInternal(sanitizeTimelineViewState(data.timelineView));
     }
-    const normalizedDurationHint = Math.max(durationHint, 0.001);
+    const normalizedDurationHint = Math.max(sanitizeDurationHint(durationHint), 0.001);
 
     if (data.project) {
       setProject({
@@ -101,6 +105,7 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
   }, [
     clearLoopRange,
     seek,
+    sanitizeDurationHint,
     selectClips,
     selectMasksForTimeline,
     setAutoKeyframeEnabled,
@@ -132,7 +137,11 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
   }, [clearHistory, restoreAutosaveData]);
 
   useEffect(() => {
-    const duration = clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0);
+    const duration = clips.reduce((max, clip) => {
+      const startTime = Number.isFinite(clip.startTime) ? clip.startTime : 0;
+      const clipDuration = Number.isFinite(clip.duration) && clip.duration > 0 ? clip.duration : 0;
+      return Math.max(max, startTime + clipDuration);
+    }, 0);
     setProject({
       ...projectRef.current,
       tracks: tracks.map(cloneTrack),

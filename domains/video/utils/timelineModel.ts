@@ -38,7 +38,11 @@ export function cloneClip(clip: Clip): Clip {
 }
 
 export function calculateClipsDuration(clips: Clip[]): number {
-  return clips.reduce((max, clip) => Math.max(max, clip.startTime + clip.duration), 0);
+  return clips.reduce((max, clip) => {
+    const startTime = Number.isFinite(clip.startTime) ? Math.max(0, clip.startTime) : 0;
+    const duration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration) : 0;
+    return Math.max(max, startTime + duration);
+  }, 0);
 }
 
 export function getDuplicateTrackName(sourceName: string, existingTracks: VideoTrack[]): string {
@@ -67,20 +71,33 @@ export function reindexTracksForZOrder(tracks: VideoTrack[]): VideoTrack[] {
 }
 
 export function normalizeClip(clip: Clip): Clip {
-  const baseScale = typeof clip.scale === "number" ? clip.scale : 1;
-  const scaleX = typeof clip.scaleX === "number" ? clip.scaleX : 1;
-  const scaleY = typeof clip.scaleY === "number" ? clip.scaleY : 1;
+  const fallbackDuration = clip.type === "image" ? 5 : 0.1;
+  const startTime = Number.isFinite(clip.startTime) ? Math.max(0, clip.startTime) : 0;
+  const duration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration) : fallbackDuration;
+  const trimIn = Number.isFinite(clip.trimIn) ? Math.max(0, clip.trimIn) : 0;
+  const baseScale = typeof clip.scale === "number" && Number.isFinite(clip.scale) ? clip.scale : 1;
+  const scaleX = typeof clip.scaleX === "number" && Number.isFinite(clip.scaleX) ? clip.scaleX : 1;
+  const scaleY = typeof clip.scaleY === "number" && Number.isFinite(clip.scaleY) ? clip.scaleY : 1;
   const playbackSpeed = getClipPlaybackSpeed(clip);
   const transformKeyframes = normalizeClipTransformKeyframes(clip);
 
   if (clip.type === "video") {
+    const sourceDuration = Number.isFinite(clip.sourceDuration)
+      ? Math.max(0, clip.sourceDuration)
+      : duration * playbackSpeed;
+    const trimOut = Number.isFinite(clip.trimOut) ? Math.max(trimIn, clip.trimOut) : Math.max(trimIn, sourceDuration);
     return {
       ...clip,
+      startTime,
+      duration,
+      trimIn,
+      trimOut,
       scale: baseScale,
       scaleX,
       scaleY,
       playbackSpeed,
       transformKeyframes,
+      sourceDuration,
       hasAudio: clip.hasAudio ?? true,
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -88,13 +105,22 @@ export function normalizeClip(clip: Clip): Clip {
   }
 
   if (clip.type === "audio") {
+    const sourceDuration = Number.isFinite(clip.sourceDuration)
+      ? Math.max(0, clip.sourceDuration)
+      : duration * playbackSpeed;
+    const trimOut = Number.isFinite(clip.trimOut) ? Math.max(trimIn, clip.trimOut) : Math.max(trimIn, sourceDuration);
     return {
       ...clip,
+      startTime,
+      duration,
+      trimIn,
+      trimOut,
       scale: baseScale,
       scaleX,
       scaleY,
       playbackSpeed,
       transformKeyframes,
+      sourceDuration,
       sourceSize: clip.sourceSize || { width: 0, height: 0 },
       audioMuted: clip.audioMuted ?? false,
       audioVolume: typeof clip.audioVolume === "number" ? clip.audioVolume : 100,
@@ -103,6 +129,10 @@ export function normalizeClip(clip: Clip): Clip {
 
   return {
     ...clip,
+    startTime,
+    duration,
+    trimIn,
+    trimOut: Number.isFinite(clip.trimOut) ? Math.max(trimIn, clip.trimOut) : Math.max(trimIn, duration),
     scale: baseScale,
     scaleX,
     scaleY,
