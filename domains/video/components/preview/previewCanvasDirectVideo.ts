@@ -58,8 +58,9 @@ export function applyDirectVideoPreview(params: ApplyDirectPreviewParams): boole
     directVideoElement.pause();
   }
 
-  directVideoElement.muted = true;
-  directVideoElement.volume = 0;
+  // Audio ownership lives in usePreviewMediaPlaybackSync.
+  // For direct preview we reuse the same <video> element for visuals,
+  // so forcing mute here causes audible clips to flap between muted/unmuted.
 
   const clipPosition = resolveClipPositionAtTimelineTime(directVideoClip, params.renderTime);
   const drawPoint = params.vpContentToScreen(clipPosition);
