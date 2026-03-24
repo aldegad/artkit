@@ -198,6 +198,20 @@ export async function resolveVideoExportStrategy(
   const sourceExtension = resolveSourceExtension(
     sourceBlob.type || sourceClip.sourceUrl
   );
+
+  // WebM source sequences have proven unreliable in ffmpeg.wasm direct concat re-encode.
+  // Fall back to the general frame render path so export progresses predictably.
+  if (directEvaluation.plan.kind === "sequence" && sourceExtension === "webm") {
+    return {
+      strategy: "frame-sequence",
+      reason: "WebM 분할 클립 시퀀스는 직접 concat 경로가 멈출 수 있어 일반 렌더 경로를 사용합니다.",
+      eligibility: {
+        directSingleVideo: false,
+        directCopy: false,
+      },
+    };
+  }
+
   const copyDecision = resolveDirectSubStrategy({
     plan: directEvaluation.plan,
     sourceExtension,

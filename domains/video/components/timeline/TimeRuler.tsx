@@ -23,7 +23,7 @@ export function TimeRuler({ className, onSeek }: TimeRulerProps) {
   const safeScrollX = Math.max(0, Number.isFinite(viewState.scrollX) ? viewState.scrollX : 0);
   const safeZoom = Math.max(TIMELINE.MIN_ZOOM, Number.isFinite(viewState.zoom) ? viewState.zoom : TIMELINE.DEFAULT_ZOOM);
 
-  const duration = Math.max(project.duration, 0);
+  const duration = Number.isFinite(project.duration) ? Math.max(project.duration, 0) : 0;
   const rangeStart = Math.max(0, Math.min(playback.loopStart, duration));
   const hasRange = playback.loopEnd > rangeStart + 0.001;
   const rangeEnd = hasRange

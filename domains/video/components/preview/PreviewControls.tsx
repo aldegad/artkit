@@ -24,13 +24,14 @@ export function PreviewControls({ className }: PreviewControlsProps) {
   const displayTime = usePlaybackTime(PLAYBACK.TIME_DISPLAY_THROTTLE_MS);
 
   const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    const frames = Math.floor((seconds % 1) * 30); // Assume 30fps
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = Math.floor(safeSeconds % 60);
+    const frames = Math.floor((safeSeconds % 1) * 30); // Assume 30fps
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}:${frames.toString().padStart(2, "0")}`;
   };
 
-  const projectDuration = Math.max(project.duration || 0, 0);
+  const projectDuration = Number.isFinite(project.duration) ? Math.max(project.duration, 0) : 0;
   const clampedDisplayTime = Math.max(0, Math.min(displayTime, projectDuration));
 
   return (

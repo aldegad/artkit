@@ -43,6 +43,10 @@ function isAudibleMediaClip(clip: Clip): boolean {
   return false;
 }
 
+function hasFiniteMediaDuration(media: HTMLMediaElement): boolean {
+  return Number.isFinite(media.duration) && media.duration > 0;
+}
+
 export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSyncOptions) {
   const {
     clips,
@@ -149,7 +153,15 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
         }
 
         const sourceTime = getSourceTime(clip, ct);
-        if (Math.abs(video.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
+        const videoSeekThreshold =
+          desiredState.isAudible && !isWebAudioReadyRef.current(clip.sourceUrl)
+            ? Math.max(PLAYBACK.SEEK_DRIFT_THRESHOLD, 0.45)
+            : PLAYBACK.SEEK_DRIFT_THRESHOLD;
+        if (
+          Number.isFinite(sourceTime) &&
+          hasFiniteMediaDuration(video) &&
+          Math.abs(video.currentTime - sourceTime) > videoSeekThreshold
+        ) {
           video.currentTime = sourceTime;
         }
 
@@ -195,7 +207,12 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
         }
 
         const sourceTime = getSourceTime(clip, ct);
-        if (Math.abs(audio.currentTime - sourceTime) > PLAYBACK.AUDIO_SEEK_DRIFT_THRESHOLD) {
+        const audioSeekThreshold = Math.max(PLAYBACK.AUDIO_SEEK_DRIFT_THRESHOLD, 0.6);
+        if (
+          Number.isFinite(sourceTime) &&
+          hasFiniteMediaDuration(audio) &&
+          Math.abs(audio.currentTime - sourceTime) > audioSeekThreshold
+        ) {
           audio.currentTime = sourceTime;
         }
 
