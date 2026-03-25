@@ -17,6 +17,7 @@ import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorag
 import { loadMediaBlob, loadMediaBlobFromKeys } from "../utils/mediaStorage";
 import { saveVideoAutosave } from "../utils/videoAutosave";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
+import { snapClipTimingToFrameGrid } from "../utils/timelineModel";
 import { TIMELINE } from "../constants";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 
@@ -269,7 +270,9 @@ export function useVideoProjectLibrary(
       }
 
       const loadedProject = loaded.project;
-      const normalizedClips = loadedProject.clips.map((clip) => normalizeLoadedClip(clip));
+      const normalizedClips = loadedProject.clips.map((clip) =>
+        snapClipTimingToFrameGrid(normalizeLoadedClip(clip), loadedProject.frameRate || 30)
+      );
       const restoredClips = await restoreClipsWithLocalMedia(normalizedClips);
       const restoredMasks = loadedProject.masks || [];
 

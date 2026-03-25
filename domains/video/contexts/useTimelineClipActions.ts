@@ -217,10 +217,12 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
     const sourceSpan = getClipSourceSpan(sourceClip);
     if (sourceSpan <= SOURCE_TRIM_EPSILON) return;
 
+    const frameRate = getTimelineFrameRate();
     const minDuration = getMinClipDuration();
     const requestedSpeed = Math.max(CLIP_PLAYBACK.MIN_SPEED, Math.min(CLIP_PLAYBACK.MAX_SPEED, playbackSpeed));
     const idealDuration = getTimelineDurationForSourceDuration({ playbackSpeed: requestedSpeed }, sourceSpan);
-    const nextDuration = Math.max(minDuration, idealDuration);
+    const quantizedDuration = getTimelineFrameRange(0, idealDuration, frameRate).duration;
+    const nextDuration = Math.max(minDuration, quantizedDuration);
     const appliedSpeed = Math.max(
       CLIP_PLAYBACK.MIN_SPEED,
       Math.min(CLIP_PLAYBACK.MAX_SPEED, sourceSpan / Math.max(nextDuration, SOURCE_TRIM_EPSILON))
@@ -249,7 +251,7 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
         } as Clip);
       })
     );
-  }, [clips, getMinClipDuration, saveToHistory, updateClipsWithDuration]);
+  }, [clips, getMinClipDuration, getTimelineFrameRate, saveToHistory, updateClipsWithDuration]);
 
   const moveClip = useCallback((clipId: string, trackId: string, startTime: number, ignoreClipIds: string[] = []) => {
     const targetTrack = tracks.find((t) => t.id === trackId) || null;

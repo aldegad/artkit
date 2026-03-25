@@ -1,8 +1,8 @@
 export type VideoExportFormat = "mp4" | "mov";
 export type VideoExportCompression = "high" | "balanced" | "small";
 export type VideoExportStrategy = "direct-single-video" | "frame-sequence";
-export type DirectVideoExportSubStrategy = "copy" | "reencode";
-export type DirectVideoExportEngine = "ffmpeg" | "native-recorder";
+export type DirectVideoExportSubStrategy = "reencode";
+export type DirectVideoExportEngine = "native-recorder";
 
 export interface VideoExportOptions {
   format?: VideoExportFormat;

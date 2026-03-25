@@ -5,12 +5,17 @@ import {
   INITIAL_TIMELINE_VIEW,
   TimelineViewState,
   VideoTrack,
+  getClipSourceSpan,
   getClipPlaybackSpeed,
 } from "../types";
 import { loadMediaBlob, loadMediaBlobFromKeys } from "./mediaStorage";
-import { normalizeClipTransformKeyframes } from "./clipTransformKeyframes";
+import {
+  normalizeClipTransformKeyframes,
+  scaleClipPositionKeyframesDuration,
+} from "./clipTransformKeyframes";
 import {
   alignTimelineTimeToFrame,
+  DEFAULT_TIMELINE_FRAME_RATE,
   getTimelineFrameRange,
   normalizeTimelineFrameRate,
   timelineFrameIndexToTime,
@@ -139,6 +144,45 @@ export function normalizeClip(clip: Clip): Clip {
     playbackSpeed,
     transformKeyframes,
   };
+}
+
+export function snapClipTimingToFrameGrid(clip: Clip, frameRate: number): Clip {
+  const normalized = normalizeClip(clip);
+  const safeFrameRate = normalizeTimelineFrameRate(frameRate);
+  const frameRange = getTimelineFrameRange(normalized.startTime, normalized.duration, safeFrameRate);
+  const durationChanged = Math.abs(frameRange.duration - normalized.duration) > 1e-6;
+  const startChanged = Math.abs(frameRange.startTime - normalized.startTime) > 1e-6;
+
+  let nextClip: Clip = normalized;
+  if (durationChanged || startChanged) {
+    nextClip = normalizeClip({
+      ...normalized,
+      startTime: frameRange.startTime,
+      duration: frameRange.duration,
+      transformKeyframes: durationChanged
+        ? scaleClipPositionKeyframesDuration(normalized, frameRange.duration)
+        : normalized.transformKeyframes,
+    } as Clip);
+  }
+
+  if (nextClip.type === "image") {
+    return nextClip;
+  }
+
+  const sourceSpan = getClipSourceSpan(nextClip);
+  if (sourceSpan <= 0) {
+    return nextClip;
+  }
+
+  const nextPlaybackSpeed = sourceSpan / Math.max(frameRange.duration, 1 / safeFrameRate);
+  if (Math.abs(nextPlaybackSpeed - getClipPlaybackSpeed(nextClip)) <= 1e-6) {
+    return nextClip;
+  }
+
+  return normalizeClip({
+    ...nextClip,
+    playbackSpeed: nextPlaybackSpeed,
+  } as Clip);
 }
 
 export function fitsTrackType(track: VideoTrack | null, clip: Clip): boolean {
@@ -434,9 +478,12 @@ export function findClipAtTime(trackClips: Clip[], time: number): Clip | null {
   return null;
 }
 
-export async function restoreAutosavedClips(savedClips: Clip[]): Promise<{ restoredClips: Clip[]; durationHint: number }> {
+export async function restoreAutosavedClips(
+  savedClips: Clip[],
+  frameRate: number = DEFAULT_TIMELINE_FRAME_RATE
+): Promise<{ restoredClips: Clip[]; durationHint: number }> {
   const restoredClips: Clip[] = [];
-  const normalizedClips = savedClips.map((clip) => normalizeClip(clip));
+  const normalizedClips = savedClips.map((clip) => snapClipTimingToFrameGrid(clip, frameRate));
   let durationHint = calculateClipsDuration(normalizedClips);
   const clipIdsBySourceId = new Map<string, string[]>();
 
