@@ -91,13 +91,9 @@ export async function resolveVideoExportStrategy(
 
   if (!directEvaluation.plan) {
     return {
-      strategy: "frame-sequence",
+      strategy: "native-timeline",
       engine: "native-recorder",
       reason: `${directEvaluation.reason} 네이티브 타임라인 recorder로 캔버스를 직접 기록합니다.`,
-      eligibility: {
-        directSingleVideo: false,
-        directCopy: false,
-      },
       nativeRecorderMimeType: nativeSupport.mimeType,
     };
   }
@@ -108,17 +104,12 @@ export async function resolveVideoExportStrategy(
   const sourceBlob = await resolveClipSourceBlob(sourceClip, sourceBlobCache);
 
   return {
-    strategy: "direct-single-video",
-    subStrategy: "reencode",
+    strategy: "native-direct",
     engine: "native-recorder",
     reason: `${resolveNativeDirectReason({
       plan: directEvaluation.plan,
       config,
     })} ${nativeSupport.reason}`.trim(),
-    eligibility: {
-      directSingleVideo: true,
-      directCopy: false,
-    },
     directPlan: directEvaluation.plan,
     sourceBlob,
     nativeRecorderMimeType: nativeSupport.mimeType,

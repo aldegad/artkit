@@ -1,7 +1,6 @@
 export type VideoExportFormat = "mp4" | "mov";
 export type VideoExportCompression = "high" | "balanced" | "small";
-export type VideoExportStrategy = "direct-single-video" | "frame-sequence";
-export type DirectVideoExportSubStrategy = "reencode";
+export type VideoExportStrategy = "native-direct" | "native-timeline";
 export type DirectVideoExportEngine = "native-recorder";
 
 export interface VideoExportOptions {
@@ -54,15 +53,8 @@ export interface CompletedVideoExport {
   outputMimeType: string;
 }
 
-export interface VideoExportStrategyEligibility {
-  directSingleVideo: boolean;
-  directCopy: boolean;
-}
-
 export interface VideoExportStrategyDecision {
   strategy: VideoExportStrategy;
-  subStrategy?: DirectVideoExportSubStrategy;
   engine?: DirectVideoExportEngine;
   reason: string;
-  eligibility: VideoExportStrategyEligibility;
 }
