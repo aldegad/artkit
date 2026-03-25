@@ -24,7 +24,17 @@ import {
   resolveVideoExportStrategy,
   type ResolvedVideoExportStrategy,
 } from "./videoExportStrategy";
-import { type VideoExportSession } from "./videoExportExecution";
+
+interface VideoExportSession {
+  ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg;
+  filePrefix: string;
+  outputFileName: string;
+  wavFileName: string;
+  cleanupFileNames: string[];
+  cleanupMountPoints: string[];
+  cleanupObjectUrls: string[];
+  exportVideoCache: Map<string, HTMLVideoElement>;
+}
 
 interface RunVideoExportParams {
   getFFmpeg: () => Promise<FFmpeg>;
@@ -59,10 +69,8 @@ function logVideoExportStrategy(params: {
   const { decision, project } = params;
   console.info("[VideoExport] strategy selected", {
     strategy: decision.strategy,
-    subStrategy: decision.subStrategy ?? null,
     engine: decision.engine ?? null,
     reason: decision.reason,
-    eligibility: decision.eligibility,
     canvasSize: project.canvasSize,
     pixelCount: project.canvasSize.width * project.canvasSize.height,
   });
@@ -142,7 +150,7 @@ async function runNativeRecorderStrategy(params: {
     throw new Error("네이티브 인코더 전략 구성이 올바르지 않습니다.");
   }
 
-  const nativeVideo = strategyDecision.strategy === "direct-single-video"
+  const nativeVideo = strategyDecision.strategy === "native-direct"
     ? await (() => {
         if (!strategyDecision.directPlan || !strategyDecision.sourceBlob) {
           throw new Error("네이티브 직접 export 전략 구성이 올바르지 않습니다.");
@@ -168,7 +176,7 @@ async function runNativeRecorderStrategy(params: {
       });
   const shouldMuxAudio =
     config.includeAudio &&
-    (strategyDecision.strategy === "frame-sequence" || strategyDecision.directPlan?.includeAudio);
+    (strategyDecision.strategy === "native-timeline" || strategyDecision.directPlan?.includeAudio);
   const ffmpeg = shouldMuxAudio ? await getFFmpeg() : null;
   const session = ffmpeg ? createVideoExportSession(ffmpeg, config.format) : null;
   try {
