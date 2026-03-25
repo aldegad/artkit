@@ -12,6 +12,7 @@ import { cloneToArrayBuffer, unmountFfmpegMountPoint } from "./videoExportIO";
 import {
   finalizeNativeRecorderExport,
   runNativeRecorderDirectExport,
+  runNativeRecorderTimelineExport,
 } from "./videoExportNativeRecorder";
 import type {
   CompletedVideoExport,
@@ -23,11 +24,7 @@ import {
   resolveVideoExportStrategy,
   type ResolvedVideoExportStrategy,
 } from "./videoExportStrategy";
-import {
-  runDirectVideoExport,
-  runFrameSequenceExport,
-  type VideoExportSession,
-} from "./videoExportExecution";
+import { type VideoExportSession } from "./videoExportExecution";
 
 interface RunVideoExportParams {
   getFFmpeg: () => Promise<FFmpeg>;
@@ -120,8 +117,10 @@ function trackCompletedExport(result: CompletedVideoExport): void {
 async function runNativeRecorderStrategy(params: {
   strategyDecision: ResolvedVideoExportStrategy;
   config: ReturnType<typeof resolveVideoExportConfig>;
+  project: VideoProject;
   clips: Clip[];
   tracks: VideoTrack[];
+  masksMap: Map<string, MaskData>;
   getFFmpeg: () => Promise<FFmpeg>;
   audioBufferCache: Map<string, AudioBuffer | null>;
   sourceBlobCache: Map<string, Blob>;
@@ -130,44 +129,56 @@ async function runNativeRecorderStrategy(params: {
   const {
     strategyDecision,
     config,
+    project,
     clips,
     tracks,
+    masksMap,
     getFFmpeg,
     audioBufferCache,
     sourceBlobCache,
     setExportProgress,
   } = params;
-  if (
-    strategyDecision.strategy !== "direct-single-video" ||
-    strategyDecision.subStrategy !== "reencode" ||
-    strategyDecision.engine !== "native-recorder" ||
-    !strategyDecision.directPlan ||
-    !strategyDecision.sourceBlob ||
-    !strategyDecision.nativeRecorderMimeType
-  ) {
+  if (strategyDecision.engine !== "native-recorder" || !strategyDecision.nativeRecorderMimeType) {
     throw new Error("네이티브 인코더 전략 구성이 올바르지 않습니다.");
   }
 
-  const nativeVideo = await runNativeRecorderDirectExport({
-    plan: strategyDecision.directPlan,
-    sourceBlob: strategyDecision.sourceBlob,
-    mimeType: strategyDecision.nativeRecorderMimeType,
-    config,
-    setExportProgress,
-    sourceBlobCache,
-  });
-  const ffmpeg = config.includeAudio && strategyDecision.directPlan.includeAudio
-    ? await getFFmpeg()
-    : null;
+  const nativeVideo = strategyDecision.strategy === "direct-single-video"
+    ? await (() => {
+        if (!strategyDecision.directPlan || !strategyDecision.sourceBlob) {
+          throw new Error("네이티브 직접 export 전략 구성이 올바르지 않습니다.");
+        }
+        return runNativeRecorderDirectExport({
+          plan: strategyDecision.directPlan,
+          sourceBlob: strategyDecision.sourceBlob,
+          mimeType: strategyDecision.nativeRecorderMimeType!,
+          config,
+          setExportProgress,
+          sourceBlobCache,
+        });
+      })()
+    : await runNativeRecorderTimelineExport({
+        project,
+        clips,
+        tracks,
+        masksMap,
+        mimeType: strategyDecision.nativeRecorderMimeType,
+        config,
+        setExportProgress,
+        sourceBlobCache,
+      });
+  const shouldMuxAudio =
+    config.includeAudio &&
+    (strategyDecision.strategy === "frame-sequence" || strategyDecision.directPlan?.includeAudio);
+  const ffmpeg = shouldMuxAudio ? await getFFmpeg() : null;
   const session = ffmpeg ? createVideoExportSession(ffmpeg, config.format) : null;
   try {
     return await finalizeNativeRecorderExport({
       nativeVideo,
       config,
-      plan: strategyDecision.directPlan,
+      plan: strategyDecision.directPlan ?? null,
       clips,
       tracks,
-      ffmpeg: session?.ffmpeg ?? (null as never),
+      ffmpeg: session?.ffmpeg ?? null,
       filePrefix: session?.filePrefix ?? `native-export-${Date.now()}`,
       outputFileName: session?.outputFileName ?? `native-export.${config.format}`,
       wavFileName: session?.wavFileName ?? "native-export.wav",
@@ -181,59 +192,6 @@ async function runNativeRecorderStrategy(params: {
     if (session) {
       await cleanupVideoExportSession(session);
     }
-  }
-}
-
-async function runFfmpegStrategy(params: {
-  strategyDecision: ResolvedVideoExportStrategy;
-  config: ReturnType<typeof resolveVideoExportConfig>;
-  getFFmpeg: () => Promise<FFmpeg>;
-  project: VideoProject;
-  clips: Clip[];
-  tracks: VideoTrack[];
-  masksMap: Map<string, MaskData>;
-  audioBufferCache: Map<string, AudioBuffer | null>;
-  sourceBlobCache: Map<string, Blob>;
-  setExportProgress: (value: ExportProgressState) => void;
-}): Promise<CompletedVideoExport> {
-  const {
-    strategyDecision,
-    config,
-    getFFmpeg,
-    project,
-    clips,
-    tracks,
-    masksMap,
-    audioBufferCache,
-    sourceBlobCache,
-    setExportProgress,
-  } = params;
-  const ffmpeg = await getFFmpeg();
-  const session = createVideoExportSession(ffmpeg, config.format);
-  try {
-    if (strategyDecision.strategy === "direct-single-video") {
-      return await runDirectVideoExport({
-        session,
-        decision: strategyDecision,
-        config,
-        setExportProgress,
-      });
-    }
-
-    return await runFrameSequenceExport({
-      session,
-      project,
-      clips,
-      tracks,
-      masksMap,
-      config,
-      setExportProgress,
-      audioBufferCache,
-      sourceBlobCache,
-      decision: strategyDecision,
-    });
-  } finally {
-    await cleanupVideoExportSession(session);
   }
 }
 
@@ -272,46 +230,18 @@ export async function runVideoExport(params: RunVideoExportParams): Promise<Comp
     percent: 3,
     detail: strategyDecision.reason,
   });
-
-  const runFfmpegFallback = () => runFfmpegStrategy({
-        strategyDecision,
-        config,
-        getFFmpeg: params.getFFmpeg,
-        project: params.project,
-        clips: params.clips,
-        tracks: params.tracks,
-        masksMap: params.masksMap,
-        audioBufferCache: params.audioBufferCache,
-        sourceBlobCache: params.sourceBlobCache,
-        setExportProgress: setProgressWithStrategy,
-      });
-
-  const result = strategyDecision.engine === "native-recorder"
-    ? await (async () => {
-        try {
-          return await runNativeRecorderStrategy({
-            strategyDecision,
-            config,
-            clips: params.clips,
-            tracks: params.tracks,
-            getFFmpeg: params.getFFmpeg,
-            audioBufferCache: params.audioBufferCache,
-            sourceBlobCache: params.sourceBlobCache,
-            setExportProgress: setProgressWithStrategy,
-          });
-        } catch (error) {
-          console.warn("[VideoExport] native recorder failed, falling back to ffmpeg", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          setProgressWithStrategy({
-            stage: "Preparing export",
-            percent: 4,
-            detail: "네이티브 export가 실패해 FFmpeg 경로로 전환합니다.",
-          });
-          return runFfmpegFallback();
-        }
-      })()
-    : await runFfmpegFallback();
+  const result = await runNativeRecorderStrategy({
+    strategyDecision,
+    config,
+    project: params.project,
+    clips: params.clips,
+    tracks: params.tracks,
+    masksMap: params.masksMap,
+    getFFmpeg: params.getFFmpeg,
+    audioBufferCache: params.audioBufferCache,
+    sourceBlobCache: params.sourceBlobCache,
+    setExportProgress: setProgressWithStrategy,
+  });
 
   trackCompletedExport(result);
   return result;

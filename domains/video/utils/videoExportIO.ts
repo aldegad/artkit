@@ -97,6 +97,25 @@ export async function loadExportVideoElement(sourceUrl: string): Promise<HTMLVid
   });
 }
 
+export async function resolveBlobMediaDuration(blob: Blob): Promise<number | null> {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const video = await loadExportVideoElement(objectUrl);
+    if (!video) {
+      return null;
+    }
+    const duration = Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : null;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    return duration;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export async function seekExportVideoFrame(
   video: HTMLVideoElement,
   targetTime: number,

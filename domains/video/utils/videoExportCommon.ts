@@ -10,6 +10,10 @@ import {
   type VideoProject,
   type VideoTrack,
 } from "../types";
+import {
+  getTimelineFrameRange,
+  normalizeTimelineFrameRate,
+} from "./timelineFrame";
 import type {
   ResolvedVideoExportConfig,
   VideoExportCompression,
@@ -83,6 +87,58 @@ export interface DirectVideoExportPlanEvaluation {
 }
 
 export const VIDEO_EXPORT_EPSILON = 1e-3;
+const DIRECT_EXPORT_AUDIO_SAMPLE_RATE = 44_100;
+
+function getFrameAlignedSampleIndex(frameIndex: number, frameRate: number, sampleRate: number): number {
+  const safeFrameRate = normalizeTimelineFrameRate(frameRate);
+  if (!Number.isFinite(frameIndex)) return 0;
+  return Math.max(0, Math.round((Math.max(0, Math.round(frameIndex)) * sampleRate) / safeFrameRate));
+}
+
+function scheduleFrameAlignedAudioSource(params: {
+  offlineContext: OfflineAudioContext;
+  sourceBuffer: AudioBuffer;
+  playbackSpeed: number;
+  gain: number;
+  sourceStart: number;
+  sourceDuration: number;
+  startSample: number;
+  endSample: number;
+}): boolean {
+  const {
+    offlineContext,
+    sourceBuffer,
+    playbackSpeed,
+    gain,
+    sourceStart,
+    sourceDuration,
+    startSample,
+    endSample,
+  } = params;
+  if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(startSample) || !Number.isFinite(endSample) || endSample <= startSample) {
+    return false;
+  }
+
+  const startTime = startSample / offlineContext.sampleRate;
+  const endTime = endSample / offlineContext.sampleRate;
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
+    return false;
+  }
+
+  const sourceNode = offlineContext.createBufferSource();
+  sourceNode.buffer = sourceBuffer;
+  sourceNode.playbackRate.value = playbackSpeed;
+  const gainNode = offlineContext.createGain();
+  gainNode.gain.value = Math.max(0, Math.min(1, gain));
+  sourceNode.connect(gainNode);
+  gainNode.connect(offlineContext.destination);
+  sourceNode.start(startTime, sourceStart, sourceDuration);
+  sourceNode.stop(endTime);
+  return true;
+}
 
 export function sanitizeVideoExportFileName(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
@@ -211,6 +267,32 @@ export function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   return new Blob([wavBuffer], { type: "audio/wav" });
 }
 
+export function fitAudioBufferToDuration(
+  buffer: AudioBuffer,
+  durationSeconds: number
+): AudioBuffer {
+  const safeDuration = Number.isFinite(durationSeconds) ? Math.max(0.001, durationSeconds) : buffer.duration;
+  const targetFrameCount = Math.max(1, Math.round(safeDuration * buffer.sampleRate));
+  if (targetFrameCount === buffer.length) {
+    return buffer;
+  }
+
+  const fitted = new AudioBuffer({
+    numberOfChannels: buffer.numberOfChannels,
+    length: targetFrameCount,
+    sampleRate: buffer.sampleRate,
+  });
+
+  const copyLength = Math.min(buffer.length, targetFrameCount);
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const source = buffer.getChannelData(channel);
+    const target = fitted.getChannelData(channel);
+    target.set(source.subarray(0, copyLength), 0);
+  }
+
+  return fitted;
+}
+
 export function findActiveClipAtTime(trackClips: Clip[], time: number): Clip | null {
   if (trackClips.length === 0) return null;
 
@@ -308,6 +390,31 @@ export function buildAtempoFilters(playbackSpeed: number): string[] {
   return filters;
 }
 
+async function getOrDecodeSourceBuffer(params: {
+  clip: Clip;
+  decodeContext: AudioContext;
+  sourceBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache?: Map<string, Blob>;
+}): Promise<AudioBuffer | null> {
+  const { clip, decodeContext, sourceBufferCache, sourceBlobCache } = params;
+  const sourceCacheKey = clip.sourceId || clip.id;
+  let sourceBuffer = sourceBufferCache.get(sourceCacheKey);
+  if (sourceBuffer !== undefined) {
+    return sourceBuffer;
+  }
+
+  try {
+    const sourceBlob = await resolveClipSourceBlob(clip, sourceBlobCache);
+    const sourceArrayBuffer = await sourceBlob.arrayBuffer();
+    sourceBuffer = await decodeContext.decodeAudioData(sourceArrayBuffer.slice(0));
+  } catch {
+    sourceBuffer = null;
+  }
+
+  sourceBufferCache.set(sourceCacheKey, sourceBuffer);
+  return sourceBuffer;
+}
+
 export async function renderTimelineAudioBuffer(params: {
   clips: Clip[];
   tracks: VideoTrack[];
@@ -346,19 +453,12 @@ export async function renderTimelineAudioBuffer(params: {
       const timelineDuration = clipEndTimeInTimeline - clipStartTimeInTimeline;
       if (timelineDuration <= 0) continue;
 
-      const sourceCacheKey = clip.sourceId || clip.id;
-      let sourceBuffer = sourceBufferCache.get(sourceCacheKey);
-      if (sourceBuffer === undefined) {
-        try {
-          const sourceBlob = await resolveClipSourceBlob(clip, sourceBlobCache);
-          const sourceArrayBuffer = await sourceBlob.arrayBuffer();
-          sourceBuffer = await decodeContext.decodeAudioData(sourceArrayBuffer.slice(0));
-        } catch {
-          sourceBuffer = null;
-        }
-        sourceBufferCache.set(sourceCacheKey, sourceBuffer);
-      }
-
+      const sourceBuffer = await getOrDecodeSourceBuffer({
+        clip,
+        decodeContext,
+        sourceBufferCache,
+        sourceBlobCache,
+      });
       if (!sourceBuffer) continue;
 
       const trimIn = getSourceTime(clip, clipStartTimeInTimeline);
@@ -383,6 +483,117 @@ export async function renderTimelineAudioBuffer(params: {
       gainNode.connect(offlineContext.destination);
       sourceNode.start(clipStartTimeInTimeline - timelineStart, trimIn, playbackDuration);
       hasScheduledAudio = true;
+    }
+
+    return hasScheduledAudio ? offlineContext.startRendering() : null;
+  } finally {
+    await decodeContext.close().catch(() => {});
+  }
+}
+
+export async function renderDirectPlanAudioBuffer(params: {
+  plan: DirectVideoExportPlan;
+  projectDuration: number;
+  frameRate: number;
+  recordedSegmentTimelineDurations?: number[];
+  sourceBufferCache: Map<string, AudioBuffer | null>;
+  sourceBlobCache?: Map<string, Blob>;
+}): Promise<AudioBuffer | null> {
+  const {
+    plan,
+    projectDuration,
+    frameRate,
+    recordedSegmentTimelineDurations,
+    sourceBufferCache,
+    sourceBlobCache,
+  } = params;
+  if (typeof OfflineAudioContext === "undefined" || typeof AudioContext === "undefined") {
+    throw new Error("browser does not support offline audio rendering");
+  }
+
+  const duration = Math.max(projectDuration, 0.1);
+  const safeFrameRate = normalizeTimelineFrameRate(frameRate);
+  const exportFrameRange = getTimelineFrameRange(0, duration, safeFrameRate);
+  const sampleRate = DIRECT_EXPORT_AUDIO_SAMPLE_RATE;
+  const frameCount = Math.max(
+    1,
+    getFrameAlignedSampleIndex(exportFrameRange.frameCount, safeFrameRate, sampleRate)
+  );
+  const offlineContext = new OfflineAudioContext(2, frameCount, sampleRate);
+  const decodeContext = new AudioContext();
+  let hasScheduledAudio = false;
+
+  try {
+    if (plan.kind === "single") {
+      if (!plan.includeAudio) {
+        return null;
+      }
+
+      const sourceBuffer = await getOrDecodeSourceBuffer({
+        clip: plan.clip,
+        decodeContext,
+        sourceBufferCache,
+        sourceBlobCache,
+      });
+      if (!sourceBuffer) {
+        return null;
+      }
+
+      const effectivePlaybackSpeed = plan.sourceDuration / Math.max(duration, 1 / safeFrameRate);
+      hasScheduledAudio = scheduleFrameAlignedAudioSource({
+        offlineContext,
+        sourceBuffer,
+        playbackSpeed: Number.isFinite(effectivePlaybackSpeed) && effectivePlaybackSpeed > 0
+          ? effectivePlaybackSpeed
+          : getClipPlaybackSpeed(plan.clip),
+        gain: plan.audioVolume / 100,
+        sourceStart: plan.sourceStart,
+        sourceDuration: plan.sourceDuration,
+        startSample: 0,
+        endSample: frameCount,
+      });
+    } else {
+      let timelineCursorFrame = 0;
+      for (const [segmentIndex, segment] of plan.segments.entries()) {
+        const recordedSegmentTimelineDuration = recordedSegmentTimelineDurations?.[segmentIndex];
+        const segmentTimelineDuration =
+          Number.isFinite(recordedSegmentTimelineDuration) && recordedSegmentTimelineDuration! > 0
+            ? recordedSegmentTimelineDuration!
+            : segment.timelineDuration;
+        const segmentFrameRange = getTimelineFrameRange(0, segmentTimelineDuration, safeFrameRate);
+        const startSample = getFrameAlignedSampleIndex(timelineCursorFrame, safeFrameRate, sampleRate);
+        timelineCursorFrame += segmentFrameRange.frameCount;
+        const endSample = Math.min(
+          frameCount,
+          getFrameAlignedSampleIndex(timelineCursorFrame, safeFrameRate, sampleRate)
+        );
+
+        if (!segment.includeAudio) {
+          continue;
+        }
+
+        const sourceBuffer = await getOrDecodeSourceBuffer({
+          clip: segment.clip,
+          decodeContext,
+          sourceBufferCache,
+          sourceBlobCache,
+        });
+        if (sourceBuffer) {
+          const effectivePlaybackSpeed = segment.sourceDuration / Math.max(segmentTimelineDuration, 1 / safeFrameRate);
+          hasScheduledAudio = scheduleFrameAlignedAudioSource({
+            offlineContext,
+            sourceBuffer,
+            playbackSpeed: Number.isFinite(effectivePlaybackSpeed) && effectivePlaybackSpeed > 0
+              ? effectivePlaybackSpeed
+              : getClipPlaybackSpeed(segment.clip),
+            gain: segment.audioVolume / 100,
+            sourceStart: segment.sourceStart,
+            sourceDuration: segment.sourceDuration,
+            startSample,
+            endSample,
+          }) || hasScheduledAudio;
+        }
+      }
     }
 
     return hasScheduledAudio ? offlineContext.startRendering() : null;

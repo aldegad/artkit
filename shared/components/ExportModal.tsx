@@ -19,7 +19,7 @@ export interface ExportProgress {
   isStalled?: boolean;
   strategy?: "direct-single-video" | "frame-sequence";
   strategyReason?: string;
-  strategyEngine?: "ffmpeg" | "native-recorder";
+  strategyEngine?: "native-recorder";
   ffmpegLogSummary?: string;
 }
 
@@ -84,12 +84,14 @@ export function ExportModal({
   const strategyLabel =
     exportProgress?.strategy === "direct-single-video"
       ? exportProgress.strategyReason
-        ? `직접 경로${exportProgress.strategyEngine === "native-recorder" ? " · 브라우저 네이티브" : exportProgress.strategyEngine === "ffmpeg" ? " · FFmpeg" : ""} · ${exportProgress.strategyReason}`
+        ? `직접 경로${exportProgress.strategyEngine === "native-recorder" ? " · 브라우저 네이티브" : ""} · ${exportProgress.strategyReason}`
         : "직접 경로"
       : exportProgress?.strategy === "frame-sequence"
         ? exportProgress.strategyReason
-          ? `일반 렌더 경로${exportProgress.strategyEngine === "ffmpeg" ? " · FFmpeg" : ""} · ${exportProgress.strategyReason}`
-          : "일반 렌더 경로"
+          ? `${exportProgress.strategyEngine === "native-recorder" ? "네이티브 타임라인 경로 · 브라우저 네이티브" : "일반 렌더 경로"} · ${exportProgress.strategyReason}`
+          : exportProgress.strategyEngine === "native-recorder"
+            ? "네이티브 타임라인 경로"
+            : "일반 렌더 경로"
         : null;
   const phaseStatusLabel = exportProgress
     ? exportProgress.isIndeterminate

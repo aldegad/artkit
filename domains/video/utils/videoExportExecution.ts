@@ -12,8 +12,6 @@ import {
   buildAtempoFilters,
   canvasToBlob,
   type DirectVideoSequenceSegmentPlan,
-  findActiveClipAtTime,
-  findActiveMaskAtTime,
   renderTimelineAudioBuffer,
   resolveSourceExtension,
   resolveVideoExportConfig,
@@ -21,26 +19,27 @@ import {
 } from "./videoExportHelpers";
 import {
   encodeOutputFile,
-  loadExportVideoElement,
   mountBlobToFfmpegFile,
   readBinaryOutputFile,
   resolveClipSourceBlob,
   seekExportVideoFrame,
-  unmountFfmpegMountPoint,
   writeBlobToFfmpegFile,
 } from "./videoExportIO";
+import {
+  buildClipIndex,
+  buildMaskIndex,
+  findActiveMaskAtTime,
+  findExportClipAtTime,
+  preloadExportImages,
+  preloadExportVideos,
+  preloadMaskImages,
+} from "./videoExportRenderAssets";
 import type {
   CompletedVideoExport,
   ExportProgressState,
   VideoExportStrategyDecision,
 } from "./videoExportTypes";
 import type { ResolvedVideoExportStrategy } from "./videoExportStrategy";
-
-interface TimedTrackMask {
-  startTime: number;
-  endTime: number;
-  maskData: string;
-}
 
 export interface VideoExportSession {
   ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg;
@@ -86,172 +85,6 @@ function finalizeVideoExport(params: {
   };
 }
 
-function buildClipIndex(clips: Clip[]): Map<string, Clip[]> {
-  const clipsByTrack = new Map<string, Clip[]>();
-  for (const clip of clips) {
-    const list = clipsByTrack.get(clip.trackId);
-    if (list) {
-      list.push(clip);
-    } else {
-      clipsByTrack.set(clip.trackId, [clip]);
-    }
-  }
-
-  for (const trackClips of clipsByTrack.values()) {
-    trackClips.sort((a, b) => a.startTime - b.startTime);
-  }
-
-  return clipsByTrack;
-}
-
-function findExportClipAtTime(
-  trackClips: Clip[],
-  time: number,
-  tolerance: number,
-): Clip | null {
-  const exactClip = findActiveClipAtTime(trackClips, time);
-  if (exactClip) return exactClip;
-  if (trackClips.length === 0) return null;
-
-  let lo = 0;
-  let hi = trackClips.length - 1;
-  let candidate = -1;
-
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (trackClips[mid].startTime <= time) {
-      candidate = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-
-  const nextClip = trackClips[candidate + 1] ?? null;
-  if (
-    nextClip
-    && Math.abs(nextClip.startTime - time) <= tolerance
-    && time < nextClip.startTime + nextClip.duration + tolerance
-  ) {
-    return nextClip;
-  }
-
-  const prevClip = candidate >= 0 ? trackClips[candidate] : null;
-  if (
-    prevClip
-    && Math.abs(time - (prevClip.startTime + prevClip.duration)) <= tolerance
-    && time >= prevClip.startTime - tolerance
-  ) {
-    return prevClip;
-  }
-
-  return null;
-}
-
-function buildMaskIndex(masksMap: Map<string, MaskData>): Map<string, TimedTrackMask[]> {
-  const masksByTrack = new Map<string, TimedTrackMask[]>();
-  for (const mask of masksMap.values()) {
-    if (!mask.maskData) continue;
-    const timedMask = {
-      startTime: mask.startTime,
-      endTime: mask.startTime + mask.duration,
-      maskData: mask.maskData,
-    };
-    const list = masksByTrack.get(mask.trackId);
-    if (list) {
-      list.push(timedMask);
-    } else {
-      masksByTrack.set(mask.trackId, [timedMask]);
-    }
-  }
-
-  for (const trackMasks of masksByTrack.values()) {
-    trackMasks.sort((a, b) => a.startTime - b.startTime);
-  }
-
-  return masksByTrack;
-}
-
-async function preloadExportImages(
-  session: VideoExportSession,
-  clips: Clip[],
-  sourceBlobCache: Map<string, Blob>
-): Promise<Map<string, HTMLImageElement>> {
-  const imageCache = new Map<string, HTMLImageElement>();
-  const imageClips = clips.filter((clip) => clip.type === "image");
-  await Promise.all(
-    imageClips.map(
-      async (clip) =>
-        new Promise<void>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            imageCache.set(clip.sourceUrl, img);
-            resolve();
-          };
-          img.onerror = () => resolve();
-          resolveClipSourceBlob(clip, sourceBlobCache)
-            .then((blob) => {
-              const objectUrl = URL.createObjectURL(blob);
-              session.cleanupObjectUrls.push(objectUrl);
-              img.src = objectUrl;
-            })
-            .catch(() => {
-              img.src = clip.sourceUrl;
-            });
-        })
-    )
-  );
-  return imageCache;
-}
-
-async function preloadMaskImages(masksMap: Map<string, MaskData>): Promise<Map<string, HTMLImageElement>> {
-  const maskCache = new Map<string, HTMLImageElement>();
-  const maskDataUrls = new Set<string>();
-  for (const mask of masksMap.values()) {
-    if (mask.maskData) maskDataUrls.add(mask.maskData);
-  }
-
-  await Promise.all(
-    [...maskDataUrls].map(
-      (data) =>
-        new Promise<void>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            maskCache.set(data, img);
-            resolve();
-          };
-          img.onerror = () => resolve();
-          img.src = data;
-        })
-    )
-  );
-  return maskCache;
-}
-
-async function preloadExportVideos(
-  session: VideoExportSession,
-  clips: Clip[],
-  sourceBlobCache: Map<string, Blob>
-): Promise<void> {
-  const videoClips = clips.filter((clip) => clip.type === "video");
-  await Promise.all(
-    videoClips.map(async (clip) => {
-      let video = await loadExportVideoElement(clip.sourceUrl);
-      if (!video) {
-        try {
-          const sourceBlob = await resolveClipSourceBlob(clip, sourceBlobCache);
-          const objectUrl = URL.createObjectURL(sourceBlob);
-          session.cleanupObjectUrls.push(objectUrl);
-          video = await loadExportVideoElement(objectUrl);
-        } catch {
-          video = null;
-        }
-      }
-      if (video) session.exportVideoCache.set(clip.id, video);
-    })
-  );
-}
-
 export async function runDirectVideoExport(params: {
   session: VideoExportSession;
   decision: ResolvedVideoExportStrategy;
@@ -281,7 +114,7 @@ export async function runDirectVideoExport(params: {
   setExportProgress({
     stage: "Preparing direct export",
     percent: 8,
-    detail: `직접 경로 준비 중 · ${decision.subStrategy === "copy" ? "stream copy" : "re-encode"}`,
+    detail: "직접 경로 준비 중 · re-encode",
   });
 
   const sourceBlob = decision.sourceBlob;
@@ -315,49 +148,6 @@ export async function runDirectVideoExport(params: {
     );
   }
   const directVideoFilters = appendEvenDimensionPad(videoFilters);
-
-  if (decision.subStrategy === "copy") {
-    setExportProgress({
-      stage: `Encoding ${config.format.toUpperCase()}`,
-      percent: 72,
-      detail: "stream copy 중...",
-      phasePercent: 0,
-      isIndeterminate: true,
-    });
-    const copyArgs = [
-      "-ss",
-      seekTime,
-      "-t",
-      seekDuration,
-      "-probesize",
-      "1048576",
-      "-analyzeduration",
-      "1000000",
-      "-i",
-      sourceInput.filePath,
-      "-map",
-      "0:v:0",
-      ...(plan.includeAudio ? ["-map", "0:a:0?"] : ["-an"]),
-      "-c",
-      "copy",
-      ...(config.format === "mov" || config.format === "mp4" ? ["-movflags", "+faststart"] : []),
-      session.outputFileName,
-    ];
-    const encodeStartedAt = performance.now();
-    const exitCode = await session.ffmpeg.exec(copyArgs);
-    metrics.encodeMs = performance.now() - encodeStartedAt;
-    if (exitCode !== 0) {
-      throw new Error(`ffmpeg exited with code ${exitCode} during stream copy`);
-    }
-    const outputReadStartedAt = performance.now();
-    const outputBytes = await readBinaryOutputFile(session.ffmpeg, session.outputFileName);
-    metrics.outputReadMs = performance.now() - outputReadStartedAt;
-    console.info("[VideoExport] direct export metrics", {
-      subStrategy: decision.subStrategy,
-      ...metrics,
-    });
-    return finalizeVideoExport({ outputBytes, config, hasAudioInput: plan.includeAudio });
-  }
 
   const baseArgs = [
     "-ss",
@@ -687,9 +477,17 @@ export async function runFrameSequenceExport(params: {
   const sortedTracks = [...tracks].reverse();
   const clipsByTrack = buildClipIndex(clips);
   const masksByTrack = buildMaskIndex(masksMap);
-  const exportImageCache = await preloadExportImages(session, clips, sourceBlobCache);
+  const exportImageCache = await preloadExportImages({
+    cleanupObjectUrls: session.cleanupObjectUrls,
+    clips,
+    sourceBlobCache,
+  });
   const exportMaskImgCache = await preloadMaskImages(masksMap);
-  await preloadExportVideos(session, clips, sourceBlobCache);
+  session.exportVideoCache = await preloadExportVideos({
+    cleanupObjectUrls: session.cleanupObjectUrls,
+    clips,
+    sourceBlobCache,
+  });
 
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = project.canvasSize.width;

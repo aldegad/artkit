@@ -67,7 +67,10 @@ export function useTimelinePersistence(params: UseTimelinePersistenceParams) {
       setTracks(data.tracks);
     }
     if (data.clips?.length) {
-      const restored = await restoreAutosavedClips(data.clips as Clip[]);
+      const restored = await restoreAutosavedClips(
+        data.clips as Clip[],
+        data.project?.frameRate || 30
+      );
       durationHint = Math.max(durationHint, sanitizeDurationHint(restored.durationHint));
       setClips(restored.restoredClips);
     }
