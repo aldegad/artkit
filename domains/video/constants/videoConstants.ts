@@ -53,7 +53,11 @@ export const PLAYBACK = {
   DEFAULT_RATE: 1,
   FRAME_STEP: 1 / 30, // 30fps
   SYNC_INTERVAL_MS: 50, // media sync interval during playback
-  SEEK_DRIFT_THRESHOLD: 0.15, // seconds: visual media re-seek threshold
+  SEEK_DRIFT_THRESHOLD: 0.15, // seconds: visual media re-seek threshold (scrub/pause)
+  /** Relaxed drift threshold during active playback — avoids re-seek storms that
+   *  stall the decoder. The video element plays at the correct playbackRate,
+   *  so small drift is acceptable for smooth preview. */
+  PLAYBACK_SEEK_DRIFT_THRESHOLD: 0.8, // seconds: re-seek only when very far behind
   AUDIO_SEEK_DRIFT_THRESHOLD: 0.35, // seconds: fallback HTMLAudio seek threshold
   TIME_DISPLAY_THROTTLE_MS: 100, // throttle for time display updates
 } as const;

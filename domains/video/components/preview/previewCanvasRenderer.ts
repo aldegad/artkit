@@ -3,7 +3,7 @@
 import { MutableRefObject, RefObject } from "react";
 import { applyPixelPreviewScalePolicy, drawScaledImage, resizeCanvasForDpr } from "@/shared/utils";
 import { getCanvasColorsSync } from "@/shared/hooks";
-import { PLAYBACK } from "../../constants";
+
 import { Clip, VideoClip, VideoProject, VideoTrack, getClipPlaybackSpeed, getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
 import { resolveClipPositionAtTimelineTime } from "../../utils/clipTransformKeyframes";
 import { drawCropOverlay, drawMaskRegionOverlay, drawTransformBoundsOverlay } from "./previewCanvasOverlayDrawing";
@@ -272,13 +272,13 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
           continue;
         }
         const sourceTime = getSourceTime(clip, renderTime);
-        if (params.playback.isPlaying && Math.abs(videoElement.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD * 1.25) {
-          baseFrameReady = false;
-          continue;
-        }
         if (!params.playback.isPlaying && Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
           videoElement.currentTime = sourceTime;
         }
+        // During playback, always draw whatever frame the video element has.
+        // The video is playing at the correct playbackRate, so the current
+        // frame is the best available — skipping it causes frozen display
+        // (the "1 FPS" symptom). Only mark not-ready when truly no data.
         sourceEl = videoElement;
       } else if (clip.type === "image") {
         let img = params.imageCacheRef.current.get(clip.sourceUrl);

@@ -153,10 +153,14 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
         }
 
         const sourceTime = getSourceTime(clip, ct);
+        // During playback, use relaxed threshold to avoid re-seek storms that
+        // stall the decoder and cause frozen frames. The video element is
+        // already playing at the correct playbackRate — let it catch up
+        // naturally instead of constantly interrupting with seeks.
         const videoSeekThreshold =
           desiredState.isAudible && !isWebAudioReadyRef.current(clip.sourceUrl)
-            ? Math.max(PLAYBACK.SEEK_DRIFT_THRESHOLD, 0.45)
-            : PLAYBACK.SEEK_DRIFT_THRESHOLD;
+            ? Math.max(PLAYBACK.PLAYBACK_SEEK_DRIFT_THRESHOLD, 0.8)
+            : PLAYBACK.PLAYBACK_SEEK_DRIFT_THRESHOLD;
         if (
           Number.isFinite(sourceTime) &&
           hasFiniteMediaDuration(video) &&
