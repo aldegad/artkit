@@ -75,7 +75,7 @@ export interface BaseHandlerOptions {
 // Pan/Zoom Handler Options
 // ============================================
 
-export interface PanZoomHandlerOptions extends BaseHandlerOptions {}
+export type PanZoomHandlerOptions = BaseHandlerOptions;
 
 // ============================================
 // Guide Handler Options

@@ -25,20 +25,20 @@ export interface HistoryAdapter<TState = unknown> {
   applyState: (state: TState) => void;
 }
 
-interface UseHistoryOptions {
+interface UseHistoryOptions<TState = unknown> {
   maxHistory?: number;
   editCanvasRef?: RefObject<HTMLCanvasElement | null>;
-  historyAdapterRef?: RefObject<HistoryAdapter<any> | null>;
+  historyAdapterRef?: RefObject<HistoryAdapter<TState> | null>;
 }
 
-interface UseHistoryReturn {
+interface UseHistoryReturn<TState = unknown> {
   saveToHistory: () => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   clearHistory: () => void;
-  historyRef: RefObject<HistoryEntry[]>;
+  historyRef: RefObject<HistoryEntry<TState>[]>;
   historyIndexRef: RefObject<number>;
 }
 
@@ -46,12 +46,14 @@ interface UseHistoryReturn {
 // Hook Implementation
 // ============================================
 
-export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
+export function useHistory<TState = unknown>(
+  options: UseHistoryOptions<TState>
+): UseHistoryReturn<TState> {
   const { maxHistory = 50, editCanvasRef, historyAdapterRef } = options;
 
-  const historyRef = useRef<HistoryEntry[]>([]);
+  const historyRef = useRef<HistoryEntry<TState>[]>([]);
   const historyIndexRef = useRef<number>(-1);
-  const redoRef = useRef<HistoryEntry[]>([]);
+  const redoRef = useRef<HistoryEntry<TState>[]>([]);
 
   // Keep compatibility refs in sync with the past stack.
   const syncRefs = useCallback(() => {
@@ -59,7 +61,7 @@ export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
   }, []);
 
   // Capture current state from adapter if available, otherwise from active canvas.
-  const captureCurrentState = useCallback((): HistoryEntry | null => {
+  const captureCurrentState = useCallback((): HistoryEntry<TState> | null => {
     const adapter = historyAdapterRef?.current;
     if (adapter) {
       const state = adapter.captureState();
@@ -84,7 +86,7 @@ export function useHistory(options: UseHistoryOptions): UseHistoryReturn {
 
   // Restore an entry onto adapter/canvas.
   const applyEntry = useCallback(
-    (entry: HistoryEntry) => {
+    (entry: HistoryEntry<TState>) => {
       if (entry.type === "adapter") {
         const adapter = historyAdapterRef?.current;
         if (!adapter) return;

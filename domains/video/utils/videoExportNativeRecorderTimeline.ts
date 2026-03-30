@@ -107,7 +107,7 @@ export async function runNativeRecorderTimelineExport(params: {
   exportMaskTmpCanvas.height = project.canvasSize.height;
 
   const canvasStream = outputCanvas.captureStream(config.frameRate);
-  let combinedStream: MediaStream | null = new MediaStream();
+  const combinedStream: MediaStream = new MediaStream();
   for (const track of canvasStream.getVideoTracks()) {
     combinedStream.addTrack(track);
   }
