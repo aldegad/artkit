@@ -552,7 +552,7 @@ export default function HeroDraftsPage() {
                     <div className="mb-6">
                         <h2 className="text-3xl font-bold mb-2 tracking-tight">2. The Healing Lens</h2>
                         <p className="text-text-secondary max-w-2xl">
-                            Targeting the <strong>Image Editor / Artifact Cleanup</strong> feature. A base image contains obvious, distorted AI glitches. The user drags a magnificent "Healing Lens" across the canvas. Inside the lens, the art is instantly structurally repaired and perfected in real-time.
+                            Targeting the <strong>Image Editor / Artifact Cleanup</strong> feature. A base image contains obvious, distorted AI glitches. The user drags a magnificent &quot;Healing Lens&quot; across the canvas. Inside the lens, the art is instantly structurally repaired and perfected in real-time.
                         </p>
                     </div>
                     <Draft2HealingLens />

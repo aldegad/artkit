@@ -559,12 +559,9 @@ export function useCanvasViewport(
   // ---- useReactSync sub-hook ----
   // Returns throttled React state for UI components (zoom display, etc.)
 
-  const useReactSync = useCallback(
-    (throttleMs: number = 100) => {
-      return useReactSyncImpl(emitterRef.current, transformRef, throttleMs);
-    },
-    [],
-  );
+  function useReactSync(throttleMs: number = 100) {
+    return useReactSyncImpl(emitterRef.current, transformRef, throttleMs);
+  }
 
   return {
     getTransform,
