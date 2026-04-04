@@ -22,6 +22,7 @@ import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { useMouseHandlers } from "./useMouseHandlers";
 import { useCanvasRendering } from "./useCanvasRendering";
 import { useBackgroundRemoval } from "./useBackgroundRemoval";
+import { useWatermarkRemoval } from "./useWatermarkRemoval";
 import { useTransformTool } from "./useTransformTool";
 import { useGuideTool } from "./useGuideTool";
 import { useEditorSave } from "./useEditorSave";
@@ -996,6 +997,13 @@ export function useImageEditorController() {
     },
   });
 
+  const watermarkRemoval = useWatermarkRemoval({
+    layers,
+    activeLayerId,
+    layerCanvasesRef,
+    saveToHistory,
+  });
+
   useTransformShortcuts({
     toolMode,
     setToolMode,
@@ -1302,6 +1310,7 @@ export function useImageEditorController() {
     onRedo: handleRedo,
     canUndo: canUndoNow,
     canRedo: canRedoNow,
+    onWatermarkRemoval: watermarkRemoval.openWatermarkRemoval,
     showRulers,
     showGuides,
     lockGuides,
@@ -1567,6 +1576,7 @@ export function useImageEditorController() {
     actionToolbarProps: toolbarModels.actionToolbarProps,
     toolOptionsBarProps: toolbarModels.toolOptionsBarProps,
     overlaysProps,
+    watermarkRemoval,
     isPanLocked,
     togglePanLock,
   };

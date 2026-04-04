@@ -1,4 +1,5 @@
 export * from "./autosave";
+export { removeWatermark, type WatermarkRemovalOptions } from "./watermarkRemoval";
 export * from "./coordinateSystem";
 export * from "./snapSystem";
 export * from "./rulerUtils";
