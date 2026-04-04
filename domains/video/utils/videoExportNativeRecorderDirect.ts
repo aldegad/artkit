@@ -236,11 +236,6 @@ export async function runNativeRecorderDirectExport(params: {
     logNativeRecorderStep("seek:done", {
       currentTime: video.currentTime,
     });
-    await waitForVideoFrame(
-      video,
-      2000,
-      "네이티브 export 첫 프레임 준비가 지연되고 있습니다."
-    );
 
     if (singlePlan) {
       video.defaultPlaybackRate = singlePlan.clip.playbackSpeed;
@@ -411,11 +406,6 @@ export async function runNativeRecorderDirectExport(params: {
         if (!segmentSeeked) {
           throw new Error(`네이티브 export 세그먼트 ${segmentIndex + 1} 시작 지점으로 이동할 수 없습니다.`);
         }
-        await waitForVideoFrame(
-          video,
-          2000,
-          `네이티브 export 세그먼트 ${segmentIndex + 1} 첫 프레임 준비가 지연되고 있습니다.`
-        );
 
         video.defaultPlaybackRate = segment.clip.playbackSpeed;
         video.playbackRate = segment.clip.playbackSpeed;
