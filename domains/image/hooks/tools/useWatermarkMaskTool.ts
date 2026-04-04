@@ -38,13 +38,9 @@ export function useWatermarkMaskTool(): UseWatermarkMaskToolReturn {
     setMaskVersion((prev) => prev + 1);
   }, []);
 
-  const resetLastMaskPoint = useCallback(() => {
-    lastMaskPointRef.current = null;
-  }, []);
-
   const hasMaskContent = useCallback((): boolean => {
     const canvas = maskCanvasRef.current;
-    const ctx = canvas?.getContext("2d", { willReadFrequently: true });
+    const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx || canvas.width === 0 || canvas.height === 0) {
       return false;
     }
@@ -57,6 +53,14 @@ export function useWatermarkMaskTool(): UseWatermarkMaskToolReturn {
     }
     return false;
   }, []);
+
+  const resetLastMaskPoint = useCallback(() => {
+    lastMaskPointRef.current = null;
+    // Eraser 스트로크 완료 시에만 전체 픽셀 스캔 (mousemove마다 하면 성능 문제)
+    if (wmBrushMode === "eraser") {
+      setHasMask(hasMaskContent());
+    }
+  }, [wmBrushMode, hasMaskContent]);
 
   const drawMaskCircle = useCallback((
     ctx: CanvasRenderingContext2D,
@@ -150,9 +154,9 @@ export function useWatermarkMaskTool(): UseWatermarkMaskToolReturn {
     ctx.restore();
 
     lastMaskPointRef.current = { x, y };
-    setHasMask(wmBrushMode === "brush" ? true : hasMaskContent());
+    setHasMask(true);
     bumpMaskVersion();
-  }, [bumpMaskVersion, drawMaskCircle, drawMaskLine, hasMaskContent, wmBrushMode, wmBrushSize]);
+  }, [bumpMaskVersion, drawMaskCircle, drawMaskLine, wmBrushMode, wmBrushSize]);
 
   return {
     maskCanvasRef,

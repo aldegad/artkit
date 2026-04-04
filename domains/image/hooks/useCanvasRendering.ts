@@ -613,7 +613,7 @@ export function useCanvasRendering(
         y: screenY,
         size: previewSize * zoom,
         hardness: brushHardness,
-        color: toolMode === "eraser" ? colors.toolErase : (toolMode === "watermarkMask" ? "#ff4d4f" : brushColor),
+        color: toolMode === "eraser" ? colors.toolErase : (toolMode === "watermarkMask" ? "#ffffff" : brushColor),
         isEraser: toolMode === "eraser",
       });
     }
