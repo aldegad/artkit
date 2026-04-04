@@ -10,11 +10,16 @@ import {
   setPitchPreservation,
   stopTracks,
   type NativeRecordedVideoExport,
+  waitForVideoFrame,
   withTimeout,
 } from "./videoExportNativeRecorderShared";
 
 interface NativeOverlayImage {
   image: HTMLImageElement;
+}
+
+interface CanvasStreamTrackWithRequestFrame extends MediaStreamTrack {
+  requestFrame?: () => void;
 }
 
 export async function runNativeRecorderDirectExport(params: {
@@ -70,6 +75,7 @@ export async function runNativeRecorderDirectExport(params: {
   ctx.imageSmoothingQuality = "high";
 
   const canvasStream = outputCanvas.captureStream(config.frameRate);
+  const canvasVideoTrack = canvasStream.getVideoTracks()[0] as CanvasStreamTrackWithRequestFrame | undefined;
   let combinedStream: MediaStream | null = null;
   const chunks: Blob[] = [];
   const recordedSegmentTimelineDurations: number[] = [];
@@ -86,6 +92,20 @@ export async function runNativeRecorderDirectExport(params: {
     expectedWallDuration,
     detailPrefix: "브라우저 네이티브 인코딩",
   });
+
+  const requestOutputFrame = () => {
+    try {
+      canvasVideoTrack?.requestFrame?.();
+    } catch {}
+  };
+
+  const flushOutputFrame = async () => {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(resolve, 0);
+      });
+    });
+  };
 
   const cleanup = async () => {
     if (progressTimer !== null) {
@@ -216,6 +236,11 @@ export async function runNativeRecorderDirectExport(params: {
     logNativeRecorderStep("seek:done", {
       currentTime: video.currentTime,
     });
+    await waitForVideoFrame(
+      video,
+      2000,
+      "네이티브 export 첫 프레임 준비가 지연되고 있습니다."
+    );
 
     if (singlePlan) {
       video.defaultPlaybackRate = singlePlan.clip.playbackSpeed;
@@ -292,7 +317,9 @@ export async function runNativeRecorderDirectExport(params: {
       resolveRecording();
     };
 
-    const stopRecording = () => {
+    let stopRequested = false;
+
+    const stopRecordingNow = () => {
       if (stopped) return;
       stopped = true;
       if (progressTimer !== null) {
@@ -303,6 +330,13 @@ export async function runNativeRecorderDirectExport(params: {
         recorder.stop();
       }
       video.pause();
+    };
+
+    const finalizeAndStopRecording = async () => {
+      if (stopped || stopRequested) return;
+      stopRequested = true;
+      await flushOutputFrame();
+      stopRecordingNow();
     };
 
     progressTimer = window.setInterval(() => {
@@ -347,6 +381,7 @@ export async function runNativeRecorderDirectExport(params: {
     logNativeRecorderStep("recorder:start", {
       recorderState: recorder.state,
     });
+    await flushOutputFrame();
 
     const playSequenceSegments = async () => {
       if (!sequencePlan) return;
@@ -376,6 +411,11 @@ export async function runNativeRecorderDirectExport(params: {
         if (!segmentSeeked) {
           throw new Error(`네이티브 export 세그먼트 ${segmentIndex + 1} 시작 지점으로 이동할 수 없습니다.`);
         }
+        await waitForVideoFrame(
+          video,
+          2000,
+          `네이티브 export 세그먼트 ${segmentIndex + 1} 첫 프레임 준비가 지연되고 있습니다.`
+        );
 
         video.defaultPlaybackRate = segment.clip.playbackSpeed;
         video.playbackRate = segment.clip.playbackSpeed;
@@ -386,6 +426,7 @@ export async function runNativeRecorderDirectExport(params: {
           });
           await resumeRecorderForBoundary(recorder);
         }
+        requestOutputFrame();
         await withTimeout(
           video.play(),
           5000,
@@ -401,7 +442,7 @@ export async function runNativeRecorderDirectExport(params: {
 
           const step = () => {
             video.requestVideoFrameCallback(() => {
-              if (stopped) {
+              if (stopped || stopRequested) {
                 window.clearTimeout(timeoutId);
                 resolve();
                 return;
@@ -445,7 +486,7 @@ export async function runNativeRecorderDirectExport(params: {
           step();
         });
       }
-      stopRecording();
+      await finalizeAndStopRecording();
     };
 
     setExportProgress({
@@ -459,7 +500,7 @@ export async function runNativeRecorderDirectExport(params: {
       const sourceEnd = singlePlan.sourceStart + singlePlan.sourceDuration;
       const scheduleFrameDraw = () => {
         video.requestVideoFrameCallback(() => {
-          if (stopped) return;
+          if (stopped || stopRequested) return;
           const timelineTime = Math.max(
             0,
             (video.currentTime - singlePlan.sourceStart) /
@@ -476,7 +517,7 @@ export async function runNativeRecorderDirectExport(params: {
           );
           updateProgress(progressRatio);
           if (video.currentTime >= sourceEnd - (1 / Math.max(config.frameRate, 1))) {
-            stopRecording();
+            void finalizeAndStopRecording();
             return;
           }
           scheduleFrameDraw();
@@ -495,9 +536,9 @@ export async function runNativeRecorderDirectExport(params: {
         paused: video.paused,
       });
       window.setTimeout(() => {
-        if (stopped) return;
+        if (stopped || stopRequested) return;
         if (video.currentTime >= sourceEnd - 0.05) {
-          stopRecording();
+          void finalizeAndStopRecording();
         }
       }, Math.ceil(expectedWallDuration * 1000) + 1500);
     } else {
@@ -509,7 +550,7 @@ export async function runNativeRecorderDirectExport(params: {
       });
       void playSequenceSegments().catch((error) => {
         failRecording(error);
-        stopRecording();
+        stopRecordingNow();
       });
     }
 
