@@ -84,6 +84,7 @@ interface EditorTranslationBundles {
     aiUpscale: string;
     undo: string;
     redo: string;
+    watermarkRemoval?: string;
     layers: string;
     showRulers: string;
     showGuides: string;
@@ -181,6 +182,7 @@ export function useEditorTranslationBundles(
         aiUpscale: "AI Upscale",
         undo: source.undo,
         redo: source.redo,
+        watermarkRemoval: "워터마크 제거",
         layers: source.layers,
         showRulers: source.showRulers,
         showGuides: source.showGuides,
