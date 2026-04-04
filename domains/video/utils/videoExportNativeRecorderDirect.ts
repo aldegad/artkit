@@ -185,8 +185,8 @@ export async function runNativeRecorderDirectExport(params: {
     video.muted = true;
     video.defaultMuted = true;
     video.volume = 0;
-    video.defaultPlaybackRate = singlePlan ? singlePlan.clip.playbackSpeed : 1;
-    video.playbackRate = singlePlan ? singlePlan.clip.playbackSpeed : 1;
+    video.defaultPlaybackRate = 1;
+    video.playbackRate = 1;
     setPitchPreservation(video);
 
     setExportProgress({
@@ -216,6 +216,11 @@ export async function runNativeRecorderDirectExport(params: {
     logNativeRecorderStep("seek:done", {
       currentTime: video.currentTime,
     });
+
+    if (singlePlan) {
+      video.defaultPlaybackRate = singlePlan.clip.playbackSpeed;
+      video.playbackRate = singlePlan.clip.playbackSpeed;
+    }
 
     if (singlePlan) {
       drawSingleFrame(0);
@@ -362,8 +367,6 @@ export async function runNativeRecorderDirectExport(params: {
           });
           await pauseRecorderForBoundary(recorder);
         }
-        video.defaultPlaybackRate = segment.clip.playbackSpeed;
-        video.playbackRate = segment.clip.playbackSpeed;
 
         const segmentSeeked = await withTimeout(
           seekExportVideoFrame(video, segment.sourceStart, 5000),
@@ -374,6 +377,8 @@ export async function runNativeRecorderDirectExport(params: {
           throw new Error(`네이티브 export 세그먼트 ${segmentIndex + 1} 시작 지점으로 이동할 수 없습니다.`);
         }
 
+        video.defaultPlaybackRate = segment.clip.playbackSpeed;
+        video.playbackRate = segment.clip.playbackSpeed;
         drawSequenceFrame(segmentIndex);
         if (segmentIndex > 0 && recorder && typeof recorder.resume === "function") {
           logNativeRecorderStep("sequence-segment:resume-recorder", {
