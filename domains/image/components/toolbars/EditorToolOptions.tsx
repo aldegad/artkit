@@ -5,7 +5,7 @@ import { EditorToolMode, AspectRatio, Point, CropArea, ASPECT_RATIOS, MarqueeSub
 import { BrushPreset } from "../../types/brush";
 import { BrushPresetSelector } from "./BrushPresetSelector";
 import { Select, Scrollbar, NumberScrubber, Popover } from "../../../../shared/components";
-import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon, CloseIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon } from "@/shared/components/icons";
+import { LockAspectIcon, UnlockAspectIcon, SquareExpandIcon, SquareFitIcon, PivotIcon, CloseIcon, AlignLeftIcon, AlignCenterHIcon, AlignRightIcon, AlignTopIcon, AlignMiddleVIcon, AlignBottomIcon, SpinnerIcon } from "@/shared/components/icons";
 import { DeleteIcon } from "@/shared/components/icons";
 import { INTERACTION } from "../../constants";
 
@@ -371,7 +371,7 @@ export function EditorToolOptions({
                 type="button"
                 onClick={() => setWatermarkBrushMode(value)}
                 disabled={isProcessingWatermark}
-                className={`min-w-[52px] h-7 px-2 text-xs rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`min-w-[52px] h-7 px-2 text-xs rounded border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                   watermarkBrushMode === value
                     ? "bg-accent-primary text-white border-accent-primary"
                     : "bg-surface-primary border-border-default text-text-secondary hover:bg-interactive-hover hover:text-text-primary"
@@ -417,9 +417,9 @@ export function EditorToolOptions({
             type="button"
             onClick={onApplyWatermarkRemoval}
             disabled={!hasWatermarkMask || isProcessingWatermark}
-            className="px-3 py-1.5 text-xs font-medium rounded bg-accent-primary text-white hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded bg-accent-primary text-white hover:bg-accent-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            {isProcessingWatermark ? "처리 중..." : "워터마크 제거"}
+            {isProcessingWatermark ? <><SpinnerIcon className="w-3 h-3 inline-block mr-1" />처리 중...</> : "워터마크 제거"}
           </button>
 
           <span className="text-xs text-text-secondary min-w-[160px]">
