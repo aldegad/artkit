@@ -31,6 +31,8 @@ export interface EditorActionToolbarProps {
   canResizeSelectedLayersToSmallest: boolean;
   onOpenBackgroundRemoval: () => void;
   isRemovingBackground: boolean;
+  onOpenWatermarkRemoval: () => void;
+  isProcessingWatermark: boolean;
   onOpenUpscale: () => void;
   isUpscaling: boolean;
   onUndo: () => void;
@@ -49,6 +51,7 @@ export interface EditorActionToolbarProps {
     matchSmallestLayerSizeToolTip: string;
     aiNoModelRequired: string;
     removeBackground: string;
+    watermarkRemoval: string;
     aiUpscale: string;
     undo: string;
     redo: string;
@@ -68,6 +71,8 @@ export function EditorActionToolbar({
   canResizeSelectedLayersToSmallest,
   onOpenBackgroundRemoval,
   isRemovingBackground,
+  onOpenWatermarkRemoval,
+  isProcessingWatermark,
   onOpenUpscale,
   isUpscaling,
   onUndo,
@@ -144,6 +149,10 @@ export function EditorActionToolbar({
             </button>
           </Tooltip>
 
+          <div className="w-px bg-border-default mx-0.5" />
+
+          <span className="text-[10px] text-text-tertiary font-medium px-1 select-none">AI</span>
+
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
@@ -167,6 +176,35 @@ export function EditorActionToolbar({
               }`}
             >
               <BackgroundRemovalIcon className="w-4 h-4" />
+            </button>
+          </Tooltip>
+
+          <Tooltip
+            content={
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{t.watermarkRemoval}</span>
+                <span className="text-text-tertiary text-[11px]">
+                  브러시로 마스크를 칠한 후 AI 인페인팅으로 워터마크를 제거합니다
+                </span>
+                <span className="text-[10px] text-text-tertiary">
+                  첫 실행 시 MI-GAN 모델 다운로드
+                </span>
+              </div>
+            }
+          >
+            <button
+              onClick={onOpenWatermarkRemoval}
+              disabled={isProcessingWatermark}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                isProcessingWatermark
+                  ? "bg-accent-primary text-white cursor-wait"
+                  : "hover:bg-interactive-hover"
+              }`}
+            >
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round" />
+                <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" strokeLinecap="round" />
+              </svg>
             </button>
           </Tooltip>
 

@@ -27,7 +27,6 @@ interface UseEditorHeaderModelOptions {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  onWatermarkRemoval?: () => void;
   showRulers: boolean;
   showGuides: boolean;
   lockGuides: boolean;
@@ -69,7 +68,6 @@ export function useEditorHeaderModel(
     onRedo,
     canUndo,
     canRedo,
-    onWatermarkRemoval,
     showRulers,
     showGuides,
     lockGuides,
@@ -125,7 +123,6 @@ export function useEditorHeaderModel(
       onRedo,
       canUndo,
       canRedo,
-      onWatermarkRemoval,
       showRulers,
       showGuides,
       lockGuides,
@@ -163,7 +160,6 @@ export function useEditorHeaderModel(
       onRedo,
       canUndo,
       canRedo,
-      onWatermarkRemoval,
       showRulers,
       showGuides,
       lockGuides,

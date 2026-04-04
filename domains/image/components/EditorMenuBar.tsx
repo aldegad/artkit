@@ -32,7 +32,6 @@ interface MenuBarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  onWatermarkRemoval?: () => void;
   // View menu props
   showRulers: boolean;
   showGuides: boolean;
@@ -60,7 +59,6 @@ interface MenuBarProps {
     aiUpscale: string;
     undo: string;
     redo: string;
-    watermarkRemoval?: string;
     layers: string;
     showRulers: string;
     showGuides: string;
@@ -94,7 +92,6 @@ export default function EditorMenuBar({
   onRedo,
   canUndo,
   canRedo,
-  onWatermarkRemoval,
   showRulers,
   showGuides,
   lockGuides,
@@ -129,10 +126,6 @@ export default function EditorMenuBar({
   const editMenuItems: MenuItem[] = [
     { label: t.undo, onClick: onUndo, disabled: !canUndo, shortcut: d(COMMON_SHORTCUTS.undo) },
     { label: t.redo, onClick: onRedo, disabled: !canRedo, shortcut: db(COMMON_SHORTCUTS.redo) },
-    ...(onWatermarkRemoval ? [
-      { divider: true } as MenuItem,
-      { label: t.watermarkRemoval || "워터마크 제거", onClick: onWatermarkRemoval } as MenuItem,
-    ] : []),
   ];
 
   const viewMenuItems: MenuItem[] = [
