@@ -126,64 +126,142 @@ export async function seekExportVideoFrame(
 
   const maxTime = Math.max(0, recoveredDuration - 0.001);
   const clamped = Math.max(0, Math.min(targetTime, maxTime));
-  if (Math.abs(video.currentTime - clamped) <= 0.01) {
-    return video.readyState >= 2;
-  }
+  const originalPlaybackRate = video.playbackRate;
+  const originalDefaultPlaybackRate = video.defaultPlaybackRate;
 
-  return new Promise((resolve) => {
-    let settled = false;
-    const timeout = window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
+  const restorePlaybackRate = () => {
+    video.defaultPlaybackRate = originalDefaultPlaybackRate;
+    video.playbackRate = originalPlaybackRate;
+  };
 
-    const cleanup = () => {
-      window.clearTimeout(timeout);
-      video.removeEventListener("seeked", onSeeked);
-      video.removeEventListener("error", onError);
-      video.removeEventListener("loadeddata", onReadyForFrame);
-      video.removeEventListener("canplay", onReadyForFrame);
-      video.removeEventListener("canplaythrough", onReadyForFrame);
-    };
+  const waitForReadyFrame = () =>
+    new Promise<boolean>((resolve) => {
+      let settled = false;
 
-    const finish = (success: boolean) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(success);
-    };
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        video.removeEventListener("loadeddata", onReadyForFrame);
+        video.removeEventListener("canplay", onReadyForFrame);
+        video.removeEventListener("canplaythrough", onReadyForFrame);
+        video.removeEventListener("error", onError);
+      };
 
-    const onReadyForFrame = () => {
-      finish(video.readyState >= 2);
-    };
+      const finish = (success: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(success);
+      };
 
-    const onSeeked = () => {
-      if (settled) return;
-      if (video.readyState >= 2) {
-        finish(true);
-        return;
-      }
+      const onReadyForFrame = () => {
+        finish(video.readyState >= 2);
+      };
+
+      const onError = () => {
+        finish(false);
+      };
+
+      const timeout = window.setTimeout(() => {
+        finish(false);
+      }, timeoutMs);
+
       video.addEventListener("loadeddata", onReadyForFrame, { once: true });
       video.addEventListener("canplay", onReadyForFrame, { once: true });
       video.addEventListener("canplaythrough", onReadyForFrame, { once: true });
-    };
-    const onError = () => {
-      finish(false);
-    };
+      video.addEventListener("error", onError, { once: true });
+    });
 
-    video.addEventListener("seeked", onSeeked, { once: true });
-    video.addEventListener("error", onError, { once: true });
-
-    try {
-      video.currentTime = clamped;
-    } catch {
-      settled = true;
-      cleanup();
-      resolve(false);
+  const seekable = video.seekable;
+  if (seekable.length > 0) {
+    let canReachTarget = false;
+    for (let index = 0; index < seekable.length; index += 1) {
+      const rangeStart = seekable.start(index);
+      const rangeEnd = seekable.end(index);
+      if (clamped >= rangeStart - 0.05 && clamped <= rangeEnd + 0.05) {
+        canReachTarget = true;
+        break;
+      }
     }
-  });
+    if (!canReachTarget) {
+      return false;
+    }
+  }
+
+  try {
+    // Some MOV sources are sensitive to non-1x seek setup. Normalize only for the seek,
+    // then let the caller restore the intended playback rate right before playback.
+    video.defaultPlaybackRate = 1;
+    video.playbackRate = 1;
+
+    if (Math.abs(video.currentTime - clamped) <= 0.01) {
+      if (video.readyState >= 2) {
+        return true;
+      }
+      try {
+        video.currentTime = clamped;
+      } catch {
+        return false;
+      }
+      return await waitForReadyFrame();
+    }
+
+    return await new Promise((resolve) => {
+      let settled = false;
+      const timeout = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(false);
+      }, timeoutMs);
+
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        video.removeEventListener("seeked", onSeeked);
+        video.removeEventListener("error", onError);
+        video.removeEventListener("loadeddata", onReadyForFrame);
+        video.removeEventListener("canplay", onReadyForFrame);
+        video.removeEventListener("canplaythrough", onReadyForFrame);
+      };
+
+      const finish = (success: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(success);
+      };
+
+      const onReadyForFrame = () => {
+        finish(video.readyState >= 2);
+      };
+
+      const onSeeked = () => {
+        if (settled) return;
+        if (video.readyState >= 2) {
+          finish(true);
+          return;
+        }
+        video.addEventListener("loadeddata", onReadyForFrame, { once: true });
+        video.addEventListener("canplay", onReadyForFrame, { once: true });
+        video.addEventListener("canplaythrough", onReadyForFrame, { once: true });
+      };
+      const onError = () => {
+        finish(false);
+      };
+
+      video.addEventListener("seeked", onSeeked, { once: true });
+      video.addEventListener("error", onError, { once: true });
+
+      try {
+        video.currentTime = clamped;
+      } catch {
+        settled = true;
+        cleanup();
+        resolve(false);
+      }
+    });
+  } finally {
+    restorePlaybackRate();
+  }
 }
 
 type ClipSourceReference = Pick<Clip, "id" | "sourceId" | "sourceUrl">;
