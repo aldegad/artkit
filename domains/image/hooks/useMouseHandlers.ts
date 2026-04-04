@@ -45,6 +45,8 @@ interface UseMouseHandlersOptions {
   drawOnEditCanvas: (x: number, y: number, isStart?: boolean, pressure?: number) => void;
   pickColor: (x: number, y: number, canvasRef: RefObject<HTMLCanvasElement | null>, zoom: number, pan: Point) => void;
   resetLastDrawPoint: () => void;
+  drawMask?: (x: number, y: number, isStart?: boolean) => void;
+  resetLastMaskPoint?: () => void;
   stampSource: { x: number; y: number } | null;
   setStampSource: (source: { x: number; y: number } | null) => void;
 
@@ -153,6 +155,8 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     drawOnEditCanvas,
     pickColor,
     resetLastDrawPoint,
+    drawMask,
+    resetLastMaskPoint,
     stampSource,
     setStampSource,
     marqueeSubTool,
@@ -395,6 +399,18 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
         return;
       }
 
+      if (activeMode === "watermarkMask" && drawMask) {
+        const layerX = imagePos.x - (activeLayerPosition?.x || 0);
+        const layerY = imagePos.y - (activeLayerPosition?.y || 0);
+        resetLastMaskPoint?.();
+        drawMask(layerX, layerY, true);
+        isMarqueeCreateDragRef.current = false;
+        marqueeCreateLastPosRef.current = null;
+        setDragType("draw");
+        setIsDragging(true);
+        return;
+      }
+
       // 5. Selection handler (marquee)
       const selectionResult = selectionHandler.handleMouseDown(ctx);
       if (selectionResult.handled) {
@@ -458,6 +474,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       moveHandler,
       cropHandler,
       cropArea,
+      activeLayerPosition,
+      drawMask,
+      resetLastMaskPoint,
       isTransformActive,
       handleTransformMouseDown,
     ]
@@ -491,10 +510,20 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       // Update guide hover state when not dragging
       if (!isDragging && !isTouchPanOnlyInput) {
         const canAutoStartDraw = (
-          (activeMode === "brush" || activeMode === "eraser")
+          (activeMode === "brush" || activeMode === "eraser" || activeMode === "watermarkMask")
           && hasPrimaryActionButtonPressed(e)
         );
         if (canAutoStartDraw) {
+          if (activeMode === "watermarkMask" && drawMask) {
+            const layerX = imagePos.x - (activeLayerPosition?.x || 0);
+            const layerY = imagePos.y - (activeLayerPosition?.y || 0);
+            resetLastMaskPoint?.();
+            drawMask(layerX, layerY, true);
+            setDragType("draw");
+            setIsDragging(true);
+            return;
+          }
+
           const brushResult = brushHandler.handleMouseDown(ctx);
           if (brushResult.handled && brushResult.dragType === "draw") {
             setDragType("draw");
@@ -523,6 +552,12 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       if (isTouchPanOnlyInput) return;
 
       if (dragType === "draw") {
+        if (activeMode === "watermarkMask" && drawMask) {
+          const layerX = imagePos.x - (activeLayerPosition?.x || 0);
+          const layerY = imagePos.y - (activeLayerPosition?.y || 0);
+          drawMask(layerX, layerY);
+          return;
+        }
         brushHandler.handleMouseMove(ctx);
         return;
       }
@@ -637,6 +672,9 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
       setSelection,
       setSelectionMask,
       cropArea,
+      activeLayerPosition,
+      drawMask,
+      resetLastMaskPoint,
       isTransformActive,
       handleTransformMouseMove,
       isSpacePressed,
@@ -719,6 +757,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setIsMovingSelection(false);
     setIsDuplicating(false);
     resetLastDrawPoint();
+    resetLastMaskPoint?.();
     (dragStartOriginRef as { current: Point | null }).current = null;
   }, [
     handleTransformMouseUp,
@@ -737,6 +776,7 @@ export function useMouseHandlers(options: UseMouseHandlersOptions): UseMouseHand
     setIsMovingSelection,
     setIsDuplicating,
     resetLastDrawPoint,
+    resetLastMaskPoint,
     dragStartOriginRef,
     activeLayerPosition,
   ]);

@@ -24,7 +24,7 @@ export type {
   CropToolState,
 } from "./tools";
 
-export { useSelectionTool, useCropTool } from "./tools";
+export { useSelectionTool, useCropTool, useWatermarkMaskTool } from "./tools";
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export { useMouseHandlers } from "./useMouseHandlers";
 export { useCanvasRendering } from "./useCanvasRendering";

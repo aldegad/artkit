@@ -9,7 +9,6 @@ import {
   EditorToolOptionsBar,
   EditorLayersProvider,
   EditorCanvasProvider,
-  WatermarkRemovalModal,
 } from "@/domains/image";
 import {
   EditorLayoutProvider,
@@ -74,16 +73,6 @@ function ImageEditorContent() {
           </div>
 
           <EditorOverlays {...controller.overlaysProps} />
-
-          <WatermarkRemovalModal
-            isOpen={controller.watermarkRemoval.isOpen}
-            onClose={controller.watermarkRemoval.closeWatermarkRemoval}
-            onApply={controller.watermarkRemoval.applyWatermarkRemoval}
-            sourceCanvas={controller.watermarkRemoval.sourceCanvas}
-            isProcessing={controller.watermarkRemoval.isProcessing}
-            progress={controller.watermarkRemoval.progress}
-            status={controller.watermarkRemoval.status}
-          />
 
           <PanLockFloatingButton
             isPanLocked={controller.isPanLocked}

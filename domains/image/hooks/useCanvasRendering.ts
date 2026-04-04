@@ -43,11 +43,13 @@ interface UseCanvasRenderingOptions {
 
   // State from other hooks (not in context)
   layers: UnifiedLayer[];
+  activeLayerId?: string | null;
   hiddenLayerIds?: string[];
   cropArea: CropArea | null;
   canvasExpandMode: boolean;
   mousePos: Point | null;
   brushSize: number;
+  watermarkBrushSize?: number;
   brushHardness: number;
   brushColor: string;
   stampSource: Point | null;
@@ -80,6 +82,8 @@ interface UseCanvasRenderingOptions {
   activeSnapSources?: SnapSource[];
   // Guide drag preview (from ruler)
   guideDragPreview?: { orientation: "horizontal" | "vertical"; position: number } | null;
+  watermarkMaskCanvas?: HTMLCanvasElement | null;
+  watermarkMaskVersion?: number;
 
   // Functions
   getDisplayDimensions: () => { width: number; height: number };
@@ -115,11 +119,13 @@ export function useCanvasRendering(
     layerCanvasesRef,
     floatingLayerRef,
     layers,
+    activeLayerId,
     hiddenLayerIds = [],
     cropArea,
     canvasExpandMode,
     mousePos,
     brushSize,
+    watermarkBrushSize,
     brushHardness,
     brushColor,
     stampSource,
@@ -147,6 +153,8 @@ export function useCanvasRendering(
     lockGuides,
     activeSnapSources,
     guideDragPreview,
+    watermarkMaskCanvas,
+    watermarkMaskVersion,
     getDisplayDimensions,
   } = options;
 
@@ -490,6 +498,39 @@ export function useCanvasRendering(
       });
     }
 
+    if (toolMode === "watermarkMask" && watermarkMaskCanvas) {
+      const { canvas: tempCanvas, ctx: tempCtx } = canvasCache.getTemporary(
+        watermarkMaskCanvas.width,
+        watermarkMaskCanvas.height,
+        "watermark-mask-overlay"
+      );
+
+      tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+      tempCtx.fillStyle = "rgba(255, 0, 0, 1)";
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      tempCtx.globalCompositeOperation = "destination-in";
+      tempCtx.drawImage(watermarkMaskCanvas, 0, 0);
+      tempCtx.globalCompositeOperation = "source-over";
+
+      const activeLayer = activeLayerId
+        ? layers.find((layer) => layer.id === activeLayerId)
+        : null;
+      const layerX = activeLayer?.position?.x || 0;
+      const layerY = activeLayer?.position?.y || 0;
+
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(
+        tempCanvas,
+        offsetX + layerX * zoom,
+        offsetY + layerY * zoom,
+        watermarkMaskCanvas.width * zoom,
+        watermarkMaskCanvas.height * zoom
+      );
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // Draw guides
     if (showGuides && guides && guides.length > 0) {
       ctx.save();
@@ -558,15 +599,21 @@ export function useCanvasRendering(
     }
 
     // Draw brush preview cursor
-    if (mousePos && (toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp")) {
+    if (
+      mousePos
+      && (toolMode === "brush" || toolMode === "eraser" || toolMode === "stamp" || toolMode === "watermarkMask")
+    ) {
       const screenX = offsetX + mousePos.x * zoom;
       const screenY = offsetY + mousePos.y * zoom;
+      const previewSize = toolMode === "watermarkMask"
+        ? (watermarkBrushSize ?? brushSize)
+        : brushSize;
       drawBrushCursor(ctx, {
         x: screenX,
         y: screenY,
-        size: brushSize * zoom,
+        size: previewSize * zoom,
         hardness: brushHardness,
-        color: toolMode === "eraser" ? colors.toolErase : brushColor,
+        color: toolMode === "eraser" ? colors.toolErase : (toolMode === "watermarkMask" ? "#ff4d4f" : brushColor),
         isEraser: toolMode === "eraser",
       });
     }
@@ -1028,6 +1075,7 @@ export function useCanvasRendering(
     editCanvasRef,
     floatingLayerRef,
     layers,
+    activeLayerId,
     cropArea,
     canvasExpandMode,
     zoom,
@@ -1036,6 +1084,7 @@ export function useCanvasRendering(
     toolMode,
     mousePos,
     brushSize,
+    watermarkBrushSize,
     brushHardness,
     brushColor,
     stampSource,
@@ -1064,6 +1113,8 @@ export function useCanvasRendering(
     lockGuides,
     activeSnapSources,
     guideDragPreview,
+    watermarkMaskCanvas,
+    watermarkMaskVersion,
   ]);
 
   // Store render function in ref for ResizeObserver to call

@@ -63,7 +63,8 @@ export type EditorToolMode =
   | "marquee"
   | "move"
   | "fill"
-  | "transform";
+  | "transform"
+  | "watermarkMask";
 
 export type MarqueeSubTool =
   | "lasso"
