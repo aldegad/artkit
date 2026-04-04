@@ -515,6 +515,17 @@ export async function runNativeRecorderDirectExport(params: {
       };
 
       scheduleFrameDraw();
+      video.addEventListener("ended", () => {
+        logNativeRecorderStep("video:ended", { currentTime: video.currentTime });
+        void finalizeAndStopRecording();
+      }, { once: true });
+      video.addEventListener("pause", () => {
+        if (stopped || stopRequested) return;
+        if (video.currentTime >= sourceEnd - (1 / Math.max(config.frameRate, 1))) {
+          logNativeRecorderStep("video:pause-at-end", { currentTime: video.currentTime });
+          void finalizeAndStopRecording();
+        }
+      });
       await withTimeout(
         video.play(),
         5000,
@@ -527,10 +538,9 @@ export async function runNativeRecorderDirectExport(params: {
       });
       window.setTimeout(() => {
         if (stopped || stopRequested) return;
-        if (video.currentTime >= sourceEnd - 0.05) {
-          void finalizeAndStopRecording();
-        }
-      }, Math.ceil(expectedWallDuration * 1000) + 1500);
+        logNativeRecorderStep("safety-timeout", { currentTime: video.currentTime });
+        void finalizeAndStopRecording();
+      }, Math.ceil(expectedWallDuration * 1000) + 3000);
     } else {
       logNativeRecorderStep("play:done", {
         currentTime: video.currentTime,
