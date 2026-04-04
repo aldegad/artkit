@@ -25,23 +25,38 @@ export function WatermarkRemovalModal({
 }: WatermarkRemovalModalProps) {
   const displayCanvasRef = useRef<HTMLCanvasElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sourceRef = useRef<HTMLCanvasElement | null>(null);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isDrawingRef = useRef(false);
   const scaleRef = useRef(1);
+  const brushSizeRef = useRef(20);
+  const isEraserRef = useRef(false);
 
   const [brushSize, setBrushSize] = useState(20);
   const [isEraser, setIsEraser] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [hasMask, setHasMask] = useState(false);
 
-  const renderDisplay = useCallback(() => {
-    const displayCanvas = displayCanvasRef.current;
-    const maskCanvas = maskCanvasRef.current;
-    if (!displayCanvas || !sourceCanvas || !maskCanvas) return;
+  // Sync state → refs so paint handlers never see stale values
+  useEffect(() => {
+    brushSizeRef.current = brushSize;
+  }, [brushSize]);
+  useEffect(() => {
+    isEraserRef.current = isEraser;
+  }, [isEraser]);
 
-    const ctx = displayCanvas.getContext("2d")!;
-    const scale = scaleRef.current;
-    const dw = displayCanvas.width;
-    const dh = displayCanvas.height;
+  // Stable render function – reads everything from refs
+  const renderDisplay = useCallback(() => {
+    const display = displayCanvasRef.current;
+    const mask = maskCanvasRef.current;
+    const src = sourceRef.current;
+    if (!display || !src || !mask) return;
+
+    const ctx = display.getContext("2d");
+    if (!ctx) return;
+
+    const dw = display.width;
+    const dh = display.height;
+    if (dw === 0 || dh === 0) return;
 
     ctx.clearRect(0, 0, dw, dh);
 
@@ -49,180 +64,156 @@ export function WatermarkRemovalModal({
     const cs = 8;
     for (let y = 0; y < dh; y += cs) {
       for (let x = 0; x < dw; x += cs) {
-        ctx.fillStyle =
-          ((x / cs + y / cs) | 0) % 2 ? "#e0e0e0" : "#ffffff";
+        ctx.fillStyle = ((x / cs + y / cs) | 0) % 2 ? "#e0e0e0" : "#ffffff";
         ctx.fillRect(x, y, cs, cs);
       }
     }
 
     // Source image
-    ctx.drawImage(sourceCanvas, 0, 0, dw, dh);
+    ctx.drawImage(src, 0, 0, dw, dh);
 
-    // Red mask overlay
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = sourceCanvas.width;
-    tempCanvas.height = sourceCanvas.height;
-    const tempCtx = tempCanvas.getContext("2d")!;
-    tempCtx.drawImage(maskCanvas, 0, 0);
-    tempCtx.globalCompositeOperation = "source-in";
-    tempCtx.fillStyle = "rgba(255, 50, 50, 1)";
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    // Red mask overlay via offscreen composite
+    const tmp = document.createElement("canvas");
+    tmp.width = src.width;
+    tmp.height = src.height;
+    const tCtx = tmp.getContext("2d")!;
+    tCtx.drawImage(mask, 0, 0);
+    tCtx.globalCompositeOperation = "source-in";
+    tCtx.fillStyle = "#ff3232";
+    tCtx.fillRect(0, 0, tmp.width, tmp.height);
 
     ctx.save();
     ctx.globalAlpha = 0.45;
-    ctx.drawImage(tempCanvas, 0, 0, dw, dh);
+    ctx.drawImage(tmp, 0, 0, dw, dh);
     ctx.restore();
+  }, []);
 
-    // Mask border highlight
-    const borderCanvas = document.createElement("canvas");
-    borderCanvas.width = sourceCanvas.width;
-    borderCanvas.height = sourceCanvas.height;
-    const borderCtx = borderCanvas.getContext("2d")!;
-    borderCtx.drawImage(maskCanvas, 0, 0);
-    borderCtx.globalCompositeOperation = "source-in";
-    borderCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-    borderCtx.lineWidth = 2 / scale;
-
-    // Simple border: draw mask outline with a dilated version
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.imageSmoothingEnabled = true;
-    ctx.restore();
-  }, [sourceCanvas]);
-
-  // Initialize on open
+  // Initialise mask + display canvas when modal opens
   useEffect(() => {
     if (!isOpen || !sourceCanvas) return;
 
+    sourceRef.current = sourceCanvas;
     const { width, height } = sourceCanvas;
     const maxW = 640;
     const maxH = 460;
     const scale = Math.min(maxW / width, maxH / height, 1);
     scaleRef.current = scale;
 
-    const maskCanvas = document.createElement("canvas");
-    maskCanvas.width = width;
-    maskCanvas.height = height;
-    maskCanvasRef.current = maskCanvas;
+    const mask = document.createElement("canvas");
+    mask.width = width;
+    mask.height = height;
+    maskCanvasRef.current = mask;
+
     setHasMask(false);
     setIsEraser(false);
+    isDrawingRef.current = false;
+    lastPosRef.current = null;
 
-    // Wait for ref to be mounted
+    // Set display canvas size after DOM mount, then render
     requestAnimationFrame(() => {
-      const displayCanvas = displayCanvasRef.current;
-      if (!displayCanvas) return;
-      displayCanvas.width = Math.round(width * scale);
-      displayCanvas.height = Math.round(height * scale);
+      const display = displayCanvasRef.current;
+      if (!display) return;
+      display.width = Math.round(width * scale);
+      display.height = Math.round(height * scale);
       renderDisplay();
     });
   }, [isOpen, sourceCanvas, renderDisplay]);
 
-  const getImagePos = useCallback(
-    (e: React.MouseEvent) => {
-      const canvas = displayCanvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-      const rect = canvas.getBoundingClientRect();
-      const scale = scaleRef.current;
-      return {
-        x: (e.clientX - rect.left) / scale,
-        y: (e.clientY - rect.top) / scale,
-      };
-    },
-    []
-  );
+  // Convert mouse event → image-space coordinates
+  const getImagePos = useCallback((e: React.MouseEvent) => {
+    const canvas = displayCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scale = scaleRef.current;
+    return {
+      x: (e.clientX - rect.left) / scale,
+      y: (e.clientY - rect.top) / scale,
+    };
+  }, []);
 
-  const strokeLine = useCallback(
-    (
-      x0: number,
-      y0: number,
-      x1: number,
-      y1: number
-    ) => {
-      const maskCanvas = maskCanvasRef.current;
-      if (!maskCanvas) return;
-      const ctx = maskCanvas.getContext("2d")!;
+  // Paint on the mask canvas — reads brush params from refs
+  const paintAt = useCallback(
+    (x: number, y: number, prevX?: number, prevY?: number) => {
+      const mask = maskCanvasRef.current;
+      if (!mask) return;
+      const ctx = mask.getContext("2d")!;
+      const size = brushSizeRef.current;
 
-      ctx.globalCompositeOperation = isEraser
+      ctx.globalCompositeOperation = isEraserRef.current
         ? "destination-out"
         : "source-over";
+      ctx.fillStyle = "white";
+      ctx.strokeStyle = "white";
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      ctx.lineWidth = brushSize;
-      ctx.strokeStyle = "white";
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
+      ctx.lineWidth = size;
+
+      if (prevX !== undefined && prevY !== undefined) {
+        ctx.beginPath();
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       ctx.globalCompositeOperation = "source-over";
+      renderDisplay();
     },
-    [brushSize, isEraser]
+    [renderDisplay]
   );
 
-  const dotAt = useCallback(
-    (x: number, y: number) => {
-      const maskCanvas = maskCanvasRef.current;
-      if (!maskCanvas) return;
-      const ctx = maskCanvas.getContext("2d")!;
-
-      ctx.globalCompositeOperation = isEraser
-        ? "destination-out"
-        : "source-over";
-      ctx.beginPath();
-      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = "white";
-      ctx.fill();
-      ctx.globalCompositeOperation = "source-over";
-    },
-    [brushSize, isEraser]
-  );
-
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
       if (isProcessing) return;
       e.preventDefault();
-      setIsDrawing(true);
+      isDrawingRef.current = true;
+      try {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        // Pointer capture may fail for programmatic events – non-critical
+      }
       const pos = getImagePos(e);
-      dotAt(pos.x, pos.y);
+      paintAt(pos.x, pos.y);
       lastPosRef.current = pos;
-      renderDisplay();
       setHasMask(true);
     },
-    [isProcessing, getImagePos, dotAt, renderDisplay]
+    [isProcessing, getImagePos, paintAt]
   );
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!isDrawing || isProcessing) return;
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDrawingRef.current || isProcessing) return;
       const pos = getImagePos(e);
       const prev = lastPosRef.current;
       if (prev) {
-        strokeLine(prev.x, prev.y, pos.x, pos.y);
+        paintAt(pos.x, pos.y, prev.x, prev.y);
       } else {
-        dotAt(pos.x, pos.y);
+        paintAt(pos.x, pos.y);
       }
       lastPosRef.current = pos;
-      renderDisplay();
-      setHasMask(true);
     },
-    [isDrawing, isProcessing, getImagePos, strokeLine, dotAt, renderDisplay]
+    [isProcessing, getImagePos, paintAt]
   );
 
-  const handleMouseUp = useCallback(() => {
-    setIsDrawing(false);
+  const handlePointerUp = useCallback(() => {
+    isDrawingRef.current = false;
     lastPosRef.current = null;
   }, []);
 
   const handleApply = useCallback(async () => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas || !hasMask) return;
-    await onApply(maskCanvas);
+    const mask = maskCanvasRef.current;
+    if (!mask || !hasMask) return;
+    await onApply(mask);
   }, [hasMask, onApply]);
 
   const handleClearMask = useCallback(() => {
-    const maskCanvas = maskCanvasRef.current;
-    if (!maskCanvas) return;
-    const ctx = maskCanvas.getContext("2d")!;
-    ctx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    const mask = maskCanvasRef.current;
+    if (!mask) return;
+    const ctx = mask.getContext("2d")!;
+    ctx.clearRect(0, 0, mask.width, mask.height);
     renderDisplay();
     setHasMask(false);
   }, [renderDisplay]);
@@ -274,19 +265,10 @@ export function WatermarkRemovalModal({
           strokeWidth="1.5"
         >
           <path d="M4 4l12 12M16 4L4 16" strokeLinecap="round" />
-          <rect
-            x="2"
-            y="2"
-            width="16"
-            height="16"
-            rx="2"
-            strokeLinecap="round"
-          />
+          <rect x="2" y="2" width="16" height="16" rx="2" strokeLinecap="round" />
         </svg>
       </div>
-      <h3 className="text-lg font-semibold text-text-primary">
-        워터마크 제거
-      </h3>
+      <h3 className="text-lg font-semibold text-text-primary">워터마크 제거</h3>
     </div>
   );
 
@@ -326,8 +308,7 @@ export function WatermarkRemovalModal({
       footer={footer}
     >
       <p className="text-text-secondary text-sm">
-        워터마크 영역을 브러시로 칠한 후 &quot;제거 실행&quot;을
-        클릭하세요.
+        워터마크 영역을 브러시로 칠한 후 &quot;제거 실행&quot;을 클릭하세요.
       </p>
       <p className="text-text-tertiary text-xs">
         첫 실행 시 MI-GAN 인페인팅 모델을 다운로드합니다.
@@ -358,9 +339,7 @@ export function WatermarkRemovalModal({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-text-tertiary whitespace-nowrap">
-            크기
-          </label>
+          <label className="text-xs text-text-tertiary whitespace-nowrap">크기</label>
           <input
             type="range"
             min={2}
@@ -382,12 +361,12 @@ export function WatermarkRemovalModal({
       >
         <canvas
           ref={displayCanvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
           className={isEraser ? "cursor-cell" : "cursor-crosshair"}
-          style={{ imageRendering: "auto" }}
+          style={{ imageRendering: "auto", touchAction: "none" }}
         />
       </div>
 
