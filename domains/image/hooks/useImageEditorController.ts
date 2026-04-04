@@ -17,6 +17,7 @@ import { useBrushTool } from "./useBrushTool";
 import { useCanvasInput } from "./useCanvasInput";
 import { useSelectionTool } from "./tools/useSelectionTool";
 import { useCropTool } from "./tools/useCropTool";
+import { useWatermarkMaskTool } from "./tools/useWatermarkMaskTool";
 import { useTextTool, TEXT_FONT_OPTIONS } from "./useTextTool";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { useMouseHandlers } from "./useMouseHandlers";
@@ -287,6 +288,7 @@ export function useImageEditorController() {
     pickColor,
     resetLastDrawPoint,
   } = useBrushTool();
+  const watermarkMaskTool = useWatermarkMaskTool();
 
   const { getMousePos, screenToImage } = useCanvasInput({
     canvasRef,
@@ -489,6 +491,8 @@ export function useImageEditorController() {
     drawOnEditCanvas,
     pickColor,
     resetLastDrawPoint,
+    drawMask: watermarkMaskTool.drawMask,
+    resetLastMaskPoint: watermarkMaskTool.resetLastMaskPoint,
     stampSource,
     setStampSource,
     marqueeSubTool,
@@ -628,11 +632,13 @@ export function useImageEditorController() {
     layerCanvasesRef,
     floatingLayerRef,
     layers,
+    activeLayerId,
     hiddenLayerIds: textDraft?.layerId ? [textDraft.layerId] : [],
     cropArea,
     canvasExpandMode,
     mousePos,
     brushSize,
+    watermarkBrushSize: watermarkMaskTool.wmBrushSize,
     brushHardness,
     brushColor,
     stampSource,
@@ -660,6 +666,8 @@ export function useImageEditorController() {
     lockGuides,
     activeSnapSources: transformSnapSources,
     guideDragPreview,
+    watermarkMaskCanvas: watermarkMaskTool.maskCanvasRef.current,
+    watermarkMaskVersion: watermarkMaskTool.maskVersion,
     getDisplayDimensions,
   });
 
@@ -1002,6 +1010,10 @@ export function useImageEditorController() {
     activeLayerId,
     layerCanvasesRef,
     saveToHistory,
+    setToolMode,
+    maskCanvasRef: watermarkMaskTool.maskCanvasRef,
+    initMask: watermarkMaskTool.initMask,
+    clearMask: watermarkMaskTool.clearMask,
   });
 
   useTransformShortcuts({
@@ -1336,7 +1348,7 @@ export function useImageEditorController() {
       canResizeSelectedLayersToSmallest,
       onOpenBackgroundRemoval: openBackgroundRemovalConfirm,
       isRemovingBackground,
-      onOpenWatermarkRemoval: watermarkRemoval.openWatermarkRemoval,
+      onOpenWatermarkRemoval: watermarkRemoval.activateWatermarkTool,
       isProcessingWatermark: watermarkRemoval.isProcessing,
       onOpenUpscale: openUpscaleConfirm,
       isUpscaling,
@@ -1355,6 +1367,17 @@ export function useImageEditorController() {
       toolMode,
       brushSize,
       setBrushSize,
+      watermarkBrushSize: watermarkMaskTool.wmBrushSize,
+      setWatermarkBrushSize: watermarkMaskTool.setWmBrushSize,
+      watermarkBrushMode: watermarkMaskTool.wmBrushMode,
+      setWatermarkBrushMode: watermarkMaskTool.setWmBrushMode,
+      hasWatermarkMask: watermarkMaskTool.hasMask,
+      onClearWatermarkMask: watermarkMaskTool.clearMask,
+      onApplyWatermarkRemoval: watermarkRemoval.executeRemoval,
+      onCancelWatermarkRemoval: watermarkRemoval.deactivateWatermarkTool,
+      isProcessingWatermark: watermarkRemoval.isProcessing,
+      watermarkProgress: watermarkRemoval.progress,
+      watermarkStatus: watermarkRemoval.status,
       brushHardness,
       setBrushHardness,
       brushOpacity,

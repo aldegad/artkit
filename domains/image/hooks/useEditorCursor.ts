@@ -47,7 +47,12 @@ export function useEditorCursor(options: UseEditorCursorOptions): UseEditorCurso
     if (activeMode === "fill") return "crosshair";
     if (activeMode === "magicWand") return "crosshair";
 
-    if (activeMode === "brush" || activeMode === "eraser" || activeMode === "stamp") {
+    if (
+      activeMode === "brush"
+      || activeMode === "eraser"
+      || activeMode === "stamp"
+      || activeMode === "watermarkMask"
+    ) {
       return mousePos ? "none" : "crosshair";
     }
 

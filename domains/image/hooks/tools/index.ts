@@ -12,3 +12,4 @@ export type {
 
 export { useSelectionTool } from "./useSelectionTool";
 export { useCropTool } from "./useCropTool";
+export { useWatermarkMaskTool } from "./useWatermarkMaskTool";

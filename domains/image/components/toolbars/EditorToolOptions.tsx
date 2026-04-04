@@ -18,6 +18,17 @@ export interface EditorToolOptionsProps {
   // Brush props
   brushSize: number;
   setBrushSize: React.Dispatch<React.SetStateAction<number>>;
+  watermarkBrushSize: number;
+  setWatermarkBrushSize: React.Dispatch<React.SetStateAction<number>>;
+  watermarkBrushMode: "brush" | "eraser";
+  setWatermarkBrushMode: React.Dispatch<React.SetStateAction<"brush" | "eraser">>;
+  hasWatermarkMask: boolean;
+  onClearWatermarkMask: () => void;
+  onApplyWatermarkRemoval: () => void;
+  onCancelWatermarkRemoval: () => void;
+  isProcessingWatermark: boolean;
+  watermarkProgress: number;
+  watermarkStatus: string;
   brushHardness: number;
   setBrushHardness: React.Dispatch<React.SetStateAction<number>>;
   brushOpacity: number;
@@ -106,6 +117,17 @@ export function EditorToolOptions({
   toolMode,
   brushSize,
   setBrushSize,
+  watermarkBrushSize,
+  setWatermarkBrushSize,
+  watermarkBrushMode,
+  setWatermarkBrushMode,
+  hasWatermarkMask,
+  onClearWatermarkMask,
+  onApplyWatermarkRemoval,
+  onCancelWatermarkRemoval,
+  isProcessingWatermark,
+  watermarkProgress,
+  watermarkStatus,
   brushHardness,
   setBrushHardness,
   brushOpacity,
@@ -334,6 +356,79 @@ export function EditorToolOptions({
                 : t.altClickToSetSource}
             </span>
           )}
+        </>
+      )}
+
+      {toolMode === "watermarkMask" && (
+        <>
+          <div className="flex items-center gap-0.5" title="마스크 브러시 모드">
+            {([
+              { value: "brush" as const, label: "추가" },
+              { value: "eraser" as const, label: "지우기" },
+            ]).map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setWatermarkBrushMode(value)}
+                disabled={isProcessingWatermark}
+                className={`min-w-[52px] h-7 px-2 text-xs rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  watermarkBrushMode === value
+                    ? "bg-accent-primary text-white border-accent-primary"
+                    : "bg-surface-primary border-border-default text-text-secondary hover:bg-interactive-hover hover:text-text-primary"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <NumberScrubber
+            value={watermarkBrushSize}
+            onChange={(v) => setWatermarkBrushSize(Math.round(v))}
+            min={1}
+            max={200}
+            step={1}
+            label={`${t.size}:`}
+            size="sm"
+            editable
+          />
+
+          <div className="w-px h-4 bg-border-default" />
+
+          <button
+            type="button"
+            onClick={onClearWatermarkMask}
+            disabled={!hasWatermarkMask || isProcessingWatermark}
+            className="px-3 py-1.5 text-xs font-medium rounded border border-border-default bg-surface-primary text-text-primary hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            마스크 지우기
+          </button>
+
+          <button
+            type="button"
+            onClick={onCancelWatermarkRemoval}
+            disabled={isProcessingWatermark}
+            className="px-3 py-1.5 text-xs font-medium rounded border border-border-default bg-surface-primary text-text-primary hover:bg-interactive-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            취소
+          </button>
+
+          <button
+            type="button"
+            onClick={onApplyWatermarkRemoval}
+            disabled={!hasWatermarkMask || isProcessingWatermark}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-accent-primary text-white hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            {isProcessingWatermark ? "처리 중..." : "워터마크 제거"}
+          </button>
+
+          <span className="text-xs text-text-secondary min-w-[160px]">
+            {isProcessingWatermark
+              ? `${watermarkStatus || "처리 중..."} (${Math.round(watermarkProgress)}%)`
+              : hasWatermarkMask
+                ? "마스크를 확인한 뒤 제거를 실행하세요"
+                : "제거할 영역을 붉은 마스크로 칠하세요"}
+          </span>
         </>
       )}
 

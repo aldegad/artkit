@@ -7,7 +7,7 @@ export { useLayerManagement } from "./hooks";
 export { useHistory } from "./hooks";
 export { useBrushTool } from "./hooks";
 export { useCanvasInput } from "./hooks";
-export { useSelectionTool, useCropTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useWatermarkRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions, useEditorCanvasActions, useEditorCursor, useTransformShortcuts, useImageImport, useLayersPanelToggle, useEditorHistoryAdapter, useToolModeGuard, useEditorToolRuntime, useViewportBridge, useGuideDragPreview, useRotateMenu, useEditorPanelRegistration, useRulerRenderSync, useEditorLayerContextValue, useEditorCanvasContextValue, useEditorTranslationBundles, useImageEditorController, useEditorHeaderModel, useEditorOverlayModel, useEditorToolbarModels } from "./hooks";
+export { useSelectionTool, useCropTool, useWatermarkMaskTool, useKeyboardShortcuts, useMouseHandlers, useCanvasRendering, useBackgroundRemoval, useWatermarkRemoval, useTransformTool, useGuideTool, useSnapSystem, useEditorSave, useImageExport, useImageProjectIO, useEditorSaveActions, useEditorCanvasActions, useEditorCursor, useTransformShortcuts, useImageImport, useLayersPanelToggle, useEditorHistoryAdapter, useToolModeGuard, useEditorToolRuntime, useViewportBridge, useGuideDragPreview, useRotateMenu, useEditorPanelRegistration, useRulerRenderSync, useEditorLayerContextValue, useEditorCanvasContextValue, useEditorTranslationBundles, useImageEditorController, useEditorHeaderModel, useEditorOverlayModel, useEditorToolbarModels } from "./hooks";
 export type { HistoryAdapter, TransformState, TransformHandle, UseGuideToolReturn, UseSnapSystemReturn, UseEditorSaveOptions, UseEditorSaveReturn, EditorHistorySnapshot } from "./hooks";
 export type {
   CanvasInputEvent,
@@ -25,7 +25,6 @@ export { EditorToolOptions } from "./components";
 export { EditorToolOptionsBar } from "./components";
 export { EditorStatusBar } from "./components";
 export { BackgroundRemovalModals } from "./components";
-export { WatermarkRemovalModal } from "./components";
 export { TransformDiscardConfirmModal } from "./components";
 export { EditorMenuBar } from "./components";
 export { LayersPanelContent } from "./components";
