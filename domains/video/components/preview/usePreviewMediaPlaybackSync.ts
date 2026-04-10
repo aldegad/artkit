@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, MutableRefObject, RefObject, useRef } from "react";
+import { useCallback, useEffect, MutableRefObject, RefObject, useMemo, useRef } from "react";
 import { PLAYBACK } from "../../constants";
 import {
   AudioClip,
@@ -12,9 +12,15 @@ import {
   getSourceTime,
 } from "../../types";
 import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
+import {
+  buildPlaybackTrackClipIndex,
+  isAudibleMediaClip,
+  resolvePlaybackMediaSnapshot,
+} from "../../utils/playbackActiveMedia";
 
 interface UsePreviewMediaPlaybackSyncOptions {
   tracks: VideoTrack[];
+  clips: Clip[];
   playback: PlaybackState;
   directPreviewOptimized: boolean;
   currentTimeRef: RefObject<number>;
@@ -23,24 +29,9 @@ interface UsePreviewMediaPlaybackSyncOptions {
   audioElementsRef: RefObject<Map<string, HTMLAudioElement>>;
   isWebAudioReadyRef: MutableRefObject<(sourceUrl: string) => boolean>;
   syncMediaRef: MutableRefObject<((request?: { forceVideoCurrentTimeSync?: boolean }) => void) | null>;
-  syncMediaIntervalRef: MutableRefObject<ReturnType<typeof setInterval> | null>;
+  syncMediaIntervalRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
   lastPlaybackTickTimeRef: MutableRefObject<number | null>;
   wasPlayingRef: MutableRefObject<boolean>;
-}
-
-function isAudibleMediaClip(clip: Clip): boolean {
-  if (clip.type === "video") {
-    return (clip.hasAudio ?? true)
-      && !(clip.audioMuted ?? false)
-      && (typeof clip.audioVolume === "number" ? clip.audioVolume : 100) > 0;
-  }
-
-  if (clip.type === "audio") {
-    return !(clip.audioMuted ?? false)
-      && (typeof clip.audioVolume === "number" ? clip.audioVolume : 100) > 0;
-  }
-
-  return false;
 }
 
 function hasFiniteMediaDuration(media: HTMLMediaElement): boolean {
@@ -50,10 +41,10 @@ function hasFiniteMediaDuration(media: HTMLMediaElement): boolean {
 export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSyncOptions) {
   const {
     tracks,
+    clips,
     playback,
     directPreviewOptimized,
     currentTimeRef,
-    getClipAtTime,
     videoElementsRef,
     audioElementsRef,
     isWebAudioReadyRef,
@@ -63,6 +54,11 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     wasPlayingRef,
   } = options;
   const lastActiveVideoClipIdByElementRef = useRef(new Map<HTMLVideoElement, string>());
+  const clipsByTrack = useMemo(() => buildPlaybackTrackClipIndex(clips), [clips]);
+  const activeTracks = useMemo(
+    () => tracks.filter((track) => track.visible && !track.muted),
+    [tracks],
+  );
 
   const stopAllMediaElements = useCallback(() => {
     videoElementsRef.current?.forEach((video) => {
@@ -78,16 +74,20 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     });
   }, [videoElementsRef, audioElementsRef]);
 
-  const forceStopMediaImmediately = useCallback(() => {
+  const clearScheduledSync = useCallback(() => {
     if (syncMediaIntervalRef.current !== null) {
-      clearInterval(syncMediaIntervalRef.current);
+      clearTimeout(syncMediaIntervalRef.current);
       syncMediaIntervalRef.current = null;
     }
+  }, [syncMediaIntervalRef]);
+
+  const forceStopMediaImmediately = useCallback(() => {
+    clearScheduledSync();
     syncMediaRef.current = null;
     lastPlaybackTickTimeRef.current = null;
     lastActiveVideoClipIdByElementRef.current.clear();
     stopAllMediaElements();
-  }, [lastPlaybackTickTimeRef, stopAllMediaElements, syncMediaIntervalRef, syncMediaRef]);
+  }, [clearScheduledSync, lastPlaybackTickTimeRef, stopAllMediaElements, syncMediaRef]);
 
   useEffect(() => {
     return subscribeImmediatePlaybackStop(forceStopMediaImmediately);
@@ -103,38 +103,34 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     }
 
     const activeVideoClipIdsByElement = lastActiveVideoClipIdByElementRef.current;
+    const trackById = new Map(activeTracks.map((track) => [track.id, track]));
 
-    // Sync and start/stop media elements
     const syncMedia = (request?: { forceVideoCurrentTimeSync?: boolean }) => {
       const ct = currentTimeRef.current || 0;
-      const trackById = new Map(tracks.map((track) => [track.id, track]));
       const desiredVideoStates = new Map<
         HTMLVideoElement,
         { clip: VideoClip; isAudible: boolean }
       >();
       const desiredAudioStates = new Map<HTMLAudioElement, AudioClip>();
+      const playbackSnapshot = resolvePlaybackMediaSnapshot({
+        tracks: activeTracks,
+        clipsByTrack,
+        time: ct,
+      });
 
-      for (const track of tracks) {
-        if (!track.visible || track.muted) continue;
-        const clip = getClipAtTime(track.id, ct);
-        if (!clip || !clip.visible) continue;
+      for (const clip of playbackSnapshot.activeVideoClips) {
+        const video = videoElementsRef.current?.get(clip.id);
+        if (!video || video.readyState < 2) continue;
+        desiredVideoStates.set(video, {
+          clip,
+          isAudible: isAudibleMediaClip(clip),
+        });
+      }
 
-        if (clip.type === "video") {
-          const video = videoElementsRef.current?.get(clip.id);
-          if (!video || video.readyState < 2) continue;
-          desiredVideoStates.set(video, {
-            clip,
-            isAudible: isAudibleMediaClip(clip),
-          });
-          continue;
-        }
-
-        if (clip.type === "audio") {
-          const audio = audioElementsRef.current?.get(clip.id);
-          if (!audio) continue;
-          if (!isAudibleMediaClip(clip)) continue;
-          desiredAudioStates.set(audio, clip);
-        }
+      for (const clip of playbackSnapshot.activeAudioClips) {
+        const audio = audioElementsRef.current?.get(clip.id);
+        if (!audio || !isAudibleMediaClip(clip)) continue;
+        desiredAudioStates.set(audio, clip);
       }
 
       const uniqueVideos = new Set(videoElementsRef.current?.values() || []);
@@ -234,20 +230,29 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
 
         if (audio.paused) audio.play().catch(() => {});
       }
+
+      clearScheduledSync();
+      if (!playback.isPlaying) return;
+
+      const nextBoundaryMs = playbackSnapshot.nextBoundaryTime !== null
+        ? Math.max(
+          24,
+          (((playbackSnapshot.nextBoundaryTime - ct) / Math.max(0.01, playback.playbackRate)) * 1000) + 32,
+        )
+        : Number.POSITIVE_INFINITY;
+      const driftSyncMs = directPreviewOptimized ? 320 : 220;
+      const nextSyncDelayMs = Math.max(24, Math.min(driftSyncMs, nextBoundaryMs));
+      syncMediaIntervalRef.current = setTimeout(() => {
+        syncMedia();
+      }, nextSyncDelayMs);
     };
 
     syncMediaRef.current = syncMedia;
-    syncMedia({ forceVideoCurrentTimeSync: true }); // Initial sync when playback starts
-    // Periodic re-sync for clip boundaries and drift correction (not every frame)
-    const intervalId = setInterval(syncMedia, PLAYBACK.SYNC_INTERVAL_MS);
-    syncMediaIntervalRef.current = intervalId;
+    syncMedia({ forceVideoCurrentTimeSync: true });
     wasPlayingRef.current = true;
 
     return () => {
-      clearInterval(intervalId);
-      if (syncMediaIntervalRef.current === intervalId) {
-        syncMediaIntervalRef.current = null;
-      }
+      clearScheduledSync();
       syncMediaRef.current = null;
       activeVideoClipIdsByElement.clear();
       if (!playback.isPlaying) {
@@ -255,10 +260,10 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
       }
     };
   }, [
+    activeTracks,
+    clipsByTrack,
     playback.isPlaying,
     playback.playbackRate,
-    tracks,
-    getClipAtTime,
     videoElementsRef,
     audioElementsRef,
     isWebAudioReadyRef,
@@ -266,6 +271,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     directPreviewOptimized,
     syncMediaRef,
     syncMediaIntervalRef,
+    clearScheduledSync,
     stopAllMediaElements,
     forceStopMediaImmediately,
     wasPlayingRef,

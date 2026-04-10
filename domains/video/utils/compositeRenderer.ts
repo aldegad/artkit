@@ -88,13 +88,8 @@ export function renderCompositeFrame(
       }
       sourceEl = videoElement;
     } else if (clip.type === "image") {
-      let img = imageCache.get(clip.sourceUrl);
-      if (!img) {
-        img = new Image();
-        img.src = clip.sourceUrl;
-        imageCache.set(clip.sourceUrl, img);
-      }
-      if (img.complete && img.naturalWidth > 0) {
+      const img = imageCache.get(clip.sourceUrl) || null;
+      if (img && img.complete && img.naturalWidth > 0) {
         sourceEl = img;
       } else {
         allRendered = false;
@@ -118,16 +113,11 @@ export function renderCompositeFrame(
     if (maskResult === "__live_canvas__" && liveMaskCanvas) {
       clipMaskSource = liveMaskCanvas;
     } else if (maskResult && maskResult !== "__live_canvas__") {
-      let maskImg = maskImageCache.get(maskResult);
-      if (!maskImg) {
-        maskImg = new Image();
-        maskImg.src = maskResult;
-        maskImageCache.set(maskResult, maskImg);
-        if (onMaskImageLoad) {
-          maskImg.onload = onMaskImageLoad;
-        }
+      const maskImg = maskImageCache.get(maskResult) || null;
+      if (maskImg && onMaskImageLoad) {
+        maskImg.onload = onMaskImageLoad;
       }
-      if (maskImg.complete && maskImg.naturalWidth > 0) {
+      if (maskImg && maskImg.complete && maskImg.naturalWidth > 0) {
         clipMaskSource = maskImg;
       } else {
         // Mask image still loading — mark frame as incomplete

@@ -27,6 +27,9 @@ export function usePreviewMediaReadyRender(options: UsePreviewMediaReadyRenderOp
     const videoClips = clips.filter((clip): clip is VideoClip => clip.type === "video");
     const cleanupFns: Array<() => void> = [];
     const observedVideos = new Set<HTMLVideoElement>();
+    const renderRequestId = renderRequestRef.current;
+    let pendingRenderFrame: number | null = null;
+    let lastReadyRenderAt = 0;
 
     const scheduleRenderFromMediaReady = () => {
       // During playback, the playback loop already drives rendering.
@@ -35,7 +38,14 @@ export function usePreviewMediaReadyRender(options: UsePreviewMediaReadyRenderOp
       // different times. Don't re-render in response — it would fight over
       // video element currentTime and cause frame drops.
       if (isPreRenderingRef.current) return;
-      scheduleRender();
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastReadyRenderAt < 32) return;
+      lastReadyRenderAt = now;
+      if (pendingRenderFrame !== null) return;
+      pendingRenderFrame = requestAnimationFrame(() => {
+        pendingRenderFrame = null;
+        scheduleRender();
+      });
     };
 
     for (const clip of videoClips) {
@@ -56,7 +66,10 @@ export function usePreviewMediaReadyRender(options: UsePreviewMediaReadyRenderOp
     }
 
     return () => {
-      cancelAnimationFrame(renderRequestRef.current);
+      if (pendingRenderFrame !== null) {
+        cancelAnimationFrame(pendingRenderFrame);
+      }
+      cancelAnimationFrame(renderRequestId);
       cleanupFns.forEach((fn) => fn());
     };
   }, [clips, videoElementsRef, isPreRenderingRef, wasPlayingRef, scheduleRender, renderRequestRef]);

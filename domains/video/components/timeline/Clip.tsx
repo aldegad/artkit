@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Clip as ClipType, getClipPlaybackSpeed } from "../../types";
 import { useVideoCoordinates } from "../../hooks";
 import { useVideoState } from "../../contexts";
+import { getOrDecodeAudioBuffer } from "../../hooks/useAudioBufferCache";
 import { cn } from "@/shared/utils/cn";
 import { VideoClipIcon, AudioClipIcon, ImageClipIcon } from "@/shared/components/icons";
 import { UI } from "../../constants";
@@ -25,48 +26,74 @@ interface ClipProps {
 
 const waveformCache = new Map<string, number[]>();
 const waveformPending = new Map<string, Promise<number[]>>();
+const waveformTouchedAt = new Map<string, number>();
+const WAVEFORM_CACHE_LIMIT = 64;
+
+function touchWaveform(sourceUrl: string) {
+  waveformTouchedAt.set(sourceUrl, typeof performance !== "undefined" ? performance.now() : Date.now());
+}
+
+function setCachedWaveform(sourceUrl: string, waveform: number[]) {
+  waveformCache.set(sourceUrl, waveform);
+  touchWaveform(sourceUrl);
+
+  while (waveformCache.size > WAVEFORM_CACHE_LIMIT) {
+    let oldestKey: string | null = null;
+    let oldestTouch = Number.POSITIVE_INFINITY;
+    for (const key of waveformCache.keys()) {
+      const touchedAt = waveformTouchedAt.get(key) ?? 0;
+      if (touchedAt < oldestTouch) {
+        oldestTouch = touchedAt;
+        oldestKey = key;
+      }
+    }
+    if (!oldestKey) break;
+    waveformCache.delete(oldestKey);
+    waveformTouchedAt.delete(oldestKey);
+  }
+}
 
 async function buildWaveform(sourceUrl: string, bins = 200): Promise<number[]> {
   const cached = waveformCache.get(sourceUrl);
-  if (cached) return cached;
+  if (cached) {
+    touchWaveform(sourceUrl);
+    return cached;
+  }
 
   const pending = waveformPending.get(sourceUrl);
   if (pending) return pending;
 
   const promise = (async () => {
-    const response = await fetch(sourceUrl);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioContext = new AudioContext();
-    try {
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-      const data = audioBuffer.getChannelData(0);
-      const samplesPerBin = Math.max(1, Math.floor(data.length / bins));
-      const values: number[] = [];
+    const audioBuffer = await getOrDecodeAudioBuffer(sourceUrl);
+    if (!audioBuffer) {
+      return [];
+    }
 
-      for (let bin = 0; bin < bins; bin++) {
-        const start = bin * samplesPerBin;
-        const end = Math.min(data.length, start + samplesPerBin);
-        if (end <= start) {
-          values.push(0);
-          continue;
-        }
+    const data = audioBuffer.getChannelData(0);
+    const samplesPerBin = Math.max(1, Math.floor(data.length / bins));
+    const values: number[] = [];
 
-        let sum = 0;
-        for (let i = start; i < end; i++) {
-          const v = data[i];
-          sum += v * v;
-        }
-
-        values.push(Math.sqrt(sum / (end - start)));
+    for (let bin = 0; bin < bins; bin++) {
+      const start = bin * samplesPerBin;
+      const end = Math.min(data.length, start + samplesPerBin);
+      if (end <= start) {
+        values.push(0);
+        continue;
       }
 
-      const peak = Math.max(...values, 0.001);
-      const normalized = values.map((v) => Math.max(0.06, Math.min(1, v / peak)));
-      waveformCache.set(sourceUrl, normalized);
-      return normalized;
-    } finally {
-      await audioContext.close();
+      let sum = 0;
+      for (let i = start; i < end; i++) {
+        const v = data[i];
+        sum += v * v;
+      }
+
+      values.push(Math.sqrt(sum / (end - start)));
     }
+
+    const peak = Math.max(...values, 0.001);
+    const normalized = values.map((value) => Math.max(0.06, Math.min(1, value / peak)));
+    setCachedWaveform(sourceUrl, normalized);
+    return normalized;
   })();
 
   waveformPending.set(sourceUrl, promise);
@@ -149,7 +176,9 @@ export function Clip({
 
     buildWaveform(clipSourceUrl)
       .then((values) => {
-        if (!cancelled) setWaveform(values);
+        if (!cancelled) {
+          setWaveform(values.length > 0 ? values : null);
+        }
       })
       .catch(() => {
         if (!cancelled) setWaveform(null);

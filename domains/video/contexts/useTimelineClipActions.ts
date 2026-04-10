@@ -49,6 +49,7 @@ interface UseTimelineClipActionsParams {
   getMinClipDuration: () => number;
   updateClipsWithDuration: (action: React.SetStateAction<Clip[]>) => void;
   saveToHistory: () => void;
+  autoGapCloseEnabled: boolean;
 }
 
 export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
@@ -64,6 +65,7 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
     getMinClipDuration,
     updateClipsWithDuration,
     saveToHistory,
+    autoGapCloseEnabled,
   } = params;
 
   const copyMediaBlobSafely = useCallback((sourceClipId: string, targetClipId: string, reason: string) => {
@@ -77,6 +79,13 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
       console.error(`Failed to move media blob (${reason}):`, error);
     });
   }, []);
+
+  const applyOptionalAutoGapClose = useCallback((nextClips: Clip[], frameRateOverride?: number): Clip[] => {
+    if (!autoGapCloseEnabled) {
+      return nextClips;
+    }
+    return closeTimelineTrackGaps(nextClips, frameRateOverride ?? getTimelineFrameRate()).clips;
+  }, [autoGapCloseEnabled, getTimelineFrameRate]);
 
   const createSafeFittedVisualClip = useCallback((options: {
     baseClip: Clip;
@@ -195,8 +204,8 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
   }, [tracks, snapTimeToFrame, createSafeFittedVisualClip, registerProjectAsset, updateClipsWithDuration]);
 
   const removeClip = useCallback((clipId: string) => {
-    updateClipsWithDuration((prev) => prev.filter((c) => c.id !== clipId));
-  }, [updateClipsWithDuration]);
+    updateClipsWithDuration((prev) => applyOptionalAutoGapClose(prev.filter((c) => c.id !== clipId)));
+  }, [applyOptionalAutoGapClose, updateClipsWithDuration]);
 
   const updateClip = useCallback((clipId: string, updates: Partial<Clip>) => {
     updateClipsWithDuration((prev) =>
@@ -289,7 +298,7 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
   const trimClipStart = useCallback((clipId: string, newStartTime: number) => {
     const frameRate = getTimelineFrameRate();
     updateClipsWithDuration((prev) =>
-      prev.map((c) => {
+      applyOptionalAutoGapClose(prev.map((c) => {
         if (c.id !== clipId) return c;
         const minDuration = getMinClipDuration();
         const frameAlignedStart = snapTimeToFrame(newStartTime);
@@ -310,14 +319,14 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
           position: { ...nextPosition },
           transformKeyframes,
         } as Clip);
-      })
+      }), frameRate)
     );
-  }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
+  }, [applyOptionalAutoGapClose, getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   const trimClipEnd = useCallback((clipId: string, newEndTime: number) => {
     const frameRate = getTimelineFrameRate();
     updateClipsWithDuration((prev) =>
-      prev.map((c) => {
+      applyOptionalAutoGapClose(prev.map((c) => {
         if (c.id !== clipId) return c;
         const minDuration = getMinClipDuration();
         const frameAlignedEnd = snapTimeToFrame(newEndTime);
@@ -342,9 +351,9 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
           position: { ...nextPosition },
           transformKeyframes,
         } as Clip);
-      })
+      }), frameRate)
     );
-  }, [getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
+  }, [applyOptionalAutoGapClose, getMinClipDuration, getTimelineFrameRate, snapTimeToFrame, updateClipsWithDuration]);
 
   const duplicateClip = useCallback((clipId: string, targetTrackId?: string): string | null => {
     const sourceClip = clips.find((c) => c.id === clipId);

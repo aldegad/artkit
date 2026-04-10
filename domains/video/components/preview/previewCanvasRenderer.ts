@@ -4,11 +4,11 @@ import { MutableRefObject, RefObject } from "react";
 import { applyPixelPreviewScalePolicy, drawScaledImage, resizeCanvasForDpr } from "@/shared/utils";
 import { getCanvasColorsSync } from "@/shared/hooks";
 import { PLAYBACK } from "../../constants";
-import { Clip, VideoClip, VideoProject, VideoTrack, getClipPlaybackSpeed, getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
+import { Clip, MaskData, VideoProject, VideoTrack, getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
 import { resolveClipPositionAtTimelineTime } from "../../utils/clipTransformKeyframes";
 import { drawCropOverlay, drawMaskRegionOverlay, drawTransformBoundsOverlay } from "./previewCanvasOverlayDrawing";
 import { drawPreviewCheckerboard } from "./previewCheckerboard";
-import { drawMaskedClipLayer } from "./previewMaskedClipDrawing";
+import { drawMaskedClipLayer, drawMaskTintOverlay } from "./previewMaskedClipDrawing";
 import { DirectPreviewPlan, ensureRenderSurfaceCanvas } from "./previewCanvasConfig";
 import { applyDirectVideoPreview } from "./previewCanvasDirectVideo";
 
@@ -31,6 +31,66 @@ interface RenderTransformState {
   } | null;
 }
 
+export interface PreviewBaseFrameState {
+  renderTime: number | null;
+  clipsRef: Clip[] | null;
+  tracksRef: VideoTrack[] | null;
+  masksRef: Map<string, MaskData> | null;
+  playbackIsPlaying: boolean;
+  directPreviewTrackId: string | null;
+  fullyReady: boolean;
+}
+
+export function canReuseCommittedBaseFrame(params: {
+  usesDirectVideoPreview: boolean;
+  hasCachedBitmap: boolean;
+  isEditingMask: boolean;
+  hasCommittedCompositeFrame: boolean;
+  previousBaseFrame: PreviewBaseFrameState;
+  currentClipsRef: Clip[];
+  currentTracksRef: VideoTrack[];
+  currentMasksRef: Map<string, MaskData>;
+  playbackIsPlaying: boolean;
+  directPreviewTrackId: string | null;
+  renderTime: number;
+}): boolean {
+  return !params.usesDirectVideoPreview
+    && !params.hasCachedBitmap
+    && !params.isEditingMask
+    && params.hasCommittedCompositeFrame
+    && params.previousBaseFrame.fullyReady
+    && params.previousBaseFrame.clipsRef === params.currentClipsRef
+    && params.previousBaseFrame.tracksRef === params.currentTracksRef
+    && params.previousBaseFrame.masksRef === params.currentMasksRef
+    && params.previousBaseFrame.playbackIsPlaying === params.playbackIsPlaying
+    && params.previousBaseFrame.directPreviewTrackId === params.directPreviewTrackId
+    && params.previousBaseFrame.renderTime !== null
+    && Math.abs(params.previousBaseFrame.renderTime - params.renderTime) < 1e-6;
+}
+
+export function shouldCommitWorkingCompositeFrame(params: {
+  usesDirectVideoPreview: boolean;
+  canReuseCommittedBase: boolean;
+  baseFrameReady: boolean;
+}): boolean {
+  return !params.usesDirectVideoPreview
+    && !params.canReuseCommittedBase
+    && params.baseFrameReady;
+}
+
+export function resolvePresentedBaseCanvasSource(params: {
+  usesDirectVideoPreview: boolean;
+  canReuseCommittedBase: boolean;
+  baseFrameReady: boolean;
+  hasCommittedCompositeFrame: boolean;
+}): "none" | "committed" | "working" {
+  if (params.usesDirectVideoPreview) return "none";
+  if (params.canReuseCommittedBase || (!params.baseFrameReady && params.hasCommittedCompositeFrame)) {
+    return "committed";
+  }
+  return "working";
+}
+
 export interface PreviewCanvasRenderParams {
   previewCanvasRef: RefObject<HTMLCanvasElement | null>;
   previewContainerRef: RefObject<HTMLDivElement | null>;
@@ -43,6 +103,7 @@ export interface PreviewCanvasRenderParams {
   checkerPatternKeyRef: MutableRefObject<string>;
   checkerPatternCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   hasCommittedCompositeFrameRef: MutableRefObject<boolean>;
+  baseFrameStateRef: MutableRefObject<PreviewBaseFrameState>;
   maskTempCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   maskOverlayCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   imageCacheRef: MutableRefObject<Map<string, HTMLImageElement>>;
@@ -66,6 +127,7 @@ export interface PreviewCanvasRenderParams {
   };
   tracks: VideoTrack[];
   clips: Clip[];
+  masks: Map<string, MaskData>;
   selectedClipIds: string[];
   toolMode: string;
   cropArea: { x: number; y: number; width: number; height: number } | null;
@@ -194,11 +256,6 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
     return !!selected && selected.type !== "audio";
   }) || null;
 
-  workingCompositeCtx.setTransform(canvasSize.dpr, 0, 0, canvasSize.dpr, 0, 0);
-  workingCompositeCtx.clearRect(0, 0, canvasSize.width, canvasSize.height);
-  workingCompositeCtx.fillStyle = surfacePrimary;
-  workingCompositeCtx.fillRect(0, 0, canvasSize.width, canvasSize.height);
-
   usesDirectVideoPreview = applyDirectVideoPreview({
     directPreviewPlan: params.directPreviewPlan,
     directPreviewHostRef: params.directPreviewHostRef,
@@ -213,7 +270,32 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
     detachDirectPreviewVideo: () => detachDirectPreviewVideo(params),
   });
 
-  if (!usesDirectVideoPreview) {
+  const cachedBitmap = usesDirectVideoPreview || params.isEditingMask
+    ? null
+    : params.getCachedFrame(renderTime);
+  const directPreviewTrackId = params.directPreviewPlan?.trackId ?? null;
+  const canReuseCommittedBase = canReuseCommittedBaseFrame({
+    usesDirectVideoPreview,
+    hasCachedBitmap: Boolean(cachedBitmap),
+    isEditingMask: params.isEditingMask,
+    hasCommittedCompositeFrame: params.hasCommittedCompositeFrameRef.current,
+    previousBaseFrame: params.baseFrameStateRef.current,
+    currentClipsRef: params.clips,
+    currentTracksRef: params.tracks,
+    currentMasksRef: params.masks,
+    playbackIsPlaying: params.playback.isPlaying,
+    directPreviewTrackId,
+    renderTime,
+  });
+
+  if (!usesDirectVideoPreview && !canReuseCommittedBase) {
+    workingCompositeCtx.setTransform(canvasSize.dpr, 0, 0, canvasSize.dpr, 0, 0);
+    workingCompositeCtx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+    workingCompositeCtx.fillStyle = surfacePrimary;
+    workingCompositeCtx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+  }
+
+  if (!usesDirectVideoPreview && !canReuseCommittedBase) {
     workingCompositeCtx.save();
     workingCompositeCtx.beginPath();
     workingCompositeCtx.rect(offsetX, offsetY, previewWidth, previewHeight);
@@ -232,12 +314,7 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
     workingCompositeCtx.restore();
   }
 
-  const cachedBitmap = usesDirectVideoPreview || (params.isEditingMask || params.activeMaskId)
-    ? null
-    : params.getCachedFrame(renderTime);
-
   let baseFrameReady = usesDirectVideoPreview || Boolean(cachedBitmap);
-
   if (usesDirectVideoPreview) {
     workingCompositeCtx.clearRect(0, 0, canvasSize.width, canvasSize.height);
   } else if (cachedBitmap) {
@@ -254,7 +331,7 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
         smoothingQuality: params.adaptivePlaybackPreviewPolicy.smoothingQuality,
       },
     );
-  } else {
+  } else if (!canReuseCommittedBase) {
     if (params.playback.isPlaying) {
       params.playbackPerfRef.current.liveFrames += 1;
     }
@@ -276,20 +353,14 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
         const sourceTime = getSourceTime(clip, renderTime);
         if (params.playback.isPlaying && Math.abs(videoElement.currentTime - sourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD * 1.25) {
           baseFrameReady = false;
-          continue;
         }
         if (!params.playback.isPlaying && Math.abs(videoElement.currentTime - sourceTime) > 0.05) {
           videoElement.currentTime = sourceTime;
         }
         sourceEl = videoElement;
       } else if (clip.type === "image") {
-        let img = params.imageCacheRef.current.get(clip.sourceUrl);
-        if (!img) {
-          img = new Image();
-          img.src = clip.sourceUrl;
-          params.imageCacheRef.current.set(clip.sourceUrl, img);
-        }
-        if (img.complete && img.naturalWidth > 0) {
+        const img = params.imageCacheRef.current.get(clip.sourceUrl) || null;
+        if (img && img.complete && img.naturalWidth > 0) {
           sourceEl = img;
         } else {
           baseFrameReady = false;
@@ -308,13 +379,8 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
       if (maskResult === "__live_canvas__" && params.maskContextCanvasRef.current) {
         clipMaskSource = params.maskContextCanvasRef.current;
       } else if (maskResult && maskResult !== "__live_canvas__") {
-        let maskImg = params.savedMaskImgCacheRef.current.get(maskResult);
-        if (!maskImg) {
-          maskImg = new Image();
-          maskImg.src = maskResult;
-          params.savedMaskImgCacheRef.current.set(maskResult, maskImg);
-        }
-        if (maskImg.complete && maskImg.naturalWidth > 0) {
+        const maskImg = params.savedMaskImgCacheRef.current.get(maskResult) || null;
+        if (maskImg && maskImg.complete && maskImg.naturalWidth > 0) {
           clipMaskSource = maskImg;
         } else {
           baseFrameReady = false;
@@ -322,11 +388,6 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
       }
 
       if (clipMaskSource) {
-        const overlayTint = params.activeTrackId === clip.trackId && params.activeMaskId
-          ? params.isEditingMask
-            ? "rgba(255, 60, 60, 0.35)"
-            : "rgba(168, 85, 247, 0.3)"
-          : null;
         drawMaskedClipLayer({
           ctx: workingCompositeCtx,
           sourceEl,
@@ -345,7 +406,7 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
           smoothingQuality: params.adaptivePlaybackPreviewPolicy.smoothingQuality,
           maskTempCanvasRef: params.maskTempCanvasRef,
           maskOverlayCanvasRef: params.maskOverlayCanvasRef,
-          overlayTint,
+          overlayTint: null,
         });
       } else {
         workingCompositeCtx.globalAlpha = clip.opacity / 100;
@@ -364,7 +425,23 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
     }
   }
 
-  if (!usesDirectVideoPreview && (baseFrameReady || !params.playback.isPlaying)) {
+  if (!usesDirectVideoPreview && !cachedBitmap && !canReuseCommittedBase) {
+    params.baseFrameStateRef.current = {
+      renderTime,
+      clipsRef: params.clips,
+      tracksRef: params.tracks,
+      masksRef: params.masks,
+      playbackIsPlaying: params.playback.isPlaying,
+      directPreviewTrackId,
+      fullyReady: baseFrameReady,
+    };
+  }
+
+  if (shouldCommitWorkingCompositeFrame({
+    usesDirectVideoPreview,
+    canReuseCommittedBase,
+    baseFrameReady,
+  })) {
     committedCompositeCtx.setTransform(1, 0, 0, 1, 0, 0);
     committedCompositeCtx.clearRect(0, 0, committedCompositeCanvas.width, committedCompositeCanvas.height);
     committedCompositeCtx.drawImage(workingCompositeCanvas, 0, 0);
@@ -374,13 +451,48 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!usesDirectVideoPreview) {
-    const baseCanvasToPresent =
-      params.playback.isPlaying && !baseFrameReady && params.hasCommittedCompositeFrameRef.current
-        ? committedCompositeCanvas
-        : workingCompositeCanvas;
+    const baseCanvasToPresent = resolvePresentedBaseCanvasSource({
+      usesDirectVideoPreview,
+      canReuseCommittedBase,
+      baseFrameReady,
+      hasCommittedCompositeFrame: params.hasCommittedCompositeFrameRef.current,
+    }) === "committed"
+      ? committedCompositeCanvas
+      : workingCompositeCanvas;
     ctx.drawImage(baseCanvasToPresent, 0, 0);
   }
   ctx.setTransform(canvasSize.dpr, 0, 0, canvasSize.dpr, 0, 0);
+
+  if (params.activeTrackId && params.activeMaskId) {
+    const activeClip = params.getClipAtTime(params.activeTrackId, renderTime);
+    const activeMaskResult = params.getMaskAtTimeForTrack(params.activeTrackId, renderTime);
+    const overlayTint = params.isEditingMask
+      ? "rgba(255, 60, 60, 0.35)"
+      : "rgba(168, 85, 247, 0.3)";
+    let activeMaskSource: CanvasImageSource | null = null;
+
+    if (activeMaskResult === "__live_canvas__" && params.maskContextCanvasRef.current) {
+      activeMaskSource = params.maskContextCanvasRef.current;
+    } else if (activeMaskResult && activeMaskResult !== "__live_canvas__") {
+      const maskImg = params.savedMaskImgCacheRef.current.get(activeMaskResult) || null;
+      if (maskImg && maskImg.complete && maskImg.naturalWidth > 0) {
+        activeMaskSource = maskImg;
+      }
+    }
+
+    if (activeClip && activeClip.visible && activeMaskSource) {
+      drawMaskTintOverlay({
+        ctx,
+        clipMaskSource: activeMaskSource,
+        projectSize: params.project.canvasSize,
+        previewRect: { x: offsetX, y: offsetY, width: previewWidth, height: previewHeight },
+        previewScaleMode: previewScalePolicy.mode,
+        smoothingQuality: params.adaptivePlaybackPreviewPolicy.smoothingQuality,
+        maskOverlayCanvasRef: params.maskOverlayCanvasRef,
+        overlayTint,
+      });
+    }
+  }
 
   if (selectedVisualClipId && !(params.toolMode === "transform" && params.transformState.isActive)) {
     const selectedVisualClip = params.clips.find((clip) => clip.id === selectedVisualClipId);

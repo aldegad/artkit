@@ -53,6 +53,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     seek,
     setLoopRange,
     clearLoopRange,
+    autoGapCloseEnabled,
   } = videoState;
 
   const [viewState, setViewStateInternal] = useState<TimelineViewState>(
@@ -177,6 +178,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     getMinClipDuration,
     updateClipsWithDuration,
     saveToHistory: history.saveToHistory,
+    autoGapCloseEnabled,
   });
 
   const setViewState = useCallback((nextViewState: TimelineViewState) => {

@@ -29,6 +29,17 @@ interface DrawMaskedClipOptions {
   overlayTint: string | null;
 }
 
+interface DrawMaskTintOverlayOptions {
+  ctx: CanvasRenderingContext2D;
+  clipMaskSource: CanvasImageSource;
+  projectSize: SizeLike;
+  previewRect: RectLike;
+  previewScaleMode: CanvasScaleMode;
+  smoothingQuality?: ImageSmoothingQuality;
+  maskOverlayCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
+  overlayTint: string;
+}
+
 function ensureReusableCanvas(
   canvasRef: MutableRefObject<HTMLCanvasElement | null>,
   width: number,
@@ -122,5 +133,44 @@ export function drawMaskedClipLayer({
     overlayCanvas,
     previewRect,
     { mode: previewScaleMode, progressiveMinify, smoothingQuality },
+  );
+}
+
+export function drawMaskTintOverlay({
+  ctx,
+  clipMaskSource,
+  projectSize,
+  previewRect,
+  previewScaleMode,
+  smoothingQuality = "high",
+  maskOverlayCanvasRef,
+  overlayTint,
+}: DrawMaskTintOverlayOptions): void {
+  const maskWidth = projectSize.width;
+  const maskHeight = projectSize.height;
+  const overlayCanvas = ensureReusableCanvas(maskOverlayCanvasRef, maskWidth, maskHeight);
+  const overlayCtx = overlayCanvas.getContext("2d");
+  if (!overlayCtx) return;
+
+  overlayCtx.imageSmoothingEnabled = true;
+  overlayCtx.imageSmoothingQuality = smoothingQuality;
+  overlayCtx.clearRect(0, 0, maskWidth, maskHeight);
+  overlayCtx.globalCompositeOperation = "source-over";
+  drawScaledImage(
+    overlayCtx,
+    clipMaskSource,
+    { x: 0, y: 0, width: maskWidth, height: maskHeight },
+    { mode: "continuous", smoothingQuality },
+  );
+  overlayCtx.globalCompositeOperation = "source-in";
+  overlayCtx.fillStyle = overlayTint;
+  overlayCtx.fillRect(0, 0, maskWidth, maskHeight);
+  overlayCtx.globalCompositeOperation = "source-over";
+
+  drawScaledImage(
+    ctx,
+    overlayCanvas,
+    previewRect,
+    { mode: previewScaleMode, progressiveMinify: false, smoothingQuality },
   );
 }

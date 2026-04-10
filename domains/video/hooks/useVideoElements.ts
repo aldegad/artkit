@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { useVideoRefs, useTimeline } from "../contexts";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useVideoRefs, useTimeline, useVideoState } from "../contexts";
 import { VideoClip, AudioClip } from "../types";
+import { playbackTick } from "../utils/playbackTick";
+import {
+  buildPlaybackTrackClipIndex,
+  collectPlaybackWindowClipIds,
+} from "../utils/playbackActiveMedia";
 
 type TimelineMediaClip = Pick<
   VideoClip | AudioClip,
@@ -61,7 +66,8 @@ function buildSharedPoolAssignments<T extends TimelineMediaClip>(
  */
 export function useVideoElements() {
   const { videoElementsRef, audioElementsRef } = useVideoRefs();
-  const { clips } = useTimeline();
+  const { tracks, clips } = useTimeline();
+  const { currentTimeRef, playback } = useVideoState();
   const loadedVideoPoolKeysRef = useRef<Set<string>>(new Set());
   const loadedAudioPoolKeysRef = useRef<Set<string>>(new Set());
   const videoSourceByPoolKeyRef = useRef<Map<string, string>>(new Map());
@@ -70,6 +76,7 @@ export function useVideoElements() {
   const audioPoolRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const videoPoolKeyByClipIdRef = useRef<Map<string, string>>(new Map());
   const audioPoolKeyByClipIdRef = useRef<Map<string, string>>(new Map());
+  const clipsByTrack = useMemo(() => buildPlaybackTrackClipIndex(clips), [clips]);
 
   // Create or get video element for a shared source/slot
   const getVideoElement = useCallback(
@@ -111,11 +118,18 @@ export function useVideoElements() {
   );
 
   // Sync media element pool to current clips while reusing shared source slots.
-  const preloadVideos = useCallback(() => {
+  const syncPlaybackWindow = useCallback((time: number) => {
     const videoClips = clips.filter((c): c is VideoClip => c.type === "video");
     const audioClips = clips.filter((c): c is AudioClip => c.type === "audio");
     const videoAssignments = buildSharedPoolAssignments(videoClips, "video");
     const audioAssignments = buildSharedPoolAssignments(audioClips, "audio");
+    const warmClipIds = collectPlaybackWindowClipIds({
+      tracks,
+      clipsByTrack,
+      time,
+      lookBehind: playback.isPlaying ? 0.25 : 0.5,
+      lookAhead: playback.isPlaying ? 2 : 6,
+    });
     const activeVideoClipIds = new Set<string>();
     const activeAudioClipIds = new Set<string>();
     const activeVideoPoolKeys = new Set<string>();
@@ -129,6 +143,7 @@ export function useVideoElements() {
 
       const video = getVideoElement(clip.id);
       if (!video) continue;
+      const shouldWarm = warmClipIds.has(clip.id);
 
       const prevSource = videoSourceByPoolKeyRef.current.get(poolKey);
       if (prevSource !== clip.sourceUrl) {
@@ -137,8 +152,9 @@ export function useVideoElements() {
         videoSourceByPoolKeyRef.current.set(poolKey, clip.sourceUrl);
         loadedVideoPoolKeysRef.current.delete(poolKey);
       }
+      video.preload = shouldWarm ? "auto" : "metadata";
 
-      if (!loadedVideoPoolKeysRef.current.has(poolKey)) {
+      if (shouldWarm && !loadedVideoPoolKeysRef.current.has(poolKey)) {
         video.load();
         loadedVideoPoolKeysRef.current.add(poolKey);
       }
@@ -152,6 +168,7 @@ export function useVideoElements() {
 
       const audio = getAudioElement(clip.id);
       if (!audio) continue;
+      const shouldWarm = warmClipIds.has(clip.id);
 
       const prevSource = audioSourceByPoolKeyRef.current.get(poolKey);
       if (prevSource !== clip.sourceUrl) {
@@ -160,8 +177,9 @@ export function useVideoElements() {
         audioSourceByPoolKeyRef.current.set(poolKey, clip.sourceUrl);
         loadedAudioPoolKeysRef.current.delete(poolKey);
       }
+      audio.preload = shouldWarm ? "auto" : "metadata";
 
-      if (!loadedAudioPoolKeysRef.current.has(poolKey)) {
+      if (shouldWarm && !loadedAudioPoolKeysRef.current.has(poolKey)) {
         audio.load();
         loadedAudioPoolKeysRef.current.add(poolKey);
       }
@@ -220,7 +238,16 @@ export function useVideoElements() {
         }
       }
     }
-  }, [clips, getVideoElement, getAudioElement, videoElementsRef, audioElementsRef]);
+  }, [
+    audioElementsRef,
+    clips,
+    clipsByTrack,
+    getAudioElement,
+    getVideoElement,
+    playback.isPlaying,
+    tracks,
+    videoElementsRef,
+  ]);
 
   // Seek a video element to a specific time
   const seekVideo = useCallback(
@@ -267,40 +294,65 @@ export function useVideoElements() {
 
   // Cleanup video elements on unmount
   useEffect(() => {
+    const videoPool = videoPoolRef.current;
+    const audioPool = audioPoolRef.current;
+    const videoElements = videoElementsRef.current;
+    const audioElements = audioElementsRef.current;
+    const loadedVideoPoolKeys = loadedVideoPoolKeysRef.current;
+    const loadedAudioPoolKeys = loadedAudioPoolKeysRef.current;
+    const videoSourceByPoolKey = videoSourceByPoolKeyRef.current;
+    const audioSourceByPoolKey = audioSourceByPoolKeyRef.current;
+    const videoPoolKeyByClipId = videoPoolKeyByClipIdRef.current;
+    const audioPoolKeyByClipId = audioPoolKeyByClipIdRef.current;
+
     return () => {
-      videoPoolRef.current.forEach((video) => {
+      videoPool.forEach((video) => {
         video.pause();
         video.src = "";
         video.load();
       });
-      audioPoolRef.current.forEach((audio) => {
+      audioPool.forEach((audio) => {
         audio.pause();
         audio.src = "";
         audio.load();
       });
-      videoPoolRef.current.clear();
-      audioPoolRef.current.clear();
-      videoElementsRef.current?.clear();
-      audioElementsRef.current?.clear();
-      loadedVideoPoolKeysRef.current.clear();
-      loadedAudioPoolKeysRef.current.clear();
-      videoSourceByPoolKeyRef.current.clear();
-      audioSourceByPoolKeyRef.current.clear();
-      videoPoolKeyByClipIdRef.current.clear();
-      audioPoolKeyByClipIdRef.current.clear();
+      videoPool.clear();
+      audioPool.clear();
+      videoElements?.clear();
+      audioElements?.clear();
+      loadedVideoPoolKeys.clear();
+      loadedAudioPoolKeys.clear();
+      videoSourceByPoolKey.clear();
+      audioSourceByPoolKey.clear();
+      videoPoolKeyByClipId.clear();
+      audioPoolKeyByClipId.clear();
     };
   }, [videoElementsRef, audioElementsRef]);
 
   // Preload when clips change
   useEffect(() => {
-    preloadVideos();
-  }, [preloadVideos]);
+    syncPlaybackWindow(currentTimeRef.current);
+  }, [currentTimeRef, playback.isPlaying, syncPlaybackWindow]);
+
+  useEffect(() => {
+    let lastWindowSyncAt = 0;
+
+    return playbackTick.subscribe((time) => {
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const minSyncInterval = playback.isPlaying ? 180 : 400;
+      if (now - lastWindowSyncAt < minSyncInterval) {
+        return;
+      }
+      lastWindowSyncAt = now;
+      syncPlaybackWindow(time);
+    });
+  }, [playback.isPlaying, syncPlaybackWindow]);
 
   return {
     getVideoElement,
     getAudioElement,
     seekVideo,
     getVideoFrame,
-    preloadVideos,
+    preloadVideos: syncPlaybackWindow,
   };
 }

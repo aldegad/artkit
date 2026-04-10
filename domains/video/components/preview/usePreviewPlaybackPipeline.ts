@@ -1,6 +1,6 @@
 "use client";
 
-import { MutableRefObject, useCallback, useEffect, useRef } from "react";
+import { MutableRefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   useAudioBufferCache,
   usePreRenderCache,
@@ -14,6 +14,10 @@ import { countActiveVisualLayersAtTime, createPlaybackPerfStats, resetPlaybackPe
 import { usePreviewMediaPlaybackSync } from "./usePreviewMediaPlaybackSync";
 import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 import { SAMPLE_FRAME_EPSILON } from "./previewCanvasConfig";
+import {
+  buildPlaybackTrackClipIndex,
+  collectPlaybackWindowClipIds,
+} from "../../utils/playbackActiveMedia";
 
 interface SyncMediaRequest {
   forceVideoCurrentTimeSync?: boolean;
@@ -75,8 +79,67 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
     renderRequestRef,
   } = params;
   const safeProjectDuration = Number.isFinite(project.duration) && project.duration > 0 ? project.duration : 1;
+  const clipsByTrack = useMemo(() => buildPlaybackTrackClipIndex(clips), [clips]);
+  const warmPlaybackClipIds = useMemo(() => collectPlaybackWindowClipIds({
+    tracks,
+    clipsByTrack,
+    time: playback.currentTime,
+    lookBehind: playback.isPlaying ? 0.25 : 0.5,
+    lookAhead: playback.isPlaying ? 2 : 6,
+  }), [clipsByTrack, playback.currentTime, playback.isPlaying, tracks]);
+  const warmAudioSourceUrls = useMemo(() => {
+    const sourceUrls = new Set<string>();
+    for (const clip of clips) {
+      if (!warmPlaybackClipIds.has(clip.id)) continue;
+      if (clip.type === "audio") {
+        sourceUrls.add(clip.sourceUrl);
+      } else if (clip.type === "video" && (clip.hasAudio ?? true)) {
+        sourceUrls.add(clip.sourceUrl);
+      }
+    }
+    return [...sourceUrls];
+  }, [clips, warmPlaybackClipIds]);
 
   useVideoElements();
+
+  useEffect(() => {
+    const activeImageUrls = new Set<string>();
+    for (const clip of clips) {
+      if (clip.type === "image" && typeof clip.sourceUrl === "string" && clip.sourceUrl.length > 0) {
+        activeImageUrls.add(clip.sourceUrl);
+        if (!imageCacheRef.current.has(clip.sourceUrl)) {
+          const image = new Image();
+          image.decoding = "async";
+          image.src = clip.sourceUrl;
+          imageCacheRef.current.set(clip.sourceUrl, image);
+        }
+      }
+    }
+
+    for (const [sourceUrl] of imageCacheRef.current) {
+      if (!activeImageUrls.has(sourceUrl)) {
+        imageCacheRef.current.delete(sourceUrl);
+      }
+    }
+
+    const activeMaskUrls = new Set<string>();
+    for (const mask of masks.values()) {
+      if (typeof mask.maskData !== "string" || mask.maskData.length === 0) continue;
+      activeMaskUrls.add(mask.maskData);
+      if (!savedMaskImgCacheRef.current.has(mask.maskData)) {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = mask.maskData;
+        savedMaskImgCacheRef.current.set(mask.maskData, image);
+      }
+    }
+
+    for (const [maskUrl] of savedMaskImgCacheRef.current) {
+      if (!activeMaskUrls.has(maskUrl)) {
+        savedMaskImgCacheRef.current.delete(maskUrl);
+      }
+    }
+  }, [clips, imageCacheRef, masks, savedMaskImgCacheRef]);
 
   const { getCachedFrame, isPreRenderingRef } = usePreRenderCache({
     tracks,
@@ -97,7 +160,10 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
     debugLogs: previewPerf.debugLogs,
   });
 
-  useAudioBufferCache(clips, { enabled: !directPreviewOptimized });
+  useAudioBufferCache({
+    enabled: !directPreviewOptimized,
+    warmSourceUrls: warmAudioSourceUrls,
+  });
 
   const { isWebAudioReady } = useWebAudioPlayback({
     tracks,
@@ -117,12 +183,13 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
 
   const wasPlayingRef = useRef(false);
   const syncMediaRef = useRef<((request?: SyncMediaRequest) => void) | null>(null);
-  const syncMediaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const syncMediaIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPlaybackTickTimeRef = useRef<number | null>(null);
   const playbackPerfRef = useRef(createPlaybackPerfStats());
 
   usePreviewMediaPlaybackSync({
     tracks,
+    clips,
     playback,
     directPreviewOptimized,
     currentTimeRef,
