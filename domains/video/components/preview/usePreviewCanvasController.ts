@@ -92,12 +92,21 @@ export function usePreviewCanvasController() {
   const checkerPatternCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRectRef = useRef({ width: 0, height: 0 });
   const previewPerfRef = useRef(resolvePreviewPerformanceConfig());
+  const directPreviewPlaybackStateRef = useRef<{ activeClipId: string | null }>({
+    activeClipId: null,
+  });
   const previewPerf = previewPerfRef.current;
   const [brushCursor, setBrushCursor] = useState<{ x: number; y: number } | null>(null);
 
   previewPerf.preRenderEnabled = previewPreRenderEnabled;
   previewPerf.qualityFirstMode = previewQualityFirstEnabled;
   previewPerf.maxCanvasDpr = previewQualityFirstEnabled ? Number.POSITIVE_INFINITY : 2;
+
+  const directPreviewPlan = useMemo<DirectPreviewPlan | null>(
+    () => resolveDirectPreviewPlan(tracks, clips, masks.size),
+    [tracks, clips, masks.size],
+  );
+  const directPreviewOptimized = Boolean(directPreviewPlan);
 
   const visualClipCount = clips.filter((clip) => clip.type !== "audio").length;
   const adaptivePlaybackPreviewPolicy = resolveAdaptivePlaybackPreviewPolicy({
@@ -107,13 +116,9 @@ export function usePreviewCanvasController() {
     visualClipCount,
     baseMaxCanvasDpr: previewPerf.maxCanvasDpr,
     basePlaybackRenderFpsCap: previewPerf.playbackRenderFpsCap,
+    directPreviewOptimized,
+    isMobileLike: previewPerf.isMobileLike,
   });
-
-  const directPreviewPlan = useMemo<DirectPreviewPlan | null>(
-    () => resolveDirectPreviewPlan(tracks, clips, masks.size),
-    [tracks, clips, masks.size],
-  );
-  const directPreviewOptimized = Boolean(directPreviewPlan);
   const effectivePreRenderEnabled = previewPerf.preRenderEnabled && !directPreviewOptimized;
 
   const scheduleRender = useCallback(() => {
@@ -327,6 +332,7 @@ export function usePreviewCanvasController() {
       savedMaskImgCacheRef,
       directPreviewHostRef,
       directPreviewAttachedVideoRef,
+      directPreviewPlaybackStateRef,
       currentTimeRef,
       playbackPerfRef: playbackPipeline.playbackPerfRef as never,
       project,
@@ -392,6 +398,7 @@ export function usePreviewCanvasController() {
 
   usePreviewPlaybackRenderTick({
     playbackIsPlaying: playback.isPlaying,
+    playbackRate: playback.playbackRate,
     playbackRenderFpsCap: adaptivePlaybackPreviewPolicy.playbackRenderFpsCap,
     playbackPerfRef: playbackPipeline.playbackPerfRef,
     lastPlaybackTickTimeRef: playbackPipeline.lastPlaybackTickTimeRef,

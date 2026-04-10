@@ -2,7 +2,7 @@
 
 import { MutableRefObject, useEffect } from "react";
 import { usePlaybackTick } from "../../hooks";
-import { PLAYBACK } from "../../constants";
+import { hasPreviewPlaybackDiscontinuity } from "./previewPlaybackDiscontinuity";
 
 interface PlaybackPerfStats {
   windowStartMs: number;
@@ -17,10 +17,11 @@ interface PlaybackPerfStats {
 
 interface UsePreviewPlaybackRenderTickOptions {
   playbackIsPlaying: boolean;
+  playbackRate: number;
   playbackRenderFpsCap: number;
   playbackPerfRef: MutableRefObject<PlaybackPerfStats>;
   lastPlaybackTickTimeRef: MutableRefObject<number | null>;
-  syncMediaRef: MutableRefObject<(() => void) | null>;
+  syncMediaRef: MutableRefObject<((request?: { forceVideoCurrentTimeSync?: boolean }) => void) | null>;
   renderRef: MutableRefObject<() => void>;
   maybeReportPlaybackStats: (now: number) => void;
   resetPlaybackPerfStats: () => void;
@@ -29,6 +30,7 @@ interface UsePreviewPlaybackRenderTickOptions {
 export function usePreviewPlaybackRenderTick(options: UsePreviewPlaybackRenderTickOptions) {
   const {
     playbackIsPlaying,
+    playbackRate,
     playbackRenderFpsCap,
     playbackPerfRef,
     lastPlaybackTickTimeRef,
@@ -43,16 +45,20 @@ export function usePreviewPlaybackRenderTick(options: UsePreviewPlaybackRenderTi
     const now = performance.now();
     const stats = playbackPerfRef.current;
     const previousTickTime = lastPlaybackTickTimeRef.current;
+    const previousTickWallTime = stats.lastTickMs > 0 ? stats.lastTickMs : null;
     lastPlaybackTickTimeRef.current = tickTime;
 
-    // Loop wrap / playback seek can jump timeline backward between ticks.
-    // Force immediate media sync instead of waiting for interval drift correction.
     if (
       playbackIsPlaying &&
-      previousTickTime !== null &&
-      tickTime < previousTickTime - PLAYBACK.FRAME_STEP
+      hasPreviewPlaybackDiscontinuity({
+        previousTimelineTime: previousTickTime,
+        previousWallTimeMs: previousTickWallTime,
+        nextTimelineTime: tickTime,
+        nextWallTimeMs: now,
+        playbackRate,
+      })
     ) {
-      syncMediaRef.current?.();
+      syncMediaRef.current?.({ forceVideoCurrentTimeSync: true });
     }
 
     if (stats.lastTickMs > 0) {
