@@ -34,6 +34,7 @@ import {
 } from "../utils/timelineModel";
 import { buildRazorSplitClips } from "../utils/razorSplit";
 import { getTimelineFrameRange } from "../utils/timelineFrame";
+import { closeTimelineTrackGaps } from "../utils/timelineEditing";
 import { SOURCE_TRIM_EPSILON } from "./TimelineContext.shared";
 
 interface UseTimelineClipActionsParams {
@@ -411,6 +412,14 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
     return secondClip.id;
   }, [clips, viewState.snapEnabled, viewState.zoom, getTimelineFrameRate, saveToHistory, moveMediaBlobSafely, snapTimeToFrame, updateClipsWithDuration]);
 
+  const closeTrackGaps = useCallback((): boolean => {
+    const result = closeTimelineTrackGaps(clips, getTimelineFrameRate());
+    if (!result.changed) return false;
+    saveToHistory();
+    updateClipsWithDuration(result.clips);
+    return true;
+  }, [clips, getTimelineFrameRate, saveToHistory, updateClipsWithDuration]);
+
   const addClips = useCallback((newClips: Clip[]) => {
     updateClipsWithDuration((prev) => {
       const next = [...prev];
@@ -436,6 +445,7 @@ export function useTimelineClipActions(params: UseTimelineClipActionsParams) {
     addClips,
     addImageClip,
     addVideoClip,
+    closeTrackGaps,
     duplicateClip,
     removeClip,
     setClipPlaybackSpeed,

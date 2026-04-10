@@ -129,8 +129,11 @@ export {
 
 // Video Tools
 export {
+  TrimStartIcon,
   TrimToolIcon,
+  TrimEndIcon,
   RazorToolIcon,
+  TimelineCompactIcon,
   MaskToolIcon,
 } from "./videoTools";
 

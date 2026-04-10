@@ -8,6 +8,10 @@ import { cn } from "@/shared/utils/cn";
 import { VideoClipIcon, AudioClipIcon, ImageClipIcon } from "@/shared/components/icons";
 import { UI } from "../../constants";
 import { getTimelineFrameRange, normalizeTimelineFrameRate } from "../../utils/timelineFrame";
+import {
+  buildVideoThumbnailTiles,
+  captureVideoThumbnailStrip,
+} from "./videoClipThumbnails";
 
 interface ClipProps {
   clip: ClipType;
@@ -87,6 +91,7 @@ export function Clip({
   const [waveform, setWaveform] = useState<number[] | null>(
     clip.type === "image" ? null : waveformCache.get(clip.sourceUrl) || null
   );
+  const [videoThumbnails, setVideoThumbnails] = useState<Array<string | null> | null>(null);
 
   const isSelected = selectedClipIds.includes(clip.id);
   const clipPlaybackSpeed = getClipPlaybackSpeed(clip);
@@ -118,6 +123,11 @@ export function Clip({
     Math.max(0, rawRight - rawLeft)
   );
   const trimVisualZoneWidth = Math.max(UI.TRIM_HANDLE_WIDTH, 12);
+  const videoThumbnailTiles = useMemo(
+    () => buildVideoThumbnailTiles(clip, visualWidth),
+    [clip, visualWidth]
+  );
+  const hasVideoThumbnails = clip.type === "video" && videoThumbnailTiles.length > 0;
 
   const clipColor = useMemo(() => {
     if (clip.type === "video") {
@@ -150,6 +160,31 @@ export function Clip({
     };
   }, [clip.type, clipHasAudio, clipSourceUrl]);
 
+  useEffect(() => {
+    if (clip.type !== "video" || videoThumbnailTiles.length === 0) {
+      setVideoThumbnails(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    captureVideoThumbnailStrip(clip.sourceUrl, videoThumbnailTiles)
+      .then((frames) => {
+        if (!cancelled) {
+          setVideoThumbnails(frames);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVideoThumbnails(videoThumbnailTiles.map(() => null));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clip.type, clip.sourceUrl, videoThumbnailTiles]);
+
   // Note: Click/drag events are handled by useTimelineInput in Timeline component
 
   return (
@@ -169,20 +204,50 @@ export function Clip({
         width: visualWidth,
       }}
     >
+      {hasVideoThumbnails && (
+        <div className="absolute inset-[1px] overflow-hidden rounded-[6px] pointer-events-none">
+          <div className="absolute inset-0 flex gap-[1px] bg-black/10">
+            {videoThumbnailTiles.map((tile, index) => {
+              const thumbnailSrc = videoThumbnails?.[index] ?? null;
+              return (
+                <div
+                  key={tile.key}
+                  className="relative h-full overflow-hidden bg-black/25"
+                  style={{ width: tile.width }}
+                >
+                  {thumbnailSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumbnailSrc}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/12 via-white/5 to-black/30" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/15 to-black/45" />
+        </div>
+      )}
+
       {/* Clip name */}
-      <div className="px-2 py-1 pr-12 text-xs text-clip-text truncate">
+      <div className="relative z-10 px-2 py-1 pr-12 text-xs text-clip-text truncate">
         {clip.name}
       </div>
 
       {showSpeedBadge && (
-        <div className="absolute top-1 right-1 rounded bg-black/25 px-1.5 py-0.5 text-[10px] font-medium text-white/90 pointer-events-none">
+        <div className="absolute top-1 right-1 z-10 rounded bg-black/25 px-1.5 py-0.5 text-[10px] font-medium text-white/90 pointer-events-none">
           {clipPlaybackSpeed.toFixed(2)}x
         </div>
       )}
 
       {/* Waveform preview */}
       {clip.type !== "image" && clipHasAudio && visibleWaveform && (
-        <div className="absolute left-1 right-1 bottom-1 h-4 flex items-end gap-[1px] opacity-70 pointer-events-none">
+        <div className="absolute left-1 right-1 bottom-1 z-10 h-4 flex items-end gap-[1px] opacity-80 pointer-events-none">
           {visibleWaveform.map((value, idx) => (
             <div
               key={`${clip.id}-wave-${idx}`}
@@ -216,7 +281,7 @@ export function Clip({
       )}
 
       {/* Type indicator */}
-      <div className="absolute bottom-1 right-1">
+      <div className="absolute bottom-1 right-1 z-10">
         {clip.type === "video" ? (
           <VideoClipIcon className="w-3 h-3 text-clip-text-muted" />
         ) : clip.type === "audio" ? (

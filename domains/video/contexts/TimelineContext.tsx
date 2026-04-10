@@ -33,7 +33,6 @@ import {
   TimelineContextValue,
   TIMELINE_INITIAL_VIEW,
   upsertAssetReference,
-  useTimeline,
 } from "./TimelineContext.shared";
 import { useTimelineClipActions } from "./useTimelineClipActions";
 import { useTimelinePersistence } from "./useTimelinePersistence";
@@ -305,6 +304,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     trimClipStart: clipActions.trimClipStart,
     trimClipEnd: clipActions.trimClipEnd,
     splitClipAtTime: clipActions.splitClipAtTime,
+    closeTrackGaps: clipActions.closeTrackGaps,
     duplicateClip: clipActions.duplicateClip,
     addClips: clipActions.addClips,
     restoreClips: persistence.restoreClips,
