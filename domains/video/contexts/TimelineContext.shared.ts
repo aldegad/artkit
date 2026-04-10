@@ -67,6 +67,7 @@ export interface TimelineContextValue {
   trimClipStart: (clipId: string, newStartTime: number) => void;
   trimClipEnd: (clipId: string, newEndTime: number) => void;
   splitClipAtTime: (clipId: string, splitCursorTime: number) => string | null;
+  closeTrackGaps: () => boolean;
   duplicateClip: (clipId: string, targetTrackId?: string) => string | null;
   addClips: (newClips: Clip[]) => void;
   restoreClips: (clips: Clip[]) => void;

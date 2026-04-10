@@ -76,7 +76,6 @@ export function Timeline({ className }: TimelineProps) {
     tracks,
     clips: allClips,
     getClipsInTrack,
-    viewState,
     updateTrack,
     updateClip,
     duplicateTrack,

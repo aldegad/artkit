@@ -13,12 +13,20 @@ import {
   SnapIcon,
   SnapOffIcon,
   StepForwardIcon,
+  TimelineCompactIcon,
+  TrimEndIcon,
+  TrimStartIcon,
 } from "@/shared/components/icons";
 import Tooltip from "@/shared/components/Tooltip";
 import { NumberScrubber, Popover } from "@/shared/components";
 import { CLIP_PLAYBACK, TIMELINE } from "../../constants";
 import { getClipPlaybackSpeed, getClipSourceSpan } from "../../types";
 import { normalizeTimelineFrameRate } from "../../utils/timelineFrame";
+import {
+  canTrimClipEndAtTime,
+  canTrimClipStartAtTime,
+  closeTimelineTrackGaps,
+} from "../../utils/timelineEditing";
 
 interface TimelineToolbarProps {
   className?: string;
@@ -55,7 +63,19 @@ function formatSpeed(value: number): string {
 
 export function TimelineToolbar({ className }: TimelineToolbarProps) {
   const { language } = useLanguage();
-  const { viewState, setZoom, toggleSnap, addTrack, clips, splitClipAtTime, setClipPlaybackSpeed } = useTimeline();
+  const {
+    viewState,
+    setZoom,
+    toggleSnap,
+    addTrack,
+    clips,
+    splitClipAtTime,
+    trimClipStart,
+    trimClipEnd,
+    closeTrackGaps,
+    saveToHistory,
+    setClipPlaybackSpeed,
+  } = useTimeline();
   const {
     playback,
     currentTimeRef,
@@ -76,8 +96,14 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         snapOff: "스냅: 꺼짐",
         snapOnDesc: "클립 가장자리가 다른 클립에 달라붙습니다",
         snapOffDesc: "스냅 없이 자유롭게 배치합니다",
+        trimStartAtPlayhead: "플레이헤드 기준 앞트림",
+        trimStartAtPlayheadDesc: "선택한 클립의 앞부분을 현재 시간까지 잘라냅니다",
         cutAtPlayhead: "플레이헤드에서 자르기",
         cutAtPlayheadDesc: "선택한 클립을 현재 시간에서 분할합니다",
+        trimEndAtPlayhead: "플레이헤드 기준 뒷트림",
+        trimEndAtPlayheadDesc: "선택한 클립의 뒷부분을 현재 시간 이후로 잘라냅니다",
+        rippleForward: "빈공간 제거",
+        rippleForwardDesc: "각 트랙의 모든 클립을 앞쪽으로 밀착 정렬합니다",
         setIn: "현재 시간을 IN 지점으로 설정",
         setOut: "현재 시간을 OUT 지점으로 설정",
         clearRange: "재생 구간 지우기",
@@ -102,8 +128,14 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         snapOff: "Snap: OFF",
         snapOnDesc: "Clip edges snap to nearby clips",
         snapOffDesc: "Move clips without snapping",
+        trimStartAtPlayhead: "Trim Start at Playhead",
+        trimStartAtPlayheadDesc: "Remove the selected clip portion before the current time",
         cutAtPlayhead: "Cut at Playhead",
         cutAtPlayheadDesc: "Split the selected clip at the current time",
+        trimEndAtPlayhead: "Trim End at Playhead",
+        trimEndAtPlayheadDesc: "Remove the selected clip portion after the current time",
+        rippleForward: "Close Gaps",
+        rippleForwardDesc: "Pack every track forward to remove empty timeline space",
         setIn: "Set current time as IN point",
         setOut: "Set current time as OUT point",
         clearRange: "Clear playback range",
@@ -163,11 +195,22 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
   const hasSpeedBoost = selectedSpeedClip
     ? selectedClipSpeed > CLIP_PLAYBACK.DEFAULT_SPEED + 0.001
     : false;
+  const currentTimelineTime = currentTimeRef.current;
+  const canTrimSelectedClipStart = Boolean(
+    selectedClip && canTrimClipStartAtTime(selectedClip, currentTimelineTime, minClipDuration)
+  );
   const canSplitSelectedClip = Boolean(
     selectedClip
-    && currentTimeRef.current > selectedClip.startTime + TIMELINE.CLIP_MIN_DURATION
-    && currentTimeRef.current < selectedClip.startTime + selectedClip.duration - TIMELINE.CLIP_MIN_DURATION
+    && currentTimelineTime > selectedClip.startTime + TIMELINE.CLIP_MIN_DURATION
+    && currentTimelineTime < selectedClip.startTime + selectedClip.duration - TIMELINE.CLIP_MIN_DURATION
   );
+  const canTrimSelectedClipEnd = Boolean(
+    selectedClip && canTrimClipEndAtTime(selectedClip, currentTimelineTime, minClipDuration)
+  );
+  const canCloseTrackGaps = closeTimelineTrackGaps(
+    clips,
+    normalizeTimelineFrameRate(project.frameRate)
+  ).changed;
 
   const setInPoint = () => {
     if (projectDuration <= 0) return;
@@ -189,6 +232,23 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
     if (splitClipId) {
       selectClip(splitClipId, false);
     }
+  };
+
+  const trimSelectedClipStartAtPlayhead = () => {
+    if (!selectedClipId || !canTrimSelectedClipStart) return;
+    saveToHistory();
+    trimClipStart(selectedClipId, currentTimeRef.current);
+  };
+
+  const trimSelectedClipEndAtPlayhead = () => {
+    if (!selectedClipId || !canTrimSelectedClipEnd) return;
+    saveToHistory();
+    trimClipEnd(selectedClipId, currentTimeRef.current);
+  };
+
+  const closeTimelineGaps = () => {
+    if (!canCloseTrackGaps) return;
+    closeTrackGaps();
   };
 
   useEffect(() => {
@@ -379,6 +439,20 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               <span>{viewState.snapEnabled ? labels.snapOn : labels.snapOff}</span>
             </button>
             <button
+              onClick={trimSelectedClipStartAtPlayhead}
+              disabled={!canTrimSelectedClipStart}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
+                canTrimSelectedClipStart
+                  ? "hover:bg-surface-tertiary text-text-secondary"
+                  : "text-text-quaternary cursor-not-allowed"
+              )}
+              title={labels.trimStartAtPlayhead}
+            >
+              <TrimStartIcon className="w-4 h-4" />
+              <span>{labels.trimStartAtPlayhead}</span>
+            </button>
+            <button
               onClick={splitSelectedClipAtPlayhead}
               disabled={!canSplitSelectedClip}
               className={cn(
@@ -391,6 +465,34 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
             >
               <RazorToolIcon className="w-4 h-4 rotate-90" />
               <span>{labels.cutAtPlayhead}</span>
+            </button>
+            <button
+              onClick={trimSelectedClipEndAtPlayhead}
+              disabled={!canTrimSelectedClipEnd}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
+                canTrimSelectedClipEnd
+                  ? "hover:bg-surface-tertiary text-text-secondary"
+                  : "text-text-quaternary cursor-not-allowed"
+              )}
+              title={labels.trimEndAtPlayhead}
+            >
+              <TrimEndIcon className="w-4 h-4" />
+              <span>{labels.trimEndAtPlayhead}</span>
+            </button>
+            <button
+              onClick={closeTimelineGaps}
+              disabled={!canCloseTrackGaps}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
+                canCloseTrackGaps
+                  ? "hover:bg-surface-tertiary text-text-secondary"
+                  : "text-text-quaternary cursor-not-allowed"
+              )}
+              title={labels.rippleForward}
+            >
+              <TimelineCompactIcon className="w-4 h-4" />
+              <span>{labels.rippleForward}</span>
             </button>
 
             {renderSpeedPanel(true)}
@@ -481,26 +583,97 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
             </button>
           </Tooltip>
 
+          <div className="flex items-center rounded-md border border-border-default/80 bg-surface-primary/60 p-0.5">
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{labels.trimStartAtPlayhead}</span>
+                  <span className="text-text-tertiary text-[11px]">{labels.trimStartAtPlayheadDesc}</span>
+                </div>
+              }
+            >
+              <button
+                onClick={trimSelectedClipStartAtPlayhead}
+                disabled={!canTrimSelectedClipStart}
+                className={cn(
+                  "p-1.5 rounded transition-colors",
+                  canTrimSelectedClipStart
+                    ? "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
+                    : "text-text-quaternary cursor-not-allowed"
+                )}
+                title={labels.trimStartAtPlayhead}
+              >
+                <TrimStartIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{labels.cutAtPlayhead}</span>
+                  <span className="text-text-tertiary text-[11px]">{labels.cutAtPlayheadDesc}</span>
+                </div>
+              }
+            >
+              <button
+                onClick={splitSelectedClipAtPlayhead}
+                disabled={!canSplitSelectedClip}
+                className={cn(
+                  "p-1.5 rounded transition-colors",
+                  canSplitSelectedClip
+                    ? "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
+                    : "text-text-quaternary cursor-not-allowed"
+                )}
+                title={labels.cutAtPlayhead}
+              >
+                <RazorToolIcon className="w-4 h-4 rotate-90" />
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              content={
+                <div className="flex flex-col gap-1">
+                  <span className="font-medium">{labels.trimEndAtPlayhead}</span>
+                  <span className="text-text-tertiary text-[11px]">{labels.trimEndAtPlayheadDesc}</span>
+                </div>
+              }
+            >
+              <button
+                onClick={trimSelectedClipEndAtPlayhead}
+                disabled={!canTrimSelectedClipEnd}
+                className={cn(
+                  "p-1.5 rounded transition-colors",
+                  canTrimSelectedClipEnd
+                    ? "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
+                    : "text-text-quaternary cursor-not-allowed"
+                )}
+                title={labels.trimEndAtPlayhead}
+              >
+                <TrimEndIcon className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
+
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
-                <span className="font-medium">{labels.cutAtPlayhead}</span>
-                <span className="text-text-tertiary text-[11px]">{labels.cutAtPlayheadDesc}</span>
+                <span className="font-medium">{labels.rippleForward}</span>
+                <span className="text-text-tertiary text-[11px]">{labels.rippleForwardDesc}</span>
               </div>
             }
           >
             <button
-              onClick={splitSelectedClipAtPlayhead}
-              disabled={!canSplitSelectedClip}
+              onClick={closeTimelineGaps}
+              disabled={!canCloseTrackGaps}
               className={cn(
                 "p-1.5 rounded transition-colors",
-                canSplitSelectedClip
+                canCloseTrackGaps
                   ? "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
                   : "text-text-quaternary cursor-not-allowed"
               )}
-              title={labels.cutAtPlayhead}
+              title={labels.rippleForward}
             >
-              <RazorToolIcon className="w-4 h-4 rotate-90" />
+              <TimelineCompactIcon className="w-4 h-4" />
             </button>
           </Tooltip>
 
