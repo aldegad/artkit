@@ -3,6 +3,10 @@ import { VideoTrack, Clip, MaskData, getSourceTime } from "../types";
 import { Size } from "@/shared/types";
 import { PRE_RENDER } from "../constants";
 import { renderCompositeFrame } from "../utils/compositeRenderer";
+import {
+  buildPlaybackTrackClipIndex,
+  resolvePlaybackMediaSnapshot,
+} from "../utils/playbackActiveMedia";
 
 // --- Module-level cache (shared across renders) ---
 
@@ -17,8 +21,13 @@ let renderGeneration = 0;
 const RGBA_BYTES_PER_PIXEL = 4;
 const PRE_RENDER_MIN_CACHE_RESOLUTION_SCALE = 0.5;
 const PRE_RENDER_TARGET_LONG_EDGE_PX = 1280;
-const PRE_RENDER_MAX_BYTES_BUDGET = 256 * 1024 * 1024;
+const PRE_RENDER_HIGH_MEMORY_MAX_BYTES_BUDGET = 192 * 1024 * 1024;
+const PRE_RENDER_LOW_MEMORY_MAX_BYTES_BUDGET = 96 * 1024 * 1024;
+const PRE_RENDER_MOBILE_MAX_BYTES_BUDGET = 48 * 1024 * 1024;
+const PRE_RENDER_HIDDEN_TAB_MAX_BYTES_BUDGET = 24 * 1024 * 1024;
 const PRE_RENDER_MIN_FRAMES = 24;
+const PRE_RENDER_CONSTRAINED_MIN_FRAMES = 8;
+const PRE_RENDER_PARTIAL_INVALIDATION_MAX_RANGES = 16;
 
 // Simple event emitter for cache status updates
 type CacheStatusListener = () => void;
@@ -86,6 +95,44 @@ function evictFarthestCachedFrame(targetFrameIndex: number): boolean {
   return deleteCachedFrame(farthestFrameIndex);
 }
 
+function resolveRuntimePreRenderBudget(): {
+  maxBytesBudget: number;
+  constrained: boolean;
+} {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return {
+      maxBytesBudget: PRE_RENDER_HIGH_MEMORY_MAX_BYTES_BUDGET,
+      constrained: false,
+    };
+  }
+
+  const ua = navigator.userAgent || "";
+  const mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const narrowViewport = window.innerWidth > 0 && window.innerWidth <= 1024;
+  const isMobileLike = mobileUA || (coarsePointer && narrowViewport);
+  const deviceMemory = typeof (navigator as Navigator & { deviceMemory?: number }).deviceMemory === "number"
+    ? (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null
+    : null;
+  const isHiddenTab = document.visibilityState === "hidden";
+
+  let maxBytesBudget = PRE_RENDER_HIGH_MEMORY_MAX_BYTES_BUDGET;
+  if (typeof deviceMemory === "number" && deviceMemory <= 4) {
+    maxBytesBudget = PRE_RENDER_LOW_MEMORY_MAX_BYTES_BUDGET;
+  }
+  if (isMobileLike) {
+    maxBytesBudget = Math.min(maxBytesBudget, PRE_RENDER_MOBILE_MAX_BYTES_BUDGET);
+  }
+  if (isHiddenTab) {
+    maxBytesBudget = Math.min(maxBytesBudget, PRE_RENDER_HIDDEN_TAB_MAX_BYTES_BUDGET);
+  }
+
+  return {
+    maxBytesBudget,
+    constrained: isMobileLike || isHiddenTab || (typeof deviceMemory === "number" && deviceMemory <= 4),
+  };
+}
+
 function timeToFrameIndex(time: number): number {
   if (!Number.isFinite(time)) return 0;
   // Use floor-based indexing so cached sampling never jumps to a future frame.
@@ -97,12 +144,65 @@ function frameIndexToTime(frameIndex: number): number {
   return frameIndex / PRE_RENDER.FRAME_RATE;
 }
 
+function mergeTimeRanges(ranges: Array<{ startTime: number; endTime: number }>): Array<{ startTime: number; endTime: number }> {
+  const normalized = ranges
+    .map((range) => ({
+      startTime: Math.max(0, Math.min(range.startTime, range.endTime)),
+      endTime: Math.max(range.startTime, range.endTime),
+    }))
+    .filter((range) => Number.isFinite(range.startTime) && Number.isFinite(range.endTime) && range.endTime >= range.startTime)
+    .sort((left, right) => left.startTime - right.startTime);
+
+  if (normalized.length <= 1) {
+    return normalized;
+  }
+
+  const merged: Array<{ startTime: number; endTime: number }> = [normalized[0]];
+  for (let index = 1; index < normalized.length; index += 1) {
+    const current = normalized[index];
+    const previous = merged[merged.length - 1];
+    if (current.startTime <= previous.endTime + (1 / PRE_RENDER.FRAME_RATE)) {
+      previous.endTime = Math.max(previous.endTime, current.endTime);
+      continue;
+    }
+    merged.push(current);
+  }
+
+  return merged;
+}
+
+function invalidateCachedTimeRanges(ranges: Array<{ startTime: number; endTime: number }>): boolean {
+  const mergedRanges = mergeTimeRanges(ranges);
+  if (mergedRanges.length === 0) {
+    return false;
+  }
+
+  let deletedAny = false;
+  for (const frameIndex of [...frameCache.keys()]) {
+    const frameTime = frameIndexToTime(frameIndex);
+    const shouldDelete = mergedRanges.some((range) => (
+      frameTime >= range.startTime - (1 / PRE_RENDER.FRAME_RATE)
+      && frameTime <= range.endTime + (1 / PRE_RENDER.FRAME_RATE)
+    ));
+    if (shouldDelete) {
+      deletedAny = deleteCachedFrame(frameIndex) || deletedAny;
+    }
+  }
+
+  if (deletedAny) {
+    emitCacheStatus();
+  }
+  return deletedAny;
+}
+
 function resolvePreRenderBudget(projectSize: Size): {
   cacheW: number;
   cacheH: number;
   cacheResolutionScale: number;
   frameLimit: number;
+  constrainedRuntime: boolean;
 } {
+  const runtimeBudget = resolveRuntimePreRenderBudget();
   const baseScale = PRE_RENDER.CACHE_RESOLUTION_SCALE;
   const maxDimension = Math.max(projectSize.width, projectSize.height, 1);
   const adaptiveScale = Math.min(1, PRE_RENDER_TARGET_LONG_EDGE_PX / maxDimension);
@@ -114,12 +214,13 @@ function resolvePreRenderBudget(projectSize: Size): {
   const cacheW = Math.max(1, Math.round(projectSize.width * cacheResolutionScale));
   const cacheH = Math.max(1, Math.round(projectSize.height * cacheResolutionScale));
   const bytesPerFrame = Math.max(1, cacheW * cacheH * RGBA_BYTES_PER_PIXEL);
+  const minFrames = runtimeBudget.constrained ? PRE_RENDER_CONSTRAINED_MIN_FRAMES : PRE_RENDER_MIN_FRAMES;
   const budgetFrameLimit = Math.max(
-    PRE_RENDER_MIN_FRAMES,
-    Math.floor(PRE_RENDER_MAX_BYTES_BUDGET / bytesPerFrame)
+    minFrames,
+    Math.floor(runtimeBudget.maxBytesBudget / bytesPerFrame)
   );
   const frameLimit = Math.max(
-    PRE_RENDER_MIN_FRAMES,
+    minFrames,
     Math.min(PRE_RENDER.MAX_FRAMES, budgetFrameLimit)
   );
 
@@ -128,7 +229,53 @@ function resolvePreRenderBudget(projectSize: Size): {
     cacheH,
     cacheResolutionScale,
     frameLimit,
+    constrainedRuntime: runtimeBudget.constrained,
   };
+}
+
+function hashTokenParts(parts: Array<string | number | boolean | null | undefined>): number {
+  let hash = 2166136261;
+  for (const part of parts) {
+    const token = String(part ?? "");
+    for (let index = 0; index < token.length; index += 1) {
+      hash ^= token.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= 124;
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function buildClipCacheSignature(clip: Clip): number {
+  return hashTokenParts([
+    clip.id,
+    clip.trackId,
+    clip.type,
+    clip.startTime,
+    clip.duration,
+    clip.trimIn,
+    clip.trimOut,
+    clip.playbackSpeed,
+    clip.sourceUrl,
+    clip.position.x,
+    clip.position.y,
+    clip.scale,
+    clip.scaleX ?? 1,
+    clip.scaleY ?? 1,
+    clip.opacity,
+    clip.visible,
+  ]);
+}
+
+function buildMaskCacheSignature(mask: MaskData): number {
+  return hashTokenParts([
+    mask.id,
+    mask.trackId,
+    mask.startTime,
+    mask.duration,
+    mask.maskData?.length ?? 0,
+  ]);
 }
 
 // Wait for a video element to finish seeking
@@ -206,27 +353,51 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
 
   // Stable fingerprints — only change when actual content changes, not on reference changes.
   // This prevents cache invalidation on unrelated React re-renders (e.g. seek).
-  const trackFingerprint = useMemo(() => {
-    return tracks.map(t => `${t.id}:${t.visible}:${t.zIndex}`).join("|");
-  }, [tracks]);
+  const trackFingerprint = useMemo(() => (
+    hashTokenParts(tracks.flatMap((track) => [track.id, track.visible, track.zIndex, track.muted]))
+  ), [tracks]);
 
-  const clipFingerprint = useMemo(() => {
-    return clips.map(c =>
-      `${c.id}:${c.trackId}:${c.startTime}:${c.duration}:${c.trimIn}:${c.trimOut}:${c.playbackSpeed}:${c.sourceUrl}:${c.position.x}:${c.position.y}:${c.scale}:${c.scaleX ?? 1}:${c.scaleY ?? 1}:${c.opacity}:${c.visible}`
-    ).join("|");
-  }, [clips]);
+  const clipFingerprint = useMemo(() => (
+    hashTokenParts(clips.flatMap((clip) => [
+      clip.id,
+      clip.trackId,
+      clip.type,
+      clip.startTime,
+      clip.duration,
+      clip.trimIn,
+      clip.trimOut,
+      clip.playbackSpeed,
+      clip.sourceUrl,
+      clip.position.x,
+      clip.position.y,
+      clip.scale,
+      clip.scaleX ?? 1,
+      clip.scaleY ?? 1,
+      clip.opacity,
+      clip.visible,
+    ]))
+  ), [clips]);
 
-  const maskFingerprint = useMemo(() => {
-    const parts: string[] = [];
-    for (const [id, mask] of masks) {
-      parts.push(`${id}:${mask.maskData?.length ?? 0}`);
-    }
-    return parts.join("|");
-  }, [masks]);
+  const maskFingerprint = useMemo(() => (
+    hashTokenParts([...masks.values()].flatMap((mask) => [
+      mask.id,
+      mask.trackId,
+      mask.startTime,
+      mask.duration,
+      mask.maskData?.length ?? 0,
+    ]))
+  ), [masks]);
+  const clipsByTrack = useMemo(() => buildPlaybackTrackClipIndex(clips), [clips]);
 
   const isPreRenderingRef = useRef(false);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskTempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const clipsByTrackRef = useRef(clipsByTrack);
+  const lastSeekRestartFrameRef = useRef<number | null>(null);
+  const previousClipSnapshotRef = useRef(new Map<string, { signature: number; startTime: number; endTime: number }>());
+  const previousMaskSnapshotRef = useRef(new Map<string, { signature: number; startTime: number; endTime: number }>());
+  const previousTrackFingerprintRef = useRef<number | null>(null);
+  const previousProjectSignatureRef = useRef<string | null>(null);
 
   // Snapshot refs for stable access during async pre-render loop
   const tracksRef = useRef(tracks);
@@ -247,10 +418,31 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   useEffect(() => { maskImageCacheRef.current = maskImageCache; }, [maskImageCache]);
   useEffect(() => { projectSizeRef.current = projectSize; }, [projectSize]);
   useEffect(() => { projectDurationRef.current = projectDuration; }, [projectDuration]);
+  useEffect(() => { clipsByTrackRef.current = clipsByTrack; }, [clipsByTrack]);
 
   // Invalidate cache when structure or mask data changes.
   // Use fingerprints (not raw references) to avoid false invalidation on React re-renders.
   useEffect(() => {
+    const projectSignature = `${projectSize.width}x${projectSize.height}:${projectDuration}`;
+    const currentClipSnapshot = new Map<string, { signature: number; startTime: number; endTime: number }>();
+    const currentMaskSnapshot = new Map<string, { signature: number; startTime: number; endTime: number }>();
+
+    for (const clip of clips) {
+      currentClipSnapshot.set(clip.id, {
+        signature: buildClipCacheSignature(clip),
+        startTime: clip.startTime,
+        endTime: clip.startTime + clip.duration,
+      });
+    }
+
+    for (const mask of masks.values()) {
+      currentMaskSnapshot.set(mask.id, {
+        signature: buildMaskCacheSignature(mask),
+        startTime: mask.startTime,
+        endTime: mask.startTime + mask.duration,
+      });
+    }
+
     if (debugLogs) {
       const visibleTrackCount = tracks.filter((track) => track.visible).length;
       const visibleClipCount = clips.filter((clip) => clip.visible).length;
@@ -267,11 +459,91 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         videoClipCount,
         audioClipCount,
         maskCount: masks.size,
-        clipFingerprintLength: clipFingerprint.length,
+        clipFingerprint,
       });
     }
-    clearCache();
-  }, [clipFingerprint, clips, debugLogs, maskFingerprint, masks, projectSize, trackFingerprint, tracks]);
+
+    const shouldClearEntireCache =
+      previousTrackFingerprintRef.current === null
+      || previousProjectSignatureRef.current === null
+      || previousTrackFingerprintRef.current !== trackFingerprint
+      || previousProjectSignatureRef.current !== projectSignature;
+
+    if (shouldClearEntireCache) {
+      clearCache();
+    } else {
+      const changedRanges: Array<{ startTime: number; endTime: number }> = [];
+      const previousClipSnapshot = previousClipSnapshotRef.current;
+      const previousMaskSnapshot = previousMaskSnapshotRef.current;
+
+      for (const [clipId, snapshot] of currentClipSnapshot) {
+        const previous = previousClipSnapshot.get(clipId);
+        if (!previous || previous.signature !== snapshot.signature) {
+          changedRanges.push({
+            startTime: Math.min(previous?.startTime ?? snapshot.startTime, snapshot.startTime),
+            endTime: Math.max(previous?.endTime ?? snapshot.endTime, snapshot.endTime),
+          });
+        }
+      }
+
+      for (const [clipId, previous] of previousClipSnapshot) {
+        if (!currentClipSnapshot.has(clipId)) {
+          changedRanges.push({
+            startTime: previous.startTime,
+            endTime: previous.endTime,
+          });
+        }
+      }
+
+      for (const [maskId, snapshot] of currentMaskSnapshot) {
+        const previous = previousMaskSnapshot.get(maskId);
+        if (!previous || previous.signature !== snapshot.signature) {
+          changedRanges.push({
+            startTime: Math.min(previous?.startTime ?? snapshot.startTime, snapshot.startTime),
+            endTime: Math.max(previous?.endTime ?? snapshot.endTime, snapshot.endTime),
+          });
+        }
+      }
+
+      for (const [maskId, previous] of previousMaskSnapshot) {
+        if (!currentMaskSnapshot.has(maskId)) {
+          changedRanges.push({
+            startTime: previous.startTime,
+            endTime: previous.endTime,
+          });
+        }
+      }
+
+      const mergedRanges = mergeTimeRanges(changedRanges);
+      const affectedDuration = mergedRanges.reduce(
+        (sum, range) => sum + Math.max(0, range.endTime - range.startTime),
+        0,
+      );
+      const clearDueToCoverage = mergedRanges.length > PRE_RENDER_PARTIAL_INVALIDATION_MAX_RANGES
+        || (projectDuration > 0 && affectedDuration >= projectDuration * 0.75);
+
+      if (clearDueToCoverage) {
+        clearCache();
+      } else if (mergedRanges.length > 0) {
+        invalidateCachedTimeRanges(mergedRanges);
+      }
+    }
+
+    previousTrackFingerprintRef.current = trackFingerprint;
+    previousProjectSignatureRef.current = projectSignature;
+    previousClipSnapshotRef.current = currentClipSnapshot;
+    previousMaskSnapshotRef.current = currentMaskSnapshot;
+  }, [
+    clipFingerprint,
+    clips,
+    debugLogs,
+    maskFingerprint,
+    masks,
+    projectDuration,
+    projectSize,
+    trackFingerprint,
+    tracks,
+  ]);
 
   // Pre-render loop
   const startPreRender = useCallback(async () => {
@@ -300,7 +572,9 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       cacheH,
       cacheResolutionScale,
       frameLimit,
+      constrainedRuntime,
     } = resolvePreRenderBudget(pSize);
+    const queueFrameLimit = constrainedRuntime ? Math.min(frameLimit, 12) : frameLimit;
     osc.width = cacheW;
     osc.height = cacheH;
 
@@ -329,7 +603,7 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         queue.push(backward);
       }
 
-      if (queue.length >= frameLimit) break;
+      if (queue.length >= queueFrameLimit) break;
     }
 
     if (debugLogs) {
@@ -340,6 +614,8 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
         totalFrames: totalFrameCount,
         queuedFrames: queue.length,
         frameLimit,
+        queueFrameLimit,
+        constrainedRuntime,
         cacheResolutionScale,
         cacheSize: { width: cacheW, height: cacheH },
         playheadFrame,
@@ -363,15 +639,16 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
       }
 
       const time = frameIndexToTime(frameIdx);
-      const currentTracks = tracksRef.current;
+      const currentTracks = tracksRef.current.filter((track) => track.visible);
+      const playbackSnapshot = resolvePlaybackMediaSnapshot({
+        tracks: currentTracks,
+        clipsByTrack: clipsByTrackRef.current,
+        time,
+      });
 
       // Seek all video elements that are active at this time
       const seekPromises: Promise<boolean>[] = [];
-      for (const track of currentTracks) {
-        if (!track.visible) continue;
-        const clip = getClipAtTimeRef.current(track.id, time);
-        if (!clip || !clip.visible || clip.type !== "video") continue;
-
+      for (const clip of playbackSnapshot.activeVideoClips) {
         const videoEl = videoElementsRef.current.get(clip.id);
         if (!videoEl || videoEl.readyState < 1) continue;
 
@@ -498,12 +775,17 @@ export function usePreRenderCache(params: UsePreRenderCacheParams) {
   useEffect(() => {
     if (!enabled) return;
     if (isPlaying || suspendPreRender) return;
+    const currentFrame = timeToFrameIndex(currentTime);
+    if (lastSeekRestartFrameRef.current !== null && lastSeekRestartFrameRef.current === currentFrame) {
+      return;
+    }
+    lastSeekRestartFrameRef.current = currentFrame;
     // Stop current pre-render (releases video elements for preview canvas)
     stopPreRender();
     // Debounce: restart after scrubbing settles
     const timer = setTimeout(() => {
       startPreRender();
-    }, 500);
+    }, 180);
     return () => clearTimeout(timer);
   }, [currentTime, isPlaying, suspendPreRender, stopPreRender, startPreRender, enabled]);
 

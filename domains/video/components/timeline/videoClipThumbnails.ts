@@ -7,6 +7,8 @@ const TILE_MIN_WIDTH_PX = 28;
 const TILE_MAX_COUNT = 20;
 const VIDEO_FRAME_EPSILON = 1 / 60;
 const VIDEO_EVENT_TIMEOUT_MS = 4000;
+const THUMBNAIL_CACHE_LIMIT = 240;
+const THUMBNAIL_BATCH_SIZE = 2;
 
 export interface VideoThumbnailTile {
   key: string;
@@ -80,6 +82,91 @@ async function seekVideo(video: HTMLVideoElement, targetTime: number): Promise<v
 }
 
 const thumbnailCache = new Map<string, string | null>();
+const thumbnailTouchedAt = new Map<string, number>();
+const thumbnailVideoPool = new Map<string, HTMLVideoElement>();
+const thumbnailCanvasPool = new Map<string, HTMLCanvasElement>();
+
+function nowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function touchThumbnailCacheKey(cacheKey: string) {
+  thumbnailTouchedAt.set(cacheKey, nowMs());
+}
+
+function setThumbnailCacheValue(cacheKey: string, value: string | null) {
+  thumbnailCache.set(cacheKey, value);
+  touchThumbnailCacheKey(cacheKey);
+
+  while (thumbnailCache.size > THUMBNAIL_CACHE_LIMIT) {
+    let oldestKey: string | null = null;
+    let oldestTouch = Number.POSITIVE_INFINITY;
+    for (const key of thumbnailCache.keys()) {
+      const touchedAt = thumbnailTouchedAt.get(key) ?? 0;
+      if (touchedAt < oldestTouch) {
+        oldestTouch = touchedAt;
+        oldestKey = key;
+      }
+    }
+    if (!oldestKey) break;
+    thumbnailCache.delete(oldestKey);
+    thumbnailTouchedAt.delete(oldestKey);
+  }
+}
+
+function getThumbnailVideo(sourceUrl: string): HTMLVideoElement {
+  let video = thumbnailVideoPool.get(sourceUrl);
+  if (!video) {
+    video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.crossOrigin = "anonymous";
+    video.src = sourceUrl;
+    thumbnailVideoPool.set(sourceUrl, video);
+  }
+  return video;
+}
+
+function getThumbnailCanvas(sourceUrl: string, width: number, height: number): HTMLCanvasElement {
+  let canvas = thumbnailCanvasPool.get(sourceUrl);
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    thumbnailCanvasPool.set(sourceUrl, canvas);
+  }
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  return canvas;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Failed to convert thumbnail blob to data URL"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read thumbnail blob"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function encodeThumbnailCanvas(canvas: HTMLCanvasElement): Promise<string> {
+  if (typeof canvas.toBlob === "function") {
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.72);
+    });
+    if (blob) {
+      return blobToDataUrl(blob);
+    }
+  }
+  return canvas.toDataURL("image/jpeg", 0.72);
+}
 
 export function buildVideoThumbnailTiles(clip: Clip, visualWidth: number): VideoThumbnailTile[] {
   if (clip.type !== "video") return [];
@@ -127,6 +214,7 @@ export async function captureVideoThumbnailStrip(
   tiles.forEach((tile, index) => {
     const cacheKey = buildThumbnailCacheKey(sourceUrl, tile.sampleTime, targetHeight);
     if (thumbnailCache.has(cacheKey)) {
+      touchThumbnailCacheKey(cacheKey);
       results[index] = thumbnailCache.get(cacheKey) ?? null;
       return;
     }
@@ -137,24 +225,16 @@ export async function captureVideoThumbnailStrip(
     return results;
   }
 
-  const video = document.createElement("video");
-  video.muted = true;
-  video.playsInline = true;
-  video.preload = "auto";
-  video.crossOrigin = "anonymous";
-  video.src = sourceUrl;
+  const video = getThumbnailVideo(sourceUrl);
 
   try {
     await ensureVideoMetadata(video);
-    await ensureVideoFrame(video);
 
     const safeDuration = Number.isFinite(video.duration) ? Math.max(0, video.duration) : 0;
     const intrinsicWidth = Math.max(1, video.videoWidth || Math.round(targetHeight * (16 / 9)));
     const intrinsicHeight = Math.max(1, video.videoHeight || targetHeight);
     const renderWidth = Math.max(1, Math.round(targetHeight * (intrinsicWidth / intrinsicHeight)));
-    const canvas = document.createElement("canvas");
-    canvas.width = renderWidth;
-    canvas.height = targetHeight;
+    const canvas = getThumbnailCanvas(sourceUrl, renderWidth, targetHeight);
     const context = canvas.getContext("2d");
     if (!context) {
       throw new Error("Failed to create video thumbnail canvas");
@@ -163,27 +243,31 @@ export async function captureVideoThumbnailStrip(
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
 
-    for (const { tile, index, cacheKey } of uncachedTiles) {
+    for (let uncachedIndex = 0; uncachedIndex < uncachedTiles.length; uncachedIndex += 1) {
+      const { tile, index, cacheKey } = uncachedTiles[uncachedIndex];
       const safeSampleTime = safeDuration > VIDEO_FRAME_EPSILON
         ? clamp(tile.sampleTime, 0, Math.max(0, safeDuration - VIDEO_FRAME_EPSILON))
         : 0;
       await seekVideo(video, safeSampleTime);
+      await ensureVideoFrame(video);
       context.clearRect(0, 0, renderWidth, targetHeight);
       context.drawImage(video, 0, 0, renderWidth, targetHeight);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-      thumbnailCache.set(cacheKey, dataUrl);
+      const dataUrl = await encodeThumbnailCanvas(canvas);
+      setThumbnailCacheValue(cacheKey, dataUrl);
       results[index] = dataUrl;
+
+      if ((uncachedIndex + 1) % THUMBNAIL_BATCH_SIZE === 0) {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      }
     }
   } catch (error) {
     console.warn("Failed to build video clip thumbnails:", error);
     uncachedTiles.forEach(({ cacheKey, index }) => {
-      thumbnailCache.set(cacheKey, null);
+      setThumbnailCacheValue(cacheKey, null);
       results[index] = null;
     });
-  } finally {
-    video.pause();
-    video.removeAttribute("src");
-    video.load();
   }
 
   return results;

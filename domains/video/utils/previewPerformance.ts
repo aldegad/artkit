@@ -16,6 +16,8 @@ export const PRE_RENDER_QUERY_KEY = "vp_prerender";
 export const PRE_RENDER_STORAGE_KEY = "video.preview.prerender";
 export const QUALITY_FIRST_QUERY_KEY = "vp_quality";
 export const QUALITY_FIRST_STORAGE_KEY = "video.preview.qualityFirst";
+export const AUTO_GAP_CLOSE_QUERY_KEY = "tl_autogap";
+export const AUTO_GAP_CLOSE_STORAGE_KEY = "video.timeline.autoGapClose";
 const DEBUG_QUERY_KEY = "vp_debug";
 const DEBUG_STORAGE_KEY = "video.preview.debug";
 const FPS_CAP_QUERY_KEY = "vp_fps";
@@ -96,6 +98,19 @@ export function setPreviewQualityFirstSetting(enabled: boolean): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(QUALITY_FIRST_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // Ignore storage failures (private mode / quota)
+  }
+}
+
+export function resolveAutoGapCloseEnabledSetting(): boolean {
+  return parseBool(readSetting(AUTO_GAP_CLOSE_QUERY_KEY, AUTO_GAP_CLOSE_STORAGE_KEY)) ?? true;
+}
+
+export function setAutoGapCloseEnabledSetting(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(AUTO_GAP_CLOSE_STORAGE_KEY, enabled ? "1" : "0");
   } catch {
     // Ignore storage failures (private mode / quota)
   }

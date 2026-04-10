@@ -25,7 +25,6 @@ import { normalizeTimelineFrameRate } from "../../utils/timelineFrame";
 import {
   canTrimClipEndAtTime,
   canTrimClipStartAtTime,
-  closeTimelineTrackGaps,
 } from "../../utils/timelineEditing";
 
 interface TimelineToolbarProps {
@@ -72,7 +71,6 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
     splitClipAtTime,
     trimClipStart,
     trimClipEnd,
-    closeTrackGaps,
     saveToHistory,
     setClipPlaybackSpeed,
   } = useTimeline();
@@ -85,6 +83,8 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
     setLoopRange,
     clearLoopRange,
     toggleLoop,
+    autoGapCloseEnabled,
+    toggleAutoGapClose,
   } = useVideoState();
 
   const isKorean = language === "ko";
@@ -102,8 +102,9 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         cutAtPlayheadDesc: "선택한 클립을 현재 시간에서 분할합니다",
         trimEndAtPlayhead: "플레이헤드 기준 뒷트림",
         trimEndAtPlayheadDesc: "선택한 클립의 뒷부분을 현재 시간 이후로 잘라냅니다",
-        rippleForward: "빈공간 제거",
-        rippleForwardDesc: "각 트랙의 모든 클립을 앞쪽으로 밀착 정렬합니다",
+        autoGapCloseOn: "자동 빈공간 정리: 켜짐",
+        autoGapCloseOff: "자동 빈공간 정리: 꺼짐",
+        autoGapCloseDesc: "트림과 삭제 뒤 빈공간을 자동으로 앞으로 당겨 붙입니다",
         setIn: "현재 시간을 IN 지점으로 설정",
         setOut: "현재 시간을 OUT 지점으로 설정",
         clearRange: "재생 구간 지우기",
@@ -134,8 +135,9 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
         cutAtPlayheadDesc: "Split the selected clip at the current time",
         trimEndAtPlayhead: "Trim End at Playhead",
         trimEndAtPlayheadDesc: "Remove the selected clip portion after the current time",
-        rippleForward: "Close Gaps",
-        rippleForwardDesc: "Pack every track forward to remove empty timeline space",
+        autoGapCloseOn: "Auto Gap Close: On",
+        autoGapCloseOff: "Auto Gap Close: Off",
+        autoGapCloseDesc: "Automatically ripple trims and removals forward to close empty timeline space",
         setIn: "Set current time as IN point",
         setOut: "Set current time as OUT point",
         clearRange: "Clear playback range",
@@ -207,11 +209,6 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
   const canTrimSelectedClipEnd = Boolean(
     selectedClip && canTrimClipEndAtTime(selectedClip, currentTimelineTime, minClipDuration)
   );
-  const canCloseTrackGaps = closeTimelineTrackGaps(
-    clips,
-    normalizeTimelineFrameRate(project.frameRate)
-  ).changed;
-
   const setInPoint = () => {
     if (projectDuration <= 0) return;
     const current = Math.max(0, Math.min(currentTimeRef.current, projectDuration));
@@ -247,8 +244,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
   };
 
   const closeTimelineGaps = () => {
-    if (!canCloseTrackGaps) return;
-    closeTrackGaps();
+    toggleAutoGapClose();
   };
 
   useEffect(() => {
@@ -482,17 +478,16 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
             </button>
             <button
               onClick={closeTimelineGaps}
-              disabled={!canCloseTrackGaps}
               className={cn(
                 "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
-                canCloseTrackGaps
-                  ? "hover:bg-surface-tertiary text-text-secondary"
-                  : "text-text-quaternary cursor-not-allowed"
+                autoGapCloseEnabled
+                  ? "bg-accent/15 text-accent"
+                  : "hover:bg-surface-tertiary text-text-secondary"
               )}
-              title={labels.rippleForward}
+              title={autoGapCloseEnabled ? labels.autoGapCloseOn : labels.autoGapCloseOff}
             >
               <TimelineCompactIcon className="w-4 h-4" />
-              <span>{labels.rippleForward}</span>
+              <span>{autoGapCloseEnabled ? labels.autoGapCloseOn : labels.autoGapCloseOff}</span>
             </button>
 
             {renderSpeedPanel(true)}
@@ -657,21 +652,20 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
           <Tooltip
             content={
               <div className="flex flex-col gap-1">
-                <span className="font-medium">{labels.rippleForward}</span>
-                <span className="text-text-tertiary text-[11px]">{labels.rippleForwardDesc}</span>
+                <span className="font-medium">{autoGapCloseEnabled ? labels.autoGapCloseOn : labels.autoGapCloseOff}</span>
+                <span className="text-text-tertiary text-[11px]">{labels.autoGapCloseDesc}</span>
               </div>
             }
           >
             <button
               onClick={closeTimelineGaps}
-              disabled={!canCloseTrackGaps}
               className={cn(
                 "p-1.5 rounded transition-colors",
-                canCloseTrackGaps
-                  ? "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
-                  : "text-text-quaternary cursor-not-allowed"
+                autoGapCloseEnabled
+                  ? "bg-accent/15 text-accent"
+                  : "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
               )}
-              title={labels.rippleForward}
+              title={autoGapCloseEnabled ? labels.autoGapCloseOn : labels.autoGapCloseOff}
             >
               <TimelineCompactIcon className="w-4 h-4" />
             </button>

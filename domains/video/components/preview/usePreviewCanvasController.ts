@@ -84,6 +84,15 @@ export function usePreviewCanvasController() {
   const previewWorkingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const savedMaskImgCacheRef = useRef(new Map<string, HTMLImageElement>());
   const hasCommittedCompositeFrameRef = useRef(false);
+  const baseFrameStateRef = useRef({
+    renderTime: null as number | null,
+    clipsRef: null as typeof clips | null,
+    tracksRef: null as typeof tracks | null,
+    masksRef: null as typeof masks | null,
+    playbackIsPlaying: false,
+    directPreviewTrackId: null as string | null,
+    fullyReady: false,
+  });
   const directPreviewHostRef = useRef<HTMLDivElement | null>(null);
   const directPreviewAttachedVideoRef = useRef<HTMLVideoElement | null>(null);
   const cssColorsRef = useRef<{ surfacePrimary: string; borderDefault: string } | null>(null);
@@ -149,7 +158,6 @@ export function usePreviewCanvasController() {
     preventAndCapturePointer,
     screenToContent,
     setBaseScale,
-    setPan,
     setZoom,
     startPanDragFromPointer,
     stopPanDrag,
@@ -326,6 +334,7 @@ export function usePreviewCanvasController() {
       checkerPatternKeyRef,
       checkerPatternCanvasRef,
       hasCommittedCompositeFrameRef,
+      baseFrameStateRef,
       maskTempCanvasRef,
       maskOverlayCanvasRef,
       imageCacheRef,
@@ -339,6 +348,7 @@ export function usePreviewCanvasController() {
       playback,
       tracks,
       clips,
+      masks,
       selectedClipIds,
       toolMode,
       cropArea,
@@ -409,27 +419,34 @@ export function usePreviewCanvasController() {
   });
 
   useEffect(() => {
-    renderRef.current();
+    scheduleRender();
   }, [
-    activeTrackId,
     clips,
-    cropArea,
     isEditingMask,
     maskCanvasVersion,
     masks,
     playback.isPlaying,
     project.canvasSize,
-    selectedClipIds,
-    toolMode,
+    scheduleRender,
     tracks,
+  ]);
+
+  useEffect(() => {
+    scheduleRender();
+  }, [
+    activeTrackId,
+    cropArea,
+    selectedClipIds,
+    scheduleRender,
+    toolMode,
     transformTool.state.bounds,
     transformTool.state.isActive,
   ]);
 
   useEffect(() => {
     cssColorsRef.current = null;
-    renderRef.current();
-  }, []);
+    scheduleRender();
+  }, [scheduleRender]);
 
   useEffect(() => onViewportChange(() => scheduleRender()), [onViewportChange, scheduleRender]);
 

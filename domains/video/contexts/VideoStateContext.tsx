@@ -21,6 +21,8 @@ import { PLAYBACK } from "../constants";
 import { playbackTick } from "../utils/playbackTick";
 import { emitImmediatePlaybackStop } from "../utils/playbackStopSignal";
 import {
+  resolveAutoGapCloseEnabledSetting,
+  setAutoGapCloseEnabledSetting,
   resolvePreRenderEnabledSetting,
   setPreRenderEnabledSetting,
   resolvePreviewQualityFirstSetting,
@@ -58,6 +60,7 @@ interface VideoState {
   isPanLocked: boolean;
   isSpacePanning: boolean;
   autoKeyframeEnabled: boolean;
+  autoGapCloseEnabled: boolean;
 
   // Crop
   cropArea: { x: number; y: number; width: number; height: number } | null;
@@ -104,6 +107,8 @@ interface VideoStateContextValue extends VideoState {
   setIsPanLocked: (locked: boolean) => void;
   setIsSpacePanning: (panning: boolean) => void;
   setAutoKeyframeEnabled: (enabled: boolean) => void;
+  setAutoGapCloseEnabled: (enabled: boolean) => void;
+  toggleAutoGapClose: () => void;
 
   // Crop actions
   setCropArea: (area: { x: number; y: number; width: number; height: number } | null) => void;
@@ -143,6 +148,7 @@ const initialState: VideoState = {
   isPanLocked: false,
   isSpacePanning: false,
   autoKeyframeEnabled: false,
+  autoGapCloseEnabled: true,
   cropArea: null,
   canvasExpandMode: false,
   cropAspectRatio: "free" as AspectRatio,
@@ -153,6 +159,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<VideoState>(initialState);
   const [previewPreRenderEnabled, setPreviewPreRenderEnabledState] = useState<boolean>(resolvePreRenderEnabledSetting);
   const [previewQualityFirstEnabled, setPreviewQualityFirstEnabledState] = useState<boolean>(resolvePreviewQualityFirstSetting);
+  const [autoGapCloseEnabled, setAutoGapCloseEnabledState] = useState<boolean>(resolveAutoGapCloseEnabledSetting);
   const readSafeProjectDuration = useCallback((value: number) => {
     return Number.isFinite(value) && value > 0 ? value : 1;
   }, []);
@@ -176,6 +183,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setPreviewPreRenderEnabledState(resolvePreRenderEnabledSetting());
     setPreviewQualityFirstEnabledState(resolvePreviewQualityFirstSetting());
+    setAutoGapCloseEnabledState(resolveAutoGapCloseEnabledSetting());
   }, []);
 
   // Playback-rate and loop refs to avoid recreating the RAF callback
@@ -609,6 +617,21 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setAutoGapCloseEnabled = useCallback((enabled: boolean) => {
+    setAutoGapCloseEnabledState(enabled);
+    setAutoGapCloseEnabledSetting(enabled);
+    setState((prev) => ({ ...prev, autoGapCloseEnabled: enabled }));
+  }, []);
+
+  const toggleAutoGapClose = useCallback(() => {
+    setAutoGapCloseEnabledState((prev) => {
+      const next = !prev;
+      setAutoGapCloseEnabledSetting(next);
+      setState((statePrev) => ({ ...statePrev, autoGapCloseEnabled: next }));
+      return next;
+    });
+  }, []);
+
   const setCropArea = useCallback((area: { x: number; y: number; width: number; height: number } | null) => {
     setState((prev) => ({ ...prev, cropArea: area }));
   }, []);
@@ -681,6 +704,8 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     setIsPanLocked,
     setIsSpacePanning,
     setAutoKeyframeEnabled,
+    setAutoGapCloseEnabled,
+    toggleAutoGapClose,
     setCropArea,
     setCanvasExpandMode,
     setCropAspectRatio,
@@ -691,6 +716,7 @@ export function VideoStateProvider({ children }: { children: ReactNode }) {
     previewQualityFirstEnabled,
     setPreviewQualityFirstEnabled,
     togglePreviewQualityFirst,
+    autoGapCloseEnabled,
     currentTimeRef,
     isPlayingRef,
     clipboardRef,
