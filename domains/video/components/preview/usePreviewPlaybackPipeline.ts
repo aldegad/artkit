@@ -15,6 +15,10 @@ import { usePreviewMediaPlaybackSync } from "./usePreviewMediaPlaybackSync";
 import { usePreviewMediaReadyRender } from "./usePreviewMediaReadyRender";
 import { SAMPLE_FRAME_EPSILON } from "./previewCanvasConfig";
 
+interface SyncMediaRequest {
+  forceVideoCurrentTimeSync?: boolean;
+}
+
 interface UsePreviewPlaybackPipelineParams {
   tracks: VideoTrack[];
   clips: Clip[];
@@ -112,15 +116,15 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
   }, [isWebAudioReady]);
 
   const wasPlayingRef = useRef(false);
-  const syncMediaRef = useRef<(() => void) | null>(null);
+  const syncMediaRef = useRef<((request?: SyncMediaRequest) => void) | null>(null);
   const syncMediaIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPlaybackTickTimeRef = useRef<number | null>(null);
   const playbackPerfRef = useRef(createPlaybackPerfStats());
 
   usePreviewMediaPlaybackSync({
-    clips,
     tracks,
     playback,
+    directPreviewOptimized,
     currentTimeRef,
     getClipAtTime,
     videoElementsRef,

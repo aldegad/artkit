@@ -49,6 +49,7 @@ export interface PreviewCanvasRenderParams {
   savedMaskImgCacheRef: MutableRefObject<Map<string, HTMLImageElement>>;
   directPreviewHostRef: MutableRefObject<HTMLDivElement | null>;
   directPreviewAttachedVideoRef: MutableRefObject<HTMLVideoElement | null>;
+  directPreviewPlaybackStateRef: MutableRefObject<{ activeClipId: string | null }>;
   currentTimeRef: RefObject<number>;
   playbackPerfRef: MutableRefObject<{
     cacheFrames: number;
@@ -202,6 +203,7 @@ export function renderPreviewCanvasFrame(params: PreviewCanvasRenderParams) {
     directPreviewPlan: params.directPreviewPlan,
     directPreviewHostRef: params.directPreviewHostRef,
     directPreviewAttachedVideoRef: params.directPreviewAttachedVideoRef,
+    directPreviewPlaybackStateRef: params.directPreviewPlaybackStateRef,
     getClipAtTime: params.getClipAtTime,
     videoElementsRef: params.videoElementsRef,
     renderTime,

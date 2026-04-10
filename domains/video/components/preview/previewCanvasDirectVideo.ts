@@ -1,15 +1,16 @@
 "use client";
 
 import { MutableRefObject, RefObject } from "react";
-import { PLAYBACK } from "../../constants";
 import { Clip, getClipPlaybackSpeed, getClipScaleX, getClipScaleY, getSourceTime } from "../../types";
 import { resolveClipPositionAtTimelineTime } from "../../utils/clipTransformKeyframes";
 import { DirectPreviewPlan } from "./previewCanvasConfig";
+import { hasDirectPreviewClipTransition } from "./previewPlaybackDiscontinuity";
 
 interface ApplyDirectPreviewParams {
   directPreviewPlan: DirectPreviewPlan | null;
   directPreviewHostRef: MutableRefObject<HTMLDivElement | null>;
   directPreviewAttachedVideoRef: MutableRefObject<HTMLVideoElement | null>;
+  directPreviewPlaybackStateRef: MutableRefObject<{ activeClipId: string | null }>;
   getClipAtTime: (trackId: string, time: number) => Clip | null;
   videoElementsRef: RefObject<Map<string, HTMLVideoElement>>;
   renderTime: number;
@@ -22,6 +23,7 @@ interface ApplyDirectPreviewParams {
 export function applyDirectVideoPreview(params: ApplyDirectPreviewParams): boolean {
   const directPreviewHost = params.directPreviewHostRef.current;
   if (!params.directPreviewPlan || !directPreviewHost) {
+    params.directPreviewPlaybackStateRef.current.activeClipId = null;
     params.detachDirectPreviewVideo();
     return false;
   }
@@ -33,18 +35,28 @@ export function applyDirectVideoPreview(params: ApplyDirectPreviewParams): boole
     : null;
 
   if (!directVideoClip || !directVideoElement || directVideoElement.readyState < 1) {
+    params.directPreviewPlaybackStateRef.current.activeClipId = null;
     params.detachDirectPreviewVideo();
     return false;
   }
 
+  const attachedVideoChanged = params.directPreviewAttachedVideoRef.current !== directVideoElement;
   if (params.directPreviewAttachedVideoRef.current !== directVideoElement) {
     directPreviewHost.replaceChildren(directVideoElement);
     params.directPreviewAttachedVideoRef.current = directVideoElement;
   }
 
   const directSourceTime = getSourceTime(directVideoClip, params.renderTime);
+  const previousClipId = params.directPreviewPlaybackStateRef.current.activeClipId;
+  const clipTransitioned = hasDirectPreviewClipTransition(previousClipId, directVideoClip.id);
+  params.directPreviewPlaybackStateRef.current.activeClipId = directVideoClip.id;
+
   if (params.playback.isPlaying) {
-    if (Math.abs(directVideoElement.currentTime - directSourceTime) > PLAYBACK.SEEK_DRIFT_THRESHOLD) {
+    if (
+      Number.isFinite(directSourceTime)
+      && (attachedVideoChanged || clipTransitioned)
+      && Math.abs(directVideoElement.currentTime - directSourceTime) > 0.01
+    ) {
       directVideoElement.currentTime = directSourceTime;
     }
     directVideoElement.playbackRate = params.playback.playbackRate * getClipPlaybackSpeed(directVideoClip);

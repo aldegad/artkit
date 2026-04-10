@@ -23,6 +23,8 @@ export function resolveAdaptivePlaybackPreviewPolicy(params: {
   visualClipCount: number;
   baseMaxCanvasDpr: number;
   basePlaybackRenderFpsCap: number;
+  directPreviewOptimized: boolean;
+  isMobileLike: boolean;
 }): AdaptivePlaybackPreviewPolicy {
   const {
     playbackIsPlaying,
@@ -31,7 +33,17 @@ export function resolveAdaptivePlaybackPreviewPolicy(params: {
     visualClipCount,
     baseMaxCanvasDpr,
     basePlaybackRenderFpsCap,
+    directPreviewOptimized,
+    isMobileLike,
   } = params;
+
+  if (playbackIsPlaying && directPreviewOptimized && isMobileLike) {
+    return {
+      maxCanvasDpr: 1,
+      playbackRenderFpsCap: basePlaybackRenderFpsCap,
+      smoothingQuality: "high",
+    };
+  }
 
   if (!playbackIsPlaying || qualityFirstMode) {
     return {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, MutableRefObject, RefObject } from "react";
+import { useCallback, useEffect, MutableRefObject, RefObject, useRef } from "react";
 import { PLAYBACK } from "../../constants";
 import {
   AudioClip,
@@ -14,15 +14,15 @@ import {
 import { subscribeImmediatePlaybackStop } from "../../utils/playbackStopSignal";
 
 interface UsePreviewMediaPlaybackSyncOptions {
-  clips: Clip[];
   tracks: VideoTrack[];
   playback: PlaybackState;
+  directPreviewOptimized: boolean;
   currentTimeRef: RefObject<number>;
   getClipAtTime: (trackId: string, time: number) => Clip | null;
   videoElementsRef: RefObject<Map<string, HTMLVideoElement>>;
   audioElementsRef: RefObject<Map<string, HTMLAudioElement>>;
   isWebAudioReadyRef: MutableRefObject<(sourceUrl: string) => boolean>;
-  syncMediaRef: MutableRefObject<(() => void) | null>;
+  syncMediaRef: MutableRefObject<((request?: { forceVideoCurrentTimeSync?: boolean }) => void) | null>;
   syncMediaIntervalRef: MutableRefObject<ReturnType<typeof setInterval> | null>;
   lastPlaybackTickTimeRef: MutableRefObject<number | null>;
   wasPlayingRef: MutableRefObject<boolean>;
@@ -49,9 +49,9 @@ function hasFiniteMediaDuration(media: HTMLMediaElement): boolean {
 
 export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSyncOptions) {
   const {
-    clips,
     tracks,
     playback,
+    directPreviewOptimized,
     currentTimeRef,
     getClipAtTime,
     videoElementsRef,
@@ -62,6 +62,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     lastPlaybackTickTimeRef,
     wasPlayingRef,
   } = options;
+  const lastActiveVideoClipIdByElementRef = useRef(new Map<HTMLVideoElement, string>());
 
   const stopAllMediaElements = useCallback(() => {
     videoElementsRef.current?.forEach((video) => {
@@ -84,6 +85,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     }
     syncMediaRef.current = null;
     lastPlaybackTickTimeRef.current = null;
+    lastActiveVideoClipIdByElementRef.current.clear();
     stopAllMediaElements();
   }, [lastPlaybackTickTimeRef, stopAllMediaElements, syncMediaIntervalRef, syncMediaRef]);
 
@@ -100,8 +102,10 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
       return;
     }
 
+    const activeVideoClipIdsByElement = lastActiveVideoClipIdByElementRef.current;
+
     // Sync and start/stop media elements
-    const syncMedia = () => {
+    const syncMedia = (request?: { forceVideoCurrentTimeSync?: boolean }) => {
       const ct = currentTimeRef.current || 0;
       const trackById = new Map(tracks.map((track) => [track.id, track]));
       const desiredVideoStates = new Map<
@@ -137,6 +141,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
       for (const video of uniqueVideos) {
         const desiredState = desiredVideoStates.get(video);
         if (!desiredState) {
+          activeVideoClipIdsByElement.delete(video);
           video.pause();
           video.muted = true;
           video.volume = 0;
@@ -157,13 +162,20 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
           desiredState.isAudible && !isWebAudioReadyRef.current(clip.sourceUrl)
             ? Math.max(PLAYBACK.SEEK_DRIFT_THRESHOLD, 0.45)
             : PLAYBACK.SEEK_DRIFT_THRESHOLD;
+        const previousClipId = activeVideoClipIdsByElement.get(video) ?? null;
+        const clipChanged = previousClipId !== null && previousClipId !== clip.id;
+        const shouldForceCurrentTimeSync =
+          Boolean(request?.forceVideoCurrentTimeSync) || clipChanged;
+        const seekThreshold = shouldForceCurrentTimeSync ? 0.01 : videoSeekThreshold;
         if (
           Number.isFinite(sourceTime) &&
           hasFiniteMediaDuration(video) &&
-          Math.abs(video.currentTime - sourceTime) > videoSeekThreshold
+          (!directPreviewOptimized || shouldForceCurrentTimeSync) &&
+          Math.abs(video.currentTime - sourceTime) > seekThreshold
         ) {
           video.currentTime = sourceTime;
         }
+        activeVideoClipIdsByElement.set(video, clip.id);
 
         video.playbackRate = playback.playbackRate * getClipPlaybackSpeed(clip);
 
@@ -225,7 +237,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     };
 
     syncMediaRef.current = syncMedia;
-    syncMedia(); // Initial sync when playback starts
+    syncMedia({ forceVideoCurrentTimeSync: true }); // Initial sync when playback starts
     // Periodic re-sync for clip boundaries and drift correction (not every frame)
     const intervalId = setInterval(syncMedia, PLAYBACK.SYNC_INTERVAL_MS);
     syncMediaIntervalRef.current = intervalId;
@@ -237,6 +249,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
         syncMediaIntervalRef.current = null;
       }
       syncMediaRef.current = null;
+      activeVideoClipIdsByElement.clear();
       if (!playback.isPlaying) {
         stopAllMediaElements();
       }
@@ -250,6 +263,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     audioElementsRef,
     isWebAudioReadyRef,
     currentTimeRef,
+    directPreviewOptimized,
     syncMediaRef,
     syncMediaIntervalRef,
     stopAllMediaElements,
