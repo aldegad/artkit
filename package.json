@@ -21,7 +21,7 @@
     "clsx": "^2.1.1",
     "firebase": "^12.8.0",
     "jszip": "^3.10.1",
-    "next": "16.0.4",
+    "next": "16.2.9",
     "onnxruntime-web": "1.22.0",
     "overlayscrollbars": "^2.14.0",
     "overlayscrollbars-react": "^0.5.6",
@@ -31,6 +31,11 @@
     "tailwind-merge": "^3.4.0",
     "zustand": "^5.0.11"
   },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.10"
+    }
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -38,7 +43,7 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9",
-    "eslint-config-next": "16.0.4",
+    "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.2"
