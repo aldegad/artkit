@@ -90,6 +90,10 @@ export type { ViewportConfig, ViewportTransform } from "./canvasViewport";
 export { createAutosave, createIndexedDBStorage } from "./autosave";
 export type { AutosaveConfig, AutosaveStorage, BaseAutosaveData } from "./autosave";
 
+// IndexedDB connection helper
+export { createIDBConnection } from "./idb";
+export type { IDBConnection, IDBConnectionConfig } from "./idb";
+
 // Rect transform
 export {
   getRectHandles,

@@ -2,11 +2,21 @@
 // Media File Storage (IndexedDB)
 // ============================================
 
+import { createIDBConnection } from "@/shared/utils/idb";
+
 const DB_NAME = "video-media-db";
 const STORE_NAME = "media";
 const DB_VERSION = 1;
 
-let dbPromise: Promise<IDBDatabase> | null = null;
+const connection = createIDBConnection({
+  dbName: DB_NAME,
+  version: DB_VERSION,
+  onUpgrade: (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME);
+    }
+  },
+});
 
 async function normalizeBlobForStorage(blob: Blob): Promise<Blob> {
   if (!(blob instanceof File)) {
@@ -18,44 +28,20 @@ async function normalizeBlobForStorage(blob: Blob): Promise<Blob> {
 }
 
 /**
- * Get or create the IndexedDB database
- */
-function getDB(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-  });
-
-  return dbPromise;
-}
-
-/**
  * Save a media file (Blob) to IndexedDB
  * @param clipId - The clip ID to use as key
  * @param blob - The file/blob to store
  */
 export async function saveMediaBlob(clipId: string, blob: Blob): Promise<void> {
-  const db = await getDB();
   const storedBlob = await normalizeBlobForStorage(blob);
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(storedBlob, clipId);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
-  });
+  try {
+    await connection.withStore(STORE_NAME, "readwrite", (store) =>
+      store.put(storedBlob, clipId)
+    );
+  } catch (error) {
+    console.error(`[MediaStorage] Failed to save blob "${clipId}":`, error);
+    throw error;
+  }
 }
 
 /**
@@ -64,15 +50,11 @@ export async function saveMediaBlob(clipId: string, blob: Blob): Promise<void> {
  * @returns The stored Blob or null if not found
  */
 export async function loadMediaBlob(clipId: string): Promise<Blob | null> {
-  const db = await getDB();
-  const result = await new Promise<Blob | null>((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(clipId);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result || null);
-  });
+  const result = await connection.withStore<Blob | undefined>(
+    STORE_NAME,
+    "readonly",
+    (store) => store.get(clipId)
+  );
   if (!result) return null;
   try {
     return await normalizeBlobForStorage(result);
@@ -109,15 +91,9 @@ export async function loadMediaBlobFromKeys(
  * @param clipId - The clip ID used as key
  */
 export async function deleteMediaBlob(clipId: string): Promise<void> {
-  const db = await getDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(clipId);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
-  });
+  await connection.withStore(STORE_NAME, "readwrite", (store) =>
+    store.delete(clipId)
+  );
 }
 
 /**
@@ -155,15 +131,9 @@ export async function moveMediaBlob(
  * Clear all media files from IndexedDB
  */
 export async function clearAllMediaBlobs(): Promise<void> {
-  const db = await getDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.clear();
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
-  });
+  await connection.withStore(STORE_NAME, "readwrite", (store) =>
+    store.clear()
+  );
 }
 
 /**

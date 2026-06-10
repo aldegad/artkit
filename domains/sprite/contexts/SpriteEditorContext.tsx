@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useRef, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { showErrorToast } from "@/shared/components";
 import { SpriteFrame } from "../types";
 import { AUTOSAVE_DEBOUNCE_MS, loadAutosaveData, saveAutosaveData, clearAutosaveData } from "../utils/autosave";
 import { deepCopyFrame } from "../utils/frameUtils";
@@ -51,6 +52,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
   const didPanOrDragRef = useRef(false);
   const isInitializedRef = useRef(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autosaveFailedRef = useRef(false);
 
   // Track store actions (selector-based to avoid provider-wide re-renders)
   const setImageSrc = useSpriteTrackStore((s) => s.setImageSrc);
@@ -134,7 +136,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
       const vs = useSpriteViewportStore.getState();
       const us = useSpriteUIStore.getState();
 
-      void saveAutosaveData({
+      saveAutosaveData({
         imageSrc: ts.imageSrc,
         imageSize: ts.imageSize,
         tracks: ts.tracks,
@@ -151,6 +153,15 @@ export function EditorProvider({ children }: EditorProviderProps) {
         animPreviewPan: vs.animPreviewPan,
         frameEditZoom: vs.frameEditZoom,
         frameEditPan: vs.frameEditPan,
+      }).then(() => {
+        autosaveFailedRef.current = false;
+      }).catch((error) => {
+        // Toast once per failure streak so a broken autosave is visible
+        // without spamming on every debounced attempt.
+        if (!autosaveFailedRef.current) {
+          autosaveFailedRef.current = true;
+          showErrorToast(`Autosave failed: ${(error as Error).message}`);
+        }
       });
     }, AUTOSAVE_DEBOUNCE_MS);
   }, []);

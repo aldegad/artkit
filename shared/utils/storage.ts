@@ -1,5 +1,6 @@
 import { SavedSpriteProject } from "@/domains/sprite/types";
 import { SavedImageProject } from "@/domains/image/types";
+import { createIDBConnection } from "./idb";
 
 // ============================================
 // IndexedDB Storage for Sprite + Image Projects
@@ -10,173 +11,109 @@ const DB_VERSION = 3; // Bump version for store rename
 const SPRITE_STORE_NAME = "sprite-projects";
 const IMAGE_STORE_NAME = "image-projects";
 
-let dbInstance: IDBDatabase | null = null;
+const connection = createIDBConnection({
+  dbName: DB_NAME,
+  version: DB_VERSION,
+  onUpgrade: (db) => {
+    // Create sprite-projects store
+    if (!db.objectStoreNames.contains(SPRITE_STORE_NAME)) {
+      const store = db.createObjectStore(SPRITE_STORE_NAME, { keyPath: "id" });
+      store.createIndex("savedAt", "savedAt", { unique: false });
+      store.createIndex("name", "name", { unique: false });
+      console.log("[IndexedDB] Created sprite-projects store");
+    }
 
-/**
- * Open/create IndexedDB connection
- */
-function openDB(): Promise<IDBDatabase> {
-  if (dbInstance) return Promise.resolve(dbInstance);
-
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to open:", request.error);
-      reject(request.error);
-    };
-
-    request.onsuccess = () => {
-      dbInstance = request.result;
-      resolve(dbInstance);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-
-      // Create sprite-projects store
-      if (!db.objectStoreNames.contains(SPRITE_STORE_NAME)) {
-        const store = db.createObjectStore(SPRITE_STORE_NAME, { keyPath: "id" });
-        store.createIndex("savedAt", "savedAt", { unique: false });
-        store.createIndex("name", "name", { unique: false });
-        console.log("[IndexedDB] Created sprite-projects store");
-      }
-
-      // Create image-projects store (image editor)
-      if (!db.objectStoreNames.contains(IMAGE_STORE_NAME)) {
-        const store = db.createObjectStore(IMAGE_STORE_NAME, { keyPath: "id" });
-        store.createIndex("savedAt", "savedAt", { unique: false });
-        store.createIndex("name", "name", { unique: false });
-        console.log("[IndexedDB] Created image-projects store");
-      }
-    };
-  });
-}
+    // Create image-projects store (image editor)
+    if (!db.objectStoreNames.contains(IMAGE_STORE_NAME)) {
+      const store = db.createObjectStore(IMAGE_STORE_NAME, { keyPath: "id" });
+      store.createIndex("savedAt", "savedAt", { unique: false });
+      store.createIndex("name", "name", { unique: false });
+      console.log("[IndexedDB] Created image-projects store");
+    }
+  },
+});
 
 /**
  * Save a project to IndexedDB
  */
 export async function saveProject(project: SavedSpriteProject): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(SPRITE_STORE_NAME);
-
-    const request = store.put(project);
-
-    request.onsuccess = () => {
-      console.log("[IndexedDB] Project saved:", project.name);
-      resolve();
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to save project:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    await connection.withStore(SPRITE_STORE_NAME, "readwrite", (store) =>
+      store.put(project)
+    );
+    console.log("[IndexedDB] Project saved:", project.name);
+  } catch (error) {
+    console.error("[IndexedDB] Failed to save project:", error);
+    throw error;
+  }
 }
 
 /**
  * Get all saved projects from IndexedDB
  */
 export async function getAllProjects(): Promise<SavedSpriteProject[]> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, "readonly");
-    const store = transaction.objectStore(SPRITE_STORE_NAME);
-    const request = (
-      store.indexNames.contains("savedAt")
-        ? store.index("savedAt")
-        : store
-    ).getAll();
-
-    request.onsuccess = () => {
-      const projects = request.result as SavedSpriteProject[];
-      // Sort by savedAt descending (newest first)
-      projects.sort(
-        (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
-      );
-      resolve(projects);
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to get projects:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    const projects = await connection.withStore<SavedSpriteProject[]>(
+      SPRITE_STORE_NAME,
+      "readonly",
+      (store) =>
+        (store.indexNames.contains("savedAt") ? store.index("savedAt") : store).getAll()
+    );
+    // Sort by savedAt descending (newest first)
+    projects.sort(
+      (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+    );
+    return projects;
+  } catch (error) {
+    console.error("[IndexedDB] Failed to get projects:", error);
+    throw error;
+  }
 }
 
 /**
  * Get a single project by ID
  */
 export async function getProject(id: string): Promise<SavedSpriteProject | undefined> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, "readonly");
-    const store = transaction.objectStore(SPRITE_STORE_NAME);
-
-    const request = store.get(id);
-
-    request.onsuccess = () => {
-      resolve(request.result as SavedSpriteProject | undefined);
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to get project:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    return await connection.withStore<SavedSpriteProject | undefined>(
+      SPRITE_STORE_NAME,
+      "readonly",
+      (store) => store.get(id)
+    );
+  } catch (error) {
+    console.error("[IndexedDB] Failed to get project:", error);
+    throw error;
+  }
 }
 
 /**
  * Delete a project by ID
  */
 export async function deleteProject(id: string): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(SPRITE_STORE_NAME);
-
-    const request = store.delete(id);
-
-    request.onsuccess = () => {
-      console.log("[IndexedDB] Project deleted:", id);
-      resolve();
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to delete project:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    await connection.withStore(SPRITE_STORE_NAME, "readwrite", (store) =>
+      store.delete(id)
+    );
+    console.log("[IndexedDB] Project deleted:", id);
+  } catch (error) {
+    console.error("[IndexedDB] Failed to delete project:", error);
+    throw error;
+  }
 }
 
 /**
  * Clear all projects
  */
 export async function clearAllProjects(): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(SPRITE_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(SPRITE_STORE_NAME);
-
-    const request = store.clear();
-
-    request.onsuccess = () => {
-      console.log("[IndexedDB] All projects cleared");
-      resolve();
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to clear projects:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    await connection.withStore(SPRITE_STORE_NAME, "readwrite", (store) =>
+      store.clear()
+    );
+    console.log("[IndexedDB] All projects cleared");
+  } catch (error) {
+    console.error("[IndexedDB] Failed to clear projects:", error);
+    throw error;
+  }
 }
 
 /**
@@ -320,100 +257,66 @@ export async function importProjectsFromJSON(
  * Save an image editor project to IndexedDB
  */
 export async function saveImageProject(project: SavedImageProject): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(IMAGE_STORE_NAME);
-
-    const request = store.put(project);
-
-    request.onsuccess = () => {
-      console.log("[IndexedDB] Image project saved:", project.name);
-      resolve();
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to save image project:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    await connection.withStore(IMAGE_STORE_NAME, "readwrite", (store) =>
+      store.put(project)
+    );
+    console.log("[IndexedDB] Image project saved:", project.name);
+  } catch (error) {
+    console.error("[IndexedDB] Failed to save image project:", error);
+    throw error;
+  }
 }
 
 /**
  * Get all saved image editor projects from IndexedDB
  */
 export async function getAllImageProjects(): Promise<SavedImageProject[]> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE_NAME, "readonly");
-    const store = transaction.objectStore(IMAGE_STORE_NAME);
-    const request = (
-      store.indexNames.contains("savedAt")
-        ? store.index("savedAt")
-        : store
-    ).getAll();
-
-    request.onsuccess = () => {
-      const projects = request.result as SavedImageProject[];
-      // Sort by savedAt descending (newest first)
-      projects.sort(
-        (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
-      );
-      resolve(projects);
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to get image projects:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    const projects = await connection.withStore<SavedImageProject[]>(
+      IMAGE_STORE_NAME,
+      "readonly",
+      (store) =>
+        (store.indexNames.contains("savedAt") ? store.index("savedAt") : store).getAll()
+    );
+    // Sort by savedAt descending (newest first)
+    projects.sort(
+      (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+    );
+    return projects;
+  } catch (error) {
+    console.error("[IndexedDB] Failed to get image projects:", error);
+    throw error;
+  }
 }
 
 /**
  * Get a single image editor project by ID
  */
 export async function getImageProject(id: string): Promise<SavedImageProject | undefined> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE_NAME, "readonly");
-    const store = transaction.objectStore(IMAGE_STORE_NAME);
-
-    const request = store.get(id);
-
-    request.onsuccess = () => {
-      resolve(request.result as SavedImageProject | undefined);
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to get image project:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    return await connection.withStore<SavedImageProject | undefined>(
+      IMAGE_STORE_NAME,
+      "readonly",
+      (store) => store.get(id)
+    );
+  } catch (error) {
+    console.error("[IndexedDB] Failed to get image project:", error);
+    throw error;
+  }
 }
 
 /**
  * Delete an image editor project by ID
  */
 export async function deleteImageProject(id: string): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMAGE_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(IMAGE_STORE_NAME);
-
-    const request = store.delete(id);
-
-    request.onsuccess = () => {
-      console.log("[IndexedDB] Image project deleted:", id);
-      resolve();
-    };
-
-    request.onerror = () => {
-      console.error("[IndexedDB] Failed to delete image project:", request.error);
-      reject(request.error);
-    };
-  });
+  try {
+    await connection.withStore(IMAGE_STORE_NAME, "readwrite", (store) =>
+      store.delete(id)
+    );
+    console.log("[IndexedDB] Image project deleted:", id);
+  } catch (error) {
+    console.error("[IndexedDB] Failed to delete image project:", error);
+    throw error;
+  }
 }

@@ -24,26 +24,34 @@ export function useEditorSaveActions(
   const [saveCount, setSaveCount] = useState(0);
 
   const handleSaveProjectAction = useCallback(async () => {
-    const saved = await saveProject();
-    if (saved) {
-      setSaveCount((count) => count + 1);
-      trackEvent("project_save", {
-        tool: "image",
-        save_mode: "save",
-      });
+    try {
+      const saved = await saveProject();
+      if (saved) {
+        setSaveCount((count) => count + 1);
+        trackEvent("project_save", {
+          tool: "image",
+          save_mode: "save",
+        });
+      }
+    } catch (error) {
+      showErrorToast(`${saveFailedMessage}: ${(error as Error).message}`);
     }
-  }, [saveProject]);
+  }, [saveProject, saveFailedMessage]);
 
   const handleSaveAsProjectAction = useCallback(async () => {
-    const saved = await saveAsProject();
-    if (saved) {
-      setSaveCount((count) => count + 1);
-      trackEvent("project_save", {
-        tool: "image",
-        save_mode: "save_as",
-      });
+    try {
+      const saved = await saveAsProject();
+      if (saved) {
+        setSaveCount((count) => count + 1);
+        trackEvent("project_save", {
+          tool: "image",
+          save_mode: "save_as",
+        });
+      }
+    } catch (error) {
+      showErrorToast(`${saveFailedMessage}: ${(error as Error).message}`);
     }
-  }, [saveAsProject]);
+  }, [saveAsProject, saveFailedMessage]);
 
   useEffect(() => {
     const handleSaveShortcut = async (e: KeyboardEvent) => {
@@ -51,14 +59,10 @@ export function useEditorSaveActions(
       if (e.repeat) return;
 
       e.preventDefault();
-      try {
-        if (e.shiftKey) {
-          await handleSaveAsProjectAction();
-        } else if (canSave) {
-          await handleSaveProjectAction();
-        }
-      } catch (error) {
-        showErrorToast(`${saveFailedMessage}: ${(error as Error).message}`);
+      if (e.shiftKey) {
+        await handleSaveAsProjectAction();
+      } else if (canSave) {
+        await handleSaveProjectAction();
       }
     };
 
@@ -66,7 +70,7 @@ export function useEditorSaveActions(
     return () => {
       window.removeEventListener("keydown", handleSaveShortcut);
     };
-  }, [handleSaveProjectAction, handleSaveAsProjectAction, canSave, saveFailedMessage]);
+  }, [handleSaveProjectAction, handleSaveAsProjectAction, canSave]);
 
   return {
     saveCount,
