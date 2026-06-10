@@ -107,6 +107,9 @@ export async function runNativeRecorderTimelineExport(params: {
   exportMaskTmpCanvas.height = project.canvasSize.height;
 
   const canvasStream = outputCanvas.captureStream(config.frameRate);
+  const canvasVideoTrack = canvasStream.getVideoTracks()[0] as
+    | (MediaStreamTrack & { requestFrame?: () => void })
+    | undefined;
   const combinedStream: MediaStream = new MediaStream();
   for (const track of canvasStream.getVideoTracks()) {
     combinedStream.addTrack(track);
@@ -116,6 +119,9 @@ export async function runNativeRecorderTimelineExport(params: {
   let rafId: number | null = null;
   let progressTimer: number | null = null;
   let stopped = false;
+  // Timeline clock starts when recording starts; preload/first-frame seek
+  // time must not shift the rendered timeline or trigger early finalize.
+  let recordingStartedAt = startedAt;
   let lastActiveVideoIds = new Set<string>();
   const chunks: Blob[] = [];
   const maxFrameTime = Math.max(config.exportStart, config.exportEnd - 0.5 / config.frameRate);
@@ -378,7 +384,7 @@ export async function runNativeRecorderTimelineExport(params: {
           return;
         }
         try {
-          const elapsedSeconds = (Date.now() - startedAt) / 1000;
+          const elapsedSeconds = (Date.now() - recordingStartedAt) / 1000;
           const isFinalFrame = elapsedSeconds >= config.duration - frameDuration * 0.5;
           const timelineTime = isFinalFrame
             ? maxFrameTime
@@ -399,11 +405,21 @@ export async function runNativeRecorderTimelineExport(params: {
       };
 
       progressTimer = window.setInterval(() => {
-        const elapsedSeconds = (Date.now() - startedAt) / 1000;
+        const elapsedSeconds = (Date.now() - recordingStartedAt) / 1000;
         updateProgress(elapsedSeconds / Math.max(expectedWallDuration, 0.001));
       }, 500);
 
+      recordingStartedAt = Date.now();
       recorder!.start(1000);
+      // Force the already-rendered first frame onto the capture track so the
+      // encoder's first sample carries content at t≈0 instead of a black
+      // lead-in until the first rAF render lands.
+      if (hasCommittedFrame) {
+        exportCtx.drawImage(committedFrameCanvas, 0, 0);
+      }
+      try {
+        canvasVideoTrack?.requestFrame?.();
+      } catch {}
       logNativeRecorderStep("timeline-recorder:start", {
         frameRate: config.frameRate,
         totalFrames,

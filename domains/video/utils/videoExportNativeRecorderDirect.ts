@@ -10,7 +10,6 @@ import {
   setPitchPreservation,
   stopTracks,
   type NativeRecordedVideoExport,
-  waitForVideoFrame,
   withTimeout,
 } from "./videoExportNativeRecorderShared";
 
@@ -376,6 +375,16 @@ export async function runNativeRecorderDirectExport(params: {
     logNativeRecorderStep("recorder:start", {
       recorderState: recorder.state,
     });
+    // Re-paint the first frame and force the capture track to emit it so the
+    // encoder's first sample carries content at t≈0. Without this, no canvas
+    // frame reaches the recorder until playback's first video frame callback
+    // fires, and players render that lead-in gap as black.
+    if (singlePlan) {
+      drawSingleFrame(0);
+    } else {
+      drawSequenceFrame(0);
+    }
+    requestOutputFrame();
     await flushOutputFrame();
 
     const playSequenceSegments = async () => {
