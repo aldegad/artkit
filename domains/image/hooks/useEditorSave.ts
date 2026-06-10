@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { showErrorToast } from "@/shared/components";
 import { UnifiedLayer, Guide, Point, SavedImageProject } from "../types";
 import {
   saveEditorAutosaveData,
@@ -111,6 +112,7 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const savingRef = useRef(false);
   const currentProjectIdRef = useRef<string | null>(currentProjectId);
+  const autosaveFailedRef = useRef(false);
 
   useEffect(() => {
     currentProjectIdRef.current = currentProjectId;
@@ -310,7 +312,18 @@ export function useEditorSave(options: UseEditorSaveOptions): UseEditorSaveRetur
         lockGuides,
         snapToGuides,
         isPanLocked,
-      });
+      })
+        .then(() => {
+          autosaveFailedRef.current = false;
+        })
+        .catch((error) => {
+          // Toast once per failure streak so a broken autosave is visible
+          // without spamming on every debounced attempt.
+          if (!autosaveFailedRef.current) {
+            autosaveFailedRef.current = true;
+            showErrorToast(`Autosave failed: ${(error as Error).message}`);
+          }
+        });
     }, EDITOR_AUTOSAVE_DEBOUNCE_MS);
 
     return () => {

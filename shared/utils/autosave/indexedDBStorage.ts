@@ -2,6 +2,7 @@
 // IndexedDB Storage Adapter
 // ============================================
 
+import { createIDBConnection, type IDBConnection } from "../idb";
 import type { AutosaveConfig, AutosaveStorage, BaseAutosaveData } from "./types";
 
 /**
@@ -17,36 +18,21 @@ export function createIndexedDBStorage<T extends BaseAutosaveData>(
     dbVersion = 1,
   } = config;
 
-  let dbInstance: IDBDatabase | null = null;
+  let connection: IDBConnection | null = null;
 
-  function openDB(): Promise<IDBDatabase> {
-    if (dbInstance) return Promise.resolve(dbInstance);
-
-    return new Promise((resolve, reject) => {
-      if (typeof window === "undefined") {
-        reject(new Error("IndexedDB not available"));
-        return;
-      }
-
-      const request = indexedDB.open(dbName, dbVersion);
-
-      request.onerror = () => {
-        reject(request.error);
-      };
-
-      request.onsuccess = () => {
-        dbInstance = request.result;
-        resolve(dbInstance);
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        if (!db.objectStoreNames.contains(storeName)) {
-          db.createObjectStore(storeName, { keyPath: "id" });
-        }
-      };
-    });
+  function getConnection(): IDBConnection {
+    if (!connection) {
+      connection = createIDBConnection({
+        dbName,
+        version: dbVersion,
+        onUpgrade: (db) => {
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.createObjectStore(storeName, { keyPath: "id" });
+          }
+        },
+      });
+    }
+    return connection;
   }
 
   return {
@@ -54,23 +40,15 @@ export function createIndexedDBStorage<T extends BaseAutosaveData>(
       if (typeof window === "undefined") return null;
 
       try {
-        const db = await openDB();
-
-        return new Promise((resolve, reject) => {
-          const transaction = db.transaction(storeName, "readonly");
-          const store = transaction.objectStore(storeName);
-          const request = store.get(key);
-
-          request.onsuccess = () => {
-            const data = request.result as T | undefined;
-            resolve(data ?? null);
-          };
-
-          request.onerror = () => {
-            reject(request.error);
-          };
-        });
-      } catch {
+        const data = await getConnection().withStore<T | undefined>(
+          storeName,
+          "readonly",
+          (store) => store.get(key)
+        );
+        return data ?? null;
+      } catch (error) {
+        // Restore stays non-fatal, but the failure must be observable.
+        console.error(`[Autosave] Failed to load "${key}":`, error);
         return null;
       }
     },
@@ -78,30 +56,19 @@ export function createIndexedDBStorage<T extends BaseAutosaveData>(
     async save(data: Omit<T, "savedAt" | "id">): Promise<void> {
       if (typeof window === "undefined") return;
 
+      const dataWithMeta = {
+        ...data,
+        id: key,
+        savedAt: Date.now(),
+      } as T;
+
       try {
-        const db = await openDB();
-
-        const dataWithMeta = {
-          ...data,
-          id: key,
-          savedAt: Date.now(),
-        } as T;
-
-        return new Promise((resolve, reject) => {
-          const transaction = db.transaction(storeName, "readwrite");
-          const store = transaction.objectStore(storeName);
-          const request = store.put(dataWithMeta);
-
-          request.onsuccess = () => {
-            resolve();
-          };
-
-          request.onerror = () => {
-            reject(request.error);
-          };
-        });
-      } catch {
-        // Failed to save
+        await getConnection().withStore(storeName, "readwrite", (store) =>
+          store.put(dataWithMeta)
+        );
+      } catch (error) {
+        console.error(`[Autosave] Failed to save "${key}":`, error);
+        throw error;
       }
     },
 
@@ -109,23 +76,12 @@ export function createIndexedDBStorage<T extends BaseAutosaveData>(
       if (typeof window === "undefined") return;
 
       try {
-        const db = await openDB();
-
-        return new Promise((resolve, reject) => {
-          const transaction = db.transaction(storeName, "readwrite");
-          const store = transaction.objectStore(storeName);
-          const request = store.delete(key);
-
-          request.onsuccess = () => {
-            resolve();
-          };
-
-          request.onerror = () => {
-            reject(request.error);
-          };
-        });
-      } catch {
-        // Failed to clear
+        await getConnection().withStore(storeName, "readwrite", (store) =>
+          store.delete(key)
+        );
+      } catch (error) {
+        console.error(`[Autosave] Failed to clear "${key}":`, error);
+        throw error;
       }
     },
   };

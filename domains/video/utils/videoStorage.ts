@@ -1,4 +1,5 @@
 import { SavedVideoProject } from "@/domains/video/types/project";
+import { createIDBConnection } from "@/shared/utils/idb";
 
 // ============================================
 // IndexedDB Storage for Video Editor
@@ -8,110 +9,79 @@ const DB_NAME = "video-projects-db";
 const DB_VERSION = 1;
 const STORE_NAME = "video-projects";
 
-let dbInstance: IDBDatabase | null = null;
-
-/**
- * Open/create IndexedDB connection
- */
-function openDB(): Promise<IDBDatabase> {
-  if (dbInstance) return Promise.resolve(dbInstance);
-
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => {
-      console.error("[VideoStorage] Failed to open:", request.error);
-      reject(request.error);
-    };
-
-    request.onsuccess = () => {
-      dbInstance = request.result;
-      resolve(dbInstance);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
-        store.createIndex("savedAt", "savedAt", { unique: false });
-        store.createIndex("name", "name", { unique: false });
-      }
-    };
-  });
-}
+const connection = createIDBConnection({
+  dbName: DB_NAME,
+  version: DB_VERSION,
+  onUpgrade: (db) => {
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      store.createIndex("savedAt", "savedAt", { unique: false });
+      store.createIndex("name", "name", { unique: false });
+    }
+  },
+});
 
 /**
  * Save a video project to IndexedDB
  */
 export async function saveVideoProject(project: SavedVideoProject): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(project);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  try {
+    await connection.withStore(STORE_NAME, "readwrite", (store) =>
+      store.put(project)
+    );
+  } catch (error) {
+    console.error("[VideoStorage] Failed to save project:", error);
+    throw error;
+  }
 }
 
 /**
  * Get all saved video projects from IndexedDB
  */
 export async function getAllVideoProjects(): Promise<SavedVideoProject[]> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = (
-      store.indexNames.contains("savedAt")
-        ? store.index("savedAt")
-        : store
-    ).getAll();
-
-    request.onsuccess = () => {
-      const projects = request.result as SavedVideoProject[];
-      projects.sort(
-        (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
-      );
-      resolve(projects);
-    };
-
-    request.onerror = () => reject(request.error);
-  });
+  try {
+    const projects = await connection.withStore<SavedVideoProject[]>(
+      STORE_NAME,
+      "readonly",
+      (store) =>
+        (store.indexNames.contains("savedAt") ? store.index("savedAt") : store).getAll()
+    );
+    projects.sort(
+      (a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+    );
+    return projects;
+  } catch (error) {
+    console.error("[VideoStorage] Failed to get projects:", error);
+    throw error;
+  }
 }
 
 /**
  * Get a single video project by ID
  */
 export async function getVideoProject(id: string): Promise<SavedVideoProject | undefined> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(id);
-
-    request.onsuccess = () => resolve(request.result as SavedVideoProject | undefined);
-    request.onerror = () => reject(request.error);
-  });
+  try {
+    return await connection.withStore<SavedVideoProject | undefined>(
+      STORE_NAME,
+      "readonly",
+      (store) => store.get(id)
+    );
+  } catch (error) {
+    console.error("[VideoStorage] Failed to get project:", error);
+    throw error;
+  }
 }
 
 /**
  * Delete a video project by ID
  */
 export async function deleteVideoProject(id: string): Promise<void> {
-  const db = await openDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(id);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  try {
+    await connection.withStore(STORE_NAME, "readwrite", (store) =>
+      store.delete(id)
+    );
+  } catch (error) {
+    console.error("[VideoStorage] Failed to delete project:", error);
+    throw error;
+  }
 }

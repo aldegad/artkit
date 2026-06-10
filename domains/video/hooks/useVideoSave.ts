@@ -23,6 +23,7 @@ import { TIMELINE } from "../constants";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
 import { trackEvent } from "@/shared/utils/analytics";
+import { showErrorToast } from "@/shared/components";
 
 // ============================================
 // Types
@@ -124,6 +125,7 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState<SaveLoadProgress | null>(null);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autosaveFailedRef = useRef(false);
   const savingRef = useRef(false);
   const currentProjectIdRef = useRef<string | null>(currentProjectId);
 
@@ -336,7 +338,18 @@ export function useVideoSave(options: UseVideoSaveOptions): UseVideoSaveReturn {
         autoKeyframeEnabled,
         selectedClipIds,
         selectedMaskIds,
-      });
+      })
+        .then(() => {
+          autosaveFailedRef.current = false;
+        })
+        .catch((error) => {
+          // Toast once per failure streak so a broken autosave is visible
+          // without spamming on every debounced attempt.
+          if (!autosaveFailedRef.current) {
+            autosaveFailedRef.current = true;
+            showErrorToast(`Autosave failed: ${(error as Error).message}`);
+          }
+        });
     }, VIDEO_AUTOSAVE_DEBOUNCE_MS);
 
     return () => {
