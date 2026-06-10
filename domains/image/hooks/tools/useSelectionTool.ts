@@ -133,7 +133,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setSelectionMask(null);
     setSelection({ x: Math.round(x), y: Math.round(y), width: 0, height: 0 });
     floatingLayerRef.current = null;
-  }, []);
+  }, [setSelection, setSelectionMask]);
 
   // Update selection during drag
   const updateSelection = useCallback(
@@ -151,7 +151,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
       setSelectionMask(null);
       setSelection(newSelection);
     },
-    [getDisplayDimensions]
+    [getDisplayDimensions, setSelection, setSelectionMask]
   );
 
   // Clear selection
@@ -162,7 +162,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     floatingLayerRef.current = null;
     setIsMovingSelection(false);
     setIsDuplicating(false);
-  }, []);
+  }, [setSelection, setSelectionMask]);
 
   // Create a floating layer from current selection (for move or duplicate)
   const createFloatingLayer = useCallback(
@@ -268,7 +268,7 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     setIsMovingSelection(false);
     setIsDuplicating(false);
     dragStartOriginRef.current = null;
-  }, [editCanvasRef, isDuplicating, saveToHistory]);
+  }, [editCanvasRef, isDuplicating, saveToHistory, setSelection]);
 
   // Copy selection to clipboard
   const copyToClipboard = useCallback(() => {
@@ -336,14 +336,14 @@ export function useSelectionTool(options: UseSelectionToolOptions): UseSelection
     dragStartOriginRef.current = { x, y };
 
     return floatingLayerRef.current;
-  }, [getDisplayDimensions]);
+  }, [getDisplayDimensions, setSelection, setSelectionMask]);
 
   // Select entire canvas
   const selectAll = useCallback(() => {
     const { width, height } = getDisplayDimensions();
     setSelectionMask(null);
     setSelection({ x: 0, y: 0, width, height });
-  }, [getDisplayDimensions]);
+  }, [getDisplayDimensions, setSelection, setSelectionMask]);
 
   return {
     // State

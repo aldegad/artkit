@@ -1,5 +1,5 @@
 import { SpriteFrame, SpriteTrack } from "../types";
-import { compositeAllFrames, compositeFrame, type CompositedFrame } from "./compositor";
+import { compositeAllFrames } from "./compositor";
 import { clampExportQuality } from "./exportQuality";
 
 // ============================================

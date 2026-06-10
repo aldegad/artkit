@@ -194,7 +194,7 @@ export function createNativeRecorderProgressUpdater(params: {
   expectedWallDuration: number;
   detailPrefix: string;
 }) {
-  const { config, setExportProgress, startedAt, expectedWallDuration, detailPrefix } = params;
+  const { config, setExportProgress, startedAt, detailPrefix } = params;
   return (progressRatio: number) => {
     const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
     const clampedRatio = Math.max(0, Math.min(1, progressRatio));

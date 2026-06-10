@@ -245,7 +245,6 @@ export function Clip({
                   style={{ width: tile.width }}
                 >
                   {thumbnailSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={thumbnailSrc}
                       alt=""

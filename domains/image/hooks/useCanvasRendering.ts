@@ -223,7 +223,7 @@ export function useCanvasRendering(
         selectionAnimationRafRef.current = null;
       }
     };
-  }, [requestRender]);
+  }, [requestRender, containerRef]);
 
   useEffect(() => {
     return () => {
@@ -233,6 +233,9 @@ export function useCanvasRendering(
 
   // Canvas render function - extracted so it can be called from ResizeObserver
   const render = useCallback(() => {
+    // Invalidation signal: the watermark mask canvas mutates outside React,
+    // so this version counter is what forces a re-render when it changes.
+    void watermarkMaskVersion;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d", { willReadFrequently: true });
     const editCanvas = editCanvasRef.current;
@@ -1107,6 +1110,7 @@ export function useCanvasRendering(
     transformRotation,
     transformFlipX,
     isSelectionBasedTransform,
+    hiddenLayerIds,
     // Guide-related dependencies
     guides,
     showGuides,

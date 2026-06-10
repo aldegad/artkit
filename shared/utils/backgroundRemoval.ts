@@ -38,7 +38,6 @@ function restoreConsole() {
 // Model singleton for caching
 let model: Awaited<ReturnType<typeof AutoModel.from_pretrained>> | null = null;
 let processor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>> | null = null;
-let isLoading = false;
 let loadingPromise: Promise<void> | null = null;
 let loadedModelKey: BackgroundRemovalModel | null = null;
 let loadingModelKey: BackgroundRemovalModel | null = null;
@@ -255,7 +254,6 @@ async function loadModel(
 
   const modelConfig = BACKGROUND_REMOVAL_MODELS[modelKey];
   const modelId = modelConfig.id;
-  isLoading = true;
   loadingModelKey = modelKey;
   loadingPromise = (async () => {
     try {
@@ -331,7 +329,6 @@ async function loadModel(
       onProgress?.(100, "Model ready");
     } finally {
       restoreConsole();
-      isLoading = false;
       loadingPromise = null;
       loadingModelKey = null;
     }

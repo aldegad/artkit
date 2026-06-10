@@ -190,7 +190,6 @@ function rotatePoint(point: Point, center: Point, rotationRadians: number): Poin
 export function useTransformTool(options: UseTransformToolOptions): UseTransformToolReturn {
   const {
     layerCanvasesRef,
-    editCanvasRef,
     layers,
     activeLayerId,
     zoom = 1,
@@ -700,7 +699,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       newHeight
     );
     ctx.restore();
-  }, [transformState.originalBounds, transformState.bounds, layerCanvasesRef]);
+  }, [transformState.originalBounds, transformState.bounds, transformState.isSelectionBased, layerCanvasesRef]);
 
   // Apply transform
   const applyTransform = useCallback(() => {
@@ -776,7 +775,7 @@ export function useTransformTool(options: UseTransformToolOptions): UseTransform
       perLayerData: null,
       isSelectionBased: false,
     });
-  }, [transformState, layerCanvasesRef, applyTransformToLayer]);
+  }, [transformState, applyTransformToLayer]);
 
   const setTransformSizeByWidth = useCallback((width: number) => {
     setTransformState((prev) => {

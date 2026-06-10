@@ -4,7 +4,6 @@ import {
   getSourceTime,
   type Clip,
   type ImageClip,
-  type MaskData,
   type PlaybackState,
   type VideoClip,
   type VideoProject,

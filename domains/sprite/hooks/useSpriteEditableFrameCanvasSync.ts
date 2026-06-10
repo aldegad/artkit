@@ -36,7 +36,8 @@ export function useSpriteEditableFrameCanvasSync({
     invalidateAiSelectionCache();
 
     const nextFrameId = editableFrame?.id ?? null;
-    const nextTrackId = editableFrame ? activeTrackId : null;
+    const nextImageData = editableFrame?.imageData ?? null;
+    const nextTrackId = nextFrameId !== null ? activeTrackId : null;
 
     if (
       currentEditFrameIdRef.current !== null
@@ -45,7 +46,7 @@ export function useSpriteEditableFrameCanvasSync({
       commitFrameEdits();
     }
 
-    if (!editableFrame?.imageData) {
+    if (!nextImageData) {
       editFrameCanvasRef.current = null;
       editFrameCtxRef.current = null;
       currentEditTrackIdRef.current = null;
@@ -75,11 +76,11 @@ export function useSpriteEditableFrameCanvasSync({
       editFrameCanvasRef.current = offscreen;
       editFrameCtxRef.current = offscreenCtx;
       currentEditTrackIdRef.current = activeTrackId;
-      currentEditFrameIdRef.current = editableFrame.id;
+      currentEditFrameIdRef.current = nextFrameId;
       isEditFrameDirtyRef.current = false;
       requestRender();
     };
-    img.src = editableFrame.imageData;
+    img.src = nextImageData;
 
     return () => {
       cancelled = true;

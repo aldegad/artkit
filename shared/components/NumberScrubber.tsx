@@ -210,12 +210,13 @@ export function NumberScrubber({
   });
 
   useEffect(() => {
+    const valueElement = valueRef.current;
     return () => {
       const pointerId = dragPointerIdRef.current;
       if (pointerId !== null) {
-        safeReleasePointerCapture(valueRef.current, pointerId);
+        safeReleasePointerCapture(valueElement, pointerId);
       }
-      if (document.pointerLockElement === valueRef.current) {
+      if (document.pointerLockElement === valueElement) {
         document.exitPointerLock();
       }
       document.body.style.cursor = "";

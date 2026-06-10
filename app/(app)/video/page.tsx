@@ -802,7 +802,7 @@ function VideoEditorContent() {
     if (toolMode !== "mask") return;
     if (isEditingMask) return; // already editing
     tryStartMaskEditFromSelection();
-  }, [toolMode, isEditingMask, tryStartMaskEditFromSelection]);
+  }, [toolMode, isEditingMask, tryStartMaskEditFromSelection, postRestorationRef]);
 
 
   // Keyboard shortcuts

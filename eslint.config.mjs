@@ -19,6 +19,18 @@ const config = [
       "react-hooks/purity": "off",
       "react-hooks/refs": "off",
       "react-hooks/set-state-in-effect": "off",
+      // All in-app images are runtime-generated blob/data URLs (thumbnails,
+      // conversion previews) or external avatars; the static export build has
+      // no image optimizer, so next/image offers no benefit here.
+      "@next/next/no-img-element": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
   {

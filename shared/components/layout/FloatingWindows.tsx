@@ -76,11 +76,12 @@ function FloatingWindowComponent({
 
   // Subscribe to panel updates for re-rendering when panel content changes
   const [, forceUpdate] = useState(0);
+  const subscribeToPanelUpdates = config.subscribeToPanelUpdates;
   useEffect(() => {
-    if (config.subscribeToPanelUpdates) {
-      return config.subscribeToPanelUpdates(() => forceUpdate((v) => v + 1));
+    if (subscribeToPanelUpdates) {
+      return subscribeToPanelUpdates(() => forceUpdate((v) => v + 1));
     }
-  }, [config.subscribeToPanelUpdates]);
+  }, [subscribeToPanelUpdates]);
 
   // Get content after subscription setup so it re-renders on updates
   const content = config.getPanelContent(window.panelId);

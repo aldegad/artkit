@@ -282,6 +282,7 @@ export function useImageProjectIO(options: UseImageProjectIOOptions): UseImagePr
     storageProvider,
     t.loadFailed,
     setProjectName,
+    setProjectGroup,
     setCurrentProjectId,
     setRotation,
     setCanvasSize,
