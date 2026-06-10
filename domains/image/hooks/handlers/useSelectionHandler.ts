@@ -44,33 +44,6 @@ function clampPointToDisplay(point: Point, width: number, height: number): Point
   };
 }
 
-function getLassoBounds(path: Point[]): CropArea | null {
-  if (path.length < 2) return null;
-
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  for (const point of path) {
-    if (point.x < minX) minX = point.x;
-    if (point.y < minY) minY = point.y;
-    if (point.x > maxX) maxX = point.x;
-    if (point.y > maxY) maxY = point.y;
-  }
-
-  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-    return null;
-  }
-
-  return {
-    x: Math.round(minX),
-    y: Math.round(minY),
-    width: Math.max(0, Math.round(maxX - minX)),
-    height: Math.max(0, Math.round(maxY - minY)),
-  };
-}
-
 export function useSelectionHandler(options: SelectionHandlerOptions): UseSelectionHandlerReturn {
   const {
     editCanvasRef,

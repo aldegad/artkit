@@ -228,7 +228,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
           };
         });
       },
-      [defaultFloatingWindowSize]
+      []
     );
 
     const closeFloatingWindow = useCallback((windowId: string) => {
@@ -330,7 +330,7 @@ export function createLayoutContext(config: LayoutConfiguration): CreateLayoutCo
           ),
         };
       });
-    }, [defaultFloatingWindowSize]);
+    }, []);
 
     const toggleDockedPanelCollapse = useCallback((panelNodeId: string) => {
       setLayoutState((prev) => {

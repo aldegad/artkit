@@ -308,7 +308,7 @@ export function SoundEditorProvider({ children }: { children: ReactNode }) {
     if (!audioBuffer) return null;
 
     const audioContext = getAudioContext();
-    const { trimRegion } = state;
+    const trimRegion = state.trimRegion;
 
     const startSample = Math.floor((trimRegion?.start || 0) * audioBuffer.sampleRate);
     const endSample = Math.floor((trimRegion?.end || audioBuffer.duration) * audioBuffer.sampleRate);

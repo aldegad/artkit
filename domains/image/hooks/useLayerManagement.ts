@@ -191,7 +191,7 @@ export function useLayerManagement(
         editCanvasRef.current = editCanvas;
       }
     },
-    [t.layer]
+    [t.layer, editCanvasRef]
   );
 
   // Add new paint layer
@@ -212,7 +212,7 @@ export function useLayerManagement(
     setLayers((prev) => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
     editCanvasRef.current = canvas;
-  }, [layers, getDisplayDimensions, saveToHistory, t.layer]);
+  }, [layers, getDisplayDimensions, saveToHistory, t.layer, editCanvasRef]);
 
   // Add warm tone filter layer (non-destructive color grading layer)
   const addFilterLayer = useCallback(() => {
@@ -241,7 +241,7 @@ export function useLayerManagement(
     setLayers((prev) => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
     editCanvasRef.current = canvas;
-  }, [layers, getDisplayDimensions, saveToHistory]);
+  }, [layers, getDisplayDimensions, saveToHistory, editCanvasRef]);
 
   // Add new layer with image drawn to canvas
   const addImageLayer = useCallback((imageSrc: string, name?: string, options?: AddImageLayerOptions) => {
@@ -296,7 +296,7 @@ export function useLayerManagement(
       }
     };
     img.src = imageSrc;
-  }, [saveToHistory, t.layer]);
+  }, [saveToHistory, t.layer, editCanvasRef]);
 
   // Delete layer (internal helper with optional history save)
   const deleteLayerInternal = useCallback(
@@ -332,7 +332,7 @@ export function useLayerManagement(
         layerCanvasesRef.current.delete(layerId);
       }
     },
-    [layers, activeLayerId, saveToHistory, t.minOneLayerRequired]
+    [layers, activeLayerId, saveToHistory, t.minOneLayerRequired, editCanvasRef]
   );
 
   // Delete layer
@@ -350,7 +350,7 @@ export function useLayerManagement(
     if (layer?.type === "paint") {
       editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
     }
-  }, [layers]);
+  }, [layers, editCanvasRef]);
 
   // Toggle layer visibility
   const toggleLayerVisibility = useCallback((layerId: string) => {
@@ -510,7 +510,7 @@ export function useLayerManagement(
       setSelectedLayerIds([lowerLayer.id]);
       editCanvasRef.current = mergedCanvas;
     },
-    [layers, saveToHistory]
+    [layers, saveToHistory, editCanvasRef]
   );
 
   // Clipping mask: clip this layer by the layer directly below it (in z-order)
@@ -539,7 +539,7 @@ export function useLayerManagement(
     const normalizedDeg = ((degrees % 360) + 360) % 360;
     const isSwapDimensions = normalizedDeg === 90 || normalizedDeg === 270;
 
-    layerCanvasesRef.current.forEach((canvas, layerId) => {
+    layerCanvasesRef.current.forEach((canvas) => {
       const oldWidth = canvas.width;
       const oldHeight = canvas.height;
 
@@ -667,7 +667,7 @@ export function useLayerManagement(
     if (activeLayerId) {
       editCanvasRef.current = layerCanvasesRef.current.get(activeLayerId) || null;
     }
-  }, [selectedLayerIds, saveToHistory, activeLayerId, layers]);
+  }, [selectedLayerIds, saveToHistory, activeLayerId, layers, editCanvasRef]);
 
   // Duplicate layer (all layers are paint layers now)
   const duplicateLayer = useCallback((layerId: string) => {
@@ -709,7 +709,7 @@ export function useLayerManagement(
     setLayers(prev => [newLayer, ...prev]);
     setActiveLayerId(newLayer.id);
     setSelectedLayerIds([newLayer.id]);
-  }, [layers, getDisplayDimensions, saveToHistory]);
+  }, [layers, getDisplayDimensions, saveToHistory, editCanvasRef]);
 
   // Select layer with modifier (shift for range multi-select)
   const selectLayerWithModifier = useCallback((layerId: string, shiftKey: boolean) => {
@@ -740,7 +740,7 @@ export function useLayerManagement(
         editCanvasRef.current = layerCanvasesRef.current.get(layerId) || null;
       }
     }
-  }, [layers, activeLayerId]);
+  }, [layers, activeLayerId, editCanvasRef]);
 
   // Clear layer selection
   const clearLayerSelection = useCallback(() => {
@@ -910,7 +910,7 @@ export function useLayerManagement(
         };
       }));
     }
-  }, [selectedLayerIds, getDisplayDimensions, getLayerBounds]);
+  }, [selectedLayerIds, getDisplayDimensions, getLayerBounds, layers]);
 
   return {
     // State

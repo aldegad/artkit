@@ -224,21 +224,6 @@ export default function VideoImportModal({
     setSelectedFrameIndices(new Set());
   }, []);
 
-  // Import selected frames
-  const handleImport = useCallback(() => {
-    const selectedFrames = extractedFrames
-      .filter((_, i) => selectedFrameIndices.has(i))
-      .map((frame, idx) => ({
-        points: [],
-        name: `Frame ${startFrameId + idx}`,
-        imageData: frame.imageData,
-        offset: { x: 0, y: 0 },
-      }));
-
-    onImport(selectedFrames);
-    handleClose();
-  }, [extractedFrames, selectedFrameIndices, startFrameId, onImport]);
-
   // Close and cleanup
   const handleClose = useCallback(() => {
     if (videoSrc) {
@@ -253,6 +238,21 @@ export default function VideoImportModal({
     setExtractionProgress(0);
     onClose();
   }, [videoSrc, onClose]);
+
+  // Import selected frames
+  const handleImport = useCallback(() => {
+    const selectedFrames = extractedFrames
+      .filter((_, i) => selectedFrameIndices.has(i))
+      .map((frame, idx) => ({
+        points: [],
+        name: `Frame ${startFrameId + idx}`,
+        imageData: frame.imageData,
+        offset: { x: 0, y: 0 },
+      }));
+
+    onImport(selectedFrames);
+    handleClose();
+  }, [extractedFrames, selectedFrameIndices, startFrameId, onImport, handleClose]);
 
   const footerContent = (
     <div className="flex items-center justify-between">

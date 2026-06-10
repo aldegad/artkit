@@ -88,7 +88,12 @@ export function useCanvasViewportBridge<TElement extends HTMLElement = HTMLCanva
   }, [viewport, onViewportStateChange, syncBaseScale]);
 
   useEffect(() => {
-    const nextExternal = normalizeState(externalState, syncBaseScale);
+    const externalSnapshot: CanvasViewportState = {
+      zoom: externalState.zoom,
+      pan: { x: externalState.pan.x, y: externalState.pan.y },
+      baseScale: externalState.baseScale,
+    };
+    const nextExternal = normalizeState(externalSnapshot, syncBaseScale);
     if (isSameState(lastSyncedRef.current, nextExternal, syncBaseScale)) return;
 
     lastSyncedRef.current = nextExternal;

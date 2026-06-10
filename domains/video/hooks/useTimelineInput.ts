@@ -1038,7 +1038,7 @@ export function useTimelineInput(options: UseTimelineInputOptions) {
     contentY: number;
     time: number;
   }) => {
-    const { drag, x, contentY, time } = options;
+    const { drag, contentY, time } = options;
     const deltaTime = time - drag.startTime;
 
     switch (drag.type) {

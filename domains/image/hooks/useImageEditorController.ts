@@ -210,13 +210,7 @@ export function useImageEditorController() {
     expandToSquare,
     fitToSquare,
     fitToObjectBounds,
-    getCropHandleAtPosition,
-    moveCrop,
-    resizeCrop,
-    startCrop,
-    updateCrop,
     updateCropExpand,
-    validateCrop,
   } = useCropTool();
 
   const {
@@ -302,7 +296,6 @@ export function useImageEditorController() {
     setSelection,
     clearSelection,
     selectionFeather,
-    setSelectionFeather,
     selectionOffset,
     setSelectionOffset,
     marqueeSubTool,
@@ -595,6 +588,7 @@ export function useImageEditorController() {
     handleMouseDown,
     hasTextDraft,
     layers,
+    layerCanvasesRef,
     screenToImage,
     startEditingTextLayer,
     startTextAt,
@@ -628,12 +622,19 @@ export function useImageEditorController() {
 
   const { guideDragPreview, handleGuideDragStateChange } = useGuideDragPreview();
 
+  // Stable identity so useCanvasRendering's render callback only recreates
+  // when the hidden layer actually changes.
+  const hiddenLayerIds = useMemo(
+    () => (textDraft?.layerId ? [textDraft.layerId] : []),
+    [textDraft?.layerId]
+  );
+
   const { requestRender } = useCanvasRendering({
     layerCanvasesRef,
     floatingLayerRef,
     layers,
     activeLayerId,
-    hiddenLayerIds: textDraft?.layerId ? [textDraft.layerId] : [],
+    hiddenLayerIds,
     cropArea,
     canvasExpandMode,
     mousePos,

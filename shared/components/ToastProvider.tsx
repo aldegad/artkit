@@ -252,9 +252,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [controller]);
 
   useEffect(() => {
+    const dismissTimers = dismissTimersRef.current;
     return () => {
-      dismissTimersRef.current.forEach((timer) => clearTimeout(timer));
-      dismissTimersRef.current.clear();
+      dismissTimers.forEach((timer) => clearTimeout(timer));
+      dismissTimers.clear();
     };
   }, []);
 

@@ -134,7 +134,10 @@ export default function AnimationPreviewContent() {
     return max;
   }, [trackEnabledIndicesMap]);
 
-  const activeEnabledIndices = trackEnabledIndicesMap.get(activeTrackId ?? "") ?? [];
+  const activeEnabledIndices = useMemo(
+    () => trackEnabledIndicesMap.get(activeTrackId ?? "") ?? [],
+    [trackEnabledIndicesMap, activeTrackId]
+  );
   const currentVisualIndex = activeEnabledIndices.indexOf(currentFrameIndex);
 
   const enabledTracks = useMemo(
@@ -364,7 +367,7 @@ export default function AnimationPreviewContent() {
     // Ensure first paint after autosave restore even if a render was requested
     // before the scheduler render function was registered.
     requestRender();
-  }, [setRenderFn, getAnimVpZoom, requestRender, isEditMode, toolMode, cropArea]);
+  }, [setRenderFn, getAnimVpZoom, requestRender, isEditMode, toolMode, cropArea, magicWandMaskCanvasRef, magicWandSelectionRef]);
 
   // Subscribe viewport changes -> render
   useEffect(() => {
@@ -594,6 +597,8 @@ export default function AnimationPreviewContent() {
       ensureDabBufferCanvas,
       invalidateAiSelectionCache,
       pressureEnabled,
+      magicWandMaskCanvasRef,
+      magicWandSelectionRef,
     ],
   );
 

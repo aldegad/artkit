@@ -77,7 +77,7 @@ export function useImageResampleActions(
       height: clampResampleDimension(height),
       isSwapped,
     };
-  }, [canvasSize.width, canvasSize.height, rotation]);
+  }, [canvasSize, rotation]);
 
   const openResampleModal = useCallback(() => {
     if (layers.length === 0 || canvasSize.width <= 0 || canvasSize.height <= 0) {

@@ -183,7 +183,7 @@ export default function FramePreviewContent() {
         });
       }
     });
-  }, [setRenderFn, getFrameVpZoom]);
+  }, [setRenderFn, getFrameVpZoom, magicWandMaskCanvasRef, magicWandSelectionRef]);
 
   useEffect(() => {
     return onFrameViewportChange(() => {
@@ -307,6 +307,8 @@ export default function FramePreviewContent() {
       ensureDabBufferCanvas,
       invalidateAiSelectionCache,
       pressureEnabled,
+      magicWandMaskCanvasRef,
+      magicWandSelectionRef,
     ],
   );
 

@@ -217,7 +217,6 @@ export function renderTextLayerToCanvas(
   const height = Math.max(1, Math.round(textData.height * pixelScale));
   const fontSize = Math.max(1, textData.fontSize * pixelScale);
   const paddingX = TEXT_LAYER_PADDING_X * pixelScale;
-  const paddingTop = TEXT_LAYER_PADDING_TOP * pixelScale;
   const letterSpacing = getResolvedLetterSpacing(textData) * pixelScale;
   const strokeWidth = getResolvedStrokeWidth(textData) * pixelScale;
 
