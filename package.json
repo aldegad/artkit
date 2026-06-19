@@ -1,6 +1,6 @@
 {
   "name": "artkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A web-based graphics editor for sprites, pixel art, and SVG",
   "private": true,
   "license": "Apache-2.0",
