@@ -2,12 +2,23 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useLanguage } from "@/shared/contexts";
-import { ImageDropZone, Select, HeaderContent, Scrollbar } from "@/shared/components";
+import {
+  ImageDropZone,
+  Select,
+  HeaderContent,
+  Scrollbar,
+  showErrorToast,
+} from "@/shared/components";
 import { PlusIcon, FlipIcon, RotateIcon } from "@/shared/components/icons";
 import { downloadBlob } from "@/shared/utils/download";
 import { createSvgBlobFromCanvas } from "@/shared/utils/svgImage";
 import { trackEvent } from "@/shared/utils/analytics";
 import { OutputFormat, ImageFile, formatBytes } from "@/domains/converter";
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return "Image conversion failed.";
+}
 
 export default function ImageConverter() {
   const { t } = useLanguage();
@@ -18,6 +29,7 @@ export default function ImageConverter() {
   const [maxSidePx, setMaxSidePx] = useState(1024);
   const [isConverting, setIsConverting] = useState(false);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [conversionError, setConversionError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openFilePicker = useCallback(() => {
@@ -150,59 +162,64 @@ export default function ImageConverter() {
 
   const convertImage = useCallback(
     async (image: ImageFile): Promise<ImageFile> => {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-          const rotation = normalizeRotation(image.rotation);
-          const isQuarterTurn = rotation % 180 !== 0;
-          const transformedWidth = isQuarterTurn ? img.height : img.width;
-          const transformedHeight = isQuarterTurn ? img.width : img.height;
-          const targetSize = getTargetSize(transformedWidth, transformedHeight);
-          const canvas = document.createElement("canvas");
-          canvas.width = targetSize.width;
-          canvas.height = targetSize.height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            resolve(image);
-            return;
-          }
+          try {
+            const rotation = normalizeRotation(image.rotation);
+            const isQuarterTurn = rotation % 180 !== 0;
+            const transformedWidth = isQuarterTurn ? img.height : img.width;
+            const transformedHeight = isQuarterTurn ? img.width : img.height;
+            const targetSize = getTargetSize(transformedWidth, transformedHeight);
+            const canvas = document.createElement("canvas");
+            canvas.width = targetSize.width;
+            canvas.height = targetSize.height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              reject(new Error(`Failed to create canvas context for "${image.file.name}".`));
+              return;
+            }
 
-          const drawWidth = isQuarterTurn ? targetSize.height : targetSize.width;
-          const drawHeight = isQuarterTurn ? targetSize.width : targetSize.height;
+            const drawWidth = isQuarterTurn ? targetSize.height : targetSize.width;
+            const drawHeight = isQuarterTurn ? targetSize.width : targetSize.height;
 
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
-          ctx.save();
-          ctx.translate(targetSize.width / 2, targetSize.height / 2);
-          ctx.rotate((rotation * Math.PI) / 180);
-          ctx.scale(image.flipX ? -1 : 1, 1);
-          ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-          ctx.restore();
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.save();
+            ctx.translate(targetSize.width / 2, targetSize.height / 2);
+            ctx.rotate((rotation * Math.PI) / 180);
+            ctx.scale(image.flipX ? -1 : 1, 1);
+            ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            ctx.restore();
 
-          const mimeType =
-            outputFormat === "webp"
-              ? "image/webp"
-              : outputFormat === "jpeg"
-                ? "image/jpeg"
-                : "image/png";
+            const mimeType =
+              outputFormat === "webp"
+                ? "image/webp"
+                : outputFormat === "jpeg"
+                  ? "image/jpeg"
+                  : "image/png";
 
-          if (outputFormat === "svg") {
-            const blob = createSvgBlobFromCanvas(canvas);
-            const convertedUrl = URL.createObjectURL(blob);
-            resolve({
-              ...image,
-              convertedUrl,
-              convertedSize: blob.size,
-              convertedWidth: targetSize.width,
-              convertedHeight: targetSize.height,
-              convertedBlob: blob,
-            });
-            return;
-          }
+            if (outputFormat === "svg") {
+              const blob = createSvgBlobFromCanvas(canvas);
+              const convertedUrl = URL.createObjectURL(blob);
+              resolve({
+                ...image,
+                convertedUrl,
+                convertedSize: blob.size,
+                convertedWidth: targetSize.width,
+                convertedHeight: targetSize.height,
+                convertedBlob: blob,
+              });
+              return;
+            }
 
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
+            canvas.toBlob(
+              (blob) => {
+                if (!blob) {
+                  reject(new Error(`Failed to encode "${image.file.name}" as ${outputFormat}.`));
+                  return;
+                }
+
                 const convertedUrl = URL.createObjectURL(blob);
                 resolve({
                   ...image,
@@ -212,13 +229,16 @@ export default function ImageConverter() {
                   convertedHeight: targetSize.height,
                   convertedBlob: blob,
                 });
-              } else {
-                resolve(image);
-              }
-            },
-            mimeType,
-            quality,
-          );
+              },
+              mimeType,
+              quality,
+            );
+          } catch (error) {
+            reject(error);
+          }
+        };
+        img.onerror = () => {
+          reject(new Error(`Failed to load "${image.file.name}" for conversion.`));
         };
         img.src = image.originalUrl;
       });
@@ -235,13 +255,25 @@ export default function ImageConverter() {
       resize_enabled: resizeEnabled,
     });
     setIsConverting(true);
-    const converted = await Promise.all(images.map(convertImage));
-    images.forEach((image) => {
-      if (image.convertedUrl) URL.revokeObjectURL(image.convertedUrl);
-    });
-    setImages(converted);
-    setIsConverting(false);
-  }, [images, convertImage, outputFormat, resizeEnabled]);
+    setConversionError(null);
+    try {
+      const converted = await Promise.all(images.map(convertImage));
+      images.forEach((image) => {
+        if (image.convertedUrl) URL.revokeObjectURL(image.convertedUrl);
+      });
+      setImages(converted);
+    } catch (error) {
+      const message = toErrorMessage(error);
+      console.error("[ImageConverter] Conversion failed:", error);
+      setConversionError(message);
+      showErrorToast({
+        title: t.exportFailed,
+        description: message,
+      });
+    } finally {
+      setIsConverting(false);
+    }
+  }, [images, convertImage, outputFormat, resizeEnabled, t.exportFailed]);
 
   const downloadImage = useCallback(
     (image: ImageFile) => {
@@ -492,6 +524,15 @@ export default function ImageConverter() {
         )}
 
         </div>
+
+      {conversionError && (
+        <div
+          role="alert"
+          className="px-4 py-2 bg-accent-danger/10 border-b border-accent-danger/30 text-sm text-accent-danger"
+        >
+          {conversionError}
+        </div>
+      )}
 
       {/* Main Content */}
       <div

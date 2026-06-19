@@ -15,6 +15,10 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   frameInterpolationQuality: "fast",
 };
 
+function reportAISettingsStorageIssue(action: string, error: unknown) {
+  console.warn(`[AI Settings] ${action}. Falling back to default settings.`, error);
+}
+
 function sanitizeQuality(value: unknown): BackgroundRemovalQuality {
   if (value === "fast" || value === "high" || value === "balanced") return value;
   return DEFAULT_AI_SETTINGS.backgroundRemovalQuality;
@@ -43,14 +47,16 @@ export function readAISettings(): AISettings {
   let raw: string | null = null;
   try {
     raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
-  } catch {
+  } catch (error) {
+    reportAISettingsStorageIssue("Failed to read localStorage", error);
     return getDefaultAISettings();
   }
   if (!raw) return getDefaultAISettings();
 
   try {
     return sanitizeSettings(JSON.parse(raw));
-  } catch {
+  } catch (error) {
+    reportAISettingsStorageIssue("Failed to parse stored settings", error);
     return getDefaultAISettings();
   }
 }
@@ -65,8 +71,8 @@ export function updateAISettings(partial: Partial<AISettings>): AISettings {
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(sanitized));
-    } catch {
-      // Ignore storage failures (private mode / quota limits).
+    } catch (error) {
+      console.warn("[AI Settings] Failed to persist settings.", error);
     }
   }
 
