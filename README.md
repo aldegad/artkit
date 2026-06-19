@@ -17,12 +17,12 @@ A web-based graphics editor for sprites, pixel art, and SVG.
 - **Sound Editor** - Convert audio formats and trim/cut audio files
 - **Project Management** - Save/load projects with IndexedDB
 - **Dark/Light Theme** - System-aware theme support
+- **Layer Support** - Multi-layer editing with a layers panel, visibility/lock/opacity, and alpha masks
 
 ### Planned
 - SVG editing
 - Pixel art drawing
 - Tablet pressure-sensitive brushes
-- Layer support
 
 ## Getting Started
 
