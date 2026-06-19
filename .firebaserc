@@ -1,10 +1,15 @@
 {
-  "projects": {},
+  "projects": {
+    "default": "tools-b1c33"
+  },
   "targets": {
     "tools-b1c33": {
       "storage": {},
       "hosting": {
         "artkit": [
+          "artkit"
+        ],
+        "default-redirect": [
           "artkit"
         ]
       }

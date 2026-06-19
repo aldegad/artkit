@@ -1,0 +1,37 @@
+{
+  "hosting": [
+    {
+      "target": "default-redirect",
+      "public": "public-redirect",
+      "ignore": [
+        "firebase.json",
+        "firebase.default-redirect.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        }
+      ],
+      "redirects": [
+        {
+          "source": "/",
+          "destination": "https://artkit.kumastudio.app/",
+          "type": 301
+        },
+        {
+          "source": "/:path*",
+          "destination": "https://artkit.kumastudio.app/:path*",
+          "type": 301
+        }
+      ]
+    }
+  ]
+}
