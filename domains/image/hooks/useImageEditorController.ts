@@ -1,7 +1,6 @@
 "use client";
 
-import { createElement, useCallback, useMemo, useRef, useState } from "react";
-import { useCanvasViewport } from "@/shared/hooks/useCanvasViewport";
+import { useCallback, useMemo, useRef } from "react";
 import { useSaveProjectDialog } from "@/shared/hooks";
 import { useLanguage, useAuth } from "@/shared/contexts";
 import { getStorageProvider } from "../services/projectStorage";
@@ -10,7 +9,6 @@ import {
   useEditorRefs,
   useEditorState,
 } from "../contexts";
-import { VIEWPORT } from "../constants";
 import { useHistory, HistoryAdapter } from "./useHistory";
 import { useLayerManagement } from "./useLayerManagement";
 import { useBrushTool } from "./useBrushTool";
@@ -22,7 +20,6 @@ import { useTextTool, TEXT_FONT_OPTIONS } from "./useTextTool";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 import { useMouseHandlers } from "./useMouseHandlers";
 import { useCanvasRendering } from "./useCanvasRendering";
-import { useBackgroundRemoval } from "./useBackgroundRemoval";
 import { useWatermarkRemoval } from "./useWatermarkRemoval";
 import { useTransformTool } from "./useTransformTool";
 import { useGuideTool } from "./useGuideTool";
@@ -41,7 +38,6 @@ import {
 } from "./useEditorHistoryAdapter";
 import { useToolModeGuard } from "./useToolModeGuard";
 import { useEditorToolRuntime } from "./useEditorToolRuntime";
-import { useViewportBridge } from "./useViewportBridge";
 import { useGuideDragPreview } from "./useGuideDragPreview";
 import { useRotateMenu } from "./useRotateMenu";
 import { useEditorPanelRegistration } from "./useEditorPanelRegistration";
@@ -55,26 +51,17 @@ import { useImageEditorUiActions } from "./useImageEditorUiActions";
 import { useImageEditorToolbarProps } from "./useImageEditorToolbarProps";
 import { useImageResampleActions } from "./useImageResampleActions";
 import { useImageUpscaleActions } from "./useImageUpscaleActions";
-import { getDisplayDimensions as getRotatedDisplayDimensions } from "../utils/coordinateSystem";
-import { getLayerContentBounds } from "../utils/layerContentBounds";
-import { drawLayerWithOptionalAlphaMask } from "@/shared/utils/layerAlphaMask";
-import { TextEditorCanvasOverlay } from "../components/TextEditorCanvasOverlay";
-import { getTextLayerHitType, isPointInsideTextLayer } from "../utils/textLayer";
-import {
-  computeMagicWandSelectionFromAlphaMask,
-  toMagicWandBoundsMask,
-} from "@/shared/utils/magicWand";
+import { useDisplayDimensions } from "./useDisplayDimensions";
+import { useBackgroundRemovalControls } from "./useBackgroundRemovalControls";
+import { useSelectionOps } from "./useSelectionOps";
+import { useTextLayerEditing } from "./useTextLayerEditing";
+import { useLayerTransform } from "./useLayerTransform";
+import { useLayerTransformActions } from "./useLayerTransformActions";
+import { useEditorHistory } from "./useEditorHistory";
+import { useProjectSaveDetails } from "./useProjectSaveDetails";
 import {
   useMagicWandSelectionAction,
-  useClearSelectionPixelsAction,
 } from "./useImageSelectionActions";
-import type {
-  BackgroundRemovalQuality,
-} from "@/shared/ai/backgroundRemoval";
-import { readAISettings, updateAISettings } from "@/shared/ai/settings";
-import { collectProjectGroupNames } from "@/shared/utils/projectGroups";
-
-const LAYER_PIXEL_SELECTION_ALPHA_THRESHOLD = 16;
 
 export function useImageEditorController() {
   const { t } = useLanguage();
@@ -151,14 +138,6 @@ export function useImageEditorController() {
     submitDialog: submitSaveDialog,
   } = useSaveProjectDialog();
   const historyAdapterRef = useRef<HistoryAdapter<EditorHistorySnapshot> | null>(null);
-  const [bgRemovalQuality, setBgRemovalQuality] = useState<BackgroundRemovalQuality>(
-    () => readAISettings().backgroundRemovalQuality
-  );
-
-  const handleBgRemovalQualityChange = useCallback((quality: BackgroundRemovalQuality) => {
-    setBgRemovalQuality(quality);
-    updateAISettings({ backgroundRemovalQuality: quality });
-  }, []);
 
   const { saveToHistory, undo, redo, clearHistory, canUndo, canRedo } = useHistory({
     editCanvasRef,
@@ -166,25 +145,10 @@ export function useImageEditorController() {
     maxHistory: 50,
   });
 
-  const displayDimensions = useMemo(
-    () => getRotatedDisplayDimensions(canvasSize, rotation),
-    [canvasSize, rotation]
-  );
-  const getDisplayDimensions = useCallback(() => displayDimensions, [displayDimensions]);
-  const viewport = useCanvasViewport({
+  const { getDisplayDimensions, canvasRefCallback } = useDisplayDimensions({
+    canvasSize,
+    rotation,
     containerRef,
-    canvasRef,
-    contentSize: displayDimensions,
-    config: {
-      origin: "center",
-      minZoom: VIEWPORT.MIN_ZOOM,
-      maxZoom: VIEWPORT.MAX_ZOOM,
-      wheelZoomFactor: VIEWPORT.WHEEL_ZOOM_FACTOR,
-    },
-  });
-
-  const { canvasRefCallback } = useViewportBridge({
-    viewport,
     canvasRef,
     zoom,
     pan,
@@ -425,15 +389,12 @@ export function useImageEditorController() {
     rasterizeActiveTextLayer,
   });
 
-  const handleApplyTransform = useCallback(() => {
-    const transformedLayerIds = (
-      transformState.layerIds.length > 0
-        ? transformState.layerIds
-        : (transformState.layerId ? [transformState.layerId] : [])
-    );
-    applyTransform();
-    clearTextLayerMetadata(transformedLayerIds);
-  }, [applyTransform, clearTextLayerMetadata, transformState.layerId, transformState.layerIds]);
+  const { handleApplyTransform } = useLayerTransform({
+    transformLayerId: transformState.layerId,
+    transformLayerIds: transformState.layerIds,
+    applyTransform,
+    clearTextLayerMetadata,
+  });
 
   const {
     showTransformDiscardConfirm,
@@ -531,95 +492,6 @@ export function useImageEditorController() {
     selectedLayerIds,
   });
 
-  const handleTextCanvasPointerDown = useCallback((e: Parameters<typeof handleMouseDown>[0]) => {
-    if ((toolMode !== "text" && toolMode !== "move") || e.button !== 0) {
-      handleMouseDown(e);
-      return;
-    }
-
-    const mousePos = getMousePos(e);
-    const imagePos = screenToImage(mousePos.x, mousePos.y);
-
-    if (hasTextDraft) {
-      applyTextDraft();
-    }
-
-    const hitTextLayer = [...layers]
-      .sort((a, b) => b.zIndex - a.zIndex)
-      .find((layer) => !layer.locked && isPointInsideTextLayer(layer, imagePos));
-
-    if (hitTextLayer) {
-      const hitType = getTextLayerHitType(
-        hitTextLayer,
-        imagePos,
-        layerCanvasesRef.current.get(hitTextLayer.id) || null,
-      );
-
-      if (hitType === "content") {
-        if (toolMode !== "text") {
-          handleToolModeChange("text");
-        }
-        startEditingTextLayer(hitTextLayer.id);
-        return;
-      }
-
-      if (toolMode === "move") {
-        handleMouseDown(e);
-        return;
-      }
-
-      if (toolMode !== "text") {
-        handleToolModeChange("text");
-      }
-      startEditingTextLayer(hitTextLayer.id);
-      return;
-    }
-
-    if (toolMode !== "text") {
-      handleMouseDown(e);
-      return;
-    }
-
-    startTextAt(imagePos);
-  }, [
-    applyTextDraft,
-    getMousePos,
-    handleToolModeChange,
-    handleMouseDown,
-    hasTextDraft,
-    layers,
-    layerCanvasesRef,
-    screenToImage,
-    startEditingTextLayer,
-    startTextAt,
-    toolMode,
-  ]);
-
-  const handleCanvasDoubleClick = useCallback((e: Parameters<typeof getMousePos>[0]) => {
-    const mousePos = getMousePos(e);
-    const imagePos = screenToImage(mousePos.x, mousePos.y);
-    const hitTextLayer = [...layers]
-      .sort((a, b) => b.zIndex - a.zIndex)
-      .find((layer) => !layer.locked && isPointInsideTextLayer(layer, imagePos));
-
-    if (!hitTextLayer) return;
-
-    if (hasTextDraft) {
-      applyTextDraft();
-    }
-
-    handleToolModeChange("text");
-    startEditingTextLayer(hitTextLayer.id);
-  }, [
-    applyTextDraft,
-    getMousePos,
-    handleToolModeChange,
-    hasTextDraft,
-    layers,
-    screenToImage,
-    startEditingTextLayer,
-  ]);
-
   const { guideDragPreview, handleGuideDragStateChange } = useGuideDragPreview();
 
   // Stable identity so useCanvasRendering's render callback only recreates
@@ -672,17 +544,11 @@ export function useImageEditorController() {
     getDisplayDimensions,
   });
 
-  const handleApplyTextDraft = useCallback(() => {
-    applyTextDraft();
-    requestRender();
-  }, [applyTextDraft, requestRender]);
-
-  const handleCancelTextDraft = useCallback(() => {
-    cancelTextDraft();
-    requestRender();
-  }, [cancelTextDraft, requestRender]);
-
-  const clearSelectionPixels = useClearSelectionPixelsAction({
+  const {
+    clearSelectionPixels,
+    invertSelection,
+    selectLayerPixelsToSelection,
+  } = useSelectionOps({
     selection,
     selectionMask,
     selectionFeather,
@@ -691,199 +557,15 @@ export function useImageEditorController() {
     floatingLayerRef,
     saveToHistory,
     requestRender,
-  });
-
-  const invertSelection = useCallback(() => {
-    const { width, height } = getDisplayDimensions();
-    if (width <= 0 || height <= 0) return;
-
-    const fullMask = new Uint8Array(width * height);
-    const writeMaskPixel = (x: number, y: number, alpha: number) => {
-      if (x < 0 || y < 0 || x >= width || y >= height) return;
-      const idx = y * width + x;
-      if (alpha > fullMask[idx]) {
-        fullMask[idx] = alpha;
-      }
-    };
-
-    if (selection) {
-      if (selectionMask) {
-        for (let y = 0; y < selectionMask.height; y += 1) {
-          for (let x = 0; x < selectionMask.width; x += 1) {
-            const alpha = selectionMask.mask[y * selectionMask.width + x];
-            if (alpha <= 0) continue;
-            writeMaskPixel(selectionMask.x + x, selectionMask.y + y, alpha);
-          }
-        }
-      } else {
-        const minX = Math.max(0, Math.floor(selection.x));
-        const minY = Math.max(0, Math.floor(selection.y));
-        const maxX = Math.min(width, Math.ceil(selection.x + selection.width));
-        const maxY = Math.min(height, Math.ceil(selection.y + selection.height));
-        for (let y = minY; y < maxY; y += 1) {
-          for (let x = minX; x < maxX; x += 1) {
-            writeMaskPixel(x, y, 255);
-          }
-        }
-      }
-    } else {
-      fullMask.fill(255);
-    }
-
-    for (let i = 0; i < fullMask.length; i += 1) {
-      fullMask[i] = 255 - fullMask[i];
-    }
-
-    let minX = width;
-    let minY = height;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        if (fullMask[y * width + x] === 0) continue;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-
-    if (maxX < minX || maxY < minY) {
-      setSelection(null);
-      setSelectionMask(null);
-      setLassoPath(null);
-      setIsMovingSelection(false);
-      setIsDuplicating(false);
-      floatingLayerRef.current = null;
-      requestRender();
-      return;
-    }
-
-    const maskWidth = maxX - minX + 1;
-    const maskHeight = maxY - minY + 1;
-    const nextMask = new Uint8Array(maskWidth * maskHeight);
-    for (let y = 0; y < maskHeight; y += 1) {
-      const srcStart = (minY + y) * width + minX;
-      nextMask.set(fullMask.subarray(srcStart, srcStart + maskWidth), y * maskWidth);
-    }
-
-    setSelection({
-      x: minX,
-      y: minY,
-      width: maskWidth,
-      height: maskHeight,
-    });
-    setSelectionMask({
-      x: minX,
-      y: minY,
-      width: maskWidth,
-      height: maskHeight,
-      mask: nextMask,
-    });
-    setLassoPath(null);
-    setIsMovingSelection(false);
-    setIsDuplicating(false);
-    floatingLayerRef.current = null;
-    requestRender();
-  }, [
     getDisplayDimensions,
-    selection,
-    selectionMask,
     setSelection,
     setSelectionMask,
     setLassoPath,
     setIsMovingSelection,
     setIsDuplicating,
-    floatingLayerRef,
-    requestRender,
-  ]);
-
-  const selectLayerPixelsToSelection = useCallback((layerId: string) => {
-    const clearSelectionState = () => {
-      setSelection(null);
-      setSelectionMask(null);
-      setLassoPath(null);
-      setIsMovingSelection(false);
-      setIsDuplicating(false);
-      floatingLayerRef.current = null;
-      requestRender();
-    };
-
-    const layer = layers.find((item) => item.id === layerId);
-    const layerCanvas = layerCanvasesRef.current.get(layerId);
-    if (!layer || !layerCanvas || layerCanvas.width <= 0 || layerCanvas.height <= 0) {
-      clearSelectionState();
-      return;
-    }
-
-    const sampleCanvas = document.createElement("canvas");
-    sampleCanvas.width = layerCanvas.width;
-    sampleCanvas.height = layerCanvas.height;
-    const sampleCtx = sampleCanvas.getContext("2d");
-    if (!sampleCtx) {
-      clearSelectionState();
-      return;
-    }
-
-    drawLayerWithOptionalAlphaMask(sampleCtx, layerCanvas, 0, 0);
-    const imageData = sampleCtx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
-    let seedIndex = -1;
-    for (let i = 0; i < imageData.data.length; i += 4) {
-      if (imageData.data[i + 3] > LAYER_PIXEL_SELECTION_ALPHA_THRESHOLD) {
-        seedIndex = i / 4;
-        break;
-      }
-    }
-
-    if (seedIndex < 0) {
-      clearSelectionState();
-      return;
-    }
-
-    const seedX = seedIndex % layerCanvas.width;
-    const seedY = Math.floor(seedIndex / layerCanvas.width);
-    const layerSelection = computeMagicWandSelectionFromAlphaMask(imageData, seedX, seedY, {
-      alphaThreshold: LAYER_PIXEL_SELECTION_ALPHA_THRESHOLD,
-      connectedOnly: false,
-    });
-
-    if (!layerSelection) {
-      clearSelectionState();
-      return;
-    }
-
-    const mask = toMagicWandBoundsMask(layerSelection);
-    const layerPosX = layer.position?.x || 0;
-    const layerPosY = layer.position?.y || 0;
-    setSelection({
-      x: mask.x + layerPosX,
-      y: mask.y + layerPosY,
-      width: mask.width,
-      height: mask.height,
-    });
-    setSelectionMask({
-      x: mask.x + layerPosX,
-      y: mask.y + layerPosY,
-      width: mask.width,
-      height: mask.height,
-      mask: mask.mask,
-    });
-    setLassoPath(null);
-    setIsMovingSelection(false);
-    setIsDuplicating(false);
-    floatingLayerRef.current = null;
-    requestRender();
-  }, [
     layers,
     layerCanvasesRef,
-    setSelection,
-    setSelectionMask,
-    setLassoPath,
-    setIsMovingSelection,
-    setIsDuplicating,
-    floatingLayerRef,
-    requestRender,
-  ]);
+  });
 
   const layerContextValue = useEditorLayerContextValue({
     layers,
@@ -927,20 +609,33 @@ export function useImageEditorController() {
     addLayer,
   });
 
-  const handleUndo = useCallback(() => {
-    undo();
-    requestRender();
-  }, [undo, requestRender]);
+  const {
+    handleUndo,
+    handleRedo,
+    canUndoNow,
+    canRedoNow,
+  } = useEditorHistory({
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    requestRender,
+  });
 
-  const handleRedo = useCallback(() => {
-    redo();
-    requestRender();
-  }, [redo, requestRender]);
-
-  const handleResizeSelectedLayersToSmallest = useCallback(() => {
-    resizeSelectedLayersToSmallest();
-    requestRender();
-  }, [resizeSelectedLayersToSmallest, requestRender]);
+  const {
+    canResizeSelectedLayersToSmallest,
+    canObjectFit,
+    handleResizeSelectedLayersToSmallest,
+    handleObjectFitToActiveLayer,
+  } = useLayerTransformActions({
+    selectedLayerIds,
+    resizeSelectedLayersToSmallest,
+    requestRender,
+    activeLayerId,
+    layers,
+    layerCanvasesRef,
+    fitToObjectBounds,
+  });
 
   const { loadImageFile, loadImageFiles, handleFileSelect, handleDrop, handleDragOver } = useImageImport({
     layersCount: layers.length,
@@ -990,17 +685,18 @@ export function useImageEditorController() {
   });
 
   const {
+    bgRemovalQuality,
+    handleBgRemovalQualityChange,
     isRemovingBackground,
     bgRemovalProgress,
     bgRemovalStatus,
     handleRemoveBackground,
-  } = useBackgroundRemoval({
+  } = useBackgroundRemovalControls({
     layers,
     activeLayerId,
     selection,
     layerCanvasesRef,
     saveToHistory,
-    quality: bgRemovalQuality,
     translations: {
       backgroundRemovalFailed: t.backgroundRemovalFailed,
     },
@@ -1082,6 +778,37 @@ export function useImageEditorController() {
   });
 
   const displaySize = getDisplayDimensions();
+  const {
+    handleTextCanvasPointerDown,
+    handleCanvasDoubleClick,
+    handleApplyTextDraft,
+    handleCancelTextDraft,
+    textOverlay,
+  } = useTextLayerEditing({
+    toolMode,
+    layers,
+    layerCanvasesRef,
+    canvasRef,
+    displaySize,
+    zoom,
+    pan,
+    textDraft,
+    textStyle,
+    hasTextDraft,
+    getMousePos,
+    screenToImage,
+    handleMouseDown,
+    handleToolModeChange,
+    startEditingTextLayer,
+    startTextAt,
+    applyTextDraft,
+    cancelTextDraft,
+    setTextDraftPosition,
+    setTextDraftText,
+    setTextDraftSize,
+    requestRender,
+  });
+
   const canvasContextValue = useEditorCanvasContextValue({
     containerRef,
     canvasRefCallback,
@@ -1163,16 +890,10 @@ export function useImageEditorController() {
     },
   });
 
-  const requestProjectSaveDetails = useCallback((request: {
-    mode: "save" | "saveAs";
-    name: string;
-    projectGroup?: string;
-  }) => {
-    return requestSaveDetails({
-      ...request,
-      existingProjectGroups: collectProjectGroupNames(savedProjects),
-    });
-  }, [requestSaveDetails, savedProjects]);
+  const requestProjectSaveDetails = useProjectSaveDetails({
+    requestSaveDetails,
+    savedProjects,
+  });
 
   const { saveProject: handleSaveProject, saveAsProject: handleSaveAsProject, isSaving } = useEditorSave({
     storageProvider,
@@ -1213,27 +934,7 @@ export function useImageEditorController() {
   });
 
   const hasLayers = layers.length > 0;
-  const canUndoNow = canUndo();
-  const canRedoNow = canRedo();
   const canResample = hasLayers && canvasSize.width > 0 && canvasSize.height > 0;
-  const canResizeSelectedLayersToSmallest = selectedLayerIds.length > 1;
-  const canObjectFit = activeLayerId !== null;
-  const handleObjectFitToActiveLayer = useCallback(() => {
-    if (!activeLayerId) return;
-    const activeLayer = layers.find((layer) => layer.id === activeLayerId);
-    if (!activeLayer) return;
-
-    const activeCanvas = layerCanvasesRef.current.get(activeLayerId) || null;
-    const bounds = getLayerContentBounds(activeLayer, activeCanvas);
-    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
-
-    fitToObjectBounds({
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-    });
-  }, [activeLayerId, layers, layerCanvasesRef, fitToObjectBounds]);
 
   const {
     isResampling,
@@ -1545,19 +1246,7 @@ export function useImageEditorController() {
     handleKeepCloud,
     handleKeepLocal,
     handleCancelSync,
-    textOverlay: createElement(TextEditorCanvasOverlay, {
-      canvasRef,
-      displaySize,
-      zoom,
-      pan,
-      draft: textDraft,
-      styleSettings: textStyle,
-      onChangePosition: setTextDraftPosition,
-      onChangeText: setTextDraftText,
-      onChangeSize: setTextDraftSize,
-      onApply: handleApplyTextDraft,
-      onCancel: handleCancelTextDraft,
-    }),
+    textOverlay,
     showNewCanvasChoiceModal,
     setShowNewCanvasChoiceModal,
     showBlankCanvasSizeModal,
