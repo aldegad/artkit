@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLanguage, useAuth } from "@/shared/contexts";
 import {
   HeaderContent,
   SaveToast,
@@ -11,7 +9,6 @@ import {
   CanvasCropControls,
   PanLockFloatingButton,
   SaveProjectModal,
-  showErrorToast,
 } from "@/shared/components";
 import {
   BrushIcon,
@@ -29,13 +26,7 @@ import {
   TimelineProvider,
   MaskProvider,
   VideoLayoutProvider,
-  useVideoState,
-  useVideoRefs,
-  useTimeline,
-  useMask,
   useVideoLayout,
-  useVideoSave,
-  useVideoExport,
   VideoMenuBar,
   VideoToolbar,
   VideoCanvasSizeEditor,
@@ -46,86 +37,9 @@ import {
   VideoSplitContainer,
   VideoFloatingWindows,
   VideoProjectListModal,
-  registerVideoPanelComponent,
-  clearVideoPanelComponents,
-  VideoPreviewPanelContent,
-  VideoTimelinePanelContent,
-  SUPPORTED_VIDEO_FORMATS,
-  SUPPORTED_IMAGE_FORMATS,
-  SUPPORTED_AUDIO_FORMATS,
-  TIMELINE,
-  MASK_BRUSH,
-  type Clip,
-  type ImageClip,
-  createBlankCanvasOverlayDataUrl,
 } from "@/domains/video";
-import {
-  useVideoKeyboardShortcuts,
-  useMediaImport,
-  useCaptureFrameToImageLayer,
-  useVideoProjectLibrary,
-  useVideoClipboardActions,
-  useVideoCropActions,
-  usePreviewViewportState,
-  useVideoToolModeHandlers,
-  useGapInterpolationActions,
-  useVideoInpaintActions,
-  analyzeGapInterpolationSelection,
-  useMaskRestoreSync,
-  useVideoFileActions,
-  useSelectedClipAudioActions,
-  useVideoEditActions,
-} from "@/domains/video/hooks";
-import {
-  getClipPositionKeyframes,
-} from "@/domains/video/utils/clipTransformKeyframes";
-import {
-  createVideoMenuTranslations,
-  createVideoToolbarTranslations,
-} from "@/domains/video/utils/editorTranslations";
-import { getVideoStorageProvider } from "@/domains/video/services/videoProjectStorage";
-import { LayoutNode, isSplitNode, isPanelNode } from "@/shared/types/layout";
 import { ASPECT_RATIOS, type AspectRatio } from "@/shared/types/aspectRatio";
-import {
-  type RifeInterpolationQuality,
-} from "@/shared/ai/frameInterpolation";
-import { readAISettings, updateAISettings } from "@/shared/ai/settings";
-import { useHorizontalWheelCapture } from "@/shared/hooks";
-import { useSaveProjectDialog } from "@/shared/hooks";
-import { collectProjectGroupNames } from "@/shared/utils/projectGroups";
-
-function sanitizeFileName(name: string): string {
-  return name.trim().replace(/[^a-zA-Z0-9-_ ]+/g, "").replace(/\s+/g, "-") || "untitled-project";
-}
-
-function findPanelNodeIdByPanelId(node: LayoutNode, panelId: string): string | null {
-  if (isPanelNode(node) && node.panelId === panelId) {
-    return node.id;
-  }
-
-  if (isSplitNode(node)) {
-    for (const child of node.children) {
-      const found = findPanelNodeIdByPanelId(child, panelId);
-      if (found) return found;
-    }
-  }
-
-  return null;
-}
-
-function findValidPositionKeyframeClip(
-  clips: Clip[],
-  selection: { clipId: string; keyframeId: string } | null
-): Clip | null {
-  if (!selection) return null;
-  const clip = clips.find((candidate) => candidate.id === selection.clipId);
-  if (!clip || clip.type === "audio") return null;
-
-  const hasKeyframe = getClipPositionKeyframes(clip).some(
-    (keyframe) => keyframe.id === selection.keyframeId
-  );
-  return hasKeyframe ? clip : null;
-}
+import { useVideoEditorController } from "./_hooks/useVideoEditorController";
 
 function VideoDockableArea() {
   const { layoutState } = useVideoLayout();
@@ -139,713 +53,128 @@ function VideoDockableArea() {
 }
 
 function VideoEditorContent() {
-  const { t } = useLanguage();
-  const { user } = useAuth();
-  const storageProvider = useMemo(() => getVideoStorageProvider(user), [user]);
   const {
+    t,
+    editorRootRef,
+    mediaFileInputRef,
     project,
     projectName,
-    projectGroup,
-    setProject,
     setProjectName,
-    setProjectGroup,
     toolMode,
-    setToolMode,
     selectedClipIds,
     selectedMaskIds,
     selectedPositionKeyframe,
-    setSelectedPositionKeyframe,
-    selectClips,
-    selectMasksForTimeline,
-    deselectAll,
-    togglePlay,
-    pause,
-    seek,
-    setLoopRange,
-    stepForward,
-    stepBackward,
-    playback,
-    clipboardRef,
-    hasClipboard,
-    setHasClipboard,
-    cropArea,
-    setCropArea,
-    canvasExpandMode,
-    setCanvasExpandMode,
+    activeMaskId,
     cropAspectRatio,
     setCropAspectRatio,
+    cropArea,
     lockCropAspect,
     setLockCropAspect,
-    isSpacePanning,
-    setIsSpacePanning,
-    autoKeyframeEnabled,
+    canvasExpandMode,
+    setCanvasExpandMode,
     previewPreRenderEnabled,
     togglePreviewPreRender,
     previewQualityFirstEnabled,
     togglePreviewQualityFirst,
     isPanLocked,
     setIsPanLocked,
-  } = useVideoState();
-  const { previewCanvasRef, previewViewportRef, inpaintMaskCanvasRef } = useVideoRefs();
-  const {
-    tracks,
-    clips,
-    viewState,
-    setZoom,
-    setScrollX,
-    setViewState,
-    addTrack,
-    addImageClip,
-    addCanvasOverlayClip,
-    removeClip,
-    addClips,
-    updateClip,
-    restoreTracks,
-    restoreClips,
-    saveToHistory,
-    undo,
-    redo,
-    clearHistory,
-    canUndo,
-    canRedo,
+    saveDialogState,
+    closeSaveDialog,
+    submitSaveDialog,
     isAutosaveInitialized,
-  } = useTimeline();
-  const {
-    startMaskEdit,
-    isEditingMask,
-    endMaskEdit,
-    activeMaskId,
-    deleteMask,
-    duplicateMask,
-    addMasks,
-    deselectMask,
-    selectMask,
-    restoreMasks,
-    masks: masksMap,
-    updateMaskTime,
-    canUndoMask,
-    canRedoMask,
-    undoMask,
-    redoMask,
-    clearMaskHistory,
-    brushSettings,
-    setBrushSize,
-    hasMaskRegion,
-    requestMaskRegionClear,
-  } = useMask();
-  const {
-    layoutState,
-    isPanelOpen,
-    addPanel,
-    removePanel,
-    openFloatingWindow,
-    closeFloatingWindow,
-    resetLayout,
-    panelHeadersVisible,
-    togglePanelHeaders,
-  } = useVideoLayout();
-
-  const mediaFileInputRef = useRef<HTMLInputElement>(null);
-  const editorRootRef = useRef<HTMLDivElement>(null);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [editingCanvasOverlayClipId, setEditingCanvasOverlayClipId] = useState<string | null>(null);
-  const [videoInterpolationQuality, setVideoInterpolationQuality] = useState<RifeInterpolationQuality>(
-    () => readAISettings().frameInterpolationQuality,
-  );
-
-  const {
-    currentProjectId,
-    setCurrentProjectId,
-    savedProjects,
-    setSavedProjects,
-    storageInfo,
-    setStorageInfo,
-    isProjectListOpen,
-    setIsProjectListOpen,
-    isLoadingProject,
-    loadProgress,
-    projectListOperation,
-    openProjectList,
-    loadProject,
-    deleteProject,
-  } = useVideoProjectLibrary({
-    storageProvider,
-    deleteConfirmLabel: t.deleteConfirm || "Delete this project?",
-    setProjectName,
-    setProjectGroup,
-    setProject,
-    restoreTracks,
-    restoreClips,
-    restoreMasks,
-    setViewState,
-    seek,
-    setLoopRange,
-    toolMode,
-    autoKeyframeEnabled,
-    selectClips,
-    clearHistory,
-    clearMaskHistory,
-  });
-
-  const {
-    dialogState: saveDialogState,
-    requestSaveDetails,
-    closeDialog: closeSaveDialog,
-    submitDialog: submitSaveDialog,
-  } = useSaveProjectDialog();
-  const requestProjectSaveDetails = useCallback((request: {
-    mode: "save" | "saveAs";
-    name: string;
-    projectGroup?: string;
-  }) => {
-    return requestSaveDetails({
-      ...request,
-      existingProjectGroups: collectProjectGroupNames(savedProjects),
-    });
-  }, [requestSaveDetails, savedProjects]);
-
-  const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
-  const playbackRange = useMemo(() => {
-    const durationFromClips = clips.reduce(
-      (max, clip) => Math.max(max, clip.startTime + clip.duration),
-      0
-    );
-    const duration = Math.max(durationFromClips, project.duration, 0.001);
-    const loopStart = Math.max(0, Math.min(playback.loopStart, duration));
-    const hasRange = playback.loopEnd > loopStart + 0.001;
-    const loopEnd = hasRange
-      ? Math.max(loopStart + 0.001, Math.min(playback.loopEnd, duration))
-      : duration;
-    const hasCustomRange = hasRange && (loopStart > 0.001 || loopEnd < duration - 0.001);
-
-    // Don't persist when range is effectively cleared (full range + loop off).
-    if (!playback.loop && !hasCustomRange) return undefined;
-
-    return {
-      loop: playback.loop,
-      loopStart,
-      loopEnd,
-    };
-  }, [clips, project.duration, playback.loop, playback.loopStart, playback.loopEnd]);
-  const projectRef = useRef(project);
-  projectRef.current = project;
-
-  const { saveProject, saveAsProject, isSaving, saveProgress } = useVideoSave({
-    storageProvider,
-    project,
-    projectName,
-    projectGroup,
-    currentProjectId,
-    tracks,
-    clips,
-    masks: masksArray,
-    viewState,
-    currentTime: playback.currentTime,
-    playbackRange,
-    toolMode,
-    autoKeyframeEnabled,
-    selectedClipIds,
-    selectedMaskIds,
-    previewCanvasRef,
-    setProjectName,
-    setProjectGroup,
-    setCurrentProjectId,
-    setSavedProjects,
-    setStorageInfo,
-    isInitialized: isAutosaveInitialized,
-  });
-
-  const handleExportSettled = useCallback((result: { ok: boolean }) => {
-    if (result.ok) {
-      setShowExportModal(false);
-    }
-  }, []);
-
-  const { isExporting, exportProgress, exportVideo: handleExport } = useVideoExport({
-    project,
-    projectName,
-    playback,
-    clips,
-    tracks,
-    masksMap,
-    exportFailedLabel: t.exportFailed,
-    onSettled: handleExportSettled,
-  });
-
-  useEffect(() => {
-    registerVideoPanelComponent("preview", () => <VideoPreviewPanelContent />);
-    registerVideoPanelComponent("timeline", () => <VideoTimelinePanelContent />);
-
-    return () => {
-      clearVideoPanelComponents();
-    };
-  }, []);
-
-  const { postRestorationRef } = useMaskRestoreSync({
-    isAutosaveInitialized,
-    projectMasks: project.masks,
-    restoreMasks,
-    masksMap,
-    selectedMaskIds,
-    selectMask,
-    masksArray,
-    setProject,
-    projectRef,
-  });
-
-  // Auto-switch to mask tool when entering mask edit mode (e.g., double-click mask clip)
-  useEffect(() => {
-    if (isEditingMask && toolMode !== "mask") {
-      setToolMode("mask");
-    }
-  }, [isEditingMask, toolMode, setToolMode]);
-
-  const hasContent = clips.length > 0;
-  const selectedClip = selectedClipIds.length > 0
-    ? clips.find((clip) => clip.id === selectedClipIds[0]) || null
-    : null;
-  const selectedAudioClip = selectedClip && selectedClip.type !== "image" ? selectedClip : null;
-  const selectedVisualClip = selectedClip && selectedClip.type !== "audio" ? selectedClip : null;
-  const selectedCanvasOverlayClip = selectedVisualClip?.type === "image" && selectedVisualClip.isCanvasOverlay
-    ? selectedVisualClip
-    : null;
-  const editingCanvasOverlayClip = useMemo<ImageClip | null>(() => {
-    if (!editingCanvasOverlayClipId) return null;
-    const clip = clips.find((candidate) => candidate.id === editingCanvasOverlayClipId) || null;
-    return clip?.type === "image" && clip.isCanvasOverlay ? clip : null;
-  }, [clips, editingCanvasOverlayClipId]);
-  const selectedPositionKeyframeClip = useMemo(
-    () => findValidPositionKeyframeClip(clips, selectedPositionKeyframe),
-    [clips, selectedPositionKeyframe]
-  );
-
-  useEffect(() => {
-    if (selectedPositionKeyframe && !selectedPositionKeyframeClip) {
-      setSelectedPositionKeyframe(null);
-    }
-  }, [selectedPositionKeyframe, selectedPositionKeyframeClip, setSelectedPositionKeyframe]);
-
-  useEffect(() => {
-    if (editingCanvasOverlayClipId && !editingCanvasOverlayClip) {
-      setEditingCanvasOverlayClipId(null);
-    }
-  }, [editingCanvasOverlayClip, editingCanvasOverlayClipId]);
-
-  const gapInterpolationAnalysis = useMemo(
-    () => analyzeGapInterpolationSelection(clips, selectedClipIds, project.frameRate),
-    [clips, selectedClipIds, project.frameRate],
-  );
-  const {
-    showInterpolationModal,
-    setShowInterpolationModal,
-    interpolationSteps,
-    setInterpolationSteps,
-    isInterpolatingGap,
-    gapInterpolationProgress,
-    gapInterpolationStatus,
-    handleInterpolateClipGap,
-    handleConfirmInterpolation,
-  } = useGapInterpolationActions({
-    analysis: gapInterpolationAnalysis,
-    isPlaying: playback.isPlaying,
-    pause,
-    frameRate: project.frameRate,
-    quality: videoInterpolationQuality,
-    interpolationProgressLabel: t.interpolationProgress,
-    savingLabel: t.saving,
-    failedLabel: t.interpolationFailed,
-    saveToHistory,
-    addClips,
-    selectClips,
-  });
-  const {
-    isInpainting: isInpaintingClip,
-    inpaintStatus: inpaintStatusLabel,
-    canInpaint: canInpaintClip,
-    clearInpaintRegion,
-    handleInpaintClip,
-  } = useVideoInpaintActions({
-    selectedClip: selectedVisualClip,
-    inpaintMaskCanvasRef,
-    frameRate: project.frameRate,
-    projectCanvasSize: project.canvasSize,
-    isPlaying: playback.isPlaying,
-    pause,
-    saveToHistory,
-    updateClip,
-    translations: {
-      selectVideoClip: t.videoInpaintSelectVideoClip,
-      selectMask: t.videoInpaintSelectMask,
-      unsupportedTransform: t.videoInpaintUnsupportedTransform,
-      clipTooLong: t.videoInpaintClipTooLong,
-      preparing: t.videoInpaintPreparing,
-      loadingModel: t.videoInpaintLoadingModel,
-      processing: t.videoInpaintProcessing,
-      encoding: t.videoInpaintEncoding,
-      applying: t.videoInpaintApplying,
-      completed: t.videoInpaintCompleted,
-      failed: t.videoInpaintFailed,
-    },
-  });
-  const isTimelineVisible = isPanelOpen("timeline");
-  const canUndoAny = canUndo || canUndoMask;
-  const canRedoAny = canRedo || canRedoMask;
-
-  const { importFiles: importMediaFiles } = useMediaImport();
-  const {
+    isInpaintingClip,
+    inpaintStatusLabel,
+    isSaving,
     saveCount,
+    saveProgress,
     handleNew,
     handleOpen,
     handleSave,
     handleSaveAs,
-    handleLoadProject,
-    handleDeleteProject,
     handleImportMedia,
-  } = useVideoFileActions({
-    newLabel: t.new,
-    newProjectConfirm: t.newProjectConfirm,
-    cancelLabel: t.cancel,
-    projectName,
-    projectGroup,
-    saveProject,
-    saveAsProject,
-    requestSaveDetails: requestProjectSaveDetails,
-    openProjectList,
-    loadProject,
-    deleteProject,
-    mediaFileInputRef,
-  });
-
-  const {
+    hasContent,
+    isExporting,
     handleUndo,
     handleRedo,
-    handleDeleteSelectedPositionKeyframe,
-  } = useVideoEditActions({
-    toolMode,
-    isEditingMask,
-    activeMaskId,
-    selectedMaskCount: selectedMaskIds.length,
-    canUndoMask,
-    canRedoMask,
-    undoMask,
-    redoMask,
-    undo,
-    redo,
-    deselectAll,
-    selectedPositionKeyframe,
-    selectedPositionKeyframeClip,
-    clearSelectedPositionKeyframe: () => setSelectedPositionKeyframe(null),
-    saveToHistory,
-    updateClip,
-  });
-
-  const {
-    handleCopy,
+    canUndoAny,
+    canRedoAny,
     handleCut,
+    handleCopy,
     handlePaste,
     handleDelete,
-    handleDuplicate,
-  } = useVideoClipboardActions({
-    selectedClipIds,
-    selectedMaskIds,
-    clips,
-    masksMap,
-    tracks,
-    playbackCurrentTime: playback.currentTime,
-    clipboardRef,
-    setHasClipboard,
-    saveToHistory,
-    removeClip,
-    deselectAll,
-    addClips,
-    addMasks,
-    selectClips,
-    selectMasksForTimeline,
-    duplicateMask,
-    updateMaskTime,
-    deleteMask,
-    activeMaskId,
-    isEditingMask,
-    endMaskEdit,
-    deleteSelectedPositionKeyframe: handleDeleteSelectedPositionKeyframe,
-  });
-
-  const {
-    beginAudioAdjustment,
-    endAudioAdjustment,
-    handleToggleSelectedClipMute,
-    handleSelectedClipVolumeChange,
-  } = useSelectedClipAudioActions({
-    selectedAudioClip,
-    saveToHistory,
-    updateClip,
-  });
-
-  const {
-    handleSelectAllCrop,
-    handleClearCrop,
+    hasClipboard,
+    panelHeadersVisible,
+    togglePanelHeaders,
+    handleZoomIn,
+    handleZoomOut,
+    handleFitToScreen,
+    handleToggleTimeline,
+    isTimelineVisible,
+    resetLayout,
+    menuTranslations,
+    toolbarTranslations,
+    handleToolModeChange,
+    handleInterpolateClipGap,
+    gapInterpolationAnalysis,
+    isInterpolatingGap,
+    handleInpaintClip,
+    canInpaintClip,
+    clearInpaintRegion,
+    previewZoom,
+    setPreviewZoom,
+    handlePreviewFit,
+    handleCaptureFrameToImageLayer,
+    isCapturingFrame,
+    handleCreateCanvasOverlay,
+    handleEditCanvasOverlay,
+    selectedCanvasOverlayClip,
     handleCropWidthChange,
     handleCropHeightChange,
     handleExpandToSquare,
     handleFitToSquare,
     handleApplyCrop,
-  } = useVideoCropActions({
-    cropArea,
-    lockCropAspect,
-    clips,
-    project,
-    setProject,
-    updateClip,
-    saveToHistory,
-    setCropArea,
-    setCanvasExpandMode,
-  });
-
-  // View menu handlers
-  const handleZoomIn = useCallback(() => {
-    setZoom(viewState.zoom * 1.25);
-  }, [setZoom, viewState.zoom]);
-
-  const handleZoomOut = useCallback(() => {
-    setZoom(viewState.zoom / 1.25);
-  }, [setZoom, viewState.zoom]);
-
-  const handleFitToScreen = useCallback(() => {
-    const timelineRoot = document.querySelector("[data-video-timeline-root]") as HTMLDivElement | null;
-    const width = timelineRoot?.clientWidth;
-    if (!width) {
-      setZoom(TIMELINE.DEFAULT_ZOOM);
-      setScrollX(0);
-      return;
-    }
-
-    const availableWidth = Math.max(100, width - 160);
-    const duration = Math.max(project.duration, 1);
-    setZoom(availableWidth / duration);
-    setScrollX(0);
-  }, [project.duration, setZoom, setScrollX]);
-
-  const {
+    handleClearCrop,
+    handleSelectAllCrop,
     previewTransformState,
-    previewZoom,
-    setPreviewZoom,
-    handlePreviewFit,
-  } = usePreviewViewportState(previewViewportRef);
-
-  const clearSelectedMasks = useCallback(() => {
-    selectMasksForTimeline([]);
-  }, [selectMasksForTimeline]);
-  const { isCapturingFrame, captureFrameToImageLayer: handleCaptureFrameToImageLayer } = useCaptureFrameToImageLayer({
-    previewViewportRef,
-    currentTime: playback.currentTime,
-    canvasSize: project.canvasSize,
-    tracks,
-    selectedTrackId: selectedVisualClip?.trackId ?? null,
-    addTrack,
-    addImageClip,
-    saveToHistory,
-    selectClips,
-    clearSelectedMasks,
-  });
-  const handleApplyCanvasSize = useCallback((width: number, height: number) => {
-    setProject({ ...project, canvasSize: { width, height } });
-  }, [project, setProject]);
-
-  const resolveCanvasOverlayTrackId = useCallback(() => {
-    if (selectedVisualClip) {
-      return selectedVisualClip.trackId;
-    }
-
-    const firstVideoTrack = tracks.find((track) => track.type === "video");
-    if (firstVideoTrack) {
-      return firstVideoTrack.id;
-    }
-
-    return addTrack(undefined, "video");
-  }, [addTrack, selectedVisualClip, tracks]);
-
-  const handleCreateCanvasOverlay = useCallback(() => {
-    const sourceUrl = createBlankCanvasOverlayDataUrl(project.canvasSize);
-    const trackId = resolveCanvasOverlayTrackId();
-    saveToHistory();
-    const clipId = addCanvasOverlayClip(
-      trackId,
-      sourceUrl,
-      project.canvasSize,
-      playback.currentTime,
-      5,
-      project.canvasSize,
-    );
-    selectClips([clipId]);
-    setEditingCanvasOverlayClipId(clipId);
-  }, [
-    addCanvasOverlayClip,
-    playback.currentTime,
-    project.canvasSize,
-    resolveCanvasOverlayTrackId,
-    saveToHistory,
-    selectClips,
-  ]);
-
-  const handleEditCanvasOverlay = useCallback(() => {
-    if (!selectedCanvasOverlayClip) return;
-    setEditingCanvasOverlayClipId(selectedCanvasOverlayClip.id);
-  }, [selectedCanvasOverlayClip]);
-
-  const handleCloseCanvasOverlayModal = useCallback(() => {
-    setEditingCanvasOverlayClipId(null);
-  }, []);
-
-  const handleSaveCanvasOverlay = useCallback((dataUrl: string) => {
-    if (!editingCanvasOverlayClipId) return;
-    saveToHistory();
-    updateClip(editingCanvasOverlayClipId, {
-      sourceUrl: dataUrl,
-      imageData: dataUrl,
-    });
-    setEditingCanvasOverlayClipId(null);
-  }, [editingCanvasOverlayClipId, saveToHistory, updateClip]);
-
-  const handleToggleTimeline = useCallback(() => {
-    const timelineWindow = layoutState.floatingWindows.find((window) => window.panelId === "timeline");
-    if (timelineWindow) {
-      closeFloatingWindow(timelineWindow.id);
-      return;
-    }
-
-    const timelinePanelNodeId = findPanelNodeIdByPanelId(layoutState.root, "timeline");
-    if (timelinePanelNodeId) {
-      removePanel(timelinePanelNodeId);
-      return;
-    }
-
-    const previewPanelNodeId = findPanelNodeIdByPanelId(layoutState.root, "preview");
-    if (previewPanelNodeId) {
-      addPanel(previewPanelNodeId, "timeline", "bottom");
-      return;
-    }
-
-    openFloatingWindow("timeline", { x: 140, y: 140 });
-  }, [layoutState, closeFloatingWindow, removePanel, addPanel, openFloatingWindow]);
-
-  const handleVideoInterpolationQualityChange = useCallback((quality: RifeInterpolationQuality) => {
-    setVideoInterpolationQuality(quality);
-    updateAISettings({ frameInterpolationQuality: quality });
-  }, []);
-
-
-  // Auto-pause when app/window loses foreground to prevent lingering audio playback.
-  useEffect(() => {
-    const pausePlaybackIfNeeded = () => {
-      if (!playback.isPlaying) return;
-      pause();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        pausePlaybackIfNeeded();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", pausePlaybackIfNeeded);
-    window.addEventListener("pagehide", pausePlaybackIfNeeded);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", pausePlaybackIfNeeded);
-      window.removeEventListener("pagehide", pausePlaybackIfNeeded);
-    };
-  }, [pause, playback.isPlaying]);
-
-  const {
-    tryStartMaskEditFromSelection,
-    handleToolModeChange,
-    handleStartTransformShortcut,
-    handleApplyTransform,
-    handleCancelTransform,
     handleSetTransformAspectRatio,
-    handleNudgeTransform,
-  } = useVideoToolModeHandlers({
-    toolMode,
-    setToolMode,
-    selectedClipIds,
-    clips,
-    projectCanvasSize: project.canvasSize,
-    playbackCurrentTime: playback.currentTime,
-    startMaskEdit,
-    isEditingMask,
-    endMaskEdit,
-    cropArea,
-    setCropArea,
-    previewViewportRef,
-  });
-
-  const handleStartTransformShortcutAction = useCallback(() => {
-    handleStartTransformShortcut(Boolean(selectedVisualClip));
-  }, [handleStartTransformShortcut, selectedVisualClip]);
-
-  const handleAdjustMaskBrushSize = useCallback((delta: number) => {
-    if (toolMode !== "mask") return;
-    const nextSize = Math.max(
-      MASK_BRUSH.MIN_SIZE,
-      Math.min(MASK_BRUSH.MAX_SIZE, brushSettings.size + delta),
-    );
-    if (nextSize === brushSettings.size) return;
-    setBrushSize(nextSize);
-  }, [toolMode, brushSettings.size, setBrushSize]);
-
-  // Auto-start mask edit when clip is selected while already in mask mode
-  // Skip during initial restoration to prevent creating new masks before masks are loaded
-  useEffect(() => {
-    if (!postRestorationRef.current) return;
-    if (toolMode !== "mask") return;
-    if (isEditingMask) return; // already editing
-    tryStartMaskEditFromSelection();
-  }, [toolMode, isEditingMask, tryStartMaskEditFromSelection, postRestorationRef]);
-
-
-  // Keyboard shortcuts
-  useVideoKeyboardShortcuts({
-    togglePlay,
-    stepForward,
-    stepBackward,
-    onToolModeChange: handleToolModeChange,
-    toolMode,
-    handleUndo,
-    handleRedo,
-    handleSave,
-    handleOpen,
-    handleCopy,
-    handleCut,
-    handlePaste,
-    handleDelete,
-    handleDuplicate,
-    handleZoomIn,
-    handleZoomOut,
-    handleFitToScreen,
-    handleApplyCrop,
-    isTransformActive: previewTransformState.isActive,
-    handleStartTransformShortcut: handleStartTransformShortcutAction,
     handleApplyTransform,
     handleCancelTransform,
-    handleNudgeTransform,
-    activeMaskId,
-    deselectMask,
-    isEditingMask,
-    endMaskEdit,
-    hasMaskRegion,
-    clearMaskRegion: requestMaskRegionClear,
-    adjustMaskBrushSize: handleAdjustMaskBrushSize,
-    isSpacePanning,
-    setIsSpacePanning,
-  });
-
-  // Prevent browser history swipe gestures while preserving editor-local horizontal scroll.
-  useHorizontalWheelCapture({ rootRef: editorRootRef });
-
-  const menuTranslations = useMemo(() => createVideoMenuTranslations(t), [t]);
-  const toolbarTranslations = useMemo(() => createVideoToolbarTranslations(t), [t]);
+    selectedAudioClip,
+    beginAudioAdjustment,
+    endAudioAdjustment,
+    handleToggleSelectedClipMute,
+    handleSelectedClipVolumeChange,
+    handleApplyCanvasSize,
+    supportedMediaAccept,
+    handleMediaFileInputChange,
+    showInterpolationModal,
+    setShowInterpolationModal,
+    handleConfirmInterpolation,
+    interpolationSteps,
+    setInterpolationSteps,
+    videoInterpolationQuality,
+    handleVideoInterpolationQualityChange,
+    gapInterpolationProgress,
+    gapInterpolationStatus,
+    isProjectListOpen,
+    setIsProjectListOpen,
+    savedProjects,
+    currentProjectId,
+    handleLoadProject,
+    handleDeleteProject,
+    storageInfo,
+    isLoadingProject,
+    loadProgress,
+    projectListOperation,
+    showExportModal,
+    setShowExportModal,
+    handleExport,
+    defaultExportFileName,
+    exportProgress,
+    editingCanvasOverlayClip,
+    handleCloseCanvasOverlayModal,
+    handleSaveCanvasOverlay,
+  } = useVideoEditorController();
 
   return (
     <div
@@ -1135,21 +464,10 @@ function VideoEditorContent() {
       <input
         ref={mediaFileInputRef}
         type="file"
-        accept={[...SUPPORTED_VIDEO_FORMATS, ...SUPPORTED_IMAGE_FORMATS, ...SUPPORTED_AUDIO_FORMATS].join(",")}
+        accept={supportedMediaAccept}
         multiple
         className="hidden"
-        onChange={async (e) => {
-          const files = e.target.files ? Array.from(e.target.files) : [];
-          if (files.length > 0) {
-            try {
-              await importMediaFiles(files);
-            } catch (error) {
-              console.error("Media import failed:", error);
-              showErrorToast(`${t.importFailed}: ${(error as Error).message}`);
-            }
-          }
-          e.target.value = "";
-        }}
+        onChange={handleMediaFileInputChange}
       />
 
       <VideoInterpolationModal
@@ -1208,7 +526,7 @@ function VideoEditorContent() {
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         onExport={handleExport}
-        defaultFileName={sanitizeFileName(projectName)}
+        defaultFileName={defaultExportFileName}
         isExporting={isExporting}
         exportProgress={exportProgress}
         translations={{
