@@ -121,6 +121,80 @@ export function resolvePlaybackMediaSnapshot(params: {
   };
 }
 
+/**
+ * Audible clips that START within `(time, time + lookAhead]`.
+ *
+ * The active-clip resolver above can only report a clip once `time` is already
+ * inside it, so a scheduler built on it necessarily discovers every clip LATE and
+ * has to start it mid-way. That is inaudible on a long pad and fatal on a short
+ * one-shot: the clipped part is the attack. This resolver is the other half —
+ * clips near enough to arm on the audio clock before they are due.
+ *
+ * Clips already playing at `time` are excluded: they are the active resolver's job.
+ */
+export function resolveUpcomingAudioClips(params: {
+  tracks: VideoTrack[];
+  clipsByTrack: PlaybackTrackClipIndex;
+  time: number;
+  lookAhead: number;
+}): Clip[] {
+  const { tracks, clipsByTrack, time, lookAhead } = params;
+  if (!(lookAhead > 0)) return [];
+
+  const windowEnd = time + lookAhead;
+  const upcoming: Clip[] = [];
+
+  for (const track of tracks) {
+    if (!track.visible) continue;
+    const trackClips = clipsByTrack.get(track.id);
+    if (!trackClips || trackClips.length === 0) continue;
+
+    for (const clip of trackClips) {
+      if (clip.startTime <= time + PLAYBACK_BOUNDARY_EPSILON) continue;
+      if (clip.startTime > windowEnd + PLAYBACK_BOUNDARY_EPSILON) break;
+      if (!clip.visible) continue;
+      if (!isAudibleMediaClip(clip)) continue;
+      upcoming.push(clip);
+    }
+  }
+
+  upcoming.sort(compareClipsByStartTime);
+  return upcoming;
+}
+
+export interface LookaheadStart {
+  /** Absolute AudioContext time to pass to `sourceNode.start(when, ...)`. */
+  when: number;
+  /** Seconds from now until the clip is due; negative means it is already late. */
+  leadTime: number;
+  /** False when the clip's start has already passed, so it needs a mid-clip start. */
+  isFuture: boolean;
+}
+
+/**
+ * Translate a timeline start time into an AudioContext start time.
+ *
+ * Timeline seconds advance at `rate`, AudioContext seconds do not, so the wall
+ * distance to the clip is the timeline distance divided by the rate. Handing that
+ * to `start(when)` moves the firing decision onto the audio thread, which is why
+ * main-thread jitter stops mattering.
+ */
+export function resolveLookaheadStart(params: {
+  clipStartTime: number;
+  currentTime: number;
+  rate: number;
+  contextTime: number;
+}): LookaheadStart {
+  const { clipStartTime, currentTime, contextTime } = params;
+  const safeRate = Math.max(0.01, params.rate);
+  const leadTime = (clipStartTime - currentTime) / safeRate;
+  return {
+    when: contextTime + Math.max(0, leadTime),
+    leadTime,
+    isFuture: leadTime > 0,
+  };
+}
+
 export function collectPlaybackWindowClipIds(params: {
   tracks: VideoTrack[];
   clipsByTrack: PlaybackTrackClipIndex;

@@ -127,6 +127,10 @@ export const PRE_RENDER = {
 // Web Audio playback constants
 export const WEB_AUDIO = {
   SCHEDULER_INTERVAL_MS: 50, // clip boundary check interval during playback
+  // How far ahead the scheduler arms clips on the Web Audio clock. Must stay
+  // comfortably above the polling ceiling (SCHEDULER_INTERVAL_MS * 4 = 200ms) so a
+  // single late wake-up still leaves margin to arm the next clip before it starts.
+  LOOKAHEAD_MS: 400,
   SEEK_JUMP_THRESHOLD: 0.3, // seconds: time jump larger than this = seek event
   SEEK_DRIFT_TOLERANCE: 0.18, // seconds: expected-vs-actual timeline drift treated as seek
   BACKWARD_JUMP_EPSILON: 0.05, // seconds: any notable backward jump indicates seek/loop wrap

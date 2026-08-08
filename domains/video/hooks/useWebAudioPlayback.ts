@@ -19,17 +19,27 @@ import { subscribeImmediatePlaybackStop } from "../utils/playbackStopSignal";
 import {
   buildPlaybackTrackClipIndex,
   isAudibleMediaClip,
+  resolveLookaheadStart,
   resolvePlaybackMediaSnapshot,
+  resolveUpcomingAudioClips,
 } from "../utils/playbackActiveMedia";
 
 interface ActiveAudioNode {
   clipId: string;
   sourceNode: AudioBufferSourceNode;
   gainNode: GainNode;
+  /**
+   * AudioContext time this node was armed to start at. A node whose value is still
+   * in the future has NOT sounded yet (lookahead), which the cleanup pass and the
+   * rate-change effect both need to know. Kept on the node instead of in a second
+   * map so there is one place that says when a node starts.
+   */
+  scheduledStartContextTime: number;
 }
 
 interface AudioDebugStats {
   startedNodes: number;
+  armedNodes: number;
   stoppedNodes: number;
   endedNodes: number;
   bufferMisses: number;
@@ -69,6 +79,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   const isForegroundRef = useRef<boolean>(typeof document === "undefined" ? true : document.visibilityState === "visible");
   const debugStatsRef = useRef<AudioDebugStats>({
     startedNodes: 0,
+    armedNodes: 0,
     stoppedNodes: 0,
     endedNodes: 0,
     bufferMisses: 0,
@@ -109,6 +120,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       scheduleRuns: stats.scheduleRuns,
       schedulePerSec: Number((stats.scheduleRuns / elapsedSec).toFixed(2)),
       startedNodes: stats.startedNodes,
+      armedNodes: stats.armedNodes,
       stoppedNodes: stats.stoppedNodes,
       endedNodes: stats.endedNodes,
       bufferMisses: stats.bufferMisses,
@@ -116,6 +128,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     });
 
     stats.startedNodes = 0;
+    stats.armedNodes = 0;
     stats.stoppedNodes = 0;
     stats.endedNodes = 0;
     stats.bufferMisses = 0;
@@ -179,9 +192,12 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       time: ct,
     });
 
-    const shouldBeActive = new Map<
+    // Two kinds of target, one start path.
+    //  - already playing: start now from the current offset (the late fallback)
+    //  - about to start:  arm on the audio clock so the attack is not clipped
+    const targets = new Map<
       string,
-      { clip: Clip; sourceTimeOffset: number; clipRemaining: number }
+      { clip: Clip; sourceTimeOffset: number; clipRemaining: number; startAt: number }
     >();
 
     for (const clip of [...playbackSnapshot.activeVideoClips, ...playbackSnapshot.activeAudioClips]) {
@@ -195,15 +211,54 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       const sourceTime = getSourceTime(clip, ct);
       const clipRemaining = clip.duration - clipTime;
 
-      shouldBeActive.set(clip.id, {
+      targets.set(clip.id, {
         clip,
         sourceTimeOffset: sourceTime,
         clipRemaining: getSourceDurationForTimelineDuration(clip, clipRemaining),
+        // 0 means "now" to AudioBufferSourceNode.start.
+        startAt: 0,
       });
     }
 
+    const upcomingClips = resolveUpcomingAudioClips({
+      tracks: activeTracksRef.current,
+      clipsByTrack: clipsByTrackRef.current,
+      time: ct,
+      lookAhead: (WEB_AUDIO.LOOKAHEAD_MS / 1000) * Math.max(0.01, rate),
+    });
+
+    for (const clip of upcomingClips) {
+      if (targets.has(clip.id)) continue;
+      if (!isAudioBufferReady(clip.sourceUrl)) {
+        debugStatsRef.current.bufferMisses += 1;
+        continue;
+      }
+
+      const { when, isFuture } = resolveLookaheadStart({
+        clipStartTime: clip.startTime,
+        currentTime: ct,
+        rate,
+        contextTime: ctx.currentTime,
+      });
+      if (!isFuture) continue;
+
+      targets.set(clip.id, {
+        clip,
+        // A clip that has not started yet plays from its own trim-in, not from an
+        // offset derived from the current playhead.
+        sourceTimeOffset: getSourceTime(clip, clip.startTime),
+        clipRemaining: getSourceDurationForTimelineDuration(clip, clip.duration),
+        startAt: when,
+      });
+    }
+
+    // Keep-set is "playing now OR due soon". Because `targets` carries the upcoming
+    // clips too, an armed-but-unsounded node survives this pass on its own merit —
+    // no pending-node exemption is needed, and none is wanted: an exemption would
+    // also protect a node whose clip the user just deleted mid-playback, firing a
+    // phantom hit. Absent from `targets` means absent from the timeline.
     for (const [clipId, node] of activeNodesRef.current) {
-      if (shouldBeActive.has(clipId)) continue;
+      if (targets.has(clipId)) continue;
       node.sourceNode.onended = null;
       try {
         node.sourceNode.stop();
@@ -216,7 +271,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       debugStatsRef.current.stoppedNodes += 1;
     }
 
-    for (const [clipId, { clip, sourceTimeOffset, clipRemaining }] of shouldBeActive) {
+    for (const [clipId, { clip, sourceTimeOffset, clipRemaining, startAt }] of targets) {
       const existing = activeNodesRef.current.get(clipId);
       if (existing) {
         const volume =
@@ -252,8 +307,12 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       const playDuration = Math.min(clipRemaining, bufferRemaining);
       if (playDuration <= 0) continue;
 
-      sourceNode.start(0, sourceTimeOffset, playDuration);
-      debugStatsRef.current.startedNodes += 1;
+      sourceNode.start(startAt, sourceTimeOffset, playDuration);
+      if (startAt > ctx.currentTime) {
+        debugStatsRef.current.armedNodes += 1;
+      } else {
+        debugStatsRef.current.startedNodes += 1;
+      }
 
       sourceNode.onended = () => {
         const activeNode = activeNodesRef.current.get(clipId);
@@ -269,15 +328,20 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
         clipId,
         sourceNode,
         gainNode,
+        scheduledStartContextTime: startAt > 0 ? startAt : ctx.currentTime,
       });
     }
 
     clearScheduledAudioCheck();
     if (isPlayingRef.current && isForegroundRef.current) {
+      // Wake BEFORE the next boundary, by the lookahead, so the clip can be armed
+      // while it is still in the future. The old `+ 32` woke us after the boundary,
+      // which cost every one-shot at least 32ms of attack even with zero jitter.
       const nextBoundaryMs = playbackSnapshot.nextBoundaryTime !== null
         ? Math.max(
           24,
-          (((playbackSnapshot.nextBoundaryTime - ct) / Math.max(0.01, rate)) * 1000) + 32,
+          (((playbackSnapshot.nextBoundaryTime - ct) / Math.max(0.01, rate)) * 1000)
+            - WEB_AUDIO.LOOKAHEAD_MS,
         )
         : Number.POSITIVE_INFINITY;
       const nextScheduleDelayMs = Math.max(
@@ -420,9 +484,30 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
     for (const [clipId, node] of activeNodesRef.current) {
       const clip = clipsRef.current.find((candidate) => candidate.id === clipId);
       const clipSpeed = clip ? getClipPlaybackSpeed(clip) : 1;
+
+      // An armed node's start time was computed from the OLD rate, and changing
+      // playbackRate does not move it. Setting the rate would keep a node that
+      // fires at the wrong moment, so drop it and let the next pass re-arm.
+      if (node.scheduledStartContextTime > ctx.currentTime) {
+        node.sourceNode.onended = null;
+        try {
+          node.sourceNode.stop();
+        } catch {
+          // Already stopped.
+        }
+        node.sourceNode.disconnect();
+        node.gainNode.disconnect();
+        activeNodesRef.current.delete(clipId);
+        debugStatsRef.current.stoppedNodes += 1;
+        continue;
+      }
+
       node.sourceNode.playbackRate.setValueAtTime(playbackRate * clipSpeed, ctx.currentTime);
     }
-  }, [clips, enabled, playbackRate]);
+    if (isPlayingRef.current && isForegroundRef.current) {
+      scheduleAudio();
+    }
+  }, [clips, enabled, playbackRate, scheduleAudio]);
 
   useEffect(() => {
     return () => {
