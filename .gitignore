@@ -39,3 +39,6 @@ output/playwright/
 
 # Agent worktrees and the collaboration browser profile (artkit-video-bundle CLI)
 .kuma/
+
+# Firebase emulator debug logs (npm run test:rules)
+*-debug.log
