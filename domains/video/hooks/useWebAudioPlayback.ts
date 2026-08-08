@@ -75,6 +75,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   const lastTickTimeRef = useRef<number>(0);
   const lastTickWallTimeRef = useRef<number>(0);
   const lastRescheduleAtRef = useRef<number>(0);
+  const appliedPlaybackRateRef = useRef<number>(playbackRate);
   const debugLogsRef = useRef(debugLogs);
   const isForegroundRef = useRef<boolean>(typeof document === "undefined" ? true : document.visibilityState === "visible");
   const debugStatsRef = useRef<AudioDebugStats>({
@@ -481,6 +482,14 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
   useEffect(() => {
     if (!enabled) return;
     const ctx = getSharedAudioContext();
+
+    // Only a RATE change invalidates an armed start time. This effect also runs on
+    // every `clips` identity change, and dropping arms there re-created each node
+    // for no reason (validator note, 2026-08-08: one mount produced 2 starts and a
+    // stop for a single clip). A clip's own playbackSpeed does not move its start.
+    const rateChanged = appliedPlaybackRateRef.current !== playbackRate;
+    appliedPlaybackRateRef.current = playbackRate;
+
     for (const [clipId, node] of activeNodesRef.current) {
       const clip = clipsRef.current.find((candidate) => candidate.id === clipId);
       const clipSpeed = clip ? getClipPlaybackSpeed(clip) : 1;
@@ -488,7 +497,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
       // An armed node's start time was computed from the OLD rate, and changing
       // playbackRate does not move it. Setting the rate would keep a node that
       // fires at the wrong moment, so drop it and let the next pass re-arm.
-      if (node.scheduledStartContextTime > ctx.currentTime) {
+      if (rateChanged && node.scheduledStartContextTime > ctx.currentTime) {
         node.sourceNode.onended = null;
         try {
           node.sourceNode.stop();
@@ -504,7 +513,7 @@ export function useWebAudioPlayback(params: UseWebAudioPlaybackParams) {
 
       node.sourceNode.playbackRate.setValueAtTime(playbackRate * clipSpeed, ctx.currentTime);
     }
-    if (isPlayingRef.current && isForegroundRef.current) {
+    if (rateChanged && isPlayingRef.current && isForegroundRef.current) {
       scheduleAudio();
     }
   }, [clips, enabled, playbackRate, scheduleAudio]);
