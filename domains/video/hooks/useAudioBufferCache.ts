@@ -40,22 +40,66 @@ function touchAudioBuffer(sourceUrl: string) {
   audioBufferTouchedAt.set(sourceUrl, nowMs());
 }
 
-function evictAudioBuffers(exceptKeys: Set<string> = new Set()) {
-  while (audioBufferTotalBytes > AUDIO_BUFFER_MAX_BYTES && audioBufferCache.size > exceptKeys.size) {
-    let candidateKey: string | null = null;
-    let oldestTouch = Number.POSITIVE_INFINITY;
+/**
+ * Least-recently-touched cached key that may be dropped, or null when none may.
+ *
+ * Pulled out as a pure function because the eviction loop's old guard was wrong in
+ * two ways at once and neither was visible from the loop body: it compared
+ * `cache.size > exceptKeys.size`, so (a) a single entry larger than the cap was
+ * never considered, and (b) `exceptKeys` holding URLs that are not even cached made
+ * the count comparison false while evictable entries sat right there.
+ */
+export function selectAudioBufferEvictionCandidate(params: {
+  cachedKeys: Iterable<string>;
+  exceptKeys: { has(key: string): boolean };
+  pendingKeys: { has(key: string): boolean };
+  touchedAt: Map<string, number>;
+}): string | null {
+  const { cachedKeys, exceptKeys, pendingKeys, touchedAt } = params;
+  let candidateKey: string | null = null;
+  let oldestTouch = Number.POSITIVE_INFINITY;
 
-    for (const sourceUrl of audioBufferCache.keys()) {
-      if (exceptKeys.has(sourceUrl) || decodePending.has(sourceUrl)) continue;
-      const touchedAt = audioBufferTouchedAt.get(sourceUrl) ?? 0;
-      if (touchedAt < oldestTouch) {
-        oldestTouch = touchedAt;
-        candidateKey = sourceUrl;
+  for (const sourceUrl of cachedKeys) {
+    if (exceptKeys.has(sourceUrl) || pendingKeys.has(sourceUrl)) continue;
+    const seenAt = touchedAt.get(sourceUrl) ?? 0;
+    if (seenAt < oldestTouch) {
+      oldestTouch = seenAt;
+      candidateKey = sourceUrl;
+    }
+  }
+
+  return candidateKey;
+}
+
+let reportedCapBreachBytes = 0;
+
+function evictAudioBuffers(exceptKeys: Set<string> = new Set()) {
+  while (audioBufferTotalBytes > AUDIO_BUFFER_MAX_BYTES) {
+    const candidateKey = selectAudioBufferEvictionCandidate({
+      cachedKeys: audioBufferCache.keys(),
+      exceptKeys,
+      pendingKeys: decodePending,
+      touchedAt: audioBufferTouchedAt,
+    });
+
+    if (!candidateKey) {
+      // Nothing may be dropped and we are still over the cap — a single buffer can
+      // exceed it on its own (10 minutes of 48kHz stereo is ~230MB). Silently
+      // holding a breached cap hides the memory growth, so say it once per level.
+      if (audioBufferTotalBytes > reportedCapBreachBytes) {
+        reportedCapBreachBytes = audioBufferTotalBytes;
+        console.warn(
+          `[AudioBufferCache] over cap and nothing evictable: ${Math.round(audioBufferTotalBytes / 1024 / 1024)}MB > ${Math.round(AUDIO_BUFFER_MAX_BYTES / 1024 / 1024)}MB (${audioBufferCache.size} buffer(s) in use)`,
+        );
       }
+      break;
     }
 
-    if (!candidateKey) break;
     removeAudioBuffer(candidateKey);
+  }
+
+  if (audioBufferTotalBytes <= AUDIO_BUFFER_MAX_BYTES) {
+    reportedCapBreachBytes = 0;
   }
 }
 

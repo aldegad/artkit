@@ -55,10 +55,15 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
   } = options;
   const lastActiveVideoClipIdByElementRef = useRef(new Map<HTMLVideoElement, string>());
   const clipsByTrack = useMemo(() => buildPlaybackTrackClipIndex(clips), [clips]);
-  const activeTracks = useMemo(
-    () => tracks.filter((track) => track.visible && !track.muted),
-    [tracks],
-  );
+  // Two different questions, so two different sets.
+  //
+  // `renderTracks` is "whose element has to keep running" — a muted VIDEO track
+  // still draws the picture, so dropping it here made the sync pause an element the
+  // direct renderer immediately plays again: a measured 11 pause + 11 play in three
+  // seconds at readyState 4, with zero when the same track was unmuted.
+  //
+  // Muting is enforced below, per clip, where audibility is decided.
+  const renderTracks = useMemo(() => tracks.filter((track) => track.visible), [tracks]);
 
   const stopAllMediaElements = useCallback(() => {
     videoElementsRef.current?.forEach((video) => {
@@ -103,7 +108,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
     }
 
     const activeVideoClipIdsByElement = lastActiveVideoClipIdByElementRef.current;
-    const trackById = new Map(activeTracks.map((track) => [track.id, track]));
+    const trackById = new Map(renderTracks.map((track) => [track.id, track]));
 
     const syncMedia = (request?: { forceVideoCurrentTimeSync?: boolean }) => {
       const ct = currentTimeRef.current || 0;
@@ -113,7 +118,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
       >();
       const desiredAudioStates = new Map<HTMLAudioElement, AudioClip>();
       const playbackSnapshot = resolvePlaybackMediaSnapshot({
-        tracks: activeTracks,
+        tracks: renderTracks,
         clipsByTrack,
         time: ct,
       });
@@ -121,15 +126,19 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
       for (const clip of playbackSnapshot.activeVideoClips) {
         const video = videoElementsRef.current?.get(clip.id);
         if (!video || video.readyState < 2) continue;
+        const clipTrack = trackById.get(clip.trackId);
         desiredVideoStates.set(video, {
           clip,
-          isAudible: isAudibleMediaClip(clip),
+          // Track mute used to be enforced by excluding the track upstream; now that
+          // the element stays alive for the picture, silence it here instead.
+          isAudible: isAudibleMediaClip(clip) && !clipTrack?.muted,
         });
       }
 
       for (const clip of playbackSnapshot.activeAudioClips) {
         const audio = audioElementsRef.current?.get(clip.id);
         if (!audio || !isAudibleMediaClip(clip)) continue;
+        if (trackById.get(clip.trackId)?.muted) continue;
         desiredAudioStates.set(audio, clip);
       }
 
@@ -260,7 +269,7 @@ export function usePreviewMediaPlaybackSync(options: UsePreviewMediaPlaybackSync
       }
     };
   }, [
-    activeTracks,
+    renderTracks,
     clipsByTrack,
     playback.isPlaying,
     playback.playbackRate,
