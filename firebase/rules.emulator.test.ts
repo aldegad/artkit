@@ -10,7 +10,7 @@ import {
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getMetadata, ref, uploadString } from "firebase/storage";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
-import { renderFile } from "../scripts/generate-firebase-rules.mjs";
+import { readAllowedUids, renderFile } from "../scripts/generate-firebase-rules.mjs";
 
 /**
  * 허용 uid 게이트의 런타임 검증. 규칙은 텍스트라 눈으로 읽어서는 믿을 수 없고,
@@ -127,7 +127,51 @@ describe("허용 목록에 uid 가 있을 때", () => {
   });
 });
 
-describe("허용 목록이 비었을 때 (커밋된 기본값)", () => {
+describe("커밋된 rules 파일 그대로", () => {
+  // 위 두 절은 목록을 합성 값으로 갈아끼워 구조를 시험한다. 여기는 갈아끼우지 않고
+  // 배포될 파일을 그대로 올려, 커밋된 허용 목록이 실제로 그 uid 를 통과시키는지 본다.
+  let env: RulesTestEnvironment;
+  const committedUids: string[] = readAllowedUids();
+
+  beforeAll(async () => {
+    env = await initializeTestEnvironment({
+      projectId: "artkit-rules-as-committed",
+      firestore: { rules: readFileSync(path.join(repoRoot, "firestore.rules"), "utf8") },
+      storage: { rules: readFileSync(path.join(repoRoot, "storage.rules"), "utf8") },
+    });
+  });
+
+  afterAll(async () => {
+    await env?.cleanup();
+  });
+
+  beforeEach(async () => {
+    await env.clearFirestore();
+    await env.clearStorage();
+  });
+
+  for (const uid of committedUids) {
+    it(`커밋된 허용 uid ${uid.slice(0, 6)}… 는 자기 공간을 읽고 쓴다`, async () => {
+      const context = env.authenticatedContext(uid);
+      const target = doc(context.firestore(), `users/${uid}/videoProjects/p1`);
+      await assertSucceeds(setDoc(target, { name: "mine" }));
+      await assertSucceeds(getDoc(target));
+      await assertSucceeds(uploadString(ref(context.storage(), storagePathFor(uid)), "mine"));
+    });
+  }
+
+  it("커밋된 목록에 없는 uid 는 자기 공간도 거부당한다", async () => {
+    const context = env.authenticatedContext(STRANGER_UID);
+    const target = doc(context.firestore(), `users/${STRANGER_UID}/videoProjects/p1`);
+    await assertFails(setDoc(target, { name: "stranger" }));
+    await assertFails(getDoc(target));
+    await assertFails(
+      uploadString(ref(context.storage(), storagePathFor(STRANGER_UID)), "stranger"),
+    );
+  });
+});
+
+describe("허용 목록이 비었을 때 (안전 기본값)", () => {
   let env: RulesTestEnvironment;
 
   beforeAll(async () => {
