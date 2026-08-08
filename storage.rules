@@ -8,7 +8,9 @@ service firebase.storage {
     // 이 블록은 firebase/allowed-uids.json 에서 생성된다 (npm run rules:build).
     // 손으로 고치지 마라 — npm test 의 drift 검사가 거부한다.
     function isAllowedOwner(uid) {
-      return uid in [];
+      return uid in [
+        "BogcEPR4iwWoIVuMzcnSvVONNau1"
+      ];
     }
     // === END generated: allowed-uids ===
 

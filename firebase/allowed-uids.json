@@ -6,5 +6,7 @@
     "빈 목록은 '전원 거부'다. 자리표시자 uid 를 넣지 마라 — 자리표시자는 '누군가 허용됨'으로 읽힌다.",
     "uid 확인: Firebase 콘솔 > 프로젝트 tools-b1c33 > Authentication > Users > User UID 열."
   ],
-  "allowedUids": []
+  "allowedUids": [
+    "BogcEPR4iwWoIVuMzcnSvVONNau1"
+  ]
 }
