@@ -688,11 +688,17 @@ export async function getVideoProjectFromFirebase(
           const blob = await blobPromise;
 
           // Store in local IndexedDB for autosave compatibility
-          const { saveMediaBlob } = await import(
+          const { saveMediaBlob, objectUrlForKey } = await import(
             "@/domains/video/utils/mediaStorage"
           );
-          await saveMediaBlob(clipMeta.sourceId || clipMeta.id, blob);
-          sourceUrl = URL.createObjectURL(blob);
+          const mediaKey = clipMeta.sourceId || clipMeta.id;
+          await saveMediaBlob(mediaKey, blob);
+          // One name per media key, same as the local restore path. Minting a URL per
+          // CLIP here gave the same bytes several names, and pooled media elements
+          // compare the incoming sourceUrl against the one they hold — so every extra
+          // name forced another src assignment + load() during playback (measured on
+          // the local path: 224 src assignments in 3s, 0 after unifying).
+          sourceUrl = objectUrlForKey(mediaKey, blob);
         } catch (error) {
           console.error(`Failed to download media for clip ${clipMeta.id}:`, error);
         }
