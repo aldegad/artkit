@@ -8,7 +8,7 @@ import {
   getClipSourceSpan,
   getClipPlaybackSpeed,
 } from "../types";
-import { loadMediaBlob, loadMediaBlobFromKeys } from "./mediaStorage";
+import { loadMediaBlob, loadMediaBlobForClip } from "./mediaStorage";
 import {
   normalizeClipTransformKeyframes,
   scaleClipPositionKeyframesDuration,
@@ -497,7 +497,7 @@ export async function restoreAutosavedClips(
   const sourceBlobCache = new Map<string, Blob>();
 
   for (const normalizedClip of normalizedClips) {
-    let blob = await loadMediaBlobFromKeys([normalizedClip.id, normalizedClip.sourceId]);
+    let blob = (await loadMediaBlobForClip(normalizedClip))?.blob ?? null;
     if (!blob && normalizedClip.sourceId) {
       blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
       if (!blob) {

@@ -10,7 +10,7 @@
 // editor's existing storage/restore code rather than reimplementing it:
 //
 //   IN  : saveMediaBlob -> saveVideoProject -> applyLoadedProject
-//   OUT : loadVideoAutosave / getVideoProject + loadMediaBlob
+//   OUT : loadVideoAutosave / getVideoProject + loadMediaBlobForClip
 //
 // Exposure is opt-in (dev by default) so the deployed static build does not ship
 // a storage-write API on `window`.
@@ -18,7 +18,12 @@
 import { useEffect, useRef } from "react";
 import type { SavedVideoProject } from "../types";
 import { getAllVideoProjects, getVideoProject, saveVideoProject } from "../utils/videoStorage";
-import { loadMediaBlob, saveMediaBlob } from "../utils/mediaStorage";
+import {
+  loadMediaBlob,
+  loadMediaBlobForClip,
+  mediaBlobKeysForClip,
+  saveMediaBlob,
+} from "../utils/mediaStorage";
 import { loadVideoAutosave } from "../utils/videoAutosave";
 import {
   base64ToBlob,
@@ -27,8 +32,8 @@ import {
   createVideoBundleManifest,
   extensionForMediaType,
   mediaTypeForFileName,
-  requiredMediaKeys,
-  sourceIdFromMediaFileName,
+  clipsNeedingMediaBytes,
+  mediaKeyFromFileName,
   stripRuntimeSourceUrls,
   summarizeVideoBundleProject,
   validateVideoBundle,
@@ -66,15 +71,35 @@ export interface AgentBridgeImportResult {
   activated: boolean;
 }
 
+/** One clip's bytes, located under the key that actually holds them. */
+export interface AgentBridgeMediaPlanEntry {
+  key: string;
+  fileName: string;
+  mediaType: string;
+  byteLength: number;
+  clipIds: string[];
+}
+
+/** A clip that needs bytes but has none under any of its keys. */
+export interface AgentBridgeMediaGap {
+  clipId: string;
+  clipName: string;
+  candidates: string[];
+}
+
 export interface AgentBridgeExportResult {
   source: "autosave" | "project";
   manifest: VideoBundleManifest;
   project: SavedVideoProject;
   summary: VideoBundleSummary;
+  /** Exactly the files a full bundle must write. */
+  media: AgentBridgeMediaPlanEntry[];
+  /** Non-empty means the dump would be incomplete; the caller must not ignore it. */
+  mediaGaps: AgentBridgeMediaGap[];
 }
 
 export interface AgentBridgeMediaHandle {
-  sourceId: string;
+  key: string;
   fileName: string;
   mediaType: string;
   byteLength: number;
@@ -98,9 +123,9 @@ export interface ArtkitVideoBridge {
   // OUT
   exportLive(): Promise<AgentBridgeExportResult>;
   exportProject(projectId: string): Promise<AgentBridgeExportResult>;
-  prepareMediaExport(sourceId: string): Promise<AgentBridgeMediaHandle>;
-  readMediaExportChunk(sourceId: string, index: number): Promise<string>;
-  releaseMediaExport(sourceId: string): Promise<void>;
+  prepareMediaExport(key: string): Promise<AgentBridgeMediaHandle>;
+  readMediaExportChunk(key: string, index: number): Promise<string>;
+  releaseMediaExport(key: string): Promise<void>;
 }
 
 interface ImportStaging {
@@ -167,11 +192,46 @@ export function useAgentBridge(options: UseAgentBridgeOptions): void {
       return entry;
     };
 
-    const toExportResult = (
+    // Resolve each clip's bytes with loadMediaBlobForClip, so export uses the SAME
+    // key priority the loader uses. Deriving keys from sourceId alone shipped the
+    // pre-inpaint bytes of an inpainted clip with no warning (2026-08-08 reject).
+    const buildMediaPlan = async (project: SavedVideoProject) => {
+      const media = new Map<string, AgentBridgeMediaPlanEntry>();
+      const mediaGaps: AgentBridgeMediaGap[] = [];
+
+      for (const clip of clipsNeedingMediaBytes(project)) {
+        const found = await loadMediaBlobForClip(clip);
+        if (!found) {
+          mediaGaps.push({
+            clipId: clip.id,
+            clipName: clip.name,
+            candidates: mediaBlobKeysForClip(clip),
+          });
+          continue;
+        }
+        const existing = media.get(found.key);
+        if (existing) {
+          existing.clipIds.push(clip.id);
+          continue;
+        }
+        media.set(found.key, {
+          key: found.key,
+          fileName: `${found.key}${extensionForMediaType(found.blob.type)}`,
+          mediaType: found.blob.type,
+          byteLength: found.blob.size,
+          clipIds: [clip.id],
+        });
+      }
+
+      return { media: Array.from(media.values()), mediaGaps };
+    };
+
+    const toExportResult = async (
       source: "autosave" | "project",
       project: SavedVideoProject
-    ): AgentBridgeExportResult => {
+    ): Promise<AgentBridgeExportResult> => {
       const stripped = stripRuntimeSourceUrls(project);
+      const { media, mediaGaps } = await buildMediaPlan(stripped);
       return {
         source,
         manifest: createVideoBundleManifest({
@@ -181,6 +241,8 @@ export function useAgentBridge(options: UseAgentBridgeOptions): void {
         }),
         project: stripped,
         summary: summarizeVideoBundleProject(stripped),
+        media,
+        mediaGaps,
       };
     };
 
@@ -229,7 +291,7 @@ export function useAgentBridge(options: UseAgentBridgeOptions): void {
       async commitImport(importId, commitOptions) {
         const entry = requireStaging(importId);
         const media: VideoBundleMedia[] = Array.from(entry.media.values()).map((file) => ({
-          sourceId: sourceIdFromMediaFileName(file.fileName),
+          key: mediaKeyFromFileName(file.fileName),
           fileName: file.fileName,
           mediaType: mediaTypeForFileName(file.fileName),
           base64: file.parts.join(""),
@@ -249,8 +311,8 @@ export function useAgentBridge(options: UseAgentBridgeOptions): void {
         // dropped clips, so never publish the record before its blobs exist.
         const mediaWritten: string[] = [];
         for (const file of media) {
-          await saveMediaBlob(file.sourceId, base64ToBlob(file.base64, file.mediaType));
-          mediaWritten.push(file.sourceId);
+          await saveMediaBlob(file.key, base64ToBlob(file.base64, file.mediaType));
+          mediaWritten.push(file.key);
         }
 
         await saveVideoProject(entry.project);
@@ -281,43 +343,43 @@ export function useAgentBridge(options: UseAgentBridgeOptions): void {
             "no live editor state — open /video and place at least one clip (autosave only runs with clips present)"
           );
         }
-        return toExportResult("autosave", buildSavedProjectFromAutosave(data));
+        return await toExportResult("autosave", buildSavedProjectFromAutosave(data));
       },
 
       async exportProject(projectId) {
         const project = await getVideoProject(projectId);
         if (!project) throw new Error(`no saved project with id "${projectId}"`);
-        return toExportResult("project", project);
+        return await toExportResult("project", project);
       },
 
-      async prepareMediaExport(sourceId) {
-        const blob = await loadMediaBlob(sourceId);
-        if (!blob) throw new Error(`no media blob for sourceId "${sourceId}"`);
+      async prepareMediaExport(key) {
+        const blob = await loadMediaBlob(key);
+        if (!blob) throw new Error(`no media blob under key "${key}"`);
         const base64 = await blobToBase64(blob);
         const chunks = chunkBase64(base64);
         const handle: AgentBridgeMediaHandle = {
-          sourceId,
-          fileName: `${sourceId}${extensionForMediaType(blob.type)}`,
+          key,
+          fileName: `${key}${extensionForMediaType(blob.type)}`,
           mediaType: blob.type,
           byteLength: blob.size,
           chunkCount: chunks.length,
         };
-        mediaExports.set(sourceId, { handle, chunks });
+        mediaExports.set(key, { handle, chunks });
         return handle;
       },
 
-      async readMediaExportChunk(sourceId, index) {
-        const entry = mediaExports.get(sourceId);
-        if (!entry) throw new Error(`media export for "${sourceId}" was not prepared`);
+      async readMediaExportChunk(key, index) {
+        const entry = mediaExports.get(key);
+        if (!entry) throw new Error(`media export for "${key}" was not prepared`);
         const chunk = entry.chunks[index];
         if (chunk === undefined) {
-          throw new Error(`chunk ${index} out of range for "${sourceId}" (${entry.chunks.length} chunks)`);
+          throw new Error(`chunk ${index} out of range for "${key}" (${entry.chunks.length} chunks)`);
         }
         return chunk;
       },
 
-      async releaseMediaExport(sourceId) {
-        mediaExports.delete(sourceId);
+      async releaseMediaExport(key) {
+        mediaExports.delete(key);
       },
     };
 
@@ -332,9 +394,4 @@ export function useAgentBridge(options: UseAgentBridgeOptions): void {
       mediaExports.clear();
     };
   }, []);
-}
-
-/** Every source identity a bundle export must fetch bytes for. */
-export function agentBridgeMediaKeys(project: SavedVideoProject): string[] {
-  return requiredMediaKeys(project);
 }

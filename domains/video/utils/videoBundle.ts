@@ -6,18 +6,24 @@
 //
 //   <bundle>/bundle.json          { format, version, ... }
 //   <bundle>/project.json         a SavedVideoProject, exactly as the editor saves it
-//   <bundle>/media/<sourceId>.<ext>
+//   <bundle>/media/<blob key>.<ext>
 //
 // `project.assets[]` doubles as the media manifest, so there is no separate file
-// list to keep in sync. The safe pattern is one identity per media file:
+// list to keep in sync. The safe pattern for imported media is one identity:
 //
 //   asset.id === IndexedDB blob key === every clip.sourceId that plays it
+//
+// A media file is named by the BLOB KEY, not always by a sourceId, because the
+// editor also stores bytes under `clip.id` for output it made for one clip alone
+// (frame capture, inpaint, gap interpolation). `mediaStorage.mediaBlobKeysForClip`
+// owns that priority and both directions resolve through it.
 //
 // This module is the only place that knows the format. The CLI never parses
 // `project.json`; it ships the bytes into the page and lets this code decide.
 
 import type { AssetReference, SavedVideoProject } from "../types/project";
 import type { Clip } from "../types/clip";
+import { mediaBlobKeysForClip } from "./mediaStorage";
 
 export const VIDEO_BUNDLE_FORMAT = "artkit-video-bundle";
 export const VIDEO_BUNDLE_VERSION = 1;
@@ -37,9 +43,16 @@ export interface VideoBundleManifest {
   note?: string;
 }
 
-/** One media file carried by a bundle, keyed by the asset/source identity. */
+/**
+ * One media file carried by a bundle, named by the BLOB KEY that holds its bytes.
+ *
+ * That key is usually the shared `sourceId`, but it is `clip.id` for bytes the
+ * editor produced for one clip alone (frame capture, inpaint, gap interpolation).
+ * Naming these files "sourceId" was the 2026-08-08 defect: export only looked at
+ * sourceId, so an inpainted clip round-tripped its PRE-inpaint bytes silently.
+ */
 export interface VideoBundleMedia {
-  sourceId: string;
+  key: string;
   fileName: string;
   mediaType: string;
   base64: string;
@@ -61,7 +74,7 @@ export interface VideoBundleSummary {
   audioTrackCount: number;
   clipCounts: { video: number; audio: number; image: number };
   maskCount: number;
-  mediaKeys: string[];
+  referencedMediaKeys: string[];
 }
 
 export interface VideoBundleValidation {
@@ -129,15 +142,15 @@ export function mediaTypeForFileName(fileName: string): string {
   return EXTENSION_MEDIA_TYPES[ext] || VIDEO_BUNDLE_FALLBACK_MEDIA_TYPE;
 }
 
-/** `media/<sourceId>.<ext>` file name for one asset. */
-export function mediaFileNameForAsset(
+/** `media/<blob key>.<ext>` file name for one asset (asset ids are blob keys). */
+export function mediaFileNameForKey(
   asset: Pick<AssetReference, "id" | "mediaType" | "name">
 ): string {
   return `${asset.id}${extensionForMediaType(asset.mediaType)}`;
 }
 
-/** The sourceId a bundle media file name refers to (strips the extension). */
-export function sourceIdFromMediaFileName(fileName: string): string {
+/** The blob key a bundle media file name refers to (strips the extension). */
+export function mediaKeyFromFileName(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   return dot < 0 ? fileName : fileName.slice(0, dot);
 }
@@ -178,12 +191,23 @@ export function clipNeedsMediaBytes(clip: Clip): boolean {
   return true;
 }
 
-/** Every source identity that must have bytes in IndexedDB for this project to load. */
-export function requiredMediaKeys(project: SavedVideoProject): string[] {
+/** The clips whose bytes a bundle has to carry. */
+export function clipsNeedingMediaBytes(project: SavedVideoProject): Clip[] {
+  return project.project.clips.filter(clipNeedsMediaBytes);
+}
+
+/**
+ * Every blob key this project could resolve through, deduped.
+ *
+ * Informational only. A bundle does not need one file per key — it needs one file
+ * per clip, named with whichever key actually holds that clip's bytes. Resolve per
+ * clip through `mediaBlobKeysForClip` / `loadMediaBlobForClip` (mediaStorage owns
+ * that priority); do not treat this list as an export plan.
+ */
+export function referencedMediaKeys(project: SavedVideoProject): string[] {
   const keys = new Set<string>();
-  for (const clip of project.project.clips) {
-    if (!clipNeedsMediaBytes(clip)) continue;
-    if (clip.sourceId) keys.add(clip.sourceId);
+  for (const clip of clipsNeedingMediaBytes(project)) {
+    for (const key of mediaBlobKeysForClip(clip)) keys.add(key);
   }
   return Array.from(keys);
 }
@@ -282,10 +306,10 @@ export function validateVideoBundle(bundle: VideoBundle): VideoBundleValidation 
   const mediaKeys = new Set<string>();
 
   for (const entry of media) {
-    if (mediaKeys.has(entry.sourceId)) {
-      errors.push(`media: duplicate sourceId "${entry.sourceId}"`);
+    if (mediaKeys.has(entry.key)) {
+      errors.push(`media: duplicate blob key "${entry.key}"`);
     }
-    mediaKeys.add(entry.sourceId);
+    mediaKeys.add(entry.key);
   }
 
   for (const clip of inner.clips) {
@@ -301,27 +325,29 @@ export function validateVideoBundle(bundle: VideoBundle): VideoBundleValidation 
     }
     if (!clipNeedsMediaBytes(clip)) continue;
 
-    if (!clip.sourceId) {
+    // Accept a file named by EITHER key the loader will try, in its order.
+    const candidates = mediaBlobKeysForClip(clip);
+    if (candidates.length === 0) {
       errors.push(`${label}: sourceId is required so the clip can rebind to its media on load`);
       continue;
     }
-    if (!mediaKeys.has(clip.sourceId)) {
+    if (!candidates.some((key) => mediaKeys.has(key))) {
       errors.push(
-        `${label}: no media for sourceId "${clip.sourceId}" — the editor would drop this clip on load, not report an error`
+        `${label}: no media under any of its blob keys [${candidates.join(", ")}] — the editor would drop this clip on load, not report an error`
       );
     }
-    if (!assetIds.has(clip.sourceId)) {
+    if (clip.sourceId && !assetIds.has(clip.sourceId)) {
       warnings.push(
         `${label}: sourceId "${clip.sourceId}" has no matching project.assets entry (asset.id should equal clip.sourceId)`
       );
     }
   }
 
+  const clipOwnedKeys = new Set(inner.clips.flatMap((clip) => mediaBlobKeysForClip(clip)));
   for (const entry of media) {
-    const usedByClip = inner.clips.some((clip) => clip.sourceId === entry.sourceId);
-    if (!usedByClip && !assetIds.has(entry.sourceId)) {
+    if (!clipOwnedKeys.has(entry.key) && !assetIds.has(entry.key)) {
       errors.push(
-        `media "${entry.fileName}": sourceId "${entry.sourceId}" matches no clip and no asset — bundle and project disagree`
+        `media "${entry.fileName}": blob key "${entry.key}" matches no clip and no asset — bundle and project disagree`
       );
     }
     if (!entry.base64) {
@@ -362,7 +388,7 @@ export function summarizeVideoBundleProject(project: SavedVideoProject): VideoBu
       image: clips.filter((clip) => clip.type === "image").length,
     },
     maskCount: (inner.masks || []).length,
-    mediaKeys: requiredMediaKeys(project),
+    referencedMediaKeys: referencedMediaKeys(project),
   };
 }
 

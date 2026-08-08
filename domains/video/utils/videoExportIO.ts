@@ -1,4 +1,4 @@
-import { loadMediaBlobFromKeys } from "./mediaStorage";
+import { loadMediaBlobForClip } from "./mediaStorage";
 import type { Clip } from "../types";
 import type {
   ExportProgressState,
@@ -297,7 +297,9 @@ export async function resolveClipSourceBlob(
     }
   }
 
-  const storedBlob = await loadMediaBlobFromKeys([clip.id, clip.sourceId]).catch(() => null);
+  const storedBlob = await loadMediaBlobForClip(clip)
+    .then((found) => found?.blob ?? null)
+    .catch(() => null);
   if (storedBlob) {
     sourceBlobCache?.set(cacheKey, storedBlob);
     return storedBlob;

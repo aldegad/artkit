@@ -409,6 +409,17 @@ async function commandPull(outTarget, options) {
       : await page.evaluate(([global]) => window[global].exportLive(), [BRIDGE_GLOBAL]);
 
     log(`source=${result.source} project="${result.project.name}" id=${result.project.id}`);
+
+    // A clip with no bytes under any of its keys means the dump is incomplete.
+    // Writing a bundle anyway would look complete and fail only on re-import, so
+    // this is the same loud rule the IN direction already enforces.
+    if (result.mediaGaps.length > 0) {
+      const lines = result.mediaGaps
+        .map((gap) => `  - clip "${gap.clipName}" (${gap.clipId}) — 후보 키 [${gap.candidates.join(", ")}]`)
+        .join("\n");
+      throw new BridgeError(`미디어 바이트를 못 찾은 클립이 있어서 회수를 중단했다:\n${lines}`);
+    }
+
     const projectJson = `${JSON.stringify(result.project, null, 2)}\n`;
     const asJsonFile = outTarget.toLowerCase().endsWith(".json");
     const out = path.resolve(outTarget);
@@ -417,9 +428,9 @@ async function commandPull(outTarget, options) {
       await fs.mkdir(path.dirname(out), { recursive: true });
       await fs.writeFile(out, projectJson, "utf8");
       log(`wrote ${out}`);
-      if (result.summary.mediaKeys.length > 0) {
+      if (result.media.length > 0) {
         log(
-          `media ${result.summary.mediaKeys.length}개는 안 썼다 (project.json 단독 출력) — 전체 번들이 필요하면 디렉토리 경로를 줘라`
+          `media ${result.media.length}개는 안 썼다 (project.json 단독 출력) — 전체 번들이 필요하면 디렉토리 경로를 줘라`
         );
       }
       return;
@@ -429,26 +440,28 @@ async function commandPull(outTarget, options) {
     await fs.writeFile(path.join(out, MANIFEST_FILE), `${JSON.stringify(result.manifest, null, 2)}\n`, "utf8");
     await fs.writeFile(path.join(out, PROJECT_FILE), projectJson, "utf8");
 
-    for (const sourceId of result.summary.mediaKeys) {
+    // The bridge already resolved which blob key holds each clip's bytes, using the
+    // app's own priority. The CLI just fetches the files it was told about.
+    for (const planned of result.media) {
       const handle = await page.evaluate(
-        ([global, id]) => window[global].prepareMediaExport(id),
-        [BRIDGE_GLOBAL, sourceId]
+        ([global, key]) => window[global].prepareMediaExport(key),
+        [BRIDGE_GLOBAL, planned.key]
       );
       const parts = [];
       for (let index = 0; index < handle.chunkCount; index += 1) {
         parts.push(
           await page.evaluate(
-            ([global, id, chunkIndex]) => window[global].readMediaExportChunk(id, chunkIndex),
-            [BRIDGE_GLOBAL, sourceId, index]
+            ([global, key, chunkIndex]) => window[global].readMediaExportChunk(key, chunkIndex),
+            [BRIDGE_GLOBAL, planned.key, index]
           )
         );
       }
       await page.evaluate(
-        ([global, id]) => window[global].releaseMediaExport(id),
-        [BRIDGE_GLOBAL, sourceId]
+        ([global, key]) => window[global].releaseMediaExport(key),
+        [BRIDGE_GLOBAL, planned.key]
       );
       await fs.writeFile(path.join(out, MEDIA_DIR, handle.fileName), Buffer.from(parts.join(""), "base64"));
-      log(`media ${handle.fileName} (${formatBytes(handle.byteLength)})`);
+      log(`media ${handle.fileName} (${formatBytes(handle.byteLength)}, clips ${planned.clipIds.length})`);
     }
     log(`wrote bundle ${out}`);
   } finally {

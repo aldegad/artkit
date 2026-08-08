@@ -11,7 +11,6 @@ export { useVideoProjectLibrary } from "./useVideoProjectLibrary";
 export {
   useAgentBridge,
   isAgentBridgeEnabled,
-  agentBridgeMediaKeys,
   AGENT_BRIDGE_GLOBAL,
   AGENT_BRIDGE_PROTOCOL,
   type ArtkitVideoBridge,
@@ -19,6 +18,8 @@ export {
   type AgentBridgeImportResult,
   type AgentBridgeMediaHandle,
   type AgentBridgeProjectEntry,
+  type AgentBridgeMediaPlanEntry,
+  type AgentBridgeMediaGap,
 } from "./useAgentBridge";
 export { useVideoClipboardActions } from "./useVideoClipboardActions";
 export { useVideoCropActions } from "./useVideoCropActions";

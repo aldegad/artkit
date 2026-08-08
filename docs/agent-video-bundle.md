@@ -2,6 +2,16 @@
 
 에이전트가 영상 클립과 BGM/SFX 를 타임라인에 배치한 프로젝트를 만들어 로컬 artkit 에 넣고, 사용자가 브라우저에서 같이 다듬고, 사용자가 바꾼 것을 에이전트가 다시 읽는 양방향 경로다. artkit 은 100% 클라이언트 정적앱이고 프로젝트와 미디어는 브라우저 IndexedDB 에 있으므로, CLI 는 앱에 직접 꽂지 않고 실행 중인 앱 안의 브리지를 호출한다.
 
+## 사전 준비
+
+이 CLI 는 `playwright` devDependency 를 쓴다. 새 체크아웃이나 새 워크트리에서는 먼저 설치해야 하고, 안 하면 `ERR_MODULE_NOT_FOUND: playwright` 가 난다.
+
+```bash
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
+```
+
+브라우저 다운로드는 건너뛰어도 된다. `channel: "chrome"` 으로 시스템에 설치된 Google Chrome 을 쓰기 때문이다.
+
 ## 30초 요약
 
 ```bash
@@ -80,15 +90,21 @@ my-bundle/
 
 클립 공통 필드: `startTime`(타임라인 위치, 초) · `duration`(타임라인 길이) · `trimIn`/`trimOut`(소스 안에서의 구간) · `playbackSpeed` · `opacity` · `position`/`scale`/`rotation`. 오디오는 `audioVolume`(0-100) · `audioMuted`. 비디오는 추가로 `hasAudio` · `sourceDuration` · `sourceSize`.
 
-### 안전 패턴 — 식별자 하나로 통일한다
+### 안전 패턴 — 새로 만드는 번들은 식별자 하나로 통일한다
 
 ```
 asset.id  ==  media/<이 값>.<ext>  ==  IndexedDB blob key  ==  그 소스를 쓰는 모든 clip.sourceId
 ```
 
-이걸 지키면 로드 시 재바인딩이 항상 성공한다. **어기면 에러가 아니라 클립이 조용히 사라진다** — 앱의 로드 경로(`restoreClipsWithLocalMedia`)는 blob 을 못 찾고 `sourceUrl` 이 죽은 `blob:` 이면 그 클립을 버린다. 그래서 `push` 는 저장 전에 번들을 검증하고, `clip.sourceId` 에 대응하는 미디어가 없으면 아무것도 쓰지 않고 그 이유를 전부 나열하며 거부한다.
+이걸 지키면 로드 시 재바인딩이 항상 성공한다. **어기면 에러가 아니라 클립이 조용히 사라진다** — 앱의 로드 경로(`restoreClipsWithLocalMedia`)는 blob 을 못 찾고 `sourceUrl` 이 죽은 `blob:` 이면 그 클립을 버린다. 그래서 `push` 는 저장 전에 번들을 검증하고, 어떤 클립이 자기 blob 키 어느 쪽으로도 미디어를 못 찾으면 아무것도 쓰지 않고 그 이유를 전부 나열하며 거부한다.
 
 `media/` 파일의 확장자는 `asset.mediaType` 에서 정한다 (`video/mp4` → `.mp4`, `audio/mpeg` → `.mp3`). 모르는 타입은 `.bin` 으로 두고 바이트만 옮긴다.
+
+### media 파일 이름은 blob 키다 — sourceId 가 아닐 수도 있다
+
+에디터는 **한 클립만의 결과물**을 `clip.id` 로 저장한다. 프레임 캡처, 인페인트 출력, 갭 보간이 그렇다. 반면 임포트한 미디어는 여러 클립이 공유하므로 `sourceId` 로 저장된다. 그래서 클립 하나의 바이트를 찾는 순서는 **`clip.id` 먼저, 그다음 `sourceId`** 이고, 그 규칙의 owner 는 `mediaStorage.mediaBlobKeysForClip` 이다.
+
+번들의 `media/<이름>` 은 그 **실제 키**를 쓴다. 즉 `media/<sourceId>.mp4` 도 `media/<clip.id>.mp4` 도 유효하고, 검증과 회수 둘 다 같은 우선순위로 판단한다. 새 번들을 손으로 만들 때는 위 안전 패턴(전부 sourceId)만 지키면 되고, `pull` 로 회수한 번들에는 인페인트한 클립처럼 `clip.id` 로 이름 붙은 파일이 섞여 나올 수 있다 — 정상이다.
 
 `sourceUrl` 은 비워 둔다(`""`). 로드할 때 앱이 blob 에서 새로 만든다. 단 `data:` URL 은 자기 완결적 내용이라 그대로 쓰이고, 그 클립은 별도 미디어 파일이 필요 없다.
 
@@ -168,6 +184,8 @@ asset.id  ==  media/<이 값>.<ext>  ==  IndexedDB blob key  ==  그 소스를 �
 
 회수된 `project.json` 의 `sourceUrl` 은 비워져 나온다. 세션 안에서만 유효한 `blob:` 핸들이라 번들에 넣으면 죽은 값이기 때문이다.
 
+어떤 클립이 자기 blob 키 어느 쪽으로도 바이트를 못 찾으면 `pull` 은 **아무것도 쓰지 않고 그 클립 목록과 후보 키를 찍으며 실패한다**. 반쪽 번들은 완전해 보이면서 재주입 때만 터지므로, 주입 방향과 같은 규칙을 적용한다.
+
 ## 구현 위치
 
 | 무엇 | 어디 |
@@ -179,7 +197,9 @@ asset.id  ==  media/<이 값>.<ext>  ==  IndexedDB blob key  ==  그 소스를 �
 
 CLI 는 `project.json` 을 파싱하지 않는다. 파일을 읽어 브리지에 그대로 넘기고 판단은 앱 안의 포맷 모듈이 한다 — 노드와 브라우저 두 곳에 파서를 두면 스키마가 갈라지기 때문이다.
 
-주입은 앱의 기존 경로를 그대로 쓴다: `saveMediaBlob` → `saveVideoProject` → `applyLoadedProject`. 회수도 그렇다: `loadVideoAutosave` / `getVideoProject` + `loadMediaBlob`. 저장·로드·복원 로직을 다시 구현한 곳은 없다.
+주입은 앱의 기존 경로를 그대로 쓴다: `saveMediaBlob` → `saveVideoProject` → `applyLoadedProject`. 회수는 `loadVideoAutosave` / `getVideoProject` + `loadMediaBlobForClip` 이다.
+
+회수의 blob 키 해석은 처음에 `sourceId` 만 봐서 틀렸다(2026-08-08 검증 기각). 인페인트한 클립은 결과가 `clip.id` 에 저장되는데 회수가 `sourceId` 를 집어서 **인페인트 이전 바이트**를 경고 없이 담아 나왔고, 프레임 캡처 클립은 회수 자체가 죽었다. 수리는 우선순위를 브리지에 베껴 넣는 대신 `mediaStorage` 로 끌어올려 `loadMediaBlobForClip` 하나가 소유하게 했다 — 그 전에도 같은 `[clip.id, clip.sourceId]` 리터럴이 앱 안 네 곳에 흩어져 있었고, 이제 그 네 곳까지 같은 함수를 부른다.
 
 브리지는 기본적으로 dev 에서만 `window` 에 올라간다(`NODE_ENV !== "production"`). 로컬 프로덕션 빌드에서 쓰려면 `NEXT_PUBLIC_ARTKIT_AGENT_BRIDGE=1` 로 명시적으로 켠다.
 

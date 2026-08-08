@@ -8,10 +8,10 @@ import {
   clipNeedsMediaBytes,
   createVideoBundleManifest,
   extensionForMediaType,
-  mediaFileNameForAsset,
+  mediaFileNameForKey,
   mediaTypeForFileName,
-  requiredMediaKeys,
-  sourceIdFromMediaFileName,
+  referencedMediaKeys,
+  mediaKeyFromFileName,
   stripRuntimeSourceUrls,
   summarizeVideoBundleProject,
   validateVideoBundle,
@@ -109,7 +109,7 @@ function savedProject(overrides: Partial<SavedVideoProject["project"]> = {}): Sa
 }
 
 function media(sourceId: string, fileName: string, mediaType: string): VideoBundleMedia {
-  return { sourceId, fileName, mediaType, base64: bytesToBase64(new Uint8Array([1, 2, 3])) };
+  return { key: sourceId, fileName, mediaType, base64: bytesToBase64(new Uint8Array([1, 2, 3])) };
 }
 
 function bundle(overrides: Partial<VideoBundle> = {}): VideoBundle {
@@ -135,7 +135,7 @@ describe("validateVideoBundle", () => {
   it("rejects a clip whose sourceId has no media, because the editor would silently drop it", () => {
     const result = validateVideoBundle(bundle({ media: [media(VIDEO_SOURCE, `${VIDEO_SOURCE}.mp4`, "video/mp4")] }));
     expect(result.ok).toBe(false);
-    expect(result.errors.join("\n")).toContain(`no media for sourceId "${BGM_SOURCE}"`);
+    expect(result.errors.join("\n")).toContain(`no media under any of its blob keys [clip-bgm, ${BGM_SOURCE}]`);
   });
 
   it("rejects media that matches neither a clip nor an asset", () => {
@@ -179,6 +179,32 @@ describe("validateVideoBundle", () => {
     expect(result.warnings.join("\n")).toContain("has no matching project.assets entry");
   });
 
+  it("accepts media named by clip.id, which is where per-clip output lives", () => {
+    // Frame capture / inpaint / gap interpolation store bytes under clip.id, and
+    // the loader tries clip.id BEFORE sourceId. A bundle naming the file after the
+    // clip is therefore complete, and used to be rejected.
+    const project = savedProject();
+    project.project.clips = [videoClip({ id: "clip-inpainted" })];
+    const result = validateVideoBundle(
+      bundle({ project, media: [media("clip-inpainted", "clip-inpainted.mp4", "video/mp4")] })
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a capture-style clip whose sourceId is a random id never used as a blob key", () => {
+    const project = savedProject();
+    project.project.clips = [
+      videoClip({ id: "clip-captured", sourceId: "3f0b-random-uuid", sourceUrl: "" }),
+    ];
+    project.project.assets = [];
+    const result = validateVideoBundle(
+      bundle({ project, media: [media("clip-captured", "clip-captured.png", "image/png")] })
+    );
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join("\n")).toContain("has no matching project.assets entry");
+  });
+
   it("does not require media bytes for an inline data: source", () => {
     const project = savedProject();
     project.project.clips = [videoClip({ sourceUrl: "data:video/mp4;base64,AAAA", sourceId: "inline" })];
@@ -202,15 +228,21 @@ describe("media identity mapping", () => {
 
   it("round-trips a sourceId through the media file name", () => {
     const asset = { id: "src-uuid-1", mediaType: "video/webm", name: "a.webm" };
-    const fileName = mediaFileNameForAsset(asset);
+    const fileName = mediaFileNameForKey(asset);
     expect(fileName).toBe("src-uuid-1.webm");
-    expect(sourceIdFromMediaFileName(fileName)).toBe("src-uuid-1");
+    expect(mediaKeyFromFileName(fileName)).toBe("src-uuid-1");
+  });
+
+  it("reports clip-owned keys alongside shared source keys", () => {
+    const project = savedProject();
+    project.project.clips = [videoClip({ id: "clip-inpainted" })];
+    expect(referencedMediaKeys(project)).toEqual(["clip-inpainted", VIDEO_SOURCE]);
   });
 
   it("collects one media key per shared source, not per clip", () => {
     const project = savedProject();
     project.project.clips = [videoClip(), videoClip({ id: "clip-video-2", startTime: 6 })];
-    expect(requiredMediaKeys(project)).toEqual([VIDEO_SOURCE]);
+    expect(referencedMediaKeys(project).includes(VIDEO_SOURCE)).toBe(true);
   });
 
   it("skips clips that carry their own bytes", () => {
@@ -243,7 +275,10 @@ describe("summarizeVideoBundleProject", () => {
     expect(summary.videoTrackCount).toBe(1);
     expect(summary.audioTrackCount).toBe(1);
     expect(summary.clipCounts).toEqual({ video: 1, audio: 1, image: 0 });
-    expect(summary.mediaKeys.sort()).toEqual([BGM_SOURCE, VIDEO_SOURCE].sort());
+    // Both axes: each clip's own id (per-clip output) and its shared source id.
+    expect(summary.referencedMediaKeys.sort()).toEqual(
+      ["clip-bgm", "clip-video", BGM_SOURCE, VIDEO_SOURCE].sort()
+    );
   });
 });
 
