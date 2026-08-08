@@ -62,6 +62,12 @@ grep -A4 'function isAllowedOwner' firestore.rules storage.rules
 
 빈 목록(`uid in []`)인 채로 배포하면 사용자 본인도 자기 클라우드 데이터를 읽지 못한다. 그리고 되돌리는 경로도 이 커맨드다 — 목록을 채우고 다시 배포하는 것 말고 다른 길이 없다.
 
+### 잠겼을 때 — 콘솔에서 손으로 고치지 마라
+
+잠금은 영구적이지 않다. 규칙 배포는 관리 API 와 프로젝트 IAM 권한으로 나가고 [규칙 자신은 그 배포를 막지 못한다](https://firebase.google.com/docs/rules/manage-deploy). 즉 전원이 거부되는 규칙이 라이브여도 배포 권한은 그대로이므로, `firebase/allowed-uids.json` 에 uid 를 넣고 `npm run deploy:rules` 를 다시 돌리면 복구된다. 최악은 일시적 접근 차단이지 회복 불가가 아니다.
+
+그러니 급한 마음에 Firebase 콘솔에서 규칙을 손으로 고치지 마라. 두 가지가 동시에 깨진다 — 허용 목록의 정의처가 둘이 되고, 그 손편집은 **다음 `deploy:rules` 가 조용히 덮어쓴다**(CLI 배포는 콘솔의 기존 규칙을 덮어쓴다). 복구도 SSoT 를 거쳐서 한다.
+
 ### 왜 나눴나
 
 예전에는 `npm run deploy` 가 `firebase deploy` 를 타겟 없이 불렀다. `firebase.json` 에 규칙이 설정돼 있으므로 그 한 번이 호스팅과 보안 규칙을 함께 올렸다. 호스팅을 올리려던 배포가 규칙까지 올리는 셈이고, 허용 목록이 빈 상태에서 그게 돌면 사용자가 잠긴다. 되돌리려면 다시 배포해야 하는데 그 배포도 같은 스크립트였다.
