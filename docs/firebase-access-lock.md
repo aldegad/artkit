@@ -39,12 +39,29 @@ npm run test:rules      # firestore·storage 에뮬레이터로 규칙을 실제
 
 ## 배포
 
-**배포 전에 허용 uid 를 반드시 채운다.** 빈 목록인 채로 배포하면 사용자 본인도 자기 클라우드 데이터를 읽지 못한다.
+규칙 배포와 호스팅 배포는 다른 커맨드다. 이름이 갈라져 있으므로 "배포"가 무엇을 올리는지 커맨드가 말해 준다.
 
 ```bash
-firebase deploy --only firestore:rules,storage --project tools-b1c33
+npm run deploy         # 호스팅만 올린다 (firebase deploy --only hosting)
+npm run deploy:rules   # 보안 규칙만 올린다 (firebase deploy --only firestore:rules,storage)
 ```
 
-배포는 사용자 자산에 닿고 되돌리기 어려우므로 사람이 직접 실행한다.
+프로젝트는 `.firebaserc` 의 default(`tools-b1c33`)에서 온다. 어느 프로젝트로 나가는지의 정의처는 그 파일 하나이므로 스크립트에 프로젝트 id 를 박지 않는다.
 
-`npm run deploy` 는 `firebase deploy` 를 타겟 없이 부르므로 hosting 뿐 아니라 **firestore·storage 규칙까지 함께 올린다**. 허용 목록이 빈 상태에서 그 스크립트를 돌리면 잠금이 그대로 배포된다. 목록을 채우기 전에는 `npm run deploy` 를 쓰지 않는다.
+### `npm run deploy:rules` 를 누르기 전에
+
+이 커맨드는 **라이브 보안 규칙을 교체한다.** 사용자 자산에 닿고 되돌리기 어려우므로 사람이 직접 실행한다.
+
+허용 목록이 비어 있지 않은지 먼저 확인한다:
+
+```bash
+grep -A4 'function isAllowedOwner' firestore.rules storage.rules
+```
+
+빈 목록(`uid in []`)인 채로 배포하면 사용자 본인도 자기 클라우드 데이터를 읽지 못한다. 그리고 되돌리는 경로도 이 커맨드다 — 목록을 채우고 다시 배포하는 것 말고 다른 길이 없다.
+
+### 왜 나눴나
+
+예전에는 `npm run deploy` 가 `firebase deploy` 를 타겟 없이 불렀다. `firebase.json` 에 규칙이 설정돼 있으므로 그 한 번이 호스팅과 보안 규칙을 함께 올렸다. 호스팅을 올리려던 배포가 규칙까지 올리는 셈이고, 허용 목록이 빈 상태에서 그게 돌면 사용자가 잠긴다. 되돌리려면 다시 배포해야 하는데 그 배포도 같은 스크립트였다.
+
+규칙 배포 경로를 아예 없애는 수리는 하지 않았다. 그러면 규칙을 올릴 정당한 경로가 레포에서 사라지고, 다음 사람이 커맨드를 손으로 타이핑하다 타겟을 다시 빼먹는다 — 그게 지금 고치려는 사고 그 자체다.
