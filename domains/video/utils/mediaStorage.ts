@@ -87,6 +87,46 @@ export async function loadMediaBlobFromKeys(
 }
 
 /**
+ * Blob key priority for one clip: its own bytes first, then its shared source.
+ *
+ * A clip owns bytes under its own id when the editor produced them for that clip
+ * alone (frame capture, inpaint output, gap interpolation); it falls back to the
+ * source id for imported media shared by several clips. This order is the rule,
+ * and it lives here because blob keys are this module's concern — every consumer
+ * must resolve the same way or they disagree about what a clip plays.
+ */
+export function mediaBlobKeysForClip(clip: {
+  id: string;
+  sourceId?: string | null;
+}): string[] {
+  return Array.from(
+    new Set(
+      [clip.id, clip.sourceId]
+        .map((key) => (typeof key === "string" ? key.trim() : ""))
+        .filter((key) => key.length > 0)
+    )
+  );
+}
+
+/**
+ * Load a clip's media and report WHICH key held it.
+ *
+ * Callers that only need the bytes can ignore `key`; callers that have to name
+ * the blob (bundle export) need it, and deriving it separately would fork the
+ * priority rule above.
+ */
+export async function loadMediaBlobForClip(clip: {
+  id: string;
+  sourceId?: string | null;
+}): Promise<{ blob: Blob; key: string } | null> {
+  for (const key of mediaBlobKeysForClip(clip)) {
+    const blob = await loadMediaBlob(key);
+    if (blob) return { blob, key };
+  }
+  return null;
+}
+
+/**
  * Delete a media file from IndexedDB
  * @param clipId - The clip ID used as key
  */

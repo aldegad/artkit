@@ -986,7 +986,7 @@ export default function AnimationPreviewContent() {
                     commitFrameEdits();
                     setIsPlaying(!isPlaying);
                   }}
-                  className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
+                  className="p-1.5 rounded bg-accent-primary hover:bg-accent-primary-hover text-canvas-text-on-color transition-colors"
                 >
                   {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
                 </button>
