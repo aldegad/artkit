@@ -64,7 +64,7 @@ export function PreviewControls({ className }: PreviewControlsProps) {
 
         <button
           onClick={togglePlay}
-          className="p-1.5 rounded bg-accent hover:bg-accent-hover text-white transition-colors"
+          className="p-1.5 rounded bg-accent-primary hover:bg-accent-primary-hover text-canvas-text-on-color transition-colors"
         >
           {playback.isPlaying ? (
             <PauseIcon className="w-4 h-4" />
