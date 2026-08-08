@@ -10,6 +10,11 @@ const config = [
       "out/**",
       "coverage/**",
       "node_modules/**",
+      // Agent worktrees and the collaboration browser profile. `.gitignore` already
+      // excludes `.kuma/`, so nothing here is ours — but the Chrome profile that
+      // `npm run video:open` writes there ships bundled extension js, and linting it
+      // turns this repo red the first time anyone opens that window.
+      ".kuma/**",
     ],
   },
   {
