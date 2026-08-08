@@ -43,8 +43,10 @@ npm run test:rules      # firestore·storage 에뮬레이터로 규칙을 실제
 
 ```bash
 npm run deploy         # 호스팅만 올린다 (firebase deploy --only hosting)
-npm run deploy:rules   # 보안 규칙만 올린다 (firebase deploy --only firestore:rules,storage)
+npm run deploy:rules   # 보안 규칙만 올린다 (rules:check 통과 후 firebase deploy --only firestore:rules,storage)
 ```
+
+`deploy:rules` 는 `rules:check` 를 먼저 돌린다. 렌더된 `.rules` 가 `firebase/allowed-uids.json` 과 어긋나 있으면 거기서 멈추고 firebase 를 부르지 않는다 — 손으로 고친 규칙이 SSoT 를 앞질러 배포되는 경로를 닫는다.
 
 프로젝트는 `.firebaserc` 의 default(`tools-b1c33`)에서 온다. 어느 프로젝트로 나가는지의 정의처는 그 파일 하나이므로 스크립트에 프로젝트 id 를 박지 않는다.
 
@@ -52,7 +54,7 @@ npm run deploy:rules   # 보안 규칙만 올린다 (firebase deploy --only fire
 
 이 커맨드는 **라이브 보안 규칙을 교체한다.** 사용자 자산에 닿고 되돌리기 어려우므로 사람이 직접 실행한다.
 
-허용 목록이 비어 있지 않은지 먼저 확인한다:
+드리프트는 `rules:check` 가 막지만 **빈 목록은 막지 않는다** — 빈 채로 렌더된 규칙은 SSoT 와 일치하기 때문이다. 그건 사람이 본다. 허용 목록이 비어 있지 않은지 먼저 확인한다:
 
 ```bash
 grep -A4 'function isAllowedOwner' firestore.rules storage.rules
