@@ -18,10 +18,11 @@ import { readAllowedUids, renderFile } from "../scripts/generate-firebase-rules.
  *
  * 실행: `npm run test:rules` (firestore·storage 에뮬레이터를 함께 띄운다)
  *
- * 커밋된 `firebase/allowed-uids.json` 은 비어 있으므로, 허용된 경우를 재현하려면
- * 규칙을 합성 uid 로 렌더해야 한다. 그래서 rules 파일을 그대로 읽지 않고 생성기의
- * `renderFile` 로 목록만 갈아끼운다 — 실제로 배포될 구조를 그대로 시험하면서
- * 사용자의 진짜 uid 없이 돌아간다.
+ * 절이 셋이고 각각 다른 것을 본다.
+ * - 앞의 두 절은 생성기의 `renderFile` 로 허용 목록만 합성 값으로 갈아끼운다. 그래서 지금
+ *   커밋된 목록에 누가 들어 있든(비어 있어도) 게이트 구조 자체를 시험할 수 있다.
+ * - 마지막 절은 갈아끼우지 않고 rules 파일을 그대로 올려, 커밋된 목록의 실제 uid 가
+ *   통과하는지를 본다 — 배포될 산출물에 대한 검사다.
  */
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));

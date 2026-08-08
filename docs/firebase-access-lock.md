@@ -33,7 +33,9 @@ npm test                # 허용 목록 SSoT 와 두 rules 파일의 drift 검�
 npm run test:rules      # firestore·storage 에뮬레이터로 규칙을 실제 평가
 ```
 
-`npm run test:rules` 는 규칙을 합성 uid 로 렌더해 돌린다. 그래서 사용자의 진짜 uid 없이도 (a) 허용 uid 의 자기 공간 읽기·쓰기 통과 (b) 비허용 uid 의 자기 공간 거부 (c) 미인증 거부 (d) 허용 uid 라도 남의 공간 거부 (e) 빈 목록이면 인증된 uid 도 거부 를 Firestore·Storage 양쪽에서 고정한다. 에뮬레이터는 JRE 가 필요하다.
+`npm run test:rules` 는 (a) 허용 uid 의 자기 공간 읽기·쓰기 통과 (b) 비허용 uid 의 자기 공간 거부 (c) 미인증 거부 (d) 허용 uid 라도 남의 공간 거부 (e) 빈 목록이면 인증된 uid 도 거부 를 Firestore·Storage 양쪽에서 고정한다. 에뮬레이터는 JRE 가 필요하다.
+
+(a)~(e) 중 구조를 보는 절들은 허용 목록만 합성 값으로 갈아끼워 돌기 때문에, 커밋된 목록에 누가 들어 있든 게이트가 성립하는지 확인된다. 별도로 rules 파일을 그대로 올려 커밋된 목록의 실제 uid 가 통과하는지도 잰다 — 배포될 산출물 자체에 대한 검사다.
 
 ## 배포
 
