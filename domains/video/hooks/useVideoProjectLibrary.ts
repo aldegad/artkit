@@ -138,6 +138,7 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
     const resolved = await loadMediaBlobForClip(clip);
     let blob = resolved?.blob ?? null;
     const blobKey = resolved?.key ?? null;
+    let fallbackBlobKey: string | null = null;
     if (!blob && clip.sourceId) {
       blob = sourceBlobCache.get(clip.sourceId) || null;
       if (!blob) {
@@ -147,6 +148,8 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
           const candidateBlob = await loadMediaBlob(candidateId);
           if (candidateBlob) {
             blob = candidateBlob;
+            // Key the URL by where the bytes actually live, same as timelineModel.
+            fallbackBlobKey = candidateId;
             sourceBlobCache.set(clip.sourceId, candidateBlob);
             break;
           }
@@ -158,7 +161,10 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
       if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
         sourceBlobCache.set(clip.sourceId, blob);
       }
-      const newUrl = objectUrlForKey(blobKey ?? clip.sourceId ?? clip.id, blob);
+      const newUrl = objectUrlForKey(
+        blobKey ?? fallbackBlobKey ?? clip.sourceId ?? clip.id,
+        blob,
+      );
       restoredClips.push({ ...clip, sourceUrl: newUrl });
       continue;
     }

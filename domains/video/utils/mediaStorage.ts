@@ -38,9 +38,10 @@ export async function saveMediaBlob(clipId: string, blob: Blob): Promise<void> {
     await connection.withStore(STORE_NAME, "readwrite", (store) =>
       store.put(storedBlob, clipId)
     );
-    // Same key, different bytes (inpaint output, re-import): the cached URL still
-    // points at the old blob, so drop it rather than hand out a stale name.
-    releaseObjectUrlForKey(clipId);
+    // Same key, different bytes (inpaint output, re-import): stop handing out the
+    // cached name, but do NOT revoke it — a sibling clip from a razor split may still
+    // be playing those original bytes through that very URL.
+    forgetObjectUrlForKey(clipId);
   } catch (error) {
     console.error(`[MediaStorage] Failed to save blob "${clipId}":`, error);
     throw error;
@@ -153,6 +154,24 @@ export function objectUrlForKey(key: string, blob: Blob): string {
   const url = URL.createObjectURL(blob);
   objectUrlByKey.set(key, url);
   return url;
+}
+
+/**
+ * Stop naming a key without killing the name already handed out.
+ *
+ * After a razor split two clips share one cache entry (`{ ...clip }` spread), so the
+ * cache cannot tell how many holders a URL has. Revoking on overwrite killed the URL
+ * a sibling was still playing (validator note, 2026-08-08: split, then inpaint the
+ * first half, and the second half went dead).
+ *
+ * Forgetting is the correct semantics for an overwrite anyway: the clip that was NOT
+ * edited still plays the ORIGINAL bytes, so its URL must keep pointing at them. New
+ * lookups mint a fresh name for the new bytes. The cost is that the old name is never
+ * revoked — a bounded leak per edit, which is the cheaper side of the trade against
+ * breaking playback, and far cheaper than refcounting holders.
+ */
+export function forgetObjectUrlForKey(key: string): void {
+  objectUrlByKey.delete(key);
 }
 
 /** Release a key's objectURL, if one was handed out. */
