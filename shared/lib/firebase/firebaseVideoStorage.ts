@@ -665,6 +665,10 @@ export async function getVideoProjectFromFirebase(
   const totalSteps = data.clips.length + (data.masks.some((m) => m.maskDataRef) ? 1 : 0);
   let currentStep = 0;
   const downloadPromiseByStorageRef = new Map<string, Promise<Blob>>();
+  const { createMediaUrlResolver } = await import(
+    "@/domains/video/utils/mediaStorage"
+  );
+  const resolveMediaUrl = createMediaUrlResolver();
 
   const clips: Clip[] = await mapWithConcurrency(
     data.clips,
@@ -687,18 +691,12 @@ export async function getVideoProjectFromFirebase(
           }
           const blob = await blobPromise;
 
-          // Store in local IndexedDB for autosave compatibility
-          const { saveMediaBlob, objectUrlForKey } = await import(
-            "@/domains/video/utils/mediaStorage"
-          );
-          const mediaKey = clipMeta.sourceId || clipMeta.id;
-          await saveMediaBlob(mediaKey, blob);
-          // One name per media key, same as the local restore path. Minting a URL per
-          // CLIP here gave the same bytes several names, and pooled media elements
-          // compare the incoming sourceUrl against the one they hold — so every extra
-          // name forced another src assignment + load() during playback (measured on
-          // the local path: 224 src assignments in 3s, 0 after unifying).
-          sourceUrl = objectUrlForKey(mediaKey, blob);
+          // Store in local IndexedDB for autosave compatibility, and take ONE name
+          // per media key for this load. Doing save-then-name per clip re-mints every
+          // time (saveMediaBlob forgets the cached name by design), so k clips sharing
+          // a source got k names — exactly what this fix is about. The resolver is
+          // per-key and promise-based because clips run concurrently.
+          sourceUrl = await resolveMediaUrl(clipMeta.sourceId || clipMeta.id, blob);
         } catch (error) {
           console.error(`Failed to download media for clip ${clipMeta.id}:`, error);
         }
