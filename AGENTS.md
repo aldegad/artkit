@@ -12,10 +12,11 @@ This file is the single source of instructions for coding agents working in this
 npm run dev      # Start dev server on http://localhost:3005
 npm run build    # Build for production (static export to /out)
 npm run lint     # Run ESLint
-npm run deploy   # Build and deploy to Firebase Hosting
+npm run deploy   # Build and deploy to Firebase Hosting (hosting only — never rules)
 npm test         # Run the vitest suite (emulator-backed rules tests excluded)
 npm run test:rules   # Firebase security rules tests (spins up firestore/storage emulators, needs a JRE)
 npm run rules:build  # Re-render the allowed-uid block in firestore.rules / storage.rules
+npm run deploy:rules # Replace the LIVE security rules. Check the allowlist is non-empty first — see docs/firebase-access-lock.md
 ```
 
 ## Git Commit Convention
