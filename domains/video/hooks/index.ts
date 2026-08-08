@@ -8,6 +8,18 @@ export { useMaskTool } from "./useMaskTool";
 export { useMediaImport } from "./useMediaImport";
 export { useCaptureFrameToImageLayer } from "./useCaptureFrameToImageLayer";
 export { useVideoProjectLibrary } from "./useVideoProjectLibrary";
+export {
+  useAgentBridge,
+  isAgentBridgeEnabled,
+  agentBridgeMediaKeys,
+  AGENT_BRIDGE_GLOBAL,
+  AGENT_BRIDGE_PROTOCOL,
+  type ArtkitVideoBridge,
+  type AgentBridgeExportResult,
+  type AgentBridgeImportResult,
+  type AgentBridgeMediaHandle,
+  type AgentBridgeProjectEntry,
+} from "./useAgentBridge";
 export { useVideoClipboardActions } from "./useVideoClipboardActions";
 export { useVideoCropActions } from "./useVideoCropActions";
 export { useVideoFileActions } from "./useVideoFileActions";

@@ -17,6 +17,7 @@ import {
 } from "@/domains/video";
 import {
   analyzeGapInterpolationSelection,
+  useAgentBridge,
   useCaptureFrameToImageLayer,
   useGapInterpolationActions,
   useMaskRestoreSync,
@@ -180,6 +181,7 @@ export function useVideoEditorController() {
     loadProgress,
     projectListOperation,
     openProjectList,
+    applyLoadedProject,
     loadProject,
     deleteProject,
   } = useVideoProjectLibrary({
@@ -207,6 +209,19 @@ export function useVideoEditorController() {
     closeSaveDialog,
     submitSaveDialog,
   } = useProjectSaveDetails(savedProjects);
+
+  // Lets the agent CLI inject/dump projects through the editor's own storage path.
+  // Dev-only unless NEXT_PUBLIC_ARTKIT_AGENT_BRIDGE=1.
+  const refreshProjectListForBridge = useCallback(async () => {
+    setSavedProjects(await storageProvider.getAllProjects());
+    setStorageInfo(await storageProvider.getStorageInfo());
+  }, [setSavedProjects, setStorageInfo, storageProvider]);
+
+  useAgentBridge({
+    applyLoadedProject,
+    onProjectsChanged: refreshProjectListForBridge,
+    isEditorReady: isAutosaveInitialized,
+  });
 
   const masksArray = useMemo(() => Array.from(masksMap.values()), [masksMap]);
   const playbackRange = useVideoPlaybackRange({

@@ -184,6 +184,18 @@ Time (seconds) ←→ Pixel position
 - Masks stored as base64 PNG (grayscale alpha channel)
 - White = visible, Black = transparent (reveals below)
 
+### Agent Collaboration Bridge (video)
+
+An agent can inject a video project (clips + BGM/SFX on separate audio tracks) into the local editor and read back what the user edited:
+
+```bash
+npm run video:open              # launch the collaboration Chrome window (keep the terminal open)
+npm run video:push -- <dir>     # inject a bundle; it appears in /video immediately
+npm run video:pull -- <out>     # dump the current edit state back to a bundle (or <out>.json)
+```
+
+Bundle format, the browser-profile constraint behind the dedicated window, and operational gotchas: `docs/agent-video-bundle.md`. Format SSoT is `domains/video/utils/videoBundle.ts`; the in-app surface is `domains/video/hooks/useAgentBridge.ts` (dev-only unless `NEXT_PUBLIC_ARTKIT_AGENT_BRIDGE=1`).
+
 ### AI Background Removal
 
 Client-side ML using RMBG-1.4 via Transformers.js (`utils/backgroundRemoval.ts`). No server required.

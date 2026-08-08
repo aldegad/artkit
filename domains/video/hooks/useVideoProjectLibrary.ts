@@ -53,6 +53,7 @@ interface UseVideoProjectLibraryReturn {
   loadProgress: SaveLoadProgress | null;
   projectListOperation: "load" | "delete" | null;
   openProjectList: () => void;
+  applyLoadedProject: (loaded: SavedVideoProject) => Promise<void>;
   loadProject: (projectMeta: SavedVideoProject) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
 }
@@ -258,17 +259,12 @@ export function useVideoProjectLibrary(
     setIsProjectListOpen(true);
   }, []);
 
-  const loadProject = useCallback(async (projectMeta: SavedVideoProject) => {
-    setIsLoadingProject(true);
-    setProjectListOperation("load");
-    setLoadProgress(null);
-    try {
-      const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
-      if (!loaded) {
-        showErrorToast("Failed to load project");
-        return;
-      }
-
+  // Apply an already-fetched project to the live editor.
+  // Split out of loadProject so callers that hold the record themselves (the agent
+  // bridge injects one straight into local IndexedDB) reuse the exact same restore
+  // path instead of reimplementing it, and without going through a storage provider.
+  const applyLoadedProject = useCallback(
+    async (loaded: SavedVideoProject) => {
       const loadedProject = loaded.project;
       const normalizedClips = loadedProject.clips.map((clip) =>
         snapClipTimingToFrameGrid(normalizeLoadedClip(clip), loadedProject.frameRate || 30)
@@ -325,6 +321,37 @@ export function useVideoProjectLibrary(
       selectClips([]);
       clearHistory();
       clearMaskHistory();
+    },
+    [
+      clearHistory,
+      clearMaskHistory,
+      restoreClips,
+      restoreMasks,
+      restoreTracks,
+      seek,
+      selectClips,
+      setCurrentProjectId,
+      setLoopRange,
+      setProject,
+      setProjectGroup,
+      setProjectName,
+      setViewState,
+      toolMode,
+      autoKeyframeEnabled,
+    ]
+  );
+
+  const loadProject = useCallback(async (projectMeta: SavedVideoProject) => {
+    setIsLoadingProject(true);
+    setProjectListOperation("load");
+    setLoadProgress(null);
+    try {
+      const loaded = await storageProvider.getProject(projectMeta.id, setLoadProgress);
+      if (!loaded) {
+        showErrorToast("Failed to load project");
+        return;
+      }
+      await applyLoadedProject(loaded);
       setIsProjectListOpen(false);
     } catch (error) {
       console.error("Failed to load project:", error);
@@ -334,24 +361,7 @@ export function useVideoProjectLibrary(
       setLoadProgress(null);
       setProjectListOperation(null);
     }
-  }, [
-    clearHistory,
-    clearMaskHistory,
-    restoreClips,
-    restoreMasks,
-    restoreTracks,
-    seek,
-    selectClips,
-    setCurrentProjectId,
-    setLoopRange,
-    setProject,
-    setProjectGroup,
-    setProjectName,
-    setViewState,
-    storageProvider,
-    toolMode,
-    autoKeyframeEnabled,
-  ]);
+  }, [applyLoadedProject, storageProvider]);
 
   const deleteProject = useCallback(async (projectId: string) => {
     const shouldDelete = await confirmDialog({
@@ -392,6 +402,7 @@ export function useVideoProjectLibrary(
     loadProgress,
     projectListOperation,
     openProjectList,
+    applyLoadedProject,
     loadProject,
     deleteProject,
   };
