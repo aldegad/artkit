@@ -417,7 +417,7 @@ export function EditorToolOptions({
             type="button"
             onClick={onApplyWatermarkRemoval}
             disabled={!hasWatermarkMask || isProcessingWatermark}
-            className="px-3 py-1.5 text-xs font-medium rounded bg-accent-primary text-white hover:bg-accent-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs font-medium rounded bg-accent-primary text-white hover:bg-accent-primary-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             {isProcessingWatermark ? <><SpinnerIcon className="w-3 h-3 inline-block mr-1" />처리 중...</> : "워터마크 제거"}
           </button>
@@ -680,7 +680,7 @@ export function EditorToolOptions({
             type="button"
             onClick={onApplyTextDraft}
             disabled={!hasTextDraft}
-            className="px-2 py-1 text-xs rounded bg-accent-primary text-white hover:bg-accent-hover disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-2 py-1 text-xs rounded bg-accent-primary text-white hover:bg-accent-primary-hover disabled:opacity-30 disabled:cursor-not-allowed"
           >
             적용
           </button>

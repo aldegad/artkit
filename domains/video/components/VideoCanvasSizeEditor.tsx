@@ -58,7 +58,7 @@ export default function VideoCanvasSizeEditor({
         />
         <button
           type="submit"
-          className="px-1.5 py-0.5 text-[10px] rounded bg-accent-primary text-white hover:bg-accent-hover transition-colors"
+          className="px-1.5 py-0.5 text-[10px] rounded bg-accent-primary text-white hover:bg-accent-primary-hover transition-colors"
         >
           OK
         </button>

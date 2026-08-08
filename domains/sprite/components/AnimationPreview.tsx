@@ -911,7 +911,7 @@ export default function AnimationPreviewContent() {
                     <button
                       className={`p-1.5 rounded transition-colors ${
                         bgType !== "checkerboard"
-                          ? "bg-accent/20 text-accent hover:bg-accent/30"
+                          ? "bg-accent-primary/20 text-accent-primary hover:bg-accent-primary/30"
                           : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
                       }`}
                       title={t.background}

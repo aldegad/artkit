@@ -382,7 +382,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
       className={cn(
         "flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors",
         hasSpeedBoost
-          ? "bg-accent/20 text-accent hover:bg-accent/25"
+          ? "bg-accent-primary/20 text-accent-primary hover:bg-accent-primary/25"
           : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
       )}
       title={labels.speedTitle}
@@ -427,7 +427,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               className={cn(
                 "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
                 viewState.snapEnabled
-                  ? "bg-accent/20 text-accent"
+                  ? "bg-accent-primary/20 text-accent-primary"
                   : "hover:bg-surface-tertiary text-text-secondary"
               )}
             >
@@ -481,7 +481,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               className={cn(
                 "flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors",
                 autoGapCloseEnabled
-                  ? "bg-accent/15 text-accent"
+                  ? "bg-accent-primary/15 text-accent-primary"
                   : "hover:bg-surface-tertiary text-text-secondary"
               )}
               title={autoGapCloseEnabled ? labels.autoGapCloseOn : labels.autoGapCloseOff}
@@ -525,7 +525,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
                 className={cn(
                   "p-1 rounded transition-colors ml-auto",
                   playback.loop
-                    ? "text-accent hover:bg-accent/20"
+                    ? "text-accent-primary hover:bg-accent-primary/20"
                     : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
                 )}
                 title={playback.loop ? labels.loopOn : labels.loopOff}
@@ -570,7 +570,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               className={cn(
                 "p-1.5 rounded transition-colors",
                 viewState.snapEnabled
-                  ? "bg-accent/20 text-accent"
+                  ? "bg-accent-primary/20 text-accent-primary"
                   : "hover:bg-surface-tertiary text-text-secondary"
               )}
             >
@@ -662,7 +662,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               className={cn(
                 "p-1.5 rounded transition-colors",
                 autoGapCloseEnabled
-                  ? "bg-accent/15 text-accent"
+                  ? "bg-accent-primary/15 text-accent-primary"
                   : "hover:bg-surface-tertiary text-text-secondary hover:text-text-primary"
               )}
               title={autoGapCloseEnabled ? labels.autoGapCloseOn : labels.autoGapCloseOff}
@@ -713,7 +713,7 @@ export function TimelineToolbar({ className }: TimelineToolbarProps) {
               className={cn(
                 "p-1.5 rounded transition-colors",
                 playback.loop
-                  ? "text-accent hover:bg-accent/20"
+                  ? "text-accent-primary hover:bg-accent-primary/20"
                   : "text-text-secondary hover:bg-surface-tertiary hover:text-text-primary"
               )}
               title={playback.loop ? labels.loopOn : labels.loopOff}
