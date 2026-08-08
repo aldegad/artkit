@@ -160,10 +160,16 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
     debugLogs: previewPerf.debugLogs,
   });
 
-  useAudioBufferCache({
-    enabled: !directPreviewOptimized,
-    warmSourceUrls: warmAudioSourceUrls,
-  });
+  // Audio is NOT gated on the direct-preview fast path. That path is a VISUAL
+  // optimization (the <video> element draws itself instead of going through the
+  // canvas), and gating audio on it made preview audio a different mechanism per
+  // project shape: with one visual track, media elements played everything and the
+  // Web Audio scheduler never ran, so a one-shot landed a measured ~64ms late
+  // (median of 19, unloaded). Export renders audio through OfflineAudioContext at
+  // sample accuracy, so that lateness does not just sound loose — a user matching
+  // SFX by ear against the preview bakes the offset into the edit and the final
+  // render plays it early. Same mechanism for both shapes is the point.
+  useAudioBufferCache({ warmSourceUrls: warmAudioSourceUrls });
 
   const { isWebAudioReady } = useWebAudioPlayback({
     tracks,
@@ -173,7 +179,10 @@ export function usePreviewPlaybackPipeline(params: UsePreviewPlaybackPipelinePar
     playbackRate: playback.playbackRate,
     currentTimeRef,
     debugLogs: previewPerf.debugLogs,
-    enabled: !directPreviewOptimized,
+    // No `enabled` gate (both hooks default to enabled). Exclusivity is enforced
+    // downstream: usePreviewMediaPlaybackSync mutes and pauses every media element
+    // whose source is web-audio-ready, so Web Audio takes audio OVER rather than
+    // doubling it — measured: 0 element plays, <video> stays muted@0.
   });
 
   const isWebAudioReadyRef = useRef(isWebAudioReady);
