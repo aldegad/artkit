@@ -10,6 +10,10 @@
     "start": "next build && firebase emulators:start --only hosting",
     "lint": "eslint",
     "test": "vitest run",
+    "video:open": "node scripts/artkit-video-bundle.mjs open",
+    "video:push": "node scripts/artkit-video-bundle.mjs push",
+    "video:pull": "node scripts/artkit-video-bundle.mjs pull",
+    "video:list": "node scripts/artkit-video-bundle.mjs list",
     "deploy": "next build && firebase deploy"
   },
   "dependencies": {
@@ -47,6 +51,7 @@
     "eslint-config-next": "16.2.9",
     "fake-indexeddb": "^6.2.2",
     "jsdom": "^26.1.0",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.2"
