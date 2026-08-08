@@ -163,6 +163,29 @@ export function releaseObjectUrlForKey(key: string): void {
   URL.revokeObjectURL(existing);
 }
 
+/**
+ * Move a key's objectURL to a new key WITHOUT revoking it.
+ *
+ * Renaming bytes is not deleting them. Razor split calls `moveMediaBlob`, whose last
+ * step deletes the source key — and both split halves are `{ ...clip }` spreads that
+ * still carry the original `sourceUrl` (`razorSplit.ts:66,76`). Revoking on that
+ * delete killed a URL two live clips were pointing at (validator reject, 2026-08-08).
+ *
+ * Renaming first also makes the later delete's release a no-op, so there is no second
+ * rule to keep in sync.
+ */
+export function renameObjectUrlKey(fromKey: string, toKey: string): void {
+  if (fromKey === toKey) return;
+  const existing = objectUrlByKey.get(fromKey);
+  if (!existing) return;
+  const replaced = objectUrlByKey.get(toKey);
+  if (replaced && replaced !== existing) {
+    URL.revokeObjectURL(replaced);
+  }
+  objectUrlByKey.delete(fromKey);
+  objectUrlByKey.set(toKey, existing);
+}
+
 /** Release every objectURL handed out so far (project switch, teardown). */
 export function releaseAllObjectUrls(): void {
   for (const url of objectUrlByKey.values()) {
@@ -208,6 +231,10 @@ export async function moveMediaBlob(
   const blob = await loadMediaBlob(sourceClipId);
   if (!blob) return false;
   await saveMediaBlob(targetClipId, blob);
+  // The bytes did not go away, only their name changed. Hand the live URL over
+  // before deleting, so clips still holding it keep working and the delete below
+  // finds nothing left to release.
+  renameObjectUrlKey(sourceClipId, targetClipId);
   if (sourceClipId !== targetClipId) {
     await deleteMediaBlob(sourceClipId);
   }

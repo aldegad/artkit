@@ -3,6 +3,7 @@ import {
   objectUrlForKey,
   releaseAllObjectUrls,
   releaseObjectUrlForKey,
+  renameObjectUrlKey,
 } from "./mediaStorage";
 
 /**
@@ -56,6 +57,61 @@ describe("objectUrlForKey", () => {
     releaseAllObjectUrls();
     expect(objectUrlForKey("src-a", blob("a"))).not.toBe(a);
     expect(objectUrlForKey("src-b", blob("b"))).not.toBe(b);
+    releaseAllObjectUrls();
+  });
+});
+
+/**
+ * Renaming bytes is not deleting them.
+ *
+ * Razor split goes through `moveMediaBlob`, whose last step deletes the source key,
+ * and both halves are `{ ...clip }` spreads still carrying the original `sourceUrl`.
+ * Releasing on that delete killed a URL two live clips pointed at — the first
+ * validator reject of this plan. The rename below is what makes the later release a
+ * no-op instead of a revoke.
+ */
+describe("renameObjectUrlKey", () => {
+  function blob2(text: string): Blob {
+    return new Blob([text], { type: "video/mp4" });
+  }
+
+  it("keeps the same URL alive under the new key", () => {
+    const live = objectUrlForKey("clip-owned", blob2("bytes"));
+    renameObjectUrlKey("clip-owned", "first-half");
+    expect(objectUrlForKey("first-half", blob2("bytes"))).toBe(live);
+    releaseAllObjectUrls();
+  });
+
+  it("leaves nothing behind at the old key, so a later release is a no-op", () => {
+    const live = objectUrlForKey("clip-owned", blob2("bytes"));
+    renameObjectUrlKey("clip-owned", "first-half");
+    releaseObjectUrlForKey("clip-owned"); // what deleteMediaBlob will do
+    // the live URL must still be the one the new key hands out
+    expect(objectUrlForKey("first-half", blob2("bytes"))).toBe(live);
+    releaseAllObjectUrls();
+  });
+
+  it("does nothing when the source key has no URL", () => {
+    renameObjectUrlKey("never-seen", "target");
+    const fresh = objectUrlForKey("target", blob2("bytes"));
+    expect(typeof fresh).toBe("string");
+    releaseAllObjectUrls();
+  });
+
+  it("is a no-op when both keys are the same", () => {
+    const url = objectUrlForKey("same", blob2("bytes"));
+    renameObjectUrlKey("same", "same");
+    expect(objectUrlForKey("same", blob2("bytes"))).toBe(url);
+    releaseAllObjectUrls();
+  });
+
+  it("replaces a URL already sitting at the target key", () => {
+    const stale = objectUrlForKey("target", blob2("old"));
+    const live = objectUrlForKey("source", blob2("new"));
+    renameObjectUrlKey("source", "target");
+    const now = objectUrlForKey("target", blob2("new"));
+    expect(now).toBe(live);
+    expect(now).not.toBe(stale);
     releaseAllObjectUrls();
   });
 });

@@ -500,6 +500,7 @@ export async function restoreAutosavedClips(
     const resolved = await loadMediaBlobForClip(normalizedClip);
     let blob = resolved?.blob ?? null;
     const blobKey = resolved?.key ?? null;
+    let fallbackBlobKey: string | null = null;
     if (!blob && normalizedClip.sourceId) {
       blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
       if (!blob) {
@@ -509,6 +510,10 @@ export async function restoreAutosavedClips(
           const candidateBlob = await loadMediaBlob(candidateId);
           if (candidateBlob) {
             blob = candidateBlob;
+            // Cache the URL under the key the bytes actually live at, not under the
+            // sourceId — otherwise deleting that key cannot release the URL it named
+            // (validator note, 2026-08-08).
+            fallbackBlobKey = candidateId;
             sourceBlobCache.set(normalizedClip.sourceId, candidateBlob);
             break;
           }
@@ -522,7 +527,10 @@ export async function restoreAutosavedClips(
       }
       restoredClips.push({
         ...normalizedClip,
-        sourceUrl: objectUrlForKey(blobKey ?? normalizedClip.sourceId ?? normalizedClip.id, blob),
+        sourceUrl: objectUrlForKey(
+          blobKey ?? fallbackBlobKey ?? normalizedClip.sourceId ?? normalizedClip.id,
+          blob,
+        ),
       });
       continue;
     }
