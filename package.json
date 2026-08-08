@@ -15,7 +15,7 @@
     "video:pull": "node scripts/artkit-video-bundle.mjs pull",
     "video:list": "node scripts/artkit-video-bundle.mjs list",
     "deploy": "next build && firebase deploy --only hosting",
-    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "deploy:rules": "npm run rules:check && firebase deploy --only firestore:rules,storage",
     "rules:build": "node scripts/generate-firebase-rules.mjs",
     "rules:check": "node scripts/generate-firebase-rules.mjs --check",
     "test:rules": "firebase emulators:exec --only firestore,storage --project artkit-rules-test \"vitest run --config vitest.rules.config.ts\""
