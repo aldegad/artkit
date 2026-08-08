@@ -216,7 +216,7 @@ export function Track({
       <div className="relative" style={{ height: trackHeight }}>
         <div className={cn(
           "absolute inset-0 bg-surface-secondary/50 transition-colors",
-          isLiftDropTarget && "bg-accent/10"
+          isLiftDropTarget && "bg-accent-primary/10"
         )} />
         {clips.map((clip) => (
           <Clip

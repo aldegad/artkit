@@ -106,7 +106,7 @@ export function SaveProjectModal({
         type="button"
         onClick={handleSubmit}
         disabled={!canSave}
-        className="px-3 py-1.5 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors disabled:opacity-50"
+        className="px-3 py-1.5 text-sm rounded bg-accent-primary hover:bg-accent-primary-hover text-white transition-colors disabled:opacity-50"
       >
         {isSaving ? `${t.save}...` : t.save}
       </button>

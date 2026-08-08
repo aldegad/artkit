@@ -350,7 +350,7 @@ export function Timeline({ className }: TimelineProps) {
                   key={track.id}
                   className={cn(
                     "border-b border-border-default transition-colors",
-                    isLiftDropTarget && "bg-accent/20 cursor-pointer ring-1 ring-inset ring-accent",
+                    isLiftDropTarget && "bg-accent-primary/20 cursor-pointer ring-1 ring-inset ring-accent-primary",
                     isLiftSource && "opacity-50"
                   )}
                   style={{ height: headerHeight }}
@@ -591,7 +591,7 @@ export function Timeline({ className }: TimelineProps) {
 
           {/* Track header/content resize handle */}
           <div
-            className="w-1 shrink-0 cursor-ew-resize touch-none bg-border-default hover:bg-accent transition-colors relative"
+            className="w-1 shrink-0 cursor-ew-resize touch-none bg-border-default hover:bg-accent-primary transition-colors relative"
             onPointerDown={handleStartHeaderResize}
             title="Resize track headers"
           >

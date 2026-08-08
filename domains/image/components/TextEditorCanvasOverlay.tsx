@@ -286,7 +286,7 @@ export function TextEditorCanvasOverlay({
           <button
             type="button"
             onClick={onApply}
-            className="px-2 py-1 rounded bg-accent-primary text-white hover:bg-accent-hover"
+            className="px-2 py-1 rounded bg-accent-primary text-white hover:bg-accent-primary-hover"
           >
             적용
           </button>

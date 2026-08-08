@@ -68,7 +68,7 @@ export function BackgroundRemovalModals({
       </button>
       <button
         onClick={onConfirm}
-        className="px-4 py-2 text-sm rounded bg-accent-primary hover:bg-accent-hover text-white transition-colors"
+        className="px-4 py-2 text-sm rounded bg-accent-primary hover:bg-accent-primary-hover text-white transition-colors"
       >
         {t.confirm}
       </button>
