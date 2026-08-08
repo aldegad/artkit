@@ -33,7 +33,7 @@ import {
 import { Clip, ClipTransformKeyframes } from "@/domains/video/types/clip";
 import {
   loadMediaBlob,
-  loadMediaBlobFromKeys,
+  loadMediaBlobForClip,
 } from "@/domains/video/utils/mediaStorage";
 import { normalizeClipTransformKeyframes } from "@/domains/video/utils/clipTransformKeyframes";
 import { normalizeProjectGroupName } from "@/shared/utils/projectGroups";
@@ -506,7 +506,7 @@ export async function saveVideoProjectToFirebase(
       reusedMediaType = existingSharedMedia.mediaType;
       uploadedStorageBySourceId.set(clip.sourceId, existingSharedMedia);
     } else {
-      mediaBlob = await loadMediaBlobFromKeys([clip.id, clip.sourceId]);
+      mediaBlob = (await loadMediaBlobForClip(clip))?.blob ?? null;
       if (!mediaBlob && clip.sourceId) {
         mediaBlob = sourceBlobCache.get(clip.sourceId) || null;
         if (!mediaBlob) {
