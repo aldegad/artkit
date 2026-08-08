@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file is the single source of instructions for coding agents working in this repository, whichever agent is reading it. `CLAUDE.md` is a one-line pointer here — put instructions in this file, never in both.
 
 ## Language
 
@@ -234,5 +234,5 @@ import {
 
 ## Maintenance
 
-- When changing project structure (adding/removing domains, moving directories, changing architectural patterns), update this AGENTS.md file accordingly.
-- Do not add `Co-Authored-By: Codex` to commit messages.
+- When changing project structure (adding/removing domains, moving directories, changing architectural patterns), update this file accordingly — it is the only place these instructions live.
+- Do not add `Co-Authored-By:` trailers to commit messages, for any agent.
