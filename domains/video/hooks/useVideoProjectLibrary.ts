@@ -14,7 +14,7 @@ import {
 } from "../types";
 import { VideoStorageInfo, VideoStorageProvider } from "../services/videoProjectStorage";
 import { type SaveLoadProgress } from "@/shared/lib/firebase/firebaseVideoStorage";
-import { loadMediaBlob, loadMediaBlobForClip } from "../utils/mediaStorage";
+import { loadMediaBlob, loadMediaBlobForClip, objectUrlForKey } from "../utils/mediaStorage";
 import { saveVideoAutosave } from "../utils/videoAutosave";
 import { normalizeClipTransformKeyframes } from "../utils/clipTransformKeyframes";
 import { snapClipTimingToFrameGrid } from "../utils/timelineModel";
@@ -135,7 +135,9 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
   const restoredClips: Clip[] = [];
 
   for (const clip of normalizedClips) {
-    let blob = (await loadMediaBlobForClip(clip))?.blob ?? null;
+    const resolved = await loadMediaBlobForClip(clip);
+    let blob = resolved?.blob ?? null;
+    const blobKey = resolved?.key ?? null;
     if (!blob && clip.sourceId) {
       blob = sourceBlobCache.get(clip.sourceId) || null;
       if (!blob) {
@@ -156,7 +158,7 @@ async function restoreClipsWithLocalMedia(normalizedClips: Clip[]): Promise<Clip
       if (clip.sourceId && !sourceBlobCache.has(clip.sourceId)) {
         sourceBlobCache.set(clip.sourceId, blob);
       }
-      const newUrl = URL.createObjectURL(blob);
+      const newUrl = objectUrlForKey(blobKey ?? clip.sourceId ?? clip.id, blob);
       restoredClips.push({ ...clip, sourceUrl: newUrl });
       continue;
     }

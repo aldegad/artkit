@@ -8,7 +8,7 @@ import {
   getClipSourceSpan,
   getClipPlaybackSpeed,
 } from "../types";
-import { loadMediaBlob, loadMediaBlobForClip } from "./mediaStorage";
+import { loadMediaBlob, loadMediaBlobForClip, objectUrlForKey } from "./mediaStorage";
 import {
   normalizeClipTransformKeyframes,
   scaleClipPositionKeyframesDuration,
@@ -497,7 +497,9 @@ export async function restoreAutosavedClips(
   const sourceBlobCache = new Map<string, Blob>();
 
   for (const normalizedClip of normalizedClips) {
-    let blob = (await loadMediaBlobForClip(normalizedClip))?.blob ?? null;
+    const resolved = await loadMediaBlobForClip(normalizedClip);
+    let blob = resolved?.blob ?? null;
+    const blobKey = resolved?.key ?? null;
     if (!blob && normalizedClip.sourceId) {
       blob = sourceBlobCache.get(normalizedClip.sourceId) || null;
       if (!blob) {
@@ -518,7 +520,10 @@ export async function restoreAutosavedClips(
       if (normalizedClip.sourceId && !sourceBlobCache.has(normalizedClip.sourceId)) {
         sourceBlobCache.set(normalizedClip.sourceId, blob);
       }
-      restoredClips.push({ ...normalizedClip, sourceUrl: URL.createObjectURL(blob) });
+      restoredClips.push({
+        ...normalizedClip,
+        sourceUrl: objectUrlForKey(blobKey ?? normalizedClip.sourceId ?? normalizedClip.id, blob),
+      });
       continue;
     }
 
