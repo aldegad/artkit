@@ -49,6 +49,35 @@ export async function saveMediaBlob(clipId: string, blob: Blob): Promise<void> {
 }
 
 /**
+ * Store bytes and get their name, once per key, for one load pass.
+ *
+ * `saveMediaBlob` deliberately forgets a key's cached URL (same name, possibly new
+ * bytes), so calling save-then-name per CLIP re-mints every time and the key-based
+ * cache degrades to `URL.createObjectURL` — k clips sharing a source produce k names
+ * again (validator reject, 2026-08-08). Moving the mint before the save does not help
+ * either: the save that follows clears it for the next clip.
+ *
+ * A per-key promise is what the sequence actually needs, and it must be a promise
+ * because loaders run clips through `mapWithConcurrency`. Scope one resolver per load
+ * pass — a module-global would outlive the project it named.
+ */
+export function createMediaUrlResolver(): (key: string, blob: Blob) => Promise<string> {
+  const inflight = new Map<string, Promise<string>>();
+
+  return (key, blob) => {
+    const existing = inflight.get(key);
+    if (existing) return existing;
+
+    const pending = (async () => {
+      await saveMediaBlob(key, blob);
+      return objectUrlForKey(key, blob);
+    })();
+    inflight.set(key, pending);
+    return pending;
+  };
+}
+
+/**
  * Load a media file (Blob) from IndexedDB
  * @param clipId - The clip ID used as key
  * @returns The stored Blob or null if not found
