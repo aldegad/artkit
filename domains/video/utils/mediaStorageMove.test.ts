@@ -57,3 +57,33 @@ describe("moveMediaBlob keeps a live objectURL alive", () => {
     expect(await loadMediaBlob("target")).toBeNull();
   });
 });
+
+/**
+ * Split, then edit ONE half.
+ *
+ * After a split the two halves share one cache entry, so overwriting the edited
+ * half's key must not kill the URL the untouched half is still playing — that clip
+ * legitimately still plays the ORIGINAL bytes. Reproduced by the validator
+ * (2026-08-08) as: save under clip.id → moveMediaBlob (split) → saveMediaBlob on the
+ * first half → the second half's URL was dead.
+ */
+describe("editing one split half leaves the sibling's URL alive", () => {
+  it("keeps the shared URL resolvable after the edited half is overwritten", async () => {
+    const original = new Blob([new Uint8Array([1, 1, 1, 1])], { type: "video/mp4" });
+    await saveMediaBlob("clip-owned", original);
+    const shared = objectUrlForKey("clip-owned", original);
+
+    await moveMediaBlob("clip-owned", "first-half"); // razor split
+    const inpainted = new Blob([new Uint8Array([2, 2])], { type: "video/mp4" });
+    await saveMediaBlob("first-half", inpainted); // inpaint the first half
+
+    // the untouched sibling still plays the original bytes through this URL
+    expect(resolveObjectURL(shared)).toBeDefined();
+
+    // and the edited key hands out a NEW name for its new bytes
+    const stored = await loadMediaBlob("first-half");
+    expect(objectUrlForKey("first-half", stored as Blob)).not.toBe(shared);
+
+    releaseAllObjectUrls();
+  });
+});
