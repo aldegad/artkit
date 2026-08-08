@@ -14,7 +14,10 @@
     "video:push": "node scripts/artkit-video-bundle.mjs push",
     "video:pull": "node scripts/artkit-video-bundle.mjs pull",
     "video:list": "node scripts/artkit-video-bundle.mjs list",
-    "deploy": "next build && firebase deploy"
+    "deploy": "next build && firebase deploy",
+    "rules:build": "node scripts/generate-firebase-rules.mjs",
+    "rules:check": "node scripts/generate-firebase-rules.mjs --check",
+    "test:rules": "firebase emulators:exec --only firestore,storage --project artkit-rules-test \"vitest run --config vitest.rules.config.ts\""
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
@@ -41,6 +44,7 @@
     }
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^20",

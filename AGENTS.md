@@ -13,6 +13,9 @@ npm run dev      # Start dev server on http://localhost:3005
 npm run build    # Build for production (static export to /out)
 npm run lint     # Run ESLint
 npm run deploy   # Build and deploy to Firebase Hosting
+npm test         # Run the vitest suite (emulator-backed rules tests excluded)
+npm run test:rules   # Firebase security rules tests (spins up firestore/storage emulators, needs a JRE)
+npm run rules:build  # Re-render the allowed-uid block in firestore.rules / storage.rules
 ```
 
 ## Git Commit Convention
@@ -195,6 +198,10 @@ npm run video:pull -- <out>     # dump the current edit state back to a bundle (
 ```
 
 Bundle format, the browser-profile constraint behind the dedicated window, and operational gotchas: `docs/agent-video-bundle.md`. Format SSoT is `domains/video/utils/videoBundle.ts`; the in-app surface is `domains/video/hooks/useAgentBridge.ts` (dev-only unless `NEXT_PUBLIC_ARTKIT_AGENT_BRIDGE=1`).
+
+### Cloud Access Lock
+
+Firestore/Storage access is restricted to an explicit Firebase uid allowlist, because any signed-in Google account used to be able to write to its own space and that write is the cloud bill. The allowlist has exactly one definition site — `firebase/allowed-uids.json` — and `scripts/generate-firebase-rules.mjs` renders it into the marked block of both `firestore.rules` and `storage.rules` (rules files cannot import each other). Hand-editing either block fails the drift test in `npm test`. An empty list denies everyone, which is the safe default. Rationale, uid lookup, and the deploy command: `docs/firebase-access-lock.md`.
 
 ### AI Background Removal
 

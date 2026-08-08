@@ -1,8 +1,25 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // 클라우드 저장은 사용자 1인 전용이다. 비용의 본체가 여기(Storage 바이트 + 대역폭)라서
+    // 허용 목록에 없는 계정은 자기 공간이어도 전부 거부한다. 판단 근거 전문은 firestore.rules
+    // 상단 주석에 있고, 허용 목록의 정의처는 firebase/allowed-uids.json 하나다.
+    // === BEGIN generated: allowed-uids ===
+    // 이 블록은 firebase/allowed-uids.json 에서 생성된다 (npm run rules:build).
+    // 손으로 고치지 마라 — npm test 의 drift 검사가 거부한다.
+    function isAllowedOwner(uid) {
+      return uid in [];
+    }
+    // === END generated: allowed-uids ===
+
+    function isPermittedOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && isAllowedOwner(request.auth.uid);
+    }
+
     match /users/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isPermittedOwner(userId);
     }
   }
 }

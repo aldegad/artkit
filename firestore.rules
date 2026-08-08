@@ -1,19 +1,44 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 클라우드 저장은 사용자 1인 전용이다.
+    //
+    // 예전 규칙은 `auth != null && auth.uid == userId` 뿐이라 인증만 되면 누구나 자기 uid 공간을
+    // 썼다. 앱 로그인은 Google 팝업 하나로 열려 있으므로 임의의 구글 계정이 곧 쓰기 권한이었고,
+    // 그 쓰기가 그대로 Storage 바이트 + 대역폭 요금이 된다. 트레일러 프로젝트 하나가 미디어
+    // 15MB다. 실사용은 로컬(익명 IndexedDB)이 기본이고 클라우드는 백업·기기이동 용도이므로,
+    // 허용 목록에 없는 계정은 자기 공간이어도 전부 거부한다.
+    //
+    // 로그인 자체를 막는 blocking function(beforeUserSignedIn)은 Identity Platform 업그레이드가
+    // 전제라(https://firebase.google.com/docs/auth/extend-with-blocking-functions) 비용을 줄이려는
+    // 작업에 유료 등급을 물리게 된다. 그래서 로그인이 아니라 데이터 접근을 막는다.
+    // === BEGIN generated: allowed-uids ===
+    // 이 블록은 firebase/allowed-uids.json 에서 생성된다 (npm run rules:build).
+    // 손으로 고치지 마라 — npm test 의 drift 검사가 거부한다.
+    function isAllowedOwner(uid) {
+      return uid in [];
+    }
+    // === END generated: allowed-uids ===
+
+    function isPermittedOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && isAllowedOwner(request.auth.uid);
+    }
+
     // 사용자별 이미지 프로젝트
     match /users/{userId}/imageProjects/{projectId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isPermittedOwner(userId);
     }
 
     // 사용자별 비디오 프로젝트
     match /users/{userId}/videoProjects/{projectId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isPermittedOwner(userId);
     }
 
     // 사용자별 스프라이트 프로젝트
     match /users/{userId}/spriteProjects/{projectId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isPermittedOwner(userId);
     }
   }
 }

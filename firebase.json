@@ -8,7 +8,11 @@
   "hosting": {
     "target": "artkit",
     "public": "out",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "cleanUrls": true,
     "headers": [
       {
@@ -25,5 +29,17 @@
         ]
       }
     ]
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "singleProjectMode": true,
+    "ui": {
+      "enabled": false
+    }
   }
 }
