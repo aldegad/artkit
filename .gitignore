@@ -23,6 +23,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude Code local (machine-specific) settings — keep absolute paths out of git
+.claude/settings.local.json
+
 # Build
 dist/
 build/
